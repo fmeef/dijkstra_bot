@@ -22,8 +22,4 @@ impl BotError {
     pub fn new<T: ToString>(reason: T) -> Self {
         BotError::InternalError(reason.to_string())
     }
-
-    pub fn from(err: Box<dyn std::error::Error>) -> Self {
-        BotError::InternalError(err.to_string())
-    }
 }
