@@ -374,20 +374,27 @@ dependencies = [
 name = "bobot"
 version = "0.1.0"
 dependencies = [
+ "bobot_impl",
+ "dotenv",
+ "migration",
+ "tokio",
+]
+
+[[package]]
+name = "bobot_impl"
+version = "0.1.0"
+dependencies = [
  "anyhow",
  "async-trait",
  "async_executors",
  "async_nursery",
  "bb8",
  "bb8-redis",
- "bobot_impl",
  "chrono",
  "dashmap",
- "dotenv",
  "futures",
  "lazy_static",
  "log",
- "migration",
  "redis",
  "rmp-serde",
  "sea-orm",
@@ -397,14 +404,6 @@ dependencies = [
  "thiserror",
  "tokio",
  "uuid",
-]
-
-[[package]]
-name = "bobot_impl"
-version = "0.1.0"
-dependencies = [
- "sea-orm",
- "serde",
 ]
 
 [[package]]
