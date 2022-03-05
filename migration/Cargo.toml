@@ -10,5 +10,5 @@ path = "src/lib.rs"
 
 [dependencies]
 sea-schema = { version = "0.5.0", default-features = false, features = [ "migration", "debug-print" ] }
-entities = { path = "../entities" }
+bobot_impl = { path = "../bobot_impl" }
 async-trait = "0.1.52"

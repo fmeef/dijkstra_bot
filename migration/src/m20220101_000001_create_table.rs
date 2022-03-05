@@ -13,38 +13,38 @@ impl MigrationName for Migration {
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
-            .create_table_auto(entities::core::chat_members::Entity)
+            .create_table_auto(bobot_impl::core::chat_members::Entity)
             .await?;
         manager
-            .create_table_auto(entities::core::conversation_states::Entity)
+            .create_table_auto(bobot_impl::core::conversation_states::Entity)
             .await?;
         manager
-            .create_table_auto(entities::core::conversation_transitions::Entity)
+            .create_table_auto(bobot_impl::core::conversation_transitions::Entity)
             .await?;
         manager
-            .create_table_auto(entities::core::conversations::Entity)
+            .create_table_auto(bobot_impl::core::conversations::Entity)
             .await?;
         manager
-            .create_table_auto(entities::core::dialogs::Entity)
+            .create_table_auto(bobot_impl::core::dialogs::Entity)
             .await?;
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
-            .drop_table_auto(entities::core::dialogs::Entity)
+            .drop_table_auto(bobot_impl::core::dialogs::Entity)
             .await?;
         manager
-            .drop_table_auto(entities::core::conversations::Entity)
+            .drop_table_auto(bobot_impl::core::conversations::Entity)
             .await?;
         manager
-            .drop_table_auto(entities::core::conversation_transitions::Entity)
+            .drop_table_auto(bobot_impl::core::conversation_transitions::Entity)
             .await?;
         manager
-            .drop_table_auto(entities::core::conversation_states::Entity)
+            .drop_table_auto(bobot_impl::core::conversation_states::Entity)
             .await?;
         manager
-            .drop_table_auto(entities::core::chat_members::Entity)
+            .drop_table_auto(bobot_impl::core::chat_members::Entity)
             .await?;
         Ok(())
     }

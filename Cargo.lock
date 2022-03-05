@@ -380,10 +380,10 @@ dependencies = [
  "async_nursery",
  "bb8",
  "bb8-redis",
+ "bobot_impl",
  "chrono",
  "dashmap",
  "dotenv",
- "entities",
  "futures",
  "lazy_static",
  "log",
@@ -397,6 +397,14 @@ dependencies = [
  "thiserror",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "bobot_impl"
+version = "0.1.0"
+dependencies = [
+ "sea-orm",
+ "serde",
 ]
 
 [[package]]
@@ -651,14 +659,6 @@ name = "either"
 version = "1.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e78d4f1cc4ae33bbfc157ed5d5a5ef3bc29227303d595861deb238fcec4e9457"
-
-[[package]]
-name = "entities"
-version = "0.1.0"
-dependencies = [
- "sea-orm",
- "serde",
-]
 
 [[package]]
 name = "event-listener"
@@ -1148,7 +1148,7 @@ name = "migration"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "entities",
+ "bobot_impl",
  "sea-schema",
 ]
 
