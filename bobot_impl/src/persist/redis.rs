@@ -3,11 +3,7 @@ use super::Result;
 use crate::util::callback::SingleCallback;
 use crate::{
     get_executor,
-    util::{
-        callback::BoxedDbCallback,
-        chat_id_fix::{ChatRefExt, UserIdExt},
-        error::BotError,
-    },
+    util::{callback::BoxedDbCallback, error::BotError},
 };
 use anyhow::anyhow;
 use async_nursery::{NurseExt, Nursery};
@@ -16,11 +12,11 @@ use bb8::{Pool, PooledConnection};
 use bb8_redis::RedisConnectionManager;
 use dashmap::DashMap;
 use futures::{Future, Stream, TryStreamExt};
+use grammers_client::types::Message;
 use redis::{aio::Connection, AsyncCommands, RedisError};
 use sea_orm::DatabaseConnection;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{collections::HashMap, num::NonZeroUsize, ops::DerefMut, pin::Pin, sync::Arc};
-use telegram_bot::{Message, ToUserId};
 use uuid::Uuid;
 
 // write cache redis keys
@@ -56,14 +52,18 @@ pub fn random_key<T: AsRef<str>>(prefix: &T) -> String {
     format!("r:{}:{}", prefix.as_ref(), uuid.to_string())
 }
 
-pub fn scope_key_by_user<T: AsRef<str>, U: ToUserId>(key: &T, user: &U) -> String {
-    format!("u:{}:{}", user.to_user_i64(), key.as_ref())
+pub fn scope_key_by_user<T: AsRef<str>>(key: &T, user: i64) -> String {
+    format!("u:{}:{}", user, key.as_ref())
 }
 
-pub fn scope_key_by_chatuser<T: AsRef<str>>(key: &T, message: &Message) -> String {
-    let user_id = message.from.to_user_i64();
-    let chat_id = message.chat.to_chat_id();
-    format!("cu:{}:{}:{}", chat_id, user_id, key.as_ref())
+pub fn scope_key_by_chatuser<T: AsRef<str>>(key: &T, message: &Message) -> Result<String> {
+    let user_id = message
+        .sender()
+        .ok_or_else(|| BotError::new("message without sender"))?
+        .id();
+    let chat_id = message.chat().id();
+    let res = format!("cu:{}:{}:{}", chat_id, user_id, key.as_ref());
+    Ok(res)
 }
 
 fn parse_single_type_prefix<'a, T>(

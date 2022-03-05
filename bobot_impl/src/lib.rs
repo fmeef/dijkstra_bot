@@ -14,6 +14,7 @@ pub fn get_executor() -> TokioTp {
 }
 
 pub(crate) mod persist;
+pub(crate) mod tg;
 pub(crate) mod util;
 
 pub mod core;

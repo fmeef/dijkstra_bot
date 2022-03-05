@@ -14,7 +14,6 @@ rmp-serde = "1.0.0"
 sea-orm = { version = "0.6.0", features = ["runtime-tokio-rustls", "sqlx-postgres", "macros", "default"] }
 sea-query = { version = "0.22.0", features = ["uuid", "bigdecimal", "with-bigdecimal", "with-chrono", "with-json", "postgres", "sea-query-derive", "backend-postgres", "derive", "postgres-array", "with-uuid", "thread-safe"] }
 serde = { version = "1.0.136", features = ["derive"] }
-telegram-bot = { git = "https://github.com/telegram-rs/telegram-bot" }
 thiserror = "1.0.30"
 tokio = { version = "1.17.0", features = ["full"] }
 uuid = { version = "0.8.2", features = ["v4", "serde"] }
@@ -26,3 +25,4 @@ bb8 = "0.7.1"
 bb8-redis = "0.10.1"
 chrono = { version = "0.4.19", features = ["serde"] }
 dashmap = "5.1.0"
+grammers-client = { git = "https://github.com/Lonami/grammers.git" }
