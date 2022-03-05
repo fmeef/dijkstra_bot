@@ -20,9 +20,11 @@ lazy_static = "1.4.0"
 log = "0.4.14"
 redis = { version = "0.21.5", features = ["acl", "aio", "r2d2", "geospatial", "script", "tokio-comp", "cluster"] }
 rmp-serde = "1.0.0"
-sea-orm = { version = "0.6.0", features = ["runtime-tokio-rustls", "sqlx-postgres", "macros"] }
+sea-orm = { version = "0.6.0", features = ["runtime-tokio-rustls", "sqlx-postgres", "macros", "default"] }
+sea-query = { version = "0.22.0", features = ["uuid", "bigdecimal", "with-bigdecimal", "with-chrono", "with-json", "postgres", "sea-query-derive", "backend-postgres", "derive", "postgres-array", "with-uuid", "thread-safe"] }
 serde = { version = "1.0.136", features = ["derive"] }
 telegram-bot = { git = "https://github.com/telegram-rs/telegram-bot" }
 thiserror = "1.0.30"
 tokio = { version = "1.17.0", features = ["full"] }
 uuid = { version = "0.8.2", features = ["v4", "serde"] }
+migration = { path = "migration" }
