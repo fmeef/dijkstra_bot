@@ -1,8 +1,5 @@
 use futures::{future::BoxFuture, Future, FutureExt};
 
-use super::error::BotError;
-
-pub type BotDbResult<T> = std::result::Result<T, BotError>;
 pub type BotDbFuture<'a, T> = BoxFuture<'a, T>;
 
 // async closure type returning boxed future

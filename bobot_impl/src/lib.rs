@@ -13,7 +13,8 @@ pub fn get_executor() -> TokioTp {
     EXEC.clone()
 }
 
-pub mod persist;
-pub mod util;
+pub(crate) mod persist;
+pub(crate) mod util;
 
 pub mod core;
+pub mod modules;

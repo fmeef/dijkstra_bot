@@ -4,8 +4,6 @@ use thiserror::Error;
 pub enum BotError {
     #[error("Generic internal error, am cry: {0}")]
     InternalError(String),
-    #[error("{0}")]
-    AlreadyExistsError(String),
     #[error("internal redis error: {0}")]
     RedisErr(#[from] redis::RedisError),
     #[error("redis pool error")]

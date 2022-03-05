@@ -2,6 +2,7 @@ use async_trait::async_trait;
 
 pub(crate) type Result<T> = anyhow::Result<T>;
 
+#[allow(dead_code)]
 pub(crate) mod redis;
 
 #[async_trait]
