@@ -39,12 +39,16 @@ fn get_dir(dir: &LitStr) -> PathBufWrapper {
 
 fn get_module_list(dir: &PathBufWrapper) -> Vec<Ident> {
     read_dir(&dir.0)
-        .unwrap()
-        .map(|d| d.unwrap())
+        .expect("directory does not exist")
+        .map(|d| d.expect("entry does not exist"))
         .filter(|d| {
             let name = d.file_name();
             let name = name.to_string_lossy();
-            !name.starts_with('.') && (name.ends_with(".rs") || d.file_type().unwrap().is_dir())
+            !name.starts_with('.')
+                && (name.ends_with(".rs")
+                    || d.file_type()
+                        .expect(&format!("file type for {} does not exist", name))
+                        .is_dir())
         })
         .map(|d| d.file_name().to_string_lossy().into_owned())
         .map(|name| name.trim_end_matches(".rs").to_owned())
