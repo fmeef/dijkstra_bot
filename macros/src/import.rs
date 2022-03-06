@@ -60,9 +60,19 @@ fn get_module_list(dir: &PathBufWrapper) -> Vec<Ident> {
 pub(crate) fn autoimport(input: TokenStream) -> TokenStream {
     let input: LitStr = syn::parse2(input).unwrap();
     let dir = get_dir(&input);
-    let mods = get_module_list(&dir).into_iter();
+    let mods = get_module_list(&dir).clone().into_iter();
+    let funcs = get_module_list(&dir).into_iter();
     let output = quote! {
         #( mod #mods; )*
+
+        pub fn get_migrations() -> ::std::vec::Vec<::std::boxed::Box<dyn ::sea_schema::migration::MigrationTrait>> {
+
+            let mut _v = ::std::vec::Vec::<::std::boxed::Box<dyn ::sea_schema::migration::MigrationTrait>>::new();
+            #(
+                _v.append(&mut #funcs::get_migrations());
+            )*
+            _v
+        }
     };
     output
 }
