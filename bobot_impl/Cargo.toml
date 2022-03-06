@@ -26,3 +26,4 @@ bb8-redis = "0.10.1"
 chrono = { version = "0.4.19", features = ["serde"] }
 dashmap = "5.1.0"
 grammers-client = { git = "https://github.com/Lonami/grammers.git" }
+macros = { path = "../macros" }
