@@ -26,4 +26,5 @@ bb8-redis = "0.10.1"
 chrono = { version = "0.4.19", features = ["serde"] }
 dashmap = "5.1.0"
 grammers-client = { git = "https://github.com/Lonami/grammers.git" }
+sea-schema = { version = "0.5.0", default-features = false, features = [ "migration", "debug-print" ] }
 macros = { path = "../macros" }

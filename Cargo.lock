@@ -426,6 +426,7 @@ dependencies = [
  "rmp-serde",
  "sea-orm",
  "sea-query 0.22.0",
+ "sea-schema",
  "serde",
  "thiserror",
  "tokio",

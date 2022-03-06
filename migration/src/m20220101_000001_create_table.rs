@@ -1,4 +1,4 @@
-use super::ManagerHelper;
+use bobot_impl::persist::migrate::ManagerHelper;
 use sea_schema::migration::*;
 
 pub struct Migration;
