@@ -14,6 +14,12 @@ pub enum BotError {
     DeserializationErr(#[from] rmp_serde::decode::Error),
     #[error("nursery error")]
     NurseryErr(#[from] async_nursery::NurseErr),
+    #[error("telegram authorization error")]
+    TgAuthErr(#[from] grammers_client::client::auth::AuthorizationError),
+    #[error("telegram invocation error")]
+    TgInvocationError(#[from] grammers_client::client::auth::InvocationError),
+    #[error("io error")]
+    IoError(#[from] std::io::Error),
 }
 
 impl BotError {

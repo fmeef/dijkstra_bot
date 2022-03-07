@@ -419,6 +419,7 @@ dependencies = [
  "dashmap",
  "futures",
  "grammers-client",
+ "grammers-session",
  "lazy_static",
  "log",
  "macros",
