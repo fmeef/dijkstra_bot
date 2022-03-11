@@ -1,4 +1,5 @@
 use async_executors::{TokioTp, TokioTpBuilder};
+use clap::Parser;
 use lazy_static::lazy_static;
 
 lazy_static! {
@@ -7,6 +8,13 @@ lazy_static! {
             .build()
             .expect("create tokio threadpool")
     };
+}
+
+#[derive(Parser)]
+#[clap(author, version, long_about = None)]
+struct Args {
+    #[clap(short, long)]
+    session: String,
 }
 
 pub fn get_executor() -> TokioTp {
