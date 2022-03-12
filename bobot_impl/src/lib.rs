@@ -29,5 +29,4 @@ pub mod persist;
 pub mod tg;
 pub(crate) mod util;
 
-pub mod core;
 pub mod modules;
