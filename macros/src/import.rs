@@ -1,4 +1,4 @@
-use std::{fs::read_dir, path::PathBuf};
+use std::fs::read_dir;
 
 use proc_macro2::{Ident, TokenStream};
 use quote::{quote, ToTokens};
@@ -33,8 +33,14 @@ impl ToTokens for PathList {
     }
 }
 
-fn get_dir(dir: &LitStr) -> PathBufWrapper {
-    PathBufWrapper(PathBuf::from(dir.value()))
+fn glob_modules<T: AsRef<str>>(spec: T) -> Vec<Ident> {
+    glob::glob(spec.as_ref())
+        .expect("invalid glob pattern")
+        .map(|v| v.expect("glob error"))
+        .map(|v| PathBufWrapper(v))
+        .map(|v| get_module_list(&v))
+        .flat_map(|v| v.into_iter())
+        .collect()
 }
 
 fn get_module_list(dir: &PathBufWrapper) -> Vec<Ident> {
@@ -59,10 +65,11 @@ fn get_module_list(dir: &PathBufWrapper) -> Vec<Ident> {
 
 pub(crate) fn autoimport(input: TokenStream) -> TokenStream {
     let input: LitStr = syn::parse2(input).unwrap();
-    let dir = get_dir(&input);
-    let mods = get_module_list(&dir).clone().into_iter();
-    let updates = get_module_list(&dir).clone().into_iter();
-    let funcs = get_module_list(&dir).into_iter();
+    let module_globs = glob_modules(input.value());
+    assert!(module_globs.len() > 0);
+    let mods = module_globs.clone().into_iter();
+    let updates = module_globs.clone().into_iter();
+    let funcs = module_globs.into_iter();
     let output = quote! {
         #( mod #mods; )*
 

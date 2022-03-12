@@ -1,5 +1,8 @@
 #![deny(rust_2018_idioms)]
 #![allow(dead_code)]
+
+mod modules;
+
 use clap::Parser;
 use std::env;
 
