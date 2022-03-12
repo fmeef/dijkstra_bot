@@ -1,6 +1,9 @@
 #![deny(rust_2018_idioms)]
 #![allow(dead_code)]
+use clap::Parser;
 use std::env;
+
+use bobot_impl::Args;
 
 const SESSION_FILE: &str = "/tmp/whatever.session"; //TODO: change this
 
@@ -16,13 +19,10 @@ async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let _redis_connection_str =
         env::var("REDIS_CONNECTION_PROD").expect("need to set REDIS_CONNECTION_PROD");
 
-    let client = bobot_impl::tg::client::TgClient::connect(
-        _token,
-        _api_id,
-        _api_hash,
-        SESSION_FILE.to_string(),
-    )
-    .await?;
+    let args = Args::parse();
+
+    let client =
+        bobot_impl::tg::client::TgClient::connect(_token, _api_id, _api_hash, args.session).await?;
 
     client.run().await?;
     Ok(())

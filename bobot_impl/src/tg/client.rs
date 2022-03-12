@@ -1,6 +1,10 @@
+use std::path::PathBuf;
+
 use grammers_client::{Client, Config, InitParams, Update};
 use grammers_session::Session;
 use log::debug;
+
+use crate::util::error::BotError;
 
 use super::Result;
 
@@ -9,13 +13,16 @@ pub struct TgClient {
 }
 
 impl TgClient {
-    pub async fn connect<T>(token: T, api_id: i32, api_hash: T, session: T) -> Result<Self>
+    pub async fn connect<T>(token: T, api_id: i32, api_hash: T, session: PathBuf) -> Result<Self>
     where
         T: Into<String>,
     {
         let token: String = token.into();
         let api_hash: String = api_hash.into();
-        let session: String = session.into();
+        let session: String = session
+            .to_str()
+            .ok_or_else(|| BotError::new("invalid session file"))?
+            .to_owned();
         let mut res = Self {
             client: Client::connect(Config {
                 api_id,

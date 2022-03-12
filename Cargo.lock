@@ -399,6 +399,7 @@ name = "bobot"
 version = "0.1.0"
 dependencies = [
  "bobot_impl",
+ "clap 3.1.6",
  "dotenv",
  "macros",
  "migration",

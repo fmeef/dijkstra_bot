@@ -11,3 +11,4 @@ tokio = { version = "1.17.0", features = ["full"] }
 migration = { path = "migration" }
 bobot_impl = { path = "bobot_impl" }
 macros = { path = "macros" }
+clap = { version = "3.1.6", features = ["derive"] }

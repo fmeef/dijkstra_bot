@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use async_executors::{TokioTp, TokioTpBuilder};
 use clap::Parser;
 use lazy_static::lazy_static;
@@ -10,11 +12,13 @@ lazy_static! {
     };
 }
 
+// Mildly competent moduler telegram bot
 #[derive(Parser)]
 #[clap(author, version, long_about = None)]
-struct Args {
+pub struct Args {
+    // Path to mtproto session file
     #[clap(short, long)]
-    session: String,
+    pub session: PathBuf,
 }
 
 pub fn get_executor() -> TokioTp {
