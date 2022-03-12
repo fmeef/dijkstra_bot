@@ -431,6 +431,7 @@ dependencies = [
  "sea-query 0.22.0",
  "sea-schema",
  "serde",
+ "serde_json",
  "thiserror",
  "tokio",
  "uuid",

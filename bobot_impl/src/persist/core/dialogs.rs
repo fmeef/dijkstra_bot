@@ -7,7 +7,6 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub chat_id: i64,
     pub last_activity: DateTimeWithTimeZone,
-    pub chat_type: i32,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
