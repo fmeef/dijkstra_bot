@@ -4,4 +4,4 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![]
 }
 
-pub async fn handle_update(client: TgClient, update: &grammers_client::types::update::Update) {}
+pub async fn handle_update(_client: TgClient, _update: &grammers_client::types::update::Update) {}
