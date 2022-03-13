@@ -16,6 +16,7 @@ use sea_schema::migration::{MigrationName, MigrationTrait};
 // redis keys
 const KEY_TYPE_TAG: &str = "wc:tag";
 const KEY_TYPE_STICKER_ID: &str = "wc:stickerid";
+const KEY_TYPE_STICKER_NAME: &str = "wc:stickername";
 
 // conversation state machine globals
 const UPLOAD_CMD: &str = "/upload";
@@ -170,8 +171,7 @@ pub async fn handle_update(_client: TgClient, update: &Update) {
 async fn conv_start(conversation: Conversation, message: Message) -> Result<Conversation> {
     if let Some(Media::Sticker(Sticker { document, .. })) = message.media() {
         let key = scope_key_by_chatuser(&KEY_TYPE_STICKER_ID, &message)?;
-        let val = (document.id(), message.text().to_owned());
-        REDIS.create_obj(&key, &val).await?;
+        REDIS.create_obj(&key, &document.id()).await?;
         let _: () = REDIS
             .redis_query(|mut conn| async move { conn.del(&KEY_TYPE_TAG).await })
             .await?;
@@ -179,4 +179,10 @@ async fn conv_start(conversation: Conversation, message: Message) -> Result<Conv
     } else {
         Err(anyhow!(BotError::new("Send a sticker")))
     }
+}
+
+async fn conv_name(conversation: Conversation, message: Message) -> Result<Conversation> {
+    let key = scope_key_by_chatuser(&KEY_TYPE_STICKER_NAME, &message)?;
+    REDIS.create_obj(&key, &message.text().to_owned()).await?;
+    conversation.transition(TRANSITION_TAG)
 }
