@@ -252,6 +252,11 @@ impl RedisPool {
         conn.create_obj_expire_at(&key, obj, seconds).await?;
         Ok(key)
     }
+
+    pub async fn conn<'a>(&'a self) -> Result<PooledConnection<'a, RedisConnectionManager>> {
+        let res = self.pool.get().await?;
+        Ok(res)
+    }
 }
 
 impl Clone for RedisPool {

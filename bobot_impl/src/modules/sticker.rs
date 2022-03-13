@@ -8,10 +8,15 @@ use crate::{
 };
 use anyhow::anyhow;
 use grammers_client::types::media::Sticker;
-use grammers_client::types::{CallbackQuery, InlineQuery, Media, Message, Update};
+use grammers_client::types::{CallbackQuery, Chat, InlineQuery, Media, Message, Update, User};
 use lazy_static::lazy_static;
 use redis::AsyncCommands;
+use sea_orm::entity::Set;
+use sea_orm::ActiveValue::NotSet;
+use sea_orm::{ActiveModelTrait, ConnectionTrait};
 use sea_schema::migration::{MigrationName, MigrationTrait};
+
+use self::entities::tags::ModelRedis;
 
 // redis keys
 const KEY_TYPE_TAG: &str = "wc:tag";
@@ -95,6 +100,13 @@ pub mod entities {
             pub sticker_id: u64,
             pub owner_id: i64,
             #[sea_orm(column_type = "Text")]
+            pub tag: String,
+        }
+
+        #[derive(DeriveIntoActiveModel, Serialize, Deserialize)]
+        pub struct ModelRedis {
+            pub sticker_id: u64,
+            pub owner_id: i64,
             pub tag: String,
         }
 
@@ -185,4 +197,28 @@ async fn conv_name(conversation: Conversation, message: Message) -> Result<Conve
     let key = scope_key_by_chatuser(&KEY_TYPE_STICKER_NAME, &message)?;
     REDIS.create_obj(&key, &message.text().to_owned()).await?;
     conversation.transition(TRANSITION_TAG)
+}
+
+async fn conv_moretags(conversation: Conversation, message: Message) -> Result<Conversation> {
+    let key = scope_key_by_chatuser(&KEY_TYPE_STICKER_ID, &message)?;
+    let namekey = scope_key_by_chatuser(&KEY_TYPE_STICKER_NAME, &message)?;
+    let taglist = scope_key_by_chatuser(&KEY_TYPE_TAG, &message)?;
+    let sticker_id: u64 = REDIS.get_obj(&key).await?;
+    if let Some(Chat::User(user)) = message.sender() {
+        if message.text() == "/done" {
+            let stickername: String = REDIS.get_obj(&namekey).await?;
+            conversation.transition(TRANSITION_DONE)
+        } else {
+            let tag = ModelRedis {
+                sticker_id,
+                owner_id: user.id(),
+                tag: message.text().to_owned(),
+            };
+            let tagkey = REDIS.create_obj_auto(&tag).await?;
+            REDIS.conn().await?.lpush(taglist, tagkey).await?;
+            conversation.transition(TRANSITION_MORETAG)
+        }
+    } else {
+        Err(anyhow!(BotError::new("not a user")))
+    }
 }

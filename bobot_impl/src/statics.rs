@@ -4,7 +4,8 @@ use super::Args;
 use clap::Parser;
 use futures::executor::block_on;
 use lazy_static::lazy_static;
-use sea_orm::{ConnectOptions, Database, DatabaseConnection};
+use sea_orm::entity::prelude::DatabaseConnection;
+use sea_orm::{ConnectOptions, Database};
 use std::env;
 
 //global configuration parameters
