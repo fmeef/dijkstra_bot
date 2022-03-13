@@ -1,14 +1,15 @@
 use std::collections::HashMap;
 
+use anyhow::anyhow;
 use chrono::{DateTime, Utc};
 use grammers_client::types::Chat;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::{persist::redis::RedisTypeName, util::error::BotError};
+use crate::util::error::BotError;
 
-use super::Result;
+use crate::persist::Result;
 #[cfg(test)]
 mod tests {
     use crate::tg::dialog::ConversationData;
@@ -97,7 +98,7 @@ impl ConversationData {
         if let Some(start) = self.states.get(&self.start) {
             Ok(start)
         } else {
-            Err(BotError::new("corrupt graph"))
+            Err(anyhow!(BotError::new("corrupt graph")))
         }
     }
 
@@ -188,7 +189,7 @@ impl Conversation {
         if let Some(start) = self.data.states.get(&self.data.start) {
             Ok(start)
         } else {
-            Err(BotError::new("corrupt graph"))
+            Err(anyhow!(BotError::new("corrupt graph")))
         }
     }
 
@@ -216,7 +217,7 @@ impl Conversation {
         if let Some(current) = self.data.states.get(&self.current) {
             Ok(current)
         } else {
-            Err(BotError::new("corrupt graph"))
+            Err(anyhow!(BotError::new("corrupt graph")))
         }
     }
 
@@ -224,7 +225,7 @@ impl Conversation {
         if let Some(current) = self.data.states.get(&self.current) {
             Ok(current.content.to_string())
         } else {
-            Err(BotError::new("corrupt graph"))
+            Err(anyhow!(BotError::new("corrupt graph")))
         }
     }
 
@@ -251,11 +252,5 @@ impl Clone for Conversation {
             data: self.data.clone(),
             current: self.current,
         }
-    }
-}
-
-impl RedisTypeName for Dialog {
-    fn get_type_name(&self) -> &'static str {
-        return TYPE_DIALOG;
     }
 }

@@ -1,17 +1,21 @@
+use crate::persist::redis::scope_key_by_chatuser;
+use crate::persist::Result;
+use crate::statics::{DB, REDIS};
 use crate::tg::client::TgClient;
-use crate::tg::Result;
+use crate::util::error::BotError;
 use crate::{
     persist::migrate::ManagerHelper, tg::dialog::Conversation, tg::dialog::ConversationData,
 };
+use anyhow::anyhow;
 use grammers_client::types::media::Sticker;
-use grammers_client::types::{CallbackQuery, InlineQuery, Media, Message};
-use grammers_client::Update;
+use grammers_client::types::{CallbackQuery, InlineQuery, Media, Message, Update};
 use lazy_static::lazy_static;
+use redis::AsyncCommands;
 use sea_schema::migration::{MigrationName, MigrationTrait};
 
 // redis keys
 const KEY_TYPE_TAG: &str = "wc:tag";
-const KEY_TYPE_STICKER: &str = "wc:sticker";
+const KEY_TYPE_STICKER_ID: &str = "wc:stickerid";
 
 // conversation state machine globals
 const UPLOAD_CMD: &str = "/upload";
@@ -150,7 +154,7 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![Box::new(Migration)]
 }
 
-pub async fn handle_update(_client: TgClient, update: &grammers_client::types::update::Update) {
+pub async fn handle_update(_client: TgClient, update: &Update) {
     match update {
         Update::NewMessage(ref message) => {
             if let Some(Media::Sticker(ref document)) = message.media() {
@@ -161,4 +165,18 @@ pub async fn handle_update(_client: TgClient, update: &grammers_client::types::u
         Update::InlineQuery(ref _foo) => (),
         _ => (),
     };
+}
+
+async fn conv_start(conversation: Conversation, message: Message) -> Result<Conversation> {
+    if let Some(Media::Sticker(Sticker { document, .. })) = message.media() {
+        let key = scope_key_by_chatuser(&KEY_TYPE_STICKER_ID, &message)?;
+        let val = (document.id(), message.text().to_owned());
+        REDIS.create_obj(&key, &val).await?;
+        let _: () = REDIS
+            .redis_query(|mut conn| async move { conn.del(&KEY_TYPE_TAG).await })
+            .await?;
+        conversation.transition(TRANSITION_NAME)
+    } else {
+        Err(anyhow!(BotError::new("Send a sticker")))
+    }
 }

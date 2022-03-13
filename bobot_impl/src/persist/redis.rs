@@ -43,26 +43,22 @@ pub fn scope_key_by_chatuser<T: AsRef<str>>(key: &T, message: &Message) -> Resul
     Ok(res)
 }
 
-pub trait RedisTypeName {
-    fn get_type_name(&self) -> &'static str;
-}
-
 #[async_trait]
 trait ConnectionExt {
     async fn create_obj<T, V>(&mut self, key: &T, obj: &V) -> Result<()>
     where
         T: AsRef<str> + Send + Sync + 'static,
-        V: Serialize + RedisTypeName + Send + Sync + 'static;
+        V: Serialize + Send + Sync + 'static;
 
     async fn create_obj_expire<T, V>(&mut self, key: &T, obj: &V, seconds: usize) -> Result<()>
     where
         T: AsRef<str> + Send + Sync + 'static,
-        V: Serialize + RedisTypeName + Send + Sync + 'static;
+        V: Serialize + Send + Sync + 'static;
 
     async fn create_obj_expire_at<T, V>(&mut self, key: &T, obj: &V, seconds: usize) -> Result<()>
     where
         T: AsRef<str> + Send + Sync + 'static,
-        V: Serialize + RedisTypeName + Send + Sync + 'static;
+        V: Serialize + Send + Sync + 'static;
 
     async fn get_type_name<T>(&mut self, key: &T) -> Result<String>
     where
@@ -85,13 +81,11 @@ impl ConnectionExt for Connection {
     async fn create_obj<T, V>(&mut self, key: &T, obj: &V) -> Result<()>
     where
         T: AsRef<str> + Send + Sync + 'static,
-        V: Serialize + RedisTypeName + Send + Sync + 'static,
+        V: Serialize + Send + Sync + 'static,
     {
-        let type_name = obj.get_type_name().to_string();
         let obj = rmp_serde::to_vec(&obj)?;
         redis::pipe()
             .atomic()
-            .hset(key.as_ref(), KEY_TYPE_PREFIX, type_name)
             .hset(key.as_ref(), KEY_TYPE_VAL, obj)
             .query_async(self)
             .await?;
@@ -101,13 +95,11 @@ impl ConnectionExt for Connection {
     async fn create_obj_expire<T, V>(&mut self, key: &T, obj: &V, seconds: usize) -> Result<()>
     where
         T: AsRef<str> + Send + Sync + 'static,
-        V: Serialize + RedisTypeName + Send + Sync + 'static,
+        V: Serialize + Send + Sync + 'static,
     {
-        let type_name = obj.get_type_name().to_string();
         let obj = rmp_serde::to_vec(&obj)?;
         redis::pipe()
             .atomic()
-            .hset(key.as_ref(), KEY_TYPE_PREFIX, type_name)
             .hset(key.as_ref(), KEY_TYPE_VAL, obj)
             .expire(key.as_ref(), seconds)
             .query_async(self)
@@ -118,13 +110,11 @@ impl ConnectionExt for Connection {
     async fn create_obj_expire_at<T, V>(&mut self, key: &T, obj: &V, seconds: usize) -> Result<()>
     where
         T: AsRef<str> + Send + Sync + 'static,
-        V: Serialize + RedisTypeName + Send + Sync + 'static,
+        V: Serialize + Send + Sync + 'static,
     {
-        let type_name = obj.get_type_name().to_string();
         let obj = rmp_serde::to_vec(&obj)?;
         redis::pipe()
             .atomic()
-            .hset(key.as_ref(), KEY_TYPE_PREFIX, type_name)
             .hset(key.as_ref(), KEY_TYPE_VAL, obj)
             .expire_at(key.as_ref(), seconds)
             .query_async(self)
@@ -187,7 +177,7 @@ impl RedisPool {
     pub async fn get_obj<'a, T, V>(&self, key: &'a T) -> Result<V>
     where
         T: AsRef<str> + Sync + Send + 'static,
-        V: DeserializeOwned + RedisTypeName + Sync + Send + 'static,
+        V: DeserializeOwned + Sync + Send + 'static,
     {
         let mut conn = self.pool.get().await?;
         let d = conn.get_type_data(key).await?;
@@ -198,7 +188,7 @@ impl RedisPool {
     pub async fn create_obj<T, V>(&self, key: &T, obj: &V) -> Result<()>
     where
         T: AsRef<str> + Send + Sync + 'static,
-        V: Serialize + RedisTypeName + Send + Sync + 'static,
+        V: Serialize + Send + Sync + 'static,
     {
         let mut conn = self.pool.get().await?;
         conn.create_obj(key, obj).await
@@ -206,7 +196,7 @@ impl RedisPool {
 
     pub async fn create_obj_auto<V>(&self, obj: &V) -> Result<String>
     where
-        V: Serialize + RedisTypeName + Send + Sync + 'static,
+        V: Serialize + Send + Sync + 'static,
     {
         let mut conn = self.pool.get().await?;
         let key = random_key(&"");
@@ -217,7 +207,7 @@ impl RedisPool {
     pub async fn create_obj_expire<T, V>(&self, key: &T, obj: &V, seconds: usize) -> Result<()>
     where
         T: AsRef<str> + Send + Sync + 'static,
-        V: Serialize + RedisTypeName + Send + Sync + 'static,
+        V: Serialize + Send + Sync + 'static,
     {
         let mut conn = self.pool.get().await?;
         conn.create_obj_expire(key, obj, seconds).await?;
@@ -236,7 +226,7 @@ impl RedisPool {
     pub async fn create_obj_expire_at<T, V>(&self, key: &T, obj: &V, seconds: usize) -> Result<()>
     where
         T: AsRef<str> + Send + Sync + 'static,
-        V: Serialize + RedisTypeName + Send + Sync + 'static,
+        V: Serialize + Send + Sync + 'static,
     {
         let mut conn = self.pool.get().await?;
         conn.create_obj_expire_at(key, obj, seconds).await?;
@@ -245,7 +235,7 @@ impl RedisPool {
 
     pub async fn create_obj_expire_auto<V>(&self, obj: &V, seconds: usize) -> Result<String>
     where
-        V: Serialize + RedisTypeName + Send + Sync + 'static,
+        V: Serialize + Send + Sync + 'static,
     {
         let mut conn = self.pool.get().await?;
         let key = random_key(&"");
@@ -255,7 +245,7 @@ impl RedisPool {
 
     pub async fn create_obj_expire_at_auto<V>(&self, obj: &V, seconds: usize) -> Result<String>
     where
-        V: Serialize + RedisTypeName + Send + Sync + 'static,
+        V: Serialize + Send + Sync + 'static,
     {
         let mut conn = self.pool.get().await?;
         let key = random_key(&"");
