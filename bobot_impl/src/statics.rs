@@ -4,6 +4,7 @@ use super::Args;
 use clap::Parser;
 use futures::executor::block_on;
 use lazy_static::lazy_static;
+use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use std::env;
 
 //global configuration parameters
@@ -26,4 +27,12 @@ lazy_static! {
     pub(crate) static ref REDIS: RedisPool =
         block_on(RedisPoolBuilder::new(REDIS_CONNECTION_STR.clone()).build())
             .expect("failed to initialize redis pool");
+}
+
+//db client
+lazy_static! {
+    pub(crate) static ref DB: DatabaseConnection = block_on(Database::connect(
+        ConnectOptions::new(PG_CONNECTION_STR.clone())
+    ))
+    .expect("failed to initialize database");
 }
