@@ -5,10 +5,8 @@ use anyhow::anyhow;
 use chrono::{DateTime, Utc};
 use grammers_client::types::Chat;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::persist::redis::RedisPool;
 use crate::statics::REDIS;
 use crate::util::error::BotError;
 
@@ -17,47 +15,25 @@ use crate::persist::Result;
 mod tests {
 
     use super::Conversation;
-
-    #[test]
-    fn conversation_transition() {
-        let trans = "I eated";
-        let mut data = Conversation::new("fmef".to_string(), "fweef".to_string(), 0).unwrap();
-        let fweef = data.add_state("fweef");
-        let start = data.get_start().unwrap().state_id;
-        data.add_transition(start, fweef, trans.clone());
-        let conversation = data.build();
-        let new = conversation.transition(trans).unwrap();
-        assert_eq!(new.get_current().unwrap().state_id, fweef);
-    }
-
-    #[test]
-    fn conversation_serde() {
-        let trans = "I eated";
-        let mut data = Conversation::new("fmef".to_string(), "fweef".to_string(), 0).unwrap();
-        let fweef = data.add_state("fweef");
-        let start = data.get_start().unwrap().state_id;
-        data.add_transition(start, fweef, trans.clone());
-        let conversation = data.build();
-        let json = serde_json::to_string(&conversation).unwrap();
-        let newconversation: Conversation = serde_json::from_str(&json).unwrap();
-        assert_eq!(
-            conversation.get_current().unwrap().state_id,
-            newconversation.get_current().unwrap().state_id
-        )
-    }
 }
 
 pub const TYPE_DIALOG: &str = "DialogDb";
+
+#[inline(always)]
+pub fn get_conversation_key(chat: i64, user: i64) -> String {
+    format!("conv:{}:{}", chat, user)
+}
 
 #[derive(Serialize, Deserialize)]
 pub struct Conversation {
     pub conversation_id: Uuid,
     pub triggerphrase: String,
-    pub chat: Option<i64>,
+    pub chat: i64,
+    pub user: i64,
     pub states: HashMap<Uuid, FSMState>,
     start: Uuid,
     pub transitions: HashMap<String, FSMTransition>,
-    rediskey: Uuid,
+    rediskey: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -129,15 +105,7 @@ impl Conversation {
         uuid
     }
 
-    pub fn new(triggerphrase: String, reply: String, chat: i64) -> Result<Self> {
-        Conversation::new_option(triggerphrase, reply, Some(chat))
-    }
-
-    pub fn new_anonymous(triggerphrase: String, reply: String) -> Result<Self> {
-        Conversation::new_option(triggerphrase, reply, None)
-    }
-
-    fn new_option(triggerphrase: String, reply: String, chat: Option<i64>) -> Result<Self> {
+    pub fn new(triggerphrase: String, reply: String, chat: i64, user: i64) -> Result<Self> {
         let conversation_id = Uuid::new_v4();
         let startstate = FSMState::new(conversation_id, true, reply);
         let mut states = HashMap::<Uuid, FSMState>::new();
@@ -149,8 +117,9 @@ impl Conversation {
             chat,
             states,
             start,
+            user,
             transitions: HashMap::<String, FSMTransition>::new(),
-            rediskey: Uuid::new_v4(),
+            rediskey: get_conversation_key(chat, user),
         };
 
         Ok(conversation)

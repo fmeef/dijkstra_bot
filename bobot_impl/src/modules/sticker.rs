@@ -31,9 +31,16 @@ const STATE_NAME: &str = "Send a name for this sticker";
 const STATE_TAGS: &str = "Send tags for this sticker, one at a time. Send /done to stop";
 const STATE_DONE: &str = "Successfully uploaded sticker";
 
-fn upload_sticker_conversation() -> Result<Conversation> {
-    let mut conversation =
-        Conversation::new_anonymous(UPLOAD_CMD.to_string(), STATE_START.to_string())?;
+fn upload_sticker_conversation(message: &Message) -> Result<Conversation> {
+    let mut conversation = Conversation::new(
+        UPLOAD_CMD.to_string(),
+        STATE_START.to_string(),
+        message.chat().id(),
+        message
+            .sender()
+            .ok_or_else(|| BotError::new("message has no sender"))?
+            .id(),
+    )?;
     let start_state = conversation.get_start()?.state_id;
     let name_state = conversation.add_state(STATE_NAME);
     let state_tags = conversation.add_state(STATE_TAGS);
@@ -45,10 +52,6 @@ fn upload_sticker_conversation() -> Result<Conversation> {
     conversation.add_transition(state_tags, state_done, TRANSITION_DONE);
 
     Ok(conversation)
-}
-
-lazy_static! {
-    static ref STICKER_UPLOAD_CONV_TEMPLATE: Conversation = upload_sticker_conversation().unwrap();
 }
 
 struct Migration;
