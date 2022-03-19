@@ -11,6 +11,8 @@ use grammers_client::types::media::Sticker;
 use grammers_client::types::{CallbackQuery, Chat, InlineQuery, Media, Message, Update, User};
 use lazy_static::lazy_static;
 use redis::AsyncCommands;
+use sea_orm::entity::prelude::*;
+use sea_orm::{ActiveModelTrait, IntoActiveModel, Set};
 use sea_schema::migration::{MigrationName, MigrationTrait};
 
 use self::entities::tags::ModelRedis;
@@ -91,10 +93,10 @@ pub mod entities {
         #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
         #[sea_orm(table_name = "tags")]
         pub struct Model {
-            #[sea_orm(primary_key)]
+            #[sea_orm(primary_key, auto_increment = true)]
             pub id: i64,
             #[sea_orm(column_type = "Text")]
-            pub sticker_id: u64,
+            pub sticker_id: i64,
             pub owner_id: i64,
             #[sea_orm(column_type = "Text")]
             pub tag: String,
@@ -102,7 +104,7 @@ pub mod entities {
 
         #[derive(DeriveIntoActiveModel, Serialize, Deserialize)]
         pub struct ModelRedis {
-            pub sticker_id: u64,
+            pub sticker_id: i64,
             pub owner_id: i64,
             pub tag: String,
         }
@@ -134,12 +136,9 @@ pub mod entities {
         #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
         #[sea_orm(table_name = "stickers")]
         pub struct Model {
-            #[sea_orm(column_type = "Text")]
-            #[sea_orm(primary_key)]
+            #[sea_orm(primary_key, auto_increment = false)]
             pub unique_id: i64,
             pub owner_id: i64,
-            #[sea_orm(column_type = "Text")]
-            pub file_id: String,
             #[sea_orm(column_type = "Text", nullable)]
             pub chosen_name: Option<String>,
         }
@@ -202,19 +201,38 @@ async fn conv_moretags(conversation: Conversation, message: Message) -> Result<C
     let key = scope_key_by_chatuser(&KEY_TYPE_STICKER_ID, &message)?;
     let namekey = scope_key_by_chatuser(&KEY_TYPE_STICKER_NAME, &message)?;
     let taglist = scope_key_by_chatuser(&KEY_TYPE_TAG, &message)?;
-    let sticker_id: u64 = REDIS.pipe(|p| p.get(&key)).await?;
+
+    let sticker_id: i64 = REDIS.pipe(|p| p.get(&key)).await?;
+
     if let Some(Chat::User(user)) = message.sender() {
         if message.text() == "/done" {
             let stickername: String = REDIS.pipe(|p| p.get(&namekey)).await?;
+
+            let tags = REDIS
+                .drain_list::<String, ModelRedis>(&taglist)
+                .await?
+                .into_iter()
+                .map(|m| m.into_active_model());
+
+            let sticker = entities::stickers::ActiveModel {
+                unique_id: Set(sticker_id),
+                owner_id: Set(user.id()),
+                chosen_name: Set(Some(stickername)),
+            };
+
+            sticker.insert(&*DB).await?;
+            entities::tags::Entity::insert_many(tags).exec(&*DB).await?;
+
             conversation.transition(TRANSITION_DONE)
         } else {
-            let tag = ModelRedis {
+            let tag = RedisStr::new(&ModelRedis {
                 sticker_id,
                 owner_id: user.id(),
                 tag: message.text().to_owned(),
-            };
-            let tag = RedisStr::new(&tag)?;
+            })?;
+
             let randkey = random_key(&"");
+
             REDIS
                 .pipe(|p| {
                     p.atomic();
@@ -222,6 +240,7 @@ async fn conv_moretags(conversation: Conversation, message: Message) -> Result<C
                     p.lpush(taglist, randkey)
                 })
                 .await?;
+
             conversation.transition(TRANSITION_MORETAG)
         }
     } else {
