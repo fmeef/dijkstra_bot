@@ -1,4 +1,4 @@
-use crate::persist::redis::scope_key_by_chatuser;
+use crate::persist::redis::{random_key, scope_key_by_chatuser, RedisStr};
 use crate::persist::Result;
 use crate::statics::{DB, REDIS};
 use crate::tg::client::TgClient;
@@ -11,9 +11,6 @@ use grammers_client::types::media::Sticker;
 use grammers_client::types::{CallbackQuery, Chat, InlineQuery, Media, Message, Update, User};
 use lazy_static::lazy_static;
 use redis::AsyncCommands;
-use sea_orm::entity::Set;
-use sea_orm::ActiveValue::NotSet;
-use sea_orm::{ActiveModelTrait, ConnectionTrait};
 use sea_schema::migration::{MigrationName, MigrationTrait};
 
 use self::entities::tags::ModelRedis;
@@ -183,9 +180,11 @@ pub async fn handle_update(_client: TgClient, update: &Update) {
 async fn conv_start(conversation: Conversation, message: Message) -> Result<Conversation> {
     if let Some(Media::Sticker(Sticker { document, .. })) = message.media() {
         let key = scope_key_by_chatuser(&KEY_TYPE_STICKER_ID, &message)?;
-        REDIS.create_obj(&key, &document.id()).await?;
-        let _: () = REDIS
-            .redis_query(|mut conn| async move { conn.del(&KEY_TYPE_TAG).await })
+        REDIS
+            .pipe(|p| {
+                p.set(&key, document.id());
+                p.del(&KEY_TYPE_TAG)
+            })
             .await?;
         conversation.transition(TRANSITION_NAME)
     } else {
@@ -195,7 +194,7 @@ async fn conv_start(conversation: Conversation, message: Message) -> Result<Conv
 
 async fn conv_name(conversation: Conversation, message: Message) -> Result<Conversation> {
     let key = scope_key_by_chatuser(&KEY_TYPE_STICKER_NAME, &message)?;
-    REDIS.create_obj(&key, &message.text().to_owned()).await?;
+    REDIS.pipe(|p| p.set(&key, message.text())).await?;
     conversation.transition(TRANSITION_TAG)
 }
 
@@ -203,10 +202,10 @@ async fn conv_moretags(conversation: Conversation, message: Message) -> Result<C
     let key = scope_key_by_chatuser(&KEY_TYPE_STICKER_ID, &message)?;
     let namekey = scope_key_by_chatuser(&KEY_TYPE_STICKER_NAME, &message)?;
     let taglist = scope_key_by_chatuser(&KEY_TYPE_TAG, &message)?;
-    let sticker_id: u64 = REDIS.get_obj(&key).await?;
+    let sticker_id: u64 = REDIS.pipe(|p| p.get(&key)).await?;
     if let Some(Chat::User(user)) = message.sender() {
         if message.text() == "/done" {
-            let stickername: String = REDIS.get_obj(&namekey).await?;
+            let stickername: String = REDIS.pipe(|p| p.get(&namekey)).await?;
             conversation.transition(TRANSITION_DONE)
         } else {
             let tag = ModelRedis {
@@ -214,8 +213,15 @@ async fn conv_moretags(conversation: Conversation, message: Message) -> Result<C
                 owner_id: user.id(),
                 tag: message.text().to_owned(),
             };
-            let tagkey = REDIS.create_obj_auto(&tag).await?;
-            REDIS.conn().await?.lpush(taglist, tagkey).await?;
+            let tag = RedisStr::new(&tag)?;
+            let randkey = random_key(&"");
+            REDIS
+                .pipe(|p| {
+                    p.atomic();
+                    p.set(&randkey, &tag);
+                    p.lpush(taglist, randkey)
+                })
+                .await?;
             conversation.transition(TRANSITION_MORETAG)
         }
     } else {
