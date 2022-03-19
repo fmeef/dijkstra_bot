@@ -3,9 +3,7 @@ use crate::persist::Result;
 use crate::statics::{DB, REDIS};
 use crate::tg::client::TgClient;
 use crate::util::error::BotError;
-use crate::{
-    persist::migrate::ManagerHelper, tg::dialog::Conversation, tg::dialog::ConversationData,
-};
+use crate::{persist::migrate::ManagerHelper, tg::dialog::Conversation};
 use anyhow::anyhow;
 use grammers_client::types::media::Sticker;
 use grammers_client::types::{CallbackQuery, Chat, InlineQuery, Media, Message, Update, User};
@@ -35,7 +33,7 @@ const STATE_DONE: &str = "Successfully uploaded sticker";
 
 fn upload_sticker_conversation() -> Result<Conversation> {
     let mut conversation =
-        ConversationData::new_anonymous(UPLOAD_CMD.to_string(), STATE_START.to_string())?;
+        Conversation::new_anonymous(UPLOAD_CMD.to_string(), STATE_START.to_string())?;
     let start_state = conversation.get_start()?.state_id;
     let name_state = conversation.add_state(STATE_NAME);
     let state_tags = conversation.add_state(STATE_TAGS);
@@ -46,7 +44,7 @@ fn upload_sticker_conversation() -> Result<Conversation> {
     conversation.add_transition(state_tags, state_tags, TRANSITION_MORETAG);
     conversation.add_transition(state_tags, state_done, TRANSITION_DONE);
 
-    Ok(conversation.build())
+    Ok(conversation)
 }
 
 lazy_static! {
@@ -185,7 +183,8 @@ async fn conv_start(conversation: Conversation, message: Message) -> Result<Conv
                 p.del(&KEY_TYPE_TAG)
             })
             .await?;
-        conversation.transition(TRANSITION_NAME)
+        conversation.transition(TRANSITION_NAME).await?;
+        Ok(conversation)
     } else {
         Err(anyhow!(BotError::new("Send a sticker")))
     }
@@ -194,7 +193,8 @@ async fn conv_start(conversation: Conversation, message: Message) -> Result<Conv
 async fn conv_name(conversation: Conversation, message: Message) -> Result<Conversation> {
     let key = scope_key_by_chatuser(&KEY_TYPE_STICKER_NAME, &message)?;
     REDIS.pipe(|p| p.set(&key, message.text())).await?;
-    conversation.transition(TRANSITION_TAG)
+    conversation.transition(TRANSITION_TAG).await?;
+    Ok(conversation)
 }
 
 async fn conv_moretags(conversation: Conversation, message: Message) -> Result<Conversation> {
@@ -223,7 +223,8 @@ async fn conv_moretags(conversation: Conversation, message: Message) -> Result<C
             sticker.insert(&*DB).await?;
             entities::tags::Entity::insert_many(tags).exec(&*DB).await?;
 
-            conversation.transition(TRANSITION_DONE)
+            conversation.transition(TRANSITION_DONE).await?;
+            Ok(conversation)
         } else {
             let tag = RedisStr::new(&ModelRedis {
                 sticker_id,
@@ -241,9 +242,33 @@ async fn conv_moretags(conversation: Conversation, message: Message) -> Result<C
                 })
                 .await?;
 
-            conversation.transition(TRANSITION_MORETAG)
+            conversation.transition(TRANSITION_MORETAG).await?;
+            Ok(conversation)
         }
     } else {
         Err(anyhow!(BotError::new("not a user")))
     }
+}
+
+async fn print_conversation(
+    conversation: Result<Option<Conversation>>,
+    message: Message,
+) -> Result<Option<Conversation>> {
+    match conversation {
+        Ok(Some(conversation)) => {
+            let text = conversation.get_current_text().await?;
+            message.reply(text).await?;
+            Ok(Some(conversation))
+        }
+        Ok(None) => Ok(None),
+        Err(err) => {
+            let text = format!("Invalid input: {}", err);
+            message.reply(text).await?;
+            Ok(None)
+        }
+    }
+}
+
+async fn handle_conversation(message: Message) -> Result<()> {
+    todo!()
 }

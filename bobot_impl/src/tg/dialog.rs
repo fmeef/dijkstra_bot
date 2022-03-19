@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::str::FromStr;
 
 use anyhow::anyhow;
 use chrono::{DateTime, Utc};
@@ -7,19 +8,20 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::persist::redis::RedisPool;
+use crate::statics::REDIS;
 use crate::util::error::BotError;
 
 use crate::persist::Result;
 #[cfg(test)]
 mod tests {
-    use crate::tg::dialog::ConversationData;
 
     use super::Conversation;
 
     #[test]
     fn conversation_transition() {
         let trans = "I eated";
-        let mut data = ConversationData::new("fmef".to_string(), "fweef".to_string(), 0).unwrap();
+        let mut data = Conversation::new("fmef".to_string(), "fweef".to_string(), 0).unwrap();
         let fweef = data.add_state("fweef");
         let start = data.get_start().unwrap().state_id;
         data.add_transition(start, fweef, trans.clone());
@@ -31,7 +33,7 @@ mod tests {
     #[test]
     fn conversation_serde() {
         let trans = "I eated";
-        let mut data = ConversationData::new("fmef".to_string(), "fweef".to_string(), 0).unwrap();
+        let mut data = Conversation::new("fmef".to_string(), "fweef".to_string(), 0).unwrap();
         let fweef = data.add_state("fweef");
         let start = data.get_start().unwrap().state_id;
         data.add_transition(start, fweef, trans.clone());
@@ -48,20 +50,16 @@ mod tests {
 pub const TYPE_DIALOG: &str = "DialogDb";
 
 #[derive(Serialize, Deserialize)]
-pub struct ConversationData {
+pub struct Conversation {
     pub conversation_id: Uuid,
     pub triggerphrase: String,
     pub chat: Option<i64>,
     pub states: HashMap<Uuid, FSMState>,
     start: Uuid,
     pub transitions: HashMap<String, FSMTransition>,
+    rediskey: Uuid,
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct Conversation {
-    pub data: Arc<ConversationData>,
-    current: Uuid,
-}
 #[derive(Serialize, Deserialize)]
 pub struct FSMState {
     pub state_id: Uuid,
@@ -81,79 +79,6 @@ pub struct FSMTransition {
 pub struct Dialog {
     pub chat_id: i64,
     pub last_activity: DateTime<chrono::Utc>,
-}
-
-impl Into<Conversation> for ConversationData {
-    fn into(self) -> Conversation {
-        let current = self.start;
-        Conversation {
-            data: Arc::new(self),
-            current,
-        }
-    }
-}
-
-impl ConversationData {
-    pub fn get_start<'a>(&'a self) -> Result<&'a FSMState> {
-        if let Some(start) = self.states.get(&self.start) {
-            Ok(start)
-        } else {
-            Err(anyhow!(BotError::new("corrupt graph")))
-        }
-    }
-
-    pub fn add_state<S: Into<String>>(&mut self, reply: S) -> Uuid {
-        let state = FSMState::new(self.conversation_id, false, reply.into());
-        let uuid = state.state_id;
-        self.states.insert(state.state_id, state);
-        uuid
-    }
-
-    pub fn add_transition<S: Into<String>>(
-        &mut self,
-        start: Uuid,
-        end: Uuid,
-        triggerphrase: S,
-    ) -> Uuid {
-        let transition = FSMTransition::new(start, end);
-        let uuid = transition.transition_id;
-        self.transitions.insert(triggerphrase.into(), transition);
-        uuid
-    }
-
-    pub fn new(triggerphrase: String, reply: String, chat: i64) -> Result<Self> {
-        ConversationData::new_option(triggerphrase, reply, Some(chat))
-    }
-
-    pub fn new_anonymous(triggerphrase: String, reply: String) -> Result<Self> {
-        ConversationData::new_option(triggerphrase, reply, None)
-    }
-
-    fn new_option(triggerphrase: String, reply: String, chat: Option<i64>) -> Result<Self> {
-        let conversation_id = Uuid::new_v4();
-        let startstate = FSMState::new(conversation_id, true, reply);
-        let mut states = HashMap::<Uuid, FSMState>::new();
-        let start = startstate.state_id;
-        states.insert(startstate.state_id, startstate);
-        let data = ConversationData {
-            conversation_id,
-            triggerphrase,
-            chat,
-            states,
-            start,
-            transitions: HashMap::<String, FSMTransition>::new(),
-        };
-
-        Ok(data)
-    }
-
-    pub fn build(self) -> Conversation {
-        let current = self.start;
-        Conversation {
-            data: Arc::new(self),
-            current,
-        }
-    }
 }
 
 impl FSMState {
@@ -185,20 +110,66 @@ impl FSMTransition {
 }
 
 impl Conversation {
+    pub fn add_state<S: Into<String>>(&mut self, reply: S) -> Uuid {
+        let state = FSMState::new(self.conversation_id, false, reply.into());
+        let uuid = state.state_id;
+        self.states.insert(state.state_id, state);
+        uuid
+    }
+
+    pub fn add_transition<S: Into<String>>(
+        &mut self,
+        start: Uuid,
+        end: Uuid,
+        triggerphrase: S,
+    ) -> Uuid {
+        let transition = FSMTransition::new(start, end);
+        let uuid = transition.transition_id;
+        self.transitions.insert(triggerphrase.into(), transition);
+        uuid
+    }
+
+    pub fn new(triggerphrase: String, reply: String, chat: i64) -> Result<Self> {
+        Conversation::new_option(triggerphrase, reply, Some(chat))
+    }
+
+    pub fn new_anonymous(triggerphrase: String, reply: String) -> Result<Self> {
+        Conversation::new_option(triggerphrase, reply, None)
+    }
+
+    fn new_option(triggerphrase: String, reply: String, chat: Option<i64>) -> Result<Self> {
+        let conversation_id = Uuid::new_v4();
+        let startstate = FSMState::new(conversation_id, true, reply);
+        let mut states = HashMap::<Uuid, FSMState>::new();
+        let start = startstate.state_id;
+        states.insert(startstate.state_id, startstate);
+        let conversation = Conversation {
+            conversation_id,
+            triggerphrase,
+            chat,
+            states,
+            start,
+            transitions: HashMap::<String, FSMTransition>::new(),
+            rediskey: Uuid::new_v4(),
+        };
+
+        Ok(conversation)
+    }
+
     pub fn get_start<'a>(&'a self) -> Result<&'a FSMState> {
-        if let Some(start) = self.data.states.get(&self.data.start) {
+        if let Some(start) = self.states.get(&self.start) {
             Ok(start)
         } else {
             Err(anyhow!(BotError::new("corrupt graph")))
         }
     }
 
-    pub fn transition<S>(&self, next: S) -> Result<Self>
+    pub async fn transition<S>(&self, next: S) -> Result<()>
     where
         S: Into<String>,
     {
-        let current = if let Some(next) = self.data.transitions.get(&next.into()) {
-            if let Some(next) = self.data.states.get(&next.end_state) {
+        let current = if let Some(next) = self.transitions.get(&next.into()) {
+            if let Some(next) = self.states.get(&next.end_state) {
                 Ok(next.state_id)
             } else {
                 Err(BotError::new("invalid choice"))
@@ -206,34 +177,34 @@ impl Conversation {
         } else {
             Err(BotError::new("invalid choice"))
         }?;
-        let conversation = Conversation {
-            data: self.data.clone(),
-            current,
-        };
-        Ok(conversation)
+        self.write_key(current).await?;
+        Ok(())
     }
 
-    pub fn get_current<'a>(&'a self) -> Result<&'a FSMState> {
-        if let Some(current) = self.data.states.get(&self.current) {
+    pub async fn write_key(&self, new: Uuid) -> Result<()> {
+        REDIS
+            .pipe(|p| p.set(&self.rediskey.to_string(), new.to_string()))
+            .await?;
+        Ok(())
+    }
+
+    pub async fn get_current<'a>(&'a self) -> Result<&'a FSMState> {
+        let current: String = REDIS.pipe(|p| p.get(&self.rediskey.to_string())).await?;
+        let current = Uuid::from_str(&current)?;
+        if let Some(current) = self.states.get(&current) {
             Ok(current)
         } else {
             Err(anyhow!(BotError::new("corrupt graph")))
         }
     }
 
-    pub fn get_current_text(&self) -> Result<String> {
-        if let Some(current) = self.data.states.get(&self.current) {
-            Ok(current.content.to_string())
-        } else {
-            Err(anyhow!(BotError::new("corrupt graph")))
-        }
+    pub async fn get_current_text(&self) -> Result<String> {
+        let c = self.get_current().await?.content.to_string();
+        Ok(c)
     }
 
-    pub fn reset(self) -> Conversation {
-        Conversation {
-            data: self.data.clone(),
-            current: self.data.start,
-        }
+    pub async fn reset(self) -> Result<()> {
+        self.write_key(self.start).await
     }
 }
 
@@ -242,15 +213,6 @@ impl Dialog {
         Dialog {
             chat_id: chat.id(),
             last_activity: Utc::now(),
-        }
-    }
-}
-
-impl Clone for Conversation {
-    fn clone(&self) -> Self {
-        Conversation {
-            data: self.data.clone(),
-            current: self.current,
         }
     }
 }

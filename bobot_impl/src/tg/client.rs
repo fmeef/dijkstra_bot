@@ -9,7 +9,7 @@ use crate::util::error::BotError;
 use super::Result;
 
 pub struct TgClient {
-    client: Client,
+    pub client: Client,
 }
 
 impl TgClient {
