@@ -2,16 +2,12 @@ use crate::persist::redis::{random_key, scope_key_by_chatuser, RedisStr};
 use crate::persist::Result;
 use crate::statics::{DB, REDIS};
 use crate::tg::client::TgClient;
-use crate::tg::dialog::{
-    get_conversation_key, get_conversation_key_message, get_or_create_conversation,
-};
+use crate::tg::dialog::get_or_create_conversation;
 use crate::util::error::BotError;
 use crate::{persist::migrate::ManagerHelper, tg::dialog::Conversation};
 use anyhow::anyhow;
 use grammers_client::types::media::Sticker;
-use grammers_client::types::{CallbackQuery, Chat, InlineQuery, Media, Message, Update, User};
-use lazy_static::lazy_static;
-use redis::AsyncCommands;
+use grammers_client::types::{Chat, Media, Message, Update};
 use sea_orm::entity::prelude::*;
 use sea_orm::{ActiveModelTrait, IntoActiveModel, Set};
 use sea_schema::migration::{MigrationName, MigrationTrait};
@@ -168,19 +164,19 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
 }
 
 pub async fn handle_update(_client: TgClient, update: &Update) {
-    match update {
-        Update::NewMessage(ref message) => {
-            if let Some(Media::Sticker(ref document)) = message.media() {
-                println!("sticker id {}", document.document.id());
-            }
-        }
-        Update::CallbackQuery(ref _foo) => (),
-        Update::InlineQuery(ref _foo) => (),
-        _ => (),
+    let res = match update {
+        Update::NewMessage(ref message) => handle_conversation(message).await,
+        Update::CallbackQuery(ref _foo) => Ok(()),
+        Update::InlineQuery(ref _foo) => Ok(()),
+        _ => Ok(()),
     };
+
+    if let Err(err) = res {
+        println!("error {}", err);
+    }
 }
 
-async fn conv_start(conversation: Conversation, message: &Message) -> Result<Conversation> {
+async fn conv_start(conversation: Conversation, message: &Message) -> Result<()> {
     if let Some(Media::Sticker(Sticker { document, .. })) = message.media() {
         let key = scope_key_by_chatuser(&KEY_TYPE_STICKER_ID, &message)?;
         REDIS
@@ -189,21 +185,23 @@ async fn conv_start(conversation: Conversation, message: &Message) -> Result<Con
                 p.del(&KEY_TYPE_TAG)
             })
             .await?;
-        conversation.transition(TRANSITION_NAME).await?;
-        Ok(conversation)
+        let text = conversation.transition(TRANSITION_NAME).await?;
+        message.reply(text).await?;
+        Ok(())
     } else {
         Err(anyhow!(BotError::new("Send a sticker")))
     }
 }
 
-async fn conv_name(conversation: Conversation, message: &Message) -> Result<Conversation> {
+async fn conv_name(conversation: Conversation, message: &Message) -> Result<()> {
     let key = scope_key_by_chatuser(&KEY_TYPE_STICKER_NAME, &message)?;
     REDIS.pipe(|p| p.set(&key, message.text())).await?;
-    conversation.transition(TRANSITION_TAG).await?;
-    Ok(conversation)
+    let text = conversation.transition(TRANSITION_TAG).await?;
+    message.reply(text).await?;
+    Ok(())
 }
 
-async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<Conversation> {
+async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<()> {
     let key = scope_key_by_chatuser(&KEY_TYPE_STICKER_ID, &message)?;
     let namekey = scope_key_by_chatuser(&KEY_TYPE_STICKER_NAME, &message)?;
     let taglist = scope_key_by_chatuser(&KEY_TYPE_TAG, &message)?;
@@ -229,8 +227,9 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
             sticker.insert(&*DB).await?;
             entities::tags::Entity::insert_many(tags).exec(&*DB).await?;
 
-            conversation.transition(TRANSITION_DONE).await?;
-            Ok(conversation)
+            let text = conversation.transition(TRANSITION_DONE).await?;
+            message.reply(text).await?;
+            Ok(())
         } else {
             let tag = RedisStr::new(&ModelRedis {
                 sticker_id,
@@ -248,31 +247,28 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
                 })
                 .await?;
 
-            conversation.transition(TRANSITION_MORETAG).await?;
-            Ok(conversation)
+            let text = conversation.transition(TRANSITION_MORETAG).await?;
+            message.reply(text).await?;
+            Ok(())
         }
     } else {
         Err(anyhow!(BotError::new("not a user")))
     }
 }
 
-async fn print_conversation(conversation: Conversation, message: Message) -> Result<()> {
-    let text = conversation.get_current_text().await?;
-    message.reply(text).await?;
-    Ok(())
-}
-
-async fn handle_conversation(message: Message) -> Result<()> {
+async fn handle_conversation(message: &Message) -> Result<()> {
     let conversation =
         get_or_create_conversation(&message, |message| upload_sticker_conversation(&message))
             .await?;
-    let conversation = match conversation.get_current_text().await?.as_str() {
-        STATE_START => conv_start(conversation, &message).await?,
-        STATE_NAME => conv_name(conversation, &message).await?,
-        STATE_TAGS => conv_moretags(conversation, &message).await?,
+    if let Err(err) = match conversation.get_current_text().await?.as_str() {
+        STATE_START => conv_start(conversation, &message).await,
+        STATE_NAME => conv_name(conversation, &message).await,
+        STATE_TAGS => conv_moretags(conversation, &message).await,
         _ => return Ok(()),
-    };
+    } {
+        let reply = format!("Error: {}", err);
+        message.reply(reply).await?;
+    }
 
-    print_conversation(conversation, message).await?;
     Ok(())
 }

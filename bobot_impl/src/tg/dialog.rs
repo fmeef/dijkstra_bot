@@ -144,21 +144,21 @@ impl Conversation {
         }
     }
 
-    pub async fn transition<S>(&self, next: S) -> Result<()>
+    pub async fn transition<'a, S>(&'a self, next: S) -> Result<&'a str>
     where
         S: Into<String>,
     {
         let current = if let Some(next) = self.transitions.get(&next.into()) {
             if let Some(next) = self.states.get(&next.end_state) {
-                Ok(next.state_id)
+                Ok(next)
             } else {
                 Err(BotError::new("invalid choice"))
             }
         } else {
             Err(BotError::new("invalid choice"))
         }?;
-        self.write_key(current).await?;
-        Ok(())
+        self.write_key(current.state_id).await?;
+        Ok(&current.content)
     }
 
     pub async fn write_key(&self, new: Uuid) -> Result<()> {
