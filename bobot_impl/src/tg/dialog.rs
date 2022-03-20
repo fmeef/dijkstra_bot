@@ -188,15 +188,9 @@ impl Conversation {
     }
 }
 
-pub(crate) async fn get_or_create_conversation<F>(
-    message: &Message,
-    create: F,
-) -> Result<Conversation>
-where
-    F: FnOnce(&Message) -> Result<Conversation>,
-{
+pub(crate) async fn get_conversation(message: &Message) -> Result<Option<Conversation>> {
     let key = get_conversation_key_message(&message)?;
-    let conversation: Option<RedisStr> = REDIS
+    let rstr = REDIS
         .query(|mut c| async move {
             if c.exists(&key).await? {
                 let conv: RedisStr = c.get(&key).await?;
@@ -207,12 +201,27 @@ where
         })
         .await?;
 
-    let conversation = if let Some(rstr) = conversation {
-        rstr.get::<Conversation>()?
+    let res = if let Some(rstr) = rstr {
+        Some(rstr.get::<Conversation>()?)
     } else {
-        create(&message)?
+        None
     };
-    Ok(conversation)
+
+    Ok(res)
+}
+
+pub(crate) async fn get_or_create_conversation<F>(
+    message: &Message,
+    create: F,
+) -> Result<Conversation>
+where
+    F: FnOnce(&Message) -> Result<Conversation>,
+{
+    if let Some(conversation) = get_conversation(message).await? {
+        Ok(conversation)
+    } else {
+        create(message)
+    }
 }
 
 impl Dialog {

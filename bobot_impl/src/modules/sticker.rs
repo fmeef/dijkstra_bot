@@ -2,7 +2,7 @@ use crate::persist::redis::{random_key, scope_key_by_chatuser, RedisStr};
 use crate::persist::Result;
 use crate::statics::{DB, REDIS};
 use crate::tg::client::TgClient;
-use crate::tg::dialog::get_or_create_conversation;
+use crate::tg::dialog::{get_conversation, get_or_create_conversation};
 use crate::util::error::BotError;
 use crate::{persist::migrate::ManagerHelper, tg::dialog::Conversation};
 use anyhow::anyhow;
@@ -165,7 +165,7 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
 
 pub async fn handle_update(_client: TgClient, update: &Update) {
     let res = match update {
-        Update::NewMessage(ref message) => handle_conversation(message).await,
+        Update::NewMessage(ref message) => handle_command(message).await,
         Update::CallbackQuery(ref _foo) => Ok(()),
         Update::InlineQuery(ref _foo) => Ok(()),
         _ => Ok(()),
@@ -173,6 +173,19 @@ pub async fn handle_update(_client: TgClient, update: &Update) {
 
     if let Err(err) = res {
         println!("error {}", err);
+    }
+}
+
+async fn handle_command(message: &Message) -> Result<()> {
+    match message.text() {
+        "/upload" => {
+            get_or_create_conversation(message, |message| upload_sticker_conversation(message))
+                .await?;
+
+            println!("handle command {}", message.text());
+            handle_conversation(message).await
+        }
+        _ => Ok(()),
     }
 }
 
@@ -257,18 +270,16 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
 }
 
 async fn handle_conversation(message: &Message) -> Result<()> {
-    let conversation =
-        get_or_create_conversation(&message, |message| upload_sticker_conversation(&message))
-            .await?;
-    if let Err(err) = match conversation.get_current_text().await?.as_str() {
-        STATE_START => conv_start(conversation, &message).await,
-        STATE_NAME => conv_name(conversation, &message).await,
-        STATE_TAGS => conv_moretags(conversation, &message).await,
-        _ => return Ok(()),
-    } {
-        let reply = format!("Error: {}", err);
-        message.reply(reply).await?;
+    if let Some(conversation) = get_conversation(&message).await? {
+        if let Err(err) = match conversation.get_current_text().await?.as_str() {
+            STATE_START => conv_start(conversation, &message).await,
+            STATE_NAME => conv_name(conversation, &message).await,
+            STATE_TAGS => conv_moretags(conversation, &message).await,
+            _ => return Ok(()),
+        } {
+            let reply = format!("Error: {}", err);
+            message.reply(reply).await?;
+        }
     }
-
     Ok(())
 }
