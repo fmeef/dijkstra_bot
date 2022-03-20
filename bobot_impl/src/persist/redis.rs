@@ -8,7 +8,7 @@ use bb8_redis::RedisConnectionManager;
 
 use futures::Future;
 use grammers_client::types::Message;
-use redis::{AsyncCommands, FromRedisValue, Pipeline, RedisError, ToRedisArgs};
+use redis::{AsyncCommands, ErrorKind, FromRedisValue, Pipeline, RedisError, ToRedisArgs};
 use serde::{de::DeserializeOwned, Serialize};
 use tokio::task::JoinHandle;
 use uuid::Uuid;
@@ -42,6 +42,27 @@ impl RedisStr {
             v
         })
         .await?
+    }
+
+    pub fn get<T>(self) -> Result<T>
+    where
+        T: DeserializeOwned,
+    {
+        let res: T = rmp_serde::from_read(self.0.as_slice())?;
+        Ok(res)
+    }
+}
+
+impl FromRedisValue for RedisStr {
+    fn from_redis_value(v: &redis::Value) -> redis::RedisResult<Self> {
+        match *v {
+            redis::Value::Data(ref data) => Ok(RedisStr(data.to_owned())),
+            _ => Err(RedisError::from((
+                ErrorKind::TypeError,
+                "Response was of incompatible type",
+                format!("{:?} (response was {:?})", "Invalid RedisStr", v),
+            ))),
+        }
     }
 }
 

@@ -1,12 +1,13 @@
-use std::collections::HashMap;
-use std::str::FromStr;
-
 use anyhow::anyhow;
 use chrono::{DateTime, Utc};
-use grammers_client::types::Chat;
+use grammers_client::types::{Chat, Message};
+use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::str::FromStr;
 use uuid::Uuid;
 
+use crate::persist::redis::RedisStr;
 use crate::statics::REDIS;
 use crate::util::error::BotError;
 
@@ -22,6 +23,16 @@ pub const TYPE_DIALOG: &str = "DialogDb";
 #[inline(always)]
 pub fn get_conversation_key(chat: i64, user: i64) -> String {
     format!("conv:{}:{}", chat, user)
+}
+
+#[inline(always)]
+pub fn get_conversation_key_message(message: &Message) -> Result<String> {
+    if let Some(user) = message.sender() {
+        let res = format!("conv:{}:{}", message.chat().id(), user.id());
+        Ok(res)
+    } else {
+        Err(anyhow!(BotError::new("message does not have sender")))
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -175,6 +186,33 @@ impl Conversation {
     pub async fn reset(self) -> Result<()> {
         self.write_key(self.start).await
     }
+}
+
+pub(crate) async fn get_or_create_conversation<F>(
+    message: &Message,
+    create: F,
+) -> Result<Conversation>
+where
+    F: FnOnce(&Message) -> Result<Conversation>,
+{
+    let key = get_conversation_key_message(&message)?;
+    let conversation: Option<RedisStr> = REDIS
+        .query(|mut c| async move {
+            if c.exists(&key).await? {
+                let conv: RedisStr = c.get(&key).await?;
+                Ok(Some(conv))
+            } else {
+                Ok(None)
+            }
+        })
+        .await?;
+
+    let conversation = if let Some(rstr) = conversation {
+        rstr.get::<Conversation>()?
+    } else {
+        create(&message)?
+    };
+    Ok(conversation)
 }
 
 impl Dialog {

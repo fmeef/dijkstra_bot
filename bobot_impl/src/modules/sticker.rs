@@ -2,6 +2,9 @@ use crate::persist::redis::{random_key, scope_key_by_chatuser, RedisStr};
 use crate::persist::Result;
 use crate::statics::{DB, REDIS};
 use crate::tg::client::TgClient;
+use crate::tg::dialog::{
+    get_conversation_key, get_conversation_key_message, get_or_create_conversation,
+};
 use crate::util::error::BotError;
 use crate::{persist::migrate::ManagerHelper, tg::dialog::Conversation};
 use anyhow::anyhow;
@@ -177,7 +180,7 @@ pub async fn handle_update(_client: TgClient, update: &Update) {
     };
 }
 
-async fn conv_start(conversation: Conversation, message: Message) -> Result<Conversation> {
+async fn conv_start(conversation: Conversation, message: &Message) -> Result<Conversation> {
     if let Some(Media::Sticker(Sticker { document, .. })) = message.media() {
         let key = scope_key_by_chatuser(&KEY_TYPE_STICKER_ID, &message)?;
         REDIS
@@ -193,14 +196,14 @@ async fn conv_start(conversation: Conversation, message: Message) -> Result<Conv
     }
 }
 
-async fn conv_name(conversation: Conversation, message: Message) -> Result<Conversation> {
+async fn conv_name(conversation: Conversation, message: &Message) -> Result<Conversation> {
     let key = scope_key_by_chatuser(&KEY_TYPE_STICKER_NAME, &message)?;
     REDIS.pipe(|p| p.set(&key, message.text())).await?;
     conversation.transition(TRANSITION_TAG).await?;
     Ok(conversation)
 }
 
-async fn conv_moretags(conversation: Conversation, message: Message) -> Result<Conversation> {
+async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<Conversation> {
     let key = scope_key_by_chatuser(&KEY_TYPE_STICKER_ID, &message)?;
     let namekey = scope_key_by_chatuser(&KEY_TYPE_STICKER_NAME, &message)?;
     let taglist = scope_key_by_chatuser(&KEY_TYPE_TAG, &message)?;
@@ -253,25 +256,23 @@ async fn conv_moretags(conversation: Conversation, message: Message) -> Result<C
     }
 }
 
-async fn print_conversation(
-    conversation: Result<Option<Conversation>>,
-    message: Message,
-) -> Result<Option<Conversation>> {
-    match conversation {
-        Ok(Some(conversation)) => {
-            let text = conversation.get_current_text().await?;
-            message.reply(text).await?;
-            Ok(Some(conversation))
-        }
-        Ok(None) => Ok(None),
-        Err(err) => {
-            let text = format!("Invalid input: {}", err);
-            message.reply(text).await?;
-            Ok(None)
-        }
-    }
+async fn print_conversation(conversation: Conversation, message: Message) -> Result<()> {
+    let text = conversation.get_current_text().await?;
+    message.reply(text).await?;
+    Ok(())
 }
 
 async fn handle_conversation(message: Message) -> Result<()> {
-    todo!()
+    let conversation =
+        get_or_create_conversation(&message, |message| upload_sticker_conversation(&message))
+            .await?;
+    let conversation = match conversation.get_current_text().await?.as_str() {
+        STATE_START => conv_start(conversation, &message).await?,
+        STATE_NAME => conv_name(conversation, &message).await?,
+        STATE_TAGS => conv_moretags(conversation, &message).await?,
+        _ => return Ok(()),
+    };
+
+    print_conversation(conversation, message).await?;
+    Ok(())
 }
