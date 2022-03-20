@@ -2,7 +2,7 @@ use crate::persist::redis::{scope_key_by_chatuser, RedisStr};
 use crate::persist::Result;
 use crate::statics::{DB, REDIS};
 use crate::tg::client::TgClient;
-use crate::tg::dialog::{get_conversation, get_or_create_conversation};
+use crate::tg::dialog::{get_conversation, replace_conversation};
 use crate::util::error::BotError;
 use crate::{persist::migrate::ManagerHelper, tg::dialog::Conversation};
 use anyhow::anyhow;
@@ -179,8 +179,7 @@ pub async fn handle_update(_client: TgClient, update: &Update) {
 async fn handle_command(message: &Message) -> Result<()> {
     match message.text() {
         "/upload" => {
-            get_or_create_conversation(message, |message| upload_sticker_conversation(message))
-                .await?;
+            replace_conversation(message, |message| upload_sticker_conversation(message)).await?;
             message.reply(STATE_START).await?;
             println!("handle command {}", message.text());
             handle_conversation(message).await

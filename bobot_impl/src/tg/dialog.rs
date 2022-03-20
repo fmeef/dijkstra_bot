@@ -237,6 +237,23 @@ pub(crate) async fn get_conversation(message: &Message) -> Result<Option<Convers
     Ok(res)
 }
 
+pub(crate) async fn replace_conversation<F>(message: &Message, create: F) -> Result<Conversation>
+where
+    F: FnOnce(&Message) -> Result<Conversation>,
+{
+    let key = get_conversation_key_message(message)?;
+    let conversation = create(message)?;
+    let conversationstr = RedisStr::new(&conversation)?;
+    let _: () = REDIS
+        .pipe(|p| {
+            p.atomic();
+            p.set(&key, conversationstr);
+            p.set(&conversation.rediskey, conversation.start.to_string())
+        })
+        .await?;
+    Ok(conversation)
+}
+
 pub(crate) async fn get_or_create_conversation<F>(
     message: &Message,
     create: F,
@@ -248,10 +265,15 @@ where
         Ok(conversation)
     } else {
         let res = create(message)?;
-        res.write_self().await?;
         let s = RedisStr::new(&res)?;
         let key = get_conversation_key_message(&message)?;
-        REDIS.pipe(|p| p.set(&key, s)).await?;
+        REDIS
+            .pipe(|p| {
+                p.atomic();
+                p.set(&key, s);
+                p.set(&res.rediskey, res.start.to_string())
+            })
+            .await?;
         Ok(res)
     }
 }

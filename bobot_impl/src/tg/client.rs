@@ -29,7 +29,7 @@ impl TgClient {
                 api_hash: api_hash.clone().into(),
                 session: Session::load_file_or_create(session.clone())?,
                 params: InitParams {
-                    catch_up: true,
+                    catch_up: false,
                     ..Default::default()
                 },
             })
