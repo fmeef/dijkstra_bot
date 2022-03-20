@@ -5,5 +5,6 @@ mod modules;
 use bobot_impl::async_main;
 
 pub fn main() {
+    bobot_impl::init_db();
     bobot_impl::EXEC.block_on(async_main()).unwrap();
 }

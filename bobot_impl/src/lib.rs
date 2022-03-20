@@ -1,8 +1,9 @@
-use std::path::PathBuf;
+use std::{any::Any, path::PathBuf};
 
 use async_executors::{TokioTp, TokioTpBuilder};
 use clap::Parser;
 use lazy_static::lazy_static;
+use sea_orm::ConnectionTrait;
 use statics::*;
 
 lazy_static! {
@@ -24,6 +25,10 @@ pub struct Args {
 
 pub fn get_executor() -> TokioTp {
     EXEC.clone()
+}
+
+pub fn init_db() {
+    println!("db initialized: {}", &statics::DB.is_mock_connection());
 }
 
 pub async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {

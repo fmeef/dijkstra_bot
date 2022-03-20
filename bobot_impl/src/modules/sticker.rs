@@ -238,7 +238,9 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
                 chosen_name: Set(Some(stickername)),
             };
 
+            println!("inserting sticker");
             sticker.insert(&*DB).await?;
+            println!("inserting tags {}", tags.len());
             entities::tags::Entity::insert_many(tags).exec(&*DB).await?;
 
             let text = conversation.transition(TRANSITION_DONE).await?;
