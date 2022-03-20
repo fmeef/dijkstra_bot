@@ -21,18 +21,39 @@ mod tests {
 pub const TYPE_DIALOG: &str = "DialogDb";
 
 #[inline(always)]
+fn get_conversation_key_prefix(chat: i64, user: i64, prefix: &str) -> String {
+    format!("{}:{}:{}", prefix, chat, user)
+}
+
+#[inline(always)]
 pub fn get_conversation_key(chat: i64, user: i64) -> String {
     format!("conv:{}:{}", chat, user)
 }
 
 #[inline(always)]
-pub fn get_conversation_key_message(message: &Message) -> Result<String> {
+pub fn get_state_key(chat: i64, user: i64) -> String {
+    get_conversation_key_prefix(chat, user, "convstate")
+}
+
+#[inline(always)]
+fn get_conversation_key_message_prefix(message: &Message, prefix: &str) -> Result<String> {
     if let Some(user) = message.sender() {
-        let res = format!("conv:{}:{}", message.chat().id(), user.id());
+        let res = format!("{}:{}:{}", prefix, message.chat().id(), user.id());
+        println!("conversation key: {}", res);
         Ok(res)
     } else {
         Err(anyhow!(BotError::new("message does not have sender")))
     }
+}
+
+#[inline(always)]
+pub fn get_conversation_key_message(message: &Message) -> Result<String> {
+    get_conversation_key_message_prefix(message, "conv")
+}
+
+#[inline(always)]
+pub fn get_state_key_message(message: &Message) -> Result<String> {
+    get_conversation_key_message_prefix(message, "convstate")
 }
 
 #[derive(Serialize, Deserialize)]
@@ -130,7 +151,7 @@ impl Conversation {
             start,
             user,
             transitions: HashMap::<String, FSMTransition>::new(),
-            rediskey: get_conversation_key(chat, user),
+            rediskey: get_state_key(chat, user),
         };
 
         Ok(conversation)
@@ -168,9 +189,15 @@ impl Conversation {
         Ok(())
     }
 
+    pub async fn write_self(&self) -> Result<()> {
+        REDIS
+            .pipe(|p| p.set(&self.rediskey.to_string(), self.start.to_string()))
+            .await
+    }
+
     pub async fn get_current<'a>(&'a self) -> Result<&'a FSMState> {
-        let current: String = REDIS.pipe(|p| p.get(&self.rediskey.to_string())).await?;
-        let current = Uuid::from_str(&current)?;
+        let current: (String,) = REDIS.pipe(|p| p.get(&self.rediskey.to_string())).await?;
+        let current = Uuid::from_str(&current.0)?;
         if let Some(current) = self.states.get(&current) {
             Ok(current)
         } else {
@@ -220,7 +247,12 @@ where
     if let Some(conversation) = get_conversation(message).await? {
         Ok(conversation)
     } else {
-        create(message)
+        let res = create(message)?;
+        res.write_self().await?;
+        let s = RedisStr::new(&res)?;
+        let key = get_conversation_key_message(&message)?;
+        REDIS.pipe(|p| p.set(&key, s)).await?;
+        Ok(res)
     }
 }
 

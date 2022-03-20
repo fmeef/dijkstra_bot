@@ -1,4 +1,4 @@
-use crate::persist::redis::{random_key, scope_key_by_chatuser, RedisStr};
+use crate::persist::redis::{scope_key_by_chatuser, RedisStr};
 use crate::persist::Result;
 use crate::statics::{DB, REDIS};
 use crate::tg::client::TgClient;
@@ -181,11 +181,11 @@ async fn handle_command(message: &Message) -> Result<()> {
         "/upload" => {
             get_or_create_conversation(message, |message| upload_sticker_conversation(message))
                 .await?;
-
+            message.reply(STATE_START).await?;
             println!("handle command {}", message.text());
             handle_conversation(message).await
         }
-        _ => Ok(()),
+        _ => handle_conversation(message).await,
     }
 }
 
@@ -219,11 +219,13 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
     let namekey = scope_key_by_chatuser(&KEY_TYPE_STICKER_NAME, &message)?;
     let taglist = scope_key_by_chatuser(&KEY_TYPE_TAG, &message)?;
 
-    let sticker_id: i64 = REDIS.pipe(|p| p.get(&key)).await?;
+    let sticker_id: (i64,) = REDIS.pipe(|p| p.get(&key)).await?;
+    let sticker_id = sticker_id.0;
 
     if let Some(Chat::User(user)) = message.sender() {
         if message.text() == "/done" {
-            let stickername: String = REDIS.pipe(|p| p.get(&namekey)).await?;
+            let stickername: (String,) = REDIS.pipe(|p| p.get(&namekey)).await?;
+            let stickername = stickername.0;
 
             let tags = REDIS
                 .drain_list::<String, ModelRedis>(&taglist)
@@ -250,13 +252,10 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
                 tag: message.text().to_owned(),
             })?;
 
-            let randkey = random_key(&"");
-
             REDIS
                 .pipe(|p| {
                     p.atomic();
-                    p.set(&randkey, &tag);
-                    p.lpush(taglist, randkey)
+                    p.lpush(taglist, &tag)
                 })
                 .await?;
 
@@ -271,6 +270,7 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
 
 async fn handle_conversation(message: &Message) -> Result<()> {
     if let Some(conversation) = get_conversation(&message).await? {
+        println!("hello conversation");
         if let Err(err) = match conversation.get_current_text().await?.as_str() {
             STATE_START => conv_start(conversation, &message).await,
             STATE_NAME => conv_name(conversation, &message).await,
@@ -280,6 +280,8 @@ async fn handle_conversation(message: &Message) -> Result<()> {
             let reply = format!("Error: {}", err);
             message.reply(reply).await?;
         }
+    } else {
+        println!("nope no conversation for u");
     }
     Ok(())
 }

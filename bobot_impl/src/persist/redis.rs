@@ -44,7 +44,7 @@ impl RedisStr {
         .await?
     }
 
-    pub fn get<T>(self) -> Result<T>
+    pub fn get<T>(&self) -> Result<T>
     where
         T: DeserializeOwned,
     {
@@ -79,23 +79,31 @@ impl ToRedisArgs for RedisStr {
     }
 }
 
+#[inline(always)]
 pub fn random_key<T: AsRef<str>>(prefix: &T) -> String {
     let uuid = Uuid::new_v4();
     format!("r:{}:{}", prefix.as_ref(), uuid.to_string())
 }
 
+#[inline(always)]
 pub fn scope_key_by_user<T: AsRef<str>>(key: &T, user: i64) -> String {
     format!("u:{}:{}", user, key.as_ref())
 }
 
-pub fn scope_key_by_chatuser<T: AsRef<str>>(key: &T, message: &Message) -> Result<String> {
+#[inline(always)]
+pub fn scope_key<T: AsRef<str>>(key: &T, message: &Message, prefix: &str) -> Result<String> {
     let user_id = message
         .sender()
         .ok_or_else(|| BotError::new("message without sender"))?
         .id();
     let chat_id = message.chat().id();
-    let res = format!("cu:{}:{}:{}", chat_id, user_id, key.as_ref());
+    let res = format!("{}:{}:{}:{}", prefix, chat_id, user_id, key.as_ref());
     Ok(res)
+}
+
+#[inline(always)]
+pub fn scope_key_by_chatuser<T: AsRef<str>>(key: &T, message: &Message) -> Result<String> {
+    scope_key(key, message, "cu")
 }
 
 pub struct RedisPoolBuilder {
@@ -139,7 +147,7 @@ impl RedisPool {
             let p = p.del(key.as_ref());
             for item in obj {
                 let obj = RedisStr::new(&item)?;
-                p.lpush(key.as_ref(), &obj);
+                let p = p.lpush(key.as_ref(), &obj);
             }
             Ok(p)
         })
