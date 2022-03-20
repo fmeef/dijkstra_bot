@@ -2,9 +2,9 @@ use crate::persist::redis::{scope_key_by_chatuser, RedisStr};
 use crate::persist::Result;
 use crate::statics::{DB, REDIS};
 use crate::tg::client::TgClient;
+use crate::tg::dialog::Conversation;
 use crate::tg::dialog::{get_conversation, replace_conversation};
 use crate::util::error::BotError;
-use crate::{persist::migrate::ManagerHelper, tg::dialog::Conversation};
 use anyhow::anyhow;
 use grammers_client::types::media::Sticker;
 use grammers_client::types::{Chat, Media, Message, Update};
@@ -61,31 +61,80 @@ impl MigrationName for Migration {
     }
 }
 
-#[async_trait::async_trait]
-impl MigrationTrait for Migration {
-    async fn up(
-        &self,
-        manager: &sea_schema::migration::SchemaManager,
-    ) -> std::result::Result<(), sea_orm::DbErr> {
-        manager
-            .create_table_auto(entities::stickers::Entity)
-            .await?;
-        manager.create_table_auto(entities::tags::Entity).await?;
-        Ok(())
-    }
-
-    async fn down(
-        &self,
-        manager: &sea_schema::migration::SchemaManager,
-    ) -> std::result::Result<(), sea_orm::DbErr> {
-        manager.drop_table_auto(entities::tags::Entity).await?;
-        manager.drop_table_auto(entities::stickers::Entity).await?;
-        Ok(())
-    }
-}
-
 pub mod entities {
+    use crate::persist::migrate::ManagerHelper;
+    use sea_schema::migration::prelude::*;
+    #[async_trait::async_trait]
+    impl MigrationTrait for super::Migration {
+        async fn up(
+            &self,
+            manager: &sea_schema::migration::SchemaManager,
+        ) -> std::result::Result<(), sea_orm::DbErr> {
+            manager
+                .create_table(
+                    Table::create()
+                        .table(tags::Entity)
+                        .col(
+                            ColumnDef::new(tags::Column::Id)
+                                .big_integer()
+                                .primary_key()
+                                .auto_increment(),
+                        )
+                        .col(
+                            ColumnDef::new(tags::Column::StickerId)
+                                .big_integer()
+                                .not_null(),
+                        )
+                        .col(
+                            ColumnDef::new(tags::Column::OwnerId)
+                                .big_integer()
+                                .not_null(),
+                        )
+                        .col(ColumnDef::new(tags::Column::Tag).text().not_null())
+                        .to_owned(),
+                )
+                .await?;
 
+            manager
+                .create_table(
+                    Table::create()
+                        .table(stickers::Entity)
+                        .col(
+                            ColumnDef::new(stickers::Column::UniqueId)
+                                .big_integer()
+                                .primary_key(),
+                        )
+                        .col(
+                            ColumnDef::new(stickers::Column::OwnerId)
+                                .big_integer()
+                                .not_null(),
+                        )
+                        .col(ColumnDef::new(stickers::Column::ChosenName).text())
+                        .to_owned(),
+                )
+                .await?;
+
+            manager
+                .create_foreign_key(
+                    ForeignKey::create()
+                        .from(tags::Entity, tags::Column::StickerId)
+                        .to(stickers::Entity, stickers::Column::UniqueId)
+                        .to_owned(),
+                )
+                .await?;
+
+            Ok(())
+        }
+
+        async fn down(
+            &self,
+            manager: &sea_schema::migration::SchemaManager,
+        ) -> std::result::Result<(), sea_orm::DbErr> {
+            manager.drop_table_auto(tags::Entity).await?;
+            manager.drop_table_auto(stickers::Entity).await?;
+            Ok(())
+        }
+    }
     pub mod tags {
         use sea_orm::entity::prelude::*;
         use serde::{Deserialize, Serialize};
@@ -95,7 +144,6 @@ pub mod entities {
         pub struct Model {
             #[sea_orm(primary_key, auto_increment = true)]
             pub id: i64,
-            #[sea_orm(column_type = "Text")]
             pub sticker_id: i64,
             pub owner_id: i64,
             #[sea_orm(column_type = "Text")]
