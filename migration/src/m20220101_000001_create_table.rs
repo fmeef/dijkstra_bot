@@ -184,13 +184,13 @@ impl MigrationTrait for Migration {
             .drop_table_auto(bobot_impl::persist::core::dialogs::Entity)
             .await?;
         manager
-            .drop_table_auto(bobot_impl::persist::core::conversations::Entity)
-            .await?;
-        manager
             .drop_table_auto(bobot_impl::persist::core::conversation_transitions::Entity)
             .await?;
         manager
             .drop_table_auto(bobot_impl::persist::core::conversation_states::Entity)
+            .await?;
+        manager
+            .drop_table_auto(bobot_impl::persist::core::conversations::Entity)
             .await?;
         manager
             .drop_table_auto(bobot_impl::persist::core::chat_members::Entity)

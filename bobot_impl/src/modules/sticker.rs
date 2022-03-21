@@ -158,20 +158,11 @@ pub mod entities {
         }
 
         #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-        pub enum Relation {
-            #[sea_orm(
-                belongs_to = "super::stickers::Entity",
-                from = "Column::StickerId",
-                to = "super::stickers::Column::OwnerId",
-                on_update = "NoAction",
-                on_delete = "Cascade"
-            )]
-            Stickers,
-        }
+        pub enum Relation {}
 
         impl Related<super::stickers::Entity> for Entity {
             fn to() -> RelationDef {
-                Relation::Stickers.def()
+                panic!("no relations")
             }
         }
 
@@ -239,10 +230,11 @@ async fn handle_command(message: &Message) -> Result<()> {
 async fn conv_start(conversation: Conversation, message: &Message) -> Result<()> {
     if let Some(Media::Sticker(Sticker { document, .. })) = message.media() {
         let key = scope_key_by_chatuser(&KEY_TYPE_STICKER_ID, &message)?;
+        let taglist = scope_key_by_chatuser(&KEY_TYPE_TAG, &message)?;
         REDIS
             .pipe(|p| {
                 p.set(&key, document.id());
-                p.del(&KEY_TYPE_TAG)
+                p.del(&taglist)
             })
             .await?;
         let text = conversation.transition(TRANSITION_NAME).await?;
@@ -268,7 +260,7 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
 
     let sticker_id: (i64,) = REDIS.pipe(|p| p.get(&key)).await?;
     let sticker_id = sticker_id.0;
-
+    println!("moretags stickerid: {}", sticker_id);
     if let Some(Chat::User(user)) = message.sender() {
         if message.text() == "/done" {
             let stickername: (String,) = REDIS.pipe(|p| p.get(&namekey)).await?;
@@ -278,7 +270,10 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
                 .drain_list::<String, ModelRedis>(&taglist)
                 .await?
                 .into_iter()
-                .map(|m| m.into_active_model());
+                .map(|m| {
+                    println!("tag id {}", m.sticker_id);
+                    m.into_active_model()
+                });
 
             let sticker = entities::stickers::ActiveModel {
                 unique_id: Set(sticker_id),
@@ -286,8 +281,9 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
                 chosen_name: Set(Some(stickername)),
             };
 
-            println!("inserting sticker");
+            println!("inserting sticker {}", sticker_id);
             sticker.insert(&*DB).await?;
+
             println!("inserting tags {}", tags.len());
             entities::tags::Entity::insert_many(tags).exec(&*DB).await?;
 
