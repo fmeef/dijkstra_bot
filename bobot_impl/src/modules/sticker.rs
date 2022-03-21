@@ -223,8 +223,34 @@ async fn handle_command(message: &Message) -> Result<()> {
             println!("handle command {}", message.text());
             handle_conversation(message).await
         }
+        "/list" => list_stickers(message).await,
         _ => handle_conversation(message).await,
     }
+}
+
+async fn list_stickers(message: &Message) -> Result<()> {
+    if let Some(sender) = message.sender() {
+        let stickers = entities::stickers::Entity::find()
+            .filter(entities::stickers::Column::OwnerId.eq(sender.id()))
+            .all(&*DB)
+            .await?;
+        let stickers = stickers
+            .into_iter()
+            .fold(String::from("My stickers:"), |mut s, sticker| {
+                s.push_str(
+                    format!(
+                        "\n - {}",
+                        sticker
+                            .chosen_name
+                            .unwrap_or_else(|| String::from("unnamed"))
+                    )
+                    .as_str(),
+                );
+                s
+            });
+        message.reply(stickers).await?;
+    }
+    Ok(())
 }
 
 async fn conv_start(conversation: Conversation, message: &Message) -> Result<()> {
