@@ -147,7 +147,7 @@ impl RedisPool {
             let p = p.del(key.as_ref());
             for item in obj {
                 let obj = RedisStr::new(&item)?;
-                let p = p.lpush(key.as_ref(), &obj);
+                p.lpush(key.as_ref(), &obj);
             }
             Ok(p)
         })

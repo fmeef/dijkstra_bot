@@ -1,4 +1,4 @@
-use std::{any::Any, path::PathBuf};
+use std::path::PathBuf;
 
 use async_executors::{TokioTp, TokioTpBuilder};
 use clap::Parser;
