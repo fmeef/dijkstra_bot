@@ -36,18 +36,12 @@ pub fn init_db() {
 }
 
 pub async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let _logger = Logger::try_with_env_or_str("info, my::critical::module=trace")?
+    let _logger = Logger::try_with_env_or_str("info, my::info::module=trace")?
         .log_to_stderr()
         .write_mode(flexi_logger::WriteMode::Async)
         .start()?;
-    let client = tg::client::TgClient::connect(
-        BOT_TOKEN.clone(),
-        API_ID.clone(),
-        API_HASH.clone(),
-        ARGS.session.clone(),
-    )
-    .await?;
-    client.run().await?;
+
+    TG.run().await?;
     log::logger().flush();
     Ok(())
 }

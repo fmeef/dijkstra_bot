@@ -431,6 +431,8 @@ dependencies = [
  "flexi_logger",
  "futures",
  "grammers-client",
+ "grammers-mtproto",
+ "grammers-mtsender",
  "grammers-session",
  "lazy_static",
  "log",

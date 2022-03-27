@@ -46,7 +46,7 @@ impl TgClient {
         Ok(res)
     }
 
-    pub async fn run(self) -> Result<()> {
+    pub async fn run(&self) -> Result<()> {
         let r = while let Some(update) = tokio::select! {
             _ = tokio::signal::ctrl_c() => Ok(None),
             result = self.client.next_update() => result,

@@ -1,4 +1,5 @@
 use crate::persist::redis::{RedisPool, RedisPoolBuilder};
+use crate::tg::client::TgClient;
 
 use super::Args;
 use clap::Parser;
@@ -37,5 +38,19 @@ lazy_static! {
         Database::connect(ConnectOptions::new(PG_CONNECTION_STR.clone()))
             .await
             .expect("failed to initialize database")
+    });
+}
+
+//tg client
+lazy_static! {
+    pub(crate) static ref TG: TgClient = block_on(async move {
+        TgClient::connect(
+            BOT_TOKEN.clone(),
+            API_ID.clone(),
+            API_HASH.clone(),
+            ARGS.session.clone(),
+        )
+        .await
+        .expect("failed to connect mtproto")
     });
 }
