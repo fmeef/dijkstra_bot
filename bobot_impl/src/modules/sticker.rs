@@ -184,6 +184,7 @@ pub mod entities {
         }
 
         impl Model {
+            #[inline]
             pub fn get_uuid(&self) -> Uuid {
                 let mut bytes = Vec::<u8>::with_capacity(16);
                 let mut b1 = self.unique_id.to_be_bytes();
