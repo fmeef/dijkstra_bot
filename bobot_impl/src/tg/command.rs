@@ -78,18 +78,15 @@ use parser::{Parser, Token};
 
 use crate::persist::Result;
 
-pub(crate) struct DefaultTokenizer {
-    val: String,
-    pos: usize,
-}
+pub(crate) struct DefaultTokenizer(String);
 
 impl DefaultTokenizer {
     pub fn new(val: String) -> Self {
-        Self { val, pos: 0 }
+        Self(val)
     }
 
     pub fn next_tokens<'a>(&'a self) -> impl Iterator<Item = Token> + 'a {
-        TOKENS.find_iter(&self.val).map(|m| {
+        TOKENS.find_iter(&self.0).map(|m| {
             if m.as_str() == r#"""# {
                 Token::QuoteMark
             } else {
@@ -99,6 +96,7 @@ impl DefaultTokenizer {
     }
 }
 
+#[allow(dead_code)]
 pub(crate) fn parse_cmd<R: ToString>(cmd: R) -> Result<Vec<Arg>> {
     let tokenizer = DefaultTokenizer::new(cmd.to_string());
 
@@ -108,6 +106,7 @@ pub(crate) fn parse_cmd<R: ToString>(cmd: R) -> Result<Vec<Arg>> {
     Ok(res)
 }
 
+#[allow(dead_code)]
 pub(crate) fn parse_cmd_iter<R: ToString>(cmd: R) -> Result<impl Iterator<Item = Arg>> {
     let iter = parse_cmd(cmd)?.into_iter();
     Ok(iter)
