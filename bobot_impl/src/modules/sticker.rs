@@ -2,6 +2,7 @@ use crate::persist::redis::{scope_key_by_chatuser, RedisStr};
 use crate::persist::Result;
 use crate::statics::{DB, REDIS};
 use crate::tg::client::TgClient;
+use crate::tg::command::{parse_cmd, Arg};
 use crate::tg::dialog::Conversation;
 use crate::tg::dialog::{get_conversation, replace_conversation};
 use crate::util::error::BotError;
@@ -216,15 +217,22 @@ pub async fn handle_update(_client: TgClient, update: &Update) {
 }
 
 async fn handle_command(message: &Message) -> Result<()> {
-    match message.text() {
-        "/upload" => {
-            replace_conversation(message, |message| upload_sticker_conversation(message)).await?;
-            message.reply(STATE_START).await?;
-            println!("handle command {}", message.text());
-            handle_conversation(message).await
+    let command = parse_cmd(message.text())?;
+    if let Some(Arg::Arg(command)) = command.first() {
+        println!("command {}", command);
+        match command.as_str() {
+            "/upload" => {
+                replace_conversation(message, |message| upload_sticker_conversation(message))
+                    .await?;
+                message.reply(STATE_START).await?;
+                println!("handle command {}", message.text());
+                handle_conversation(message).await
+            }
+            "/list" => list_stickers(message).await,
+            _ => handle_conversation(message).await,
         }
-        "/list" => list_stickers(message).await,
-        _ => handle_conversation(message).await,
+    } else {
+        Err(anyhow!(BotError::new("missing command")))
     }
 }
 

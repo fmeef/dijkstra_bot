@@ -66,7 +66,7 @@ pomelo! {
 }
 
 lazy_static! {
-    static ref TOKENS: Regex = Regex::new(r#"([^\W"]+|")"#).unwrap();
+    static ref TOKENS: Regex = Regex::new(r#"([^\s"]+|")"#).unwrap();
 }
 
 pub enum Arg {
