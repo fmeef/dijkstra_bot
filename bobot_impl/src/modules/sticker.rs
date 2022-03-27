@@ -183,6 +183,18 @@ pub mod entities {
             pub chosen_name: Option<String>,
         }
 
+        impl Model {
+            pub fn get_uuid(&self) -> Uuid {
+                let mut bytes = Vec::<u8>::with_capacity(16);
+                let mut b1 = self.unique_id.to_be_bytes();
+                let mut b2 = self.owner_id.to_be_bytes();
+                bytes.extend_from_slice(&mut b1);
+                bytes.extend_from_slice(&mut b2);
+                let bytes: [u8; 16] = bytes.try_into().expect("this should never fail");
+                Uuid::from_bytes(bytes)
+            }
+        }
+
         #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
         pub enum Relation {
             #[sea_orm(has_many = "super::tags::Entity")]
@@ -218,9 +230,9 @@ pub async fn handle_update(_client: TgClient, update: &Update) {
 
 async fn handle_command(message: &Message) -> Result<()> {
     let command = parse_cmd(message.text())?;
-    if let Some(Arg::Arg(command)) = command.first() {
-        println!("command {}", command);
-        match command.as_str() {
+    if let Some(Arg::Arg(cmd)) = command.first() {
+        println!("command {}", cmd);
+        match cmd.as_str() {
             "/upload" => {
                 replace_conversation(message, |message| upload_sticker_conversation(message))
                     .await?;
@@ -245,15 +257,9 @@ async fn list_stickers(message: &Message) -> Result<()> {
         let stickers = stickers
             .into_iter()
             .fold(String::from("My stickers:"), |mut s, sticker| {
-                s.push_str(
-                    format!(
-                        "\n - {}",
-                        sticker
-                            .chosen_name
-                            .unwrap_or_else(|| String::from("unnamed"))
-                    )
-                    .as_str(),
-                );
+                let default = "Unnamed".to_string();
+                let chosenname = sticker.chosen_name.as_ref().unwrap_or(&default);
+                s.push_str(format!("\n - {} {}", chosenname, sticker.get_uuid()).as_str());
                 s
             });
         message.reply(stickers).await?;
