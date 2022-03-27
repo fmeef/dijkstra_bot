@@ -264,10 +264,6 @@ async fn handle_command(message: &Message) -> Result<()> {
 async fn delete_sticker(message: &Message, args: Vec<Arg>) -> Result<()> {
     if let [Arg::Arg(_), Arg::Arg(uuid)] = args.as_slice() {
         let uuid = Uuid::from_str(uuid.as_str())?;
-        let model = entities::stickers::ActiveModel {
-            uuid: Set(uuid),
-            ..Default::default()
-        };
         entities::stickers::Entity::delete_many()
             .filter(entities::stickers::Column::Uuid.eq(uuid))
             .exec(&*DB)
