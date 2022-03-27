@@ -17,8 +17,8 @@ mod test {
         let mut words = 0;
         for p in parsed {
             match p {
-                Arg::Arg(ref r) => words = words + 1,
-                Arg::Quote(ref r) => quotes = quotes + 1,
+                Arg::Arg(ref _r) => words = words + 1,
+                Arg::Quote(ref _r) => quotes = quotes + 1,
             }
         }
         println!("quotes {}", quotes);
@@ -50,9 +50,7 @@ pomelo! {
     %type words Vec<crate::tg::command::Arg>;
     %type quoteinner Vec<String>;
     %type Word String;
-    %type Quote Vec<String>;
     %type quote Vec<String>;
-    %type quotemark ();
 
     input ::= words?(A) { A.unwrap_or_else(Vec::new) }
     words ::= Word(W) { vec![crate::tg::command::Arg::Arg(W)] }
