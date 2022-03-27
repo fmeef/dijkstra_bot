@@ -244,7 +244,7 @@ async fn handle_command(message: &Message) -> Result<()> {
             _ => handle_conversation(message).await,
         }
     } else {
-        Err(anyhow!(BotError::new("missing command")))
+        handle_conversation(message).await
     }
 }
 
