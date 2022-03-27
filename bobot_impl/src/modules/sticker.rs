@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use crate::persist::redis::{scope_key_by_chatuser, RedisStr};
 use crate::persist::Result;
 use crate::statics::{DB, REDIS};
@@ -10,7 +12,7 @@ use anyhow::anyhow;
 use grammers_client::types::media::Sticker;
 use grammers_client::types::{Chat, Media, Message, Update};
 use sea_orm::entity::prelude::*;
-use sea_orm::{ActiveModelTrait, IntoActiveModel, Set};
+use sea_orm::{ActiveModelTrait, Condition, IntoActiveModel, Set};
 use sea_schema::migration::{MigrationName, MigrationTrait};
 
 use self::entities::tags::ModelRedis;
@@ -62,6 +64,16 @@ impl MigrationName for Migration {
     }
 }
 
+fn uuid_from_parts(lower: i64, upper: i64) -> Uuid {
+    let mut bytes = Vec::<u8>::with_capacity(16);
+    let mut b1 = lower.to_be_bytes();
+    let mut b2 = upper.to_be_bytes();
+    bytes.extend_from_slice(&mut b1);
+    bytes.extend_from_slice(&mut b2);
+    let bytes: [u8; 16] = bytes.try_into().expect("this should never fail");
+    Uuid::from_bytes(bytes)
+}
+
 pub mod entities {
     use crate::persist::migrate::ManagerHelper;
     use sea_schema::migration::prelude::*;
@@ -105,6 +117,7 @@ pub mod entities {
                                 .big_integer()
                                 .primary_key(),
                         )
+                        .col(ColumnDef::new(stickers::Column::Uuid).uuid().unique_key())
                         .col(
                             ColumnDef::new(stickers::Column::OwnerId)
                                 .big_integer()
@@ -120,6 +133,7 @@ pub mod entities {
                     ForeignKey::create()
                         .from(tags::Entity, tags::Column::StickerId)
                         .to(stickers::Entity, stickers::Column::UniqueId)
+                        .on_delete(ForeignKeyAction::Cascade)
                         .to_owned(),
                 )
                 .await?;
@@ -173,12 +187,16 @@ pub mod entities {
     pub mod stickers {
         use sea_orm::entity::prelude::*;
         use serde::{Deserialize, Serialize};
+
+        use crate::modules::sticker::uuid_from_parts;
         #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
         #[sea_orm(table_name = "stickers")]
         pub struct Model {
             #[sea_orm(primary_key, auto_increment = false)]
             pub unique_id: i64,
             pub owner_id: i64,
+            #[sea_orm(unique)]
+            pub uuid: Uuid,
             #[sea_orm(column_type = "Text", nullable)]
             pub chosen_name: Option<String>,
         }
@@ -186,13 +204,7 @@ pub mod entities {
         impl Model {
             #[inline]
             pub fn get_uuid(&self) -> Uuid {
-                let mut bytes = Vec::<u8>::with_capacity(16);
-                let mut b1 = self.unique_id.to_be_bytes();
-                let mut b2 = self.owner_id.to_be_bytes();
-                bytes.extend_from_slice(&mut b1);
-                bytes.extend_from_slice(&mut b2);
-                let bytes: [u8; 16] = bytes.try_into().expect("this should never fail");
-                Uuid::from_bytes(bytes)
+                uuid_from_parts(self.unique_id, self.owner_id)
             }
         }
 
@@ -241,10 +253,29 @@ async fn handle_command(message: &Message) -> Result<()> {
                 Ok(())
             }
             "/list" => list_stickers(message).await,
+            "/delete" => delete_sticker(message, command).await,
             _ => handle_conversation(message).await,
         }
     } else {
         handle_conversation(message).await
+    }
+}
+
+async fn delete_sticker(message: &Message, args: Vec<Arg>) -> Result<()> {
+    if let [Arg::Arg(_), Arg::Arg(uuid)] = args.as_slice() {
+        let uuid = Uuid::from_str(uuid.as_str())?;
+        let model = entities::stickers::ActiveModel {
+            uuid: Set(uuid),
+            ..Default::default()
+        };
+        entities::stickers::Entity::delete_many()
+            .filter(entities::stickers::Column::Uuid.eq(uuid))
+            .exec(&*DB)
+            .await?;
+        message.reply("Successfully deleted sticker").await?;
+        Ok(())
+    } else {
+        Err(anyhow!(BotError::new("invalid command args")))
     }
 }
 
@@ -318,6 +349,7 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
             let sticker = entities::stickers::ActiveModel {
                 unique_id: Set(sticker_id),
                 owner_id: Set(user.id()),
+                uuid: Set(uuid_from_parts(sticker_id, user.id())),
                 chosen_name: Set(Some(stickername)),
             };
 
