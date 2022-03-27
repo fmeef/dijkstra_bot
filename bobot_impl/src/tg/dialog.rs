@@ -10,6 +10,7 @@ use uuid::Uuid;
 use crate::persist::redis::RedisStr;
 use crate::statics::REDIS;
 use crate::util::error::BotError;
+use log::debug;
 
 use crate::persist::Result;
 #[cfg(test)]
@@ -39,7 +40,7 @@ pub fn get_state_key(chat: i64, user: i64) -> String {
 fn get_conversation_key_message_prefix(message: &Message, prefix: &str) -> Result<String> {
     if let Some(user) = message.sender() {
         let res = format!("{}:{}:{}", prefix, message.chat().id(), user.id());
-        println!("conversation key: {}", res);
+        debug!("conversation key: {}", res);
         Ok(res)
     } else {
         Err(anyhow!(BotError::new("message does not have sender")))

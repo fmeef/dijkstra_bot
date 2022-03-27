@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use async_executors::{TokioTp, TokioTpBuilder};
 use clap::Parser;
+use flexi_logger::Logger;
 use lazy_static::lazy_static;
 use sea_orm::ConnectionTrait;
 use statics::*;
@@ -28,10 +29,17 @@ pub fn get_executor() -> TokioTp {
 }
 
 pub fn init_db() {
-    println!("db initialized: {}", &statics::DB.is_mock_connection());
+    println!(
+        "db initialized, mock: {}",
+        &statics::DB.is_mock_connection()
+    );
 }
 
 pub async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let _logger = Logger::try_with_env_or_str("info, my::critical::module=trace")?
+        .log_to_stderr()
+        .write_mode(flexi_logger::WriteMode::Async)
+        .start()?;
     let client = tg::client::TgClient::connect(
         BOT_TOKEN.clone(),
         API_ID.clone(),
@@ -39,8 +47,8 @@ pub async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>
         ARGS.session.clone(),
     )
     .await?;
-
     client.run().await?;
+    log::logger().flush();
     Ok(())
 }
 
