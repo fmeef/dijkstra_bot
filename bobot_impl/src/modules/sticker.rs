@@ -12,7 +12,7 @@ use crate::util::error::BotError;
 use anyhow::anyhow;
 use grammers_client::types::media::Sticker;
 use grammers_client::types::{Chat, Media, Message, Update};
-use log::debug;
+use log::info;
 use sea_orm::entity::prelude::*;
 use sea_orm::{ActiveModelTrait, IntoActiveModel, Set};
 use sea_schema::migration::{MigrationName, MigrationTrait};
@@ -237,14 +237,14 @@ pub async fn handle_update(_client: TgClient, update: &Update) {
     };
 
     if let Err(err) = res {
-        debug!("error {}", err);
+        info!("error {}", err);
     }
 }
 
 async fn handle_command(message: &Message) -> Result<()> {
     let command = parse_cmd(message.text())?;
     if let Some(Arg::Arg(cmd)) = command.first() {
-        debug!("command {}", cmd);
+        info!("command {}", cmd);
         match cmd.as_str() {
             "/upload" => {
                 replace_conversation(message, |message| upload_sticker_conversation(message))
@@ -327,7 +327,7 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
 
     let sticker_id: (i64,) = REDIS.pipe(|p| p.get(&key)).await?;
     let sticker_id = sticker_id.0;
-    debug!("moretags stickerid: {}", sticker_id);
+    info!("moretags stickerid: {}", sticker_id);
     if let Some(Chat::User(user)) = message.sender() {
         if message.text() == "/done" {
             let stickername: (String,) = REDIS.pipe(|p| p.get(&namekey)).await?;
@@ -338,7 +338,7 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
                 .await?
                 .into_iter()
                 .map(|m| {
-                    debug!("tag id {}", m.sticker_id);
+                    info!("tag id {}", m.sticker_id);
                     m.into_active_model()
                 });
 
@@ -349,10 +349,10 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
                 chosen_name: Set(Some(stickername)),
             };
 
-            debug!("inserting sticker {}", sticker_id);
+            info!("inserting sticker {}", sticker_id);
             sticker.insert(&*DB).await?;
 
-            debug!("inserting tags {}", tags.len());
+            info!("inserting tags {}", tags.len());
             entities::tags::Entity::insert_many(tags).exec(&*DB).await?;
 
             let text = conversation.transition(TRANSITION_DONE).await?;
@@ -383,7 +383,7 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
 
 async fn handle_conversation(message: &Message) -> Result<()> {
     if let Some(conversation) = get_conversation(&message).await? {
-        debug!("hello conversation");
+        info!("hello conversation");
         if let Err(err) = match conversation.get_current_text().await?.as_str() {
             STATE_START => conv_start(conversation, &message).await,
             STATE_NAME => conv_name(conversation, &message).await,
@@ -394,7 +394,7 @@ async fn handle_conversation(message: &Message) -> Result<()> {
             message.reply(reply).await?;
         }
     } else {
-        debug!("nope no conversation for u");
+        info!("nope no conversation for u");
     }
     Ok(())
 }

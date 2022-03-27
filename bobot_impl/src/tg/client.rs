@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use grammers_client::{Client, Config, InitParams, Update};
 use grammers_session::Session;
-use log::debug;
+use log::info;
 
 use crate::util::error::BotError;
 
@@ -54,7 +54,7 @@ impl TgClient {
             let c = self.clone();
             tokio::spawn(async move {
                 if let Err(err) = c.single_update(update).await {
-                    debug!("failed to handle update {}", err);
+                    info!("failed to handle update {}", err);
                 }
             });
         };
