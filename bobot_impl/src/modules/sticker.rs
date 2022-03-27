@@ -238,8 +238,7 @@ async fn handle_command(message: &Message) -> Result<()> {
                 replace_conversation(message, |message| upload_sticker_conversation(message))
                     .await?;
                 message.reply(STATE_START).await?;
-                println!("handle command {}", message.text());
-                handle_conversation(message).await
+                Ok(())
             }
             "/list" => list_stickers(message).await,
             _ => handle_conversation(message).await,
