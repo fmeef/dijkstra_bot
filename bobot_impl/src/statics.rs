@@ -43,14 +43,5 @@ lazy_static! {
 
 //tg client
 lazy_static! {
-    pub(crate) static ref TG: TgClient = block_on(async move {
-        TgClient::connect(
-            BOT_TOKEN.clone(),
-            API_ID.clone(),
-            API_HASH.clone(),
-            ARGS.session.clone(),
-        )
-        .await
-        .expect("failed to connect mtproto")
-    });
+    pub(crate) static ref TG: TgClient = TgClient::connect(BOT_TOKEN.clone());
 }

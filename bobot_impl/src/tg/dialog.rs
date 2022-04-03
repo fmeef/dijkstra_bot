@@ -1,10 +1,10 @@
 use anyhow::anyhow;
 use chrono::{DateTime, Utc};
-use grammers_client::types::{Chat, Message};
 use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::str::FromStr;
+use teloxide::types::{Chat, Message};
 use uuid::Uuid;
 
 use crate::persist::redis::RedisStr;
@@ -38,8 +38,8 @@ pub fn get_state_key(chat: i64, user: i64) -> String {
 
 #[inline(always)]
 fn get_conversation_key_message_prefix(message: &Message, prefix: &str) -> Result<String> {
-    if let Some(user) = message.sender() {
-        let res = format!("{}:{}:{}", prefix, message.chat().id(), user.id());
+    if let Some(user) = message.from() {
+        let res = format!("{}:{}:{}", prefix, message.chat.id, user.id);
         info!("conversation key: {}", res);
         Ok(res)
     } else {
@@ -282,7 +282,7 @@ where
 impl Dialog {
     pub fn new(chat: &Chat) -> Self {
         Dialog {
-            chat_id: chat.id(),
+            chat_id: chat.id,
             last_activity: Utc::now(),
         }
     }

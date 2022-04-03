@@ -7,9 +7,9 @@ use bb8::{Pool, PooledConnection};
 use bb8_redis::RedisConnectionManager;
 
 use futures::Future;
-use grammers_client::types::Message;
 use redis::{AsyncCommands, ErrorKind, FromRedisValue, Pipeline, RedisError, ToRedisArgs};
 use serde::{de::DeserializeOwned, Serialize};
+use teloxide::types::Message;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
@@ -93,10 +93,10 @@ pub fn scope_key_by_user<T: AsRef<str>>(key: &T, user: i64) -> String {
 #[inline(always)]
 pub fn scope_key<T: AsRef<str>>(key: &T, message: &Message, prefix: &str) -> Result<String> {
     let user_id = message
-        .sender()
+        .from()
         .ok_or_else(|| BotError::new("message without sender"))?
-        .id();
-    let chat_id = message.chat().id();
+        .id;
+    let chat_id = message.chat.id;
     let res = format!("{}:{}:{}:{}", prefix, chat_id, user_id, key.as_ref());
     Ok(res)
 }

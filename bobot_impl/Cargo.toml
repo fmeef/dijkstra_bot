@@ -36,3 +36,4 @@ serde_json = "1.0"
 pomelo = "0.1.5"
 regex = "1"
 flexi_logger = { version = "0.22", features = [ "async", "colors" ] }
+teloxide = { version = "0.7", features = ["macros", "auto-send", "redis-storage", "erased"] }

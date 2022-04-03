@@ -3,19 +3,20 @@ use std::str::FromStr;
 use self::entities::tags::ModelRedis;
 use crate::persist::redis::{scope_key_by_chatuser, RedisStr};
 use crate::persist::Result;
-use crate::statics::{DB, REDIS};
+use crate::statics::{DB, REDIS, TG};
 use crate::tg::client::TgClient;
 use crate::tg::command::{parse_cmd, Arg};
 use crate::tg::dialog::Conversation;
 use crate::tg::dialog::{get_conversation, replace_conversation};
 use crate::util::error::BotError;
 use anyhow::anyhow;
-use grammers_client::types::media::Sticker;
-use grammers_client::types::{Chat, Media, Message, Update};
 use log::info;
 use sea_orm::entity::prelude::*;
 use sea_orm::{ActiveModelTrait, IntoActiveModel, Set};
 use sea_schema::migration::{MigrationName, MigrationTrait};
+use teloxide::payloads::SendMessageSetters;
+use teloxide::prelude::Requester;
+use teloxide::types::{MediaKind, Message, MessageCommon, MessageKind, Update, UpdateKind};
 
 // redis keys
 const KEY_TYPE_TAG: &str = "wc:tag";
@@ -37,11 +38,11 @@ fn upload_sticker_conversation(message: &Message) -> Result<Conversation> {
     let mut conversation = Conversation::new(
         UPLOAD_CMD.to_string(),
         STATE_START.to_string(),
-        message.chat().id(),
+        message.chat.id,
         message
-            .sender()
+            .from()
             .ok_or_else(|| BotError::new("message has no sender"))?
-            .id(),
+            .id,
     )?;
     let start_state = conversation.get_start()?.state_id;
     let name_state = conversation.add_state(STATE_NAME);
@@ -229,10 +230,8 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
 }
 
 pub async fn handle_update(_client: TgClient, update: &Update) {
-    let res = match update {
-        Update::NewMessage(ref message) => handle_command(message).await,
-        Update::CallbackQuery(ref _foo) => Ok(()),
-        Update::InlineQuery(ref _foo) => Ok(()),
+    let res = match update.kind {
+        UpdateKind::Message(ref message) => handle_command(message).await,
         _ => Ok(()),
     };
 
@@ -242,14 +241,20 @@ pub async fn handle_update(_client: TgClient, update: &Update) {
 }
 
 async fn handle_command(message: &Message) -> Result<()> {
-    let command = parse_cmd(message.text())?;
+    let text = message
+        .text()
+        .ok_or_else(|| BotError::new("message has no text"))?;
+    let command = parse_cmd(text)?;
     if let Some(Arg::Arg(cmd)) = command.first() {
         info!("command {}", cmd);
         match cmd.as_str() {
             "/upload" => {
                 replace_conversation(message, |message| upload_sticker_conversation(message))
                     .await?;
-                message.reply(STATE_START).await?;
+                TG.client()
+                    .send_message(message.chat.id, STATE_START)
+                    .reply_to_message_id(message.id)
+                    .await?;
                 Ok(())
             }
             "/list" => list_stickers(message).await,
@@ -268,7 +273,10 @@ async fn delete_sticker(message: &Message, args: Vec<Arg>) -> Result<()> {
             .filter(entities::stickers::Column::Uuid.eq(uuid))
             .exec(&*DB)
             .await?;
-        message.reply("Successfully deleted sticker").await?;
+        TG.client()
+            .send_message(message.chat.id, "Successfully deleted sticker")
+            .reply_to_message_id(message.id)
+            .await?;
         Ok(())
     } else {
         Err(anyhow!(BotError::new("invalid command args")))
@@ -276,9 +284,9 @@ async fn delete_sticker(message: &Message, args: Vec<Arg>) -> Result<()> {
 }
 
 async fn list_stickers(message: &Message) -> Result<()> {
-    if let Some(sender) = message.sender() {
+    if let Some(sender) = message.from() {
         let stickers = entities::stickers::Entity::find()
-            .filter(entities::stickers::Column::OwnerId.eq(sender.id()))
+            .filter(entities::stickers::Column::OwnerId.eq(sender.id))
             .all(&*DB)
             .await?;
         let stickers = stickers
@@ -289,23 +297,34 @@ async fn list_stickers(message: &Message) -> Result<()> {
                 s.push_str(format!("\n - {} {}", chosenname, sticker.get_uuid()).as_str());
                 s
             });
-        message.reply(stickers).await?;
+
+        TG.client()
+            .send_message(message.chat.id, stickers)
+            .reply_to_message_id(message.id)
+            .await?;
     }
     Ok(())
 }
 
 async fn conv_start(conversation: Conversation, message: &Message) -> Result<()> {
-    if let Some(Media::Sticker(Sticker { document, .. })) = message.media() {
+    if let MessageKind::Common(MessageCommon {
+        media_kind: MediaKind::Sticker(ref sticker),
+        ..
+    }) = message.kind
+    {
         let key = scope_key_by_chatuser(&KEY_TYPE_STICKER_ID, &message)?;
         let taglist = scope_key_by_chatuser(&KEY_TYPE_TAG, &message)?;
         REDIS
             .pipe(|p| {
-                p.set(&key, document.id());
+                p.set(&key, &sticker.sticker.file_id);
                 p.del(&taglist)
             })
             .await?;
         let text = conversation.transition(TRANSITION_NAME).await?;
-        message.reply(text).await?;
+        TG.client()
+            .send_message(message.chat.id, text)
+            .reply_to_message_id(message.id)
+            .await?;
         Ok(())
     } else {
         Err(anyhow!(BotError::new("Send a sticker")))
@@ -316,7 +335,10 @@ async fn conv_name(conversation: Conversation, message: &Message) -> Result<()> 
     let key = scope_key_by_chatuser(&KEY_TYPE_STICKER_NAME, &message)?;
     REDIS.pipe(|p| p.set(&key, message.text())).await?;
     let text = conversation.transition(TRANSITION_TAG).await?;
-    message.reply(text).await?;
+    TG.client()
+        .send_message(message.chat.id, text)
+        .reply_to_message_id(message.id)
+        .await?;
     Ok(())
 }
 
@@ -327,9 +349,10 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
 
     let sticker_id: (i64,) = REDIS.pipe(|p| p.get(&key)).await?;
     let sticker_id = sticker_id.0;
+    let text = message.text().ok_or_else(|| BotError::new("no text"))?;
     info!("moretags stickerid: {}", sticker_id);
-    if let Some(Chat::User(user)) = message.sender() {
-        if message.text() == "/done" {
+    if let Some(user) = message.from() {
+        if text == "/done" {
             let stickername: (String,) = REDIS.pipe(|p| p.get(&namekey)).await?;
             let stickername = stickername.0;
 
@@ -344,8 +367,8 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
 
             let sticker = entities::stickers::ActiveModel {
                 unique_id: Set(sticker_id),
-                owner_id: Set(user.id()),
-                uuid: Set(uuid_from_parts(sticker_id, user.id())),
+                owner_id: Set(user.id),
+                uuid: Set(uuid_from_parts(sticker_id, user.id)),
                 chosen_name: Set(Some(stickername)),
             };
 
@@ -356,13 +379,16 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
             entities::tags::Entity::insert_many(tags).exec(&*DB).await?;
 
             let text = conversation.transition(TRANSITION_DONE).await?;
-            message.reply(text).await?;
+            TG.client()
+                .send_message(message.chat.id, text)
+                .reply_to_message_id(message.id)
+                .await?;
             Ok(())
         } else {
             let tag = RedisStr::new(&ModelRedis {
                 sticker_id,
-                owner_id: user.id(),
-                tag: message.text().to_owned(),
+                owner_id: user.id,
+                tag: text.to_owned(),
             })?;
 
             REDIS
@@ -373,7 +399,10 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
                 .await?;
 
             let text = conversation.transition(TRANSITION_MORETAG).await?;
-            message.reply(text).await?;
+            TG.client()
+                .send_message(message.chat.id, text)
+                .reply_to_message_id(message.id)
+                .await?;
             Ok(())
         }
     } else {
@@ -391,7 +420,10 @@ async fn handle_conversation(message: &Message) -> Result<()> {
             _ => return Ok(()),
         } {
             let reply = format!("Error: {}", err);
-            message.reply(reply).await?;
+            TG.client()
+                .send_message(message.chat.id, reply)
+                .reply_to_message_id(message.id)
+                .await?;
         }
     } else {
         info!("nope no conversation for u");
