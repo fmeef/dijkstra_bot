@@ -238,6 +238,12 @@ pub(crate) async fn get_conversation(message: &Message) -> Result<Option<Convers
     Ok(res)
 }
 
+pub(crate) async fn drop_converstaion(message: &Message) -> Result<()> {
+    let key = get_conversation_key_message(message)?;
+    REDIS.pipe(|p| p.del(&key)).await?;
+    Ok(())
+}
+
 pub(crate) async fn replace_conversation<F>(message: &Message, create: F) -> Result<Conversation>
 where
     F: FnOnce(&Message) -> Result<Conversation>,

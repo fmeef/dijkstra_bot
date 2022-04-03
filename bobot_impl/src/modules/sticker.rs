@@ -5,7 +5,7 @@ use crate::persist::redis::{scope_key_by_chatuser, RedisStr};
 use crate::persist::Result;
 use crate::statics::{DB, REDIS, TG};
 use crate::tg::command::{parse_cmd, Arg};
-use crate::tg::dialog::Conversation;
+use crate::tg::dialog::{drop_converstaion, Conversation};
 use crate::tg::dialog::{get_conversation, replace_conversation};
 use crate::util::error::BotError;
 use anyhow::anyhow;
@@ -26,9 +26,11 @@ const KEY_TYPE_STICKER_NAME: &str = "wc:stickername";
 const UPLOAD_CMD: &str = "/upload";
 const TRANSITION_NAME: &str = "stickername";
 const TRANSITION_DONE: &str = "stickerdone";
+const TRANSITION_UPLOAD: &str = "upload";
 const TRANSITION_TAG: &str = "stickertag";
 const TRANSITION_MORETAG: &str = "stickermoretag";
 const STATE_START: &str = "Send a sticker to upload";
+const STATE_UPLOAD: &str = "sticker uploaded";
 const STATE_NAME: &str = "Send a name for this sticker";
 const STATE_TAGS: &str = "Send tags for this sticker, one at a time. Send /done to stop";
 const STATE_DONE: &str = "Successfully uploaded sticker";
@@ -44,11 +46,13 @@ fn upload_sticker_conversation(message: &Message) -> Result<Conversation> {
             .id,
     )?;
     let start_state = conversation.get_start()?.state_id;
+    let upload_state = conversation.add_state(STATE_UPLOAD);
     let name_state = conversation.add_state(STATE_NAME);
     let state_tags = conversation.add_state(STATE_TAGS);
     let state_done = conversation.add_state(STATE_DONE);
 
-    conversation.add_transition(start_state, name_state, TRANSITION_NAME);
+    conversation.add_transition(start_state, upload_state, TRANSITION_UPLOAD);
+    conversation.add_transition(upload_state, name_state, TRANSITION_NAME);
     conversation.add_transition(name_state, state_tags, TRANSITION_TAG);
     conversation.add_transition(state_tags, state_tags, TRANSITION_MORETAG);
     conversation.add_transition(state_tags, state_done, TRANSITION_DONE);
@@ -206,14 +210,24 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![Box::new(Migration)]
 }
 
+async fn handle_message(message: &Message) -> Result<()> {
+    handle_command(message).await?;
+    handle_conversation(message).await?;
+    Ok(())
+}
+
 pub async fn handle_update(update: &Update) {
     let res = match update.kind {
-        UpdateKind::Message(ref message) => handle_command(message).await,
+        UpdateKind::Message(ref message) => handle_message(message).await,
         _ => Ok(()),
     };
-
     if let Err(err) = res {
         info!("error {}", err);
+        if let Some(chat) = update.chat() {
+            if let Err(send_err) = TG.client().send_message(chat.id, err.to_string()).await {
+                log::error!("failed to send error message: {}", send_err);
+            }
+        }
     }
 }
 
@@ -223,28 +237,24 @@ async fn handle_command(message: &Message) -> Result<()> {
         if let Some(Arg::Arg(cmd)) = command.first() {
             info!("command {}", cmd);
             match cmd.as_str() {
-                "/upload" => {
-                    replace_conversation(message, |message| upload_sticker_conversation(message))
-                        .await?;
-                    TG.client()
-                        .send_message(message.chat.id, STATE_START)
-                        .reply_to_message_id(message.id)
-                        .await?;
-                    Ok(())
-                }
+                "/upload" => upload(message).await,
                 "/list" => list_stickers(message).await,
                 "/delete" => delete_sticker(message, command).await,
-                _ => handle_conversation(message).await,
-            }
-        } else {
-            handle_conversation(message).await
+                _ => Ok(()),
+            }?;
         }
-    } else {
-        handle_conversation(message).await
-    }
+    };
+
+    Ok(())
+}
+
+async fn upload(message: &Message) -> Result<()> {
+    replace_conversation(message, |message| upload_sticker_conversation(message)).await?;
+    Ok(())
 }
 
 async fn delete_sticker(message: &Message, args: Vec<Arg>) -> Result<()> {
+    drop_converstaion(message).await?;
     if let [Arg::Arg(_), Arg::Arg(uuid)] = args.as_slice() {
         let uuid = Uuid::from_str(uuid.as_str())?;
         entities::stickers::Entity::delete_many()
@@ -262,6 +272,7 @@ async fn delete_sticker(message: &Message, args: Vec<Arg>) -> Result<()> {
 }
 
 async fn list_stickers(message: &Message) -> Result<()> {
+    drop_converstaion(message).await?;
     if let Some(sender) = message.from() {
         let stickers = entities::stickers::Entity::find()
             .filter(entities::stickers::Column::OwnerId.eq(sender.id))
@@ -285,6 +296,15 @@ async fn list_stickers(message: &Message) -> Result<()> {
 }
 
 async fn conv_start(conversation: Conversation, message: &Message) -> Result<()> {
+    TG.client()
+        .send_message(message.chat.id, "Send a sticker to upload")
+        .reply_to_message_id(message.id)
+        .await?;
+    conversation.transition(TRANSITION_UPLOAD).await?;
+    Ok(())
+}
+
+async fn conv_upload(conversation: Conversation, message: &Message) -> Result<()> {
     if let MessageKind::Common(MessageCommon {
         media_kind: MediaKind::Sticker(ref sticker),
         ..
@@ -391,19 +411,13 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
 
 async fn handle_conversation(message: &Message) -> Result<()> {
     if let Some(conversation) = get_conversation(&message).await? {
-        info!("hello conversation");
-        if let Err(err) = match conversation.get_current_text().await?.as_str() {
+        match conversation.get_current_text().await?.as_str() {
             STATE_START => conv_start(conversation, &message).await,
+            STATE_UPLOAD => conv_upload(conversation, &message).await,
             STATE_NAME => conv_name(conversation, &message).await,
             STATE_TAGS => conv_moretags(conversation, &message).await,
             _ => return Ok(()),
-        } {
-            let reply = format!("Error: {}", err);
-            TG.client()
-                .send_message(message.chat.id, reply)
-                .reply_to_message_id(message.id)
-                .await?;
-        }
+        }?;
     } else {
         info!("nope no conversation for u");
     }
