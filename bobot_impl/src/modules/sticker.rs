@@ -218,25 +218,26 @@ pub async fn handle_update(update: &Update) {
 }
 
 async fn handle_command(message: &Message) -> Result<()> {
-    let text = message
-        .text()
-        .ok_or_else(|| BotError::new("message has no text"))?;
-    let command = parse_cmd(text)?;
-    if let Some(Arg::Arg(cmd)) = command.first() {
-        info!("command {}", cmd);
-        match cmd.as_str() {
-            "/upload" => {
-                replace_conversation(message, |message| upload_sticker_conversation(message))
-                    .await?;
-                TG.client()
-                    .send_message(message.chat.id, STATE_START)
-                    .reply_to_message_id(message.id)
-                    .await?;
-                Ok(())
+    if let Some(text) = message.text() {
+        let command = parse_cmd(text)?;
+        if let Some(Arg::Arg(cmd)) = command.first() {
+            info!("command {}", cmd);
+            match cmd.as_str() {
+                "/upload" => {
+                    replace_conversation(message, |message| upload_sticker_conversation(message))
+                        .await?;
+                    TG.client()
+                        .send_message(message.chat.id, STATE_START)
+                        .reply_to_message_id(message.id)
+                        .await?;
+                    Ok(())
+                }
+                "/list" => list_stickers(message).await,
+                "/delete" => delete_sticker(message, command).await,
+                _ => handle_conversation(message).await,
             }
-            "/list" => list_stickers(message).await,
-            "/delete" => delete_sticker(message, command).await,
-            _ => handle_conversation(message).await,
+        } else {
+            handle_conversation(message).await
         }
     } else {
         handle_conversation(message).await
