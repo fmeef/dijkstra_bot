@@ -1,4 +1,10 @@
-use teloxide::{adaptors::AutoSend, prelude::Requester, types::Update, Bot};
+use teloxide::{
+    adaptors::AutoSend,
+    dispatching::update_listeners::{polling_default, AsUpdateStream},
+    Bot,
+};
+
+use futures::StreamExt;
 
 use super::Result;
 
@@ -17,25 +23,19 @@ impl TgClient {
     }
 
     pub async fn run(&self) -> Result<()> {
-        let r = while let Some(updates) = tokio::select! {
-            _ = tokio::signal::ctrl_c() => None,
-            result = self.client.get_updates() => Some(result)
-        } {
-            updates?.into_iter().for_each(|update| {
-                let c = self.clone();
+        polling_default(self.client.clone())
+            .await
+            .as_stream()
+            .for_each_concurrent(None, |update| async move {
                 tokio::spawn(async move {
-                    if let Err(err) = c.single_update(update).await {
-                        log::info!("failed to handle update {}", err);
+                    if let Ok(update) = update {
+                        crate::modules::process_updates(update).await;
+                    } else {
+                        log::debug!("failed to process update");
                     }
                 });
             })
-        };
-
-        Ok(r)
-    }
-
-    async fn single_update(self, update: Update) -> Result<()> {
-        crate::modules::process_updates(self, update).await;
+            .await;
         Ok(())
     }
 

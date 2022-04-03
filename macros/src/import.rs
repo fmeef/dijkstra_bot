@@ -82,11 +82,10 @@ pub(crate) fn autoimport(input: TokenStream) -> TokenStream {
         }
 
         pub async fn process_updates(
-            client: crate::tg::client::TgClient,
             update: ::teloxide::types::Update
             ) -> () {
             #(
-                #updates::handle_update(client.clone(), &update).await
+                #updates::handle_update(&update).await
             )*
         }
     };

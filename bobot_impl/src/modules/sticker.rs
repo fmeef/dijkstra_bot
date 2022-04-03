@@ -4,7 +4,6 @@ use self::entities::tags::ModelRedis;
 use crate::persist::redis::{scope_key_by_chatuser, RedisStr};
 use crate::persist::Result;
 use crate::statics::{DB, REDIS, TG};
-use crate::tg::client::TgClient;
 use crate::tg::command::{parse_cmd, Arg};
 use crate::tg::dialog::Conversation;
 use crate::tg::dialog::{get_conversation, replace_conversation};
@@ -207,7 +206,7 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![Box::new(Migration)]
 }
 
-pub async fn handle_update(_client: TgClient, update: &Update) {
+pub async fn handle_update(update: &Update) {
     let res = match update.kind {
         UpdateKind::Message(ref message) => handle_command(message).await,
         _ => Ok(()),
