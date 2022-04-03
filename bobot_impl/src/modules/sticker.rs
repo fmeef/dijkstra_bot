@@ -65,16 +65,6 @@ impl MigrationName for Migration {
     }
 }
 
-fn uuid_from_parts(lower: i64, upper: i64) -> Uuid {
-    let mut bytes = Vec::<u8>::with_capacity(16);
-    let mut b1 = lower.to_be_bytes();
-    let mut b2 = upper.to_be_bytes();
-    bytes.extend_from_slice(&mut b1);
-    bytes.extend_from_slice(&mut b2);
-    let bytes: [u8; 16] = bytes.try_into().expect("this should never fail");
-    Uuid::from_bytes(bytes)
-}
-
 pub mod entities {
     use crate::persist::migrate::ManagerHelper;
     use sea_schema::migration::prelude::*;
@@ -94,11 +84,7 @@ pub mod entities {
                                 .primary_key()
                                 .auto_increment(),
                         )
-                        .col(
-                            ColumnDef::new(tags::Column::StickerId)
-                                .big_integer()
-                                .not_null(),
-                        )
+                        .col(ColumnDef::new(tags::Column::StickerId).text().not_null())
                         .col(
                             ColumnDef::new(tags::Column::OwnerId)
                                 .big_integer()
@@ -115,7 +101,7 @@ pub mod entities {
                         .table(stickers::Entity)
                         .col(
                             ColumnDef::new(stickers::Column::UniqueId)
-                                .big_integer()
+                                .text()
                                 .primary_key(),
                         )
                         .col(ColumnDef::new(stickers::Column::Uuid).uuid().unique_key())
@@ -160,7 +146,7 @@ pub mod entities {
         pub struct Model {
             #[sea_orm(primary_key, auto_increment = true)]
             pub id: i64,
-            pub sticker_id: i64,
+            pub sticker_id: String,
             pub owner_id: i64,
             #[sea_orm(column_type = "Text")]
             pub tag: String,
@@ -168,7 +154,7 @@ pub mod entities {
 
         #[derive(DeriveIntoActiveModel, Serialize, Deserialize)]
         pub struct ModelRedis {
-            pub sticker_id: i64,
+            pub sticker_id: String,
             pub owner_id: i64,
             pub tag: String,
         }
@@ -189,24 +175,16 @@ pub mod entities {
         use sea_orm::entity::prelude::*;
         use serde::{Deserialize, Serialize};
 
-        use crate::modules::sticker::uuid_from_parts;
         #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
         #[sea_orm(table_name = "stickers")]
         pub struct Model {
             #[sea_orm(primary_key, auto_increment = false)]
-            pub unique_id: i64,
+            pub unique_id: String,
             pub owner_id: i64,
             #[sea_orm(unique)]
             pub uuid: Uuid,
             #[sea_orm(column_type = "Text", nullable)]
             pub chosen_name: Option<String>,
-        }
-
-        impl Model {
-            #[inline]
-            pub fn get_uuid(&self) -> Uuid {
-                uuid_from_parts(self.unique_id, self.owner_id)
-            }
         }
 
         #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -294,7 +272,7 @@ async fn list_stickers(message: &Message) -> Result<()> {
             .fold(String::from("My stickers:"), |mut s, sticker| {
                 let default = "Unnamed".to_string();
                 let chosenname = sticker.chosen_name.as_ref().unwrap_or(&default);
-                s.push_str(format!("\n - {} {}", chosenname, sticker.get_uuid()).as_str());
+                s.push_str(format!("\n - {} {}", chosenname, sticker.uuid).as_str());
                 s
             });
 
@@ -347,7 +325,7 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
     let namekey = scope_key_by_chatuser(&KEY_TYPE_STICKER_NAME, &message)?;
     let taglist = scope_key_by_chatuser(&KEY_TYPE_TAG, &message)?;
 
-    let sticker_id: (i64,) = REDIS.pipe(|p| p.get(&key)).await?;
+    let sticker_id: (String,) = REDIS.pipe(|p| p.get(&key)).await?;
     let sticker_id = sticker_id.0;
     let text = message.text().ok_or_else(|| BotError::new("no text"))?;
     info!("moretags stickerid: {}", sticker_id);
@@ -365,14 +343,15 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
                     m.into_active_model()
                 });
 
+            info!("inserting sticker {}", sticker_id);
+
             let sticker = entities::stickers::ActiveModel {
                 unique_id: Set(sticker_id),
                 owner_id: Set(user.id),
-                uuid: Set(uuid_from_parts(sticker_id, user.id)),
+                uuid: Set(Uuid::new_v4()),
                 chosen_name: Set(Some(stickername)),
             };
 
-            info!("inserting sticker {}", sticker_id);
             sticker.insert(&*DB).await?;
 
             info!("inserting tags {}", tags.len());
