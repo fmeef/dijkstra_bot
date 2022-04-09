@@ -9,13 +9,17 @@ use crate::tg::dialog::{drop_converstaion, Conversation};
 use crate::tg::dialog::{get_conversation, replace_conversation};
 use crate::util::error::BotError;
 use anyhow::anyhow;
+use lazy_static::__Deref;
 use log::info;
 use sea_orm::entity::prelude::*;
-use sea_orm::{ActiveModelTrait, IntoActiveModel, Set};
+use sea_orm::{ActiveModelTrait, IntoActiveModel, QuerySelect, Set};
 use sea_schema::migration::{MigrationName, MigrationTrait};
 use teloxide::payloads::SendMessageSetters;
 use teloxide::prelude::Requester;
-use teloxide::types::{MediaKind, Message, MessageCommon, MessageKind, Update, UpdateKind};
+use teloxide::types::{
+    InlineQuery, InlineQueryResult, InlineQueryResultCachedSticker, MediaKind, Message,
+    MessageCommon, MessageKind, Update, UpdateKind,
+};
 
 // redis keys
 const KEY_TYPE_TAG: &str = "wc:tag";
@@ -163,11 +167,18 @@ pub mod entities {
         }
 
         #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-        pub enum Relation {}
+        pub enum Relation {
+            #[sea_orm(
+                belongs_to = "super::stickers::Entity",
+                from = "Column::StickerId",
+                to = "super::stickers::Column::UniqueId"
+            )]
+            Stickers,
+        }
 
         impl Related<super::stickers::Entity> for Entity {
             fn to() -> RelationDef {
-                panic!("no relations")
+                Relation::Stickers.def()
             }
         }
 
@@ -210,6 +221,37 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![Box::new(Migration)]
 }
 
+async fn handle_inline(query: &InlineQuery) -> Result<()> {
+    log::info!("query! owner: {} tag: {}", query.from.id, query.query);
+    let owner_id = query.from.id;
+    let stickers = entities::stickers::Entity::find()
+        .join(
+            sea_orm::JoinType::InnerJoin,
+            entities::stickers::Relation::Tags.def(),
+        )
+        .group_by(entities::stickers::Column::UniqueId)
+        .filter(entities::stickers::Column::OwnerId.eq(owner_id))
+        .filter(entities::tags::Column::Tag.like(&format!("%{}%", query.query.as_str())))
+        .limit(10)
+        .all(DB.deref())
+        .await?;
+
+    let stickers = stickers.into_iter().map(|s| {
+        let r = InlineQueryResultCachedSticker {
+            id: Uuid::new_v4().to_string(),
+            sticker_file_id: s.unique_id,
+            reply_markup: None,
+            input_message_content: None,
+        };
+        InlineQueryResult::CachedSticker(r)
+    });
+
+    TG.client
+        .answer_inline_query(query.id.as_str(), stickers)
+        .await?;
+    Ok(())
+}
+
 async fn handle_message(message: &Message) -> Result<()> {
     handle_command(message).await?;
     handle_conversation(message).await?;
@@ -219,6 +261,7 @@ async fn handle_message(message: &Message) -> Result<()> {
 pub async fn handle_update(update: &Update) {
     let res = match update.kind {
         UpdateKind::Message(ref message) => handle_message(message).await,
+        UpdateKind::InlineQuery(ref query) => handle_inline(query).await,
         _ => Ok(()),
     };
     if let Err(err) = res {
@@ -259,7 +302,7 @@ async fn delete_sticker(message: &Message, args: Vec<Arg>) -> Result<()> {
         let uuid = Uuid::from_str(uuid.as_str())?;
         entities::stickers::Entity::delete_many()
             .filter(entities::stickers::Column::Uuid.eq(uuid))
-            .exec(&*DB)
+            .exec(DB.deref())
             .await?;
         TG.client()
             .send_message(message.chat.id, "Successfully deleted sticker")
@@ -276,7 +319,7 @@ async fn list_stickers(message: &Message) -> Result<()> {
     if let Some(sender) = message.from() {
         let stickers = entities::stickers::Entity::find()
             .filter(entities::stickers::Column::OwnerId.eq(sender.id))
-            .all(&*DB)
+            .all(DB.deref())
             .await?;
         let stickers = stickers
             .into_iter()
@@ -372,10 +415,12 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
                 chosen_name: Set(Some(stickername)),
             };
 
-            sticker.insert(&*DB).await?;
+            sticker.insert(DB.deref()).await?;
 
             info!("inserting tags {}", tags.len());
-            entities::tags::Entity::insert_many(tags).exec(&*DB).await?;
+            entities::tags::Entity::insert_many(tags)
+                .exec(DB.deref())
+                .await?;
 
             let text = conversation.transition(TRANSITION_DONE).await?;
             TG.client()
