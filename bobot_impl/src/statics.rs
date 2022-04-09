@@ -8,6 +8,7 @@ use lazy_static::lazy_static;
 use sea_orm::entity::prelude::DatabaseConnection;
 use sea_orm::{ConnectOptions, Database};
 use std::env;
+use std::sync::Arc;
 use tokio::runtime::Runtime;
 
 //global configuration parameters
@@ -34,11 +35,13 @@ lazy_static! {
 
 //db client
 lazy_static! {
-    pub(crate) static ref DB: DatabaseConnection = Runtime::new().unwrap().block_on(async move {
-        Database::connect(ConnectOptions::new(PG_CONNECTION_STR.clone()))
-            .await
-            .expect("failed to initialize database")
-    });
+    pub(crate) static ref DB: Arc<DatabaseConnection> =
+        Runtime::new().unwrap().block_on(async move {
+            let db = Database::connect(ConnectOptions::new(PG_CONNECTION_STR.clone()))
+                .await
+                .expect("failed to initialize database");
+            Arc::new(db)
+        });
 }
 
 //tg client

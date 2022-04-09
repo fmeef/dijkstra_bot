@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use self::entities::tags::ModelRedis;
-use crate::persist::redis::{scope_key_by_chatuser, RedisStr};
+use crate::persist::redis::{scope_key_by_chatuser, CachedQuery, CachedQueryTrait, RedisStr};
 use crate::persist::Result;
 use crate::statics::{DB, REDIS, TG};
 use crate::tg::command::{parse_cmd, Arg};
@@ -12,8 +12,9 @@ use anyhow::anyhow;
 use lazy_static::__Deref;
 use log::info;
 use sea_orm::entity::prelude::*;
-use sea_orm::{ActiveModelTrait, IntoActiveModel, QuerySelect, Set};
+use sea_orm::{ActiveModelTrait, ConnectionTrait, IntoActiveModel, QuerySelect, Set};
 use sea_schema::migration::{MigrationName, MigrationTrait};
+use std::sync::Arc;
 use teloxide::payloads::SendMessageSetters;
 use teloxide::prelude::Requester;
 use teloxide::types::{
@@ -223,32 +224,45 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
 
 async fn handle_inline(query: &InlineQuery) -> Result<()> {
     log::info!("query! owner: {} tag: {}", query.from.id, query.query);
-    let owner_id = query.from.id;
-    let stickers = entities::stickers::Entity::find()
-        .join(
-            sea_orm::JoinType::InnerJoin,
-            entities::stickers::Relation::Tags.def(),
+    let id = query.from.id;
+    if let Some(stickers) = CachedQuery::<Vec<entities::stickers::Model>>::builder()
+        .sql_query(move |key, sql| async move {
+            let stickers = entities::stickers::Entity::find()
+                .join(
+                    sea_orm::JoinType::InnerJoin,
+                    entities::stickers::Relation::Tags.def(),
+                )
+                .group_by(entities::stickers::Column::UniqueId)
+                .filter(entities::stickers::Column::OwnerId.eq(id))
+                .filter(entities::tags::Column::Tag.like(&format!("%{}%", key)))
+                .limit(10)
+                .all(sql.deref())
+                .await?;
+            Ok(Some(stickers))
+        })
+        .redis_query(|key, redis| async move { Ok(None) })
+        .build()?
+        .query(
+            Arc::clone(DB.deref()),
+            REDIS.clone(),
+            query.query.to_owned(),
         )
-        .group_by(entities::stickers::Column::UniqueId)
-        .filter(entities::stickers::Column::OwnerId.eq(owner_id))
-        .filter(entities::tags::Column::Tag.like(&format!("%{}%", query.query.as_str())))
-        .limit(10)
-        .all(DB.deref())
-        .await?;
+        .await?
+    {
+        let stickers = stickers.into_iter().map(|s| {
+            let r = InlineQueryResultCachedSticker {
+                id: Uuid::new_v4().to_string(),
+                sticker_file_id: s.unique_id,
+                reply_markup: None,
+                input_message_content: None,
+            };
+            InlineQueryResult::CachedSticker(r)
+        });
 
-    let stickers = stickers.into_iter().map(|s| {
-        let r = InlineQueryResultCachedSticker {
-            id: Uuid::new_v4().to_string(),
-            sticker_file_id: s.unique_id,
-            reply_markup: None,
-            input_message_content: None,
-        };
-        InlineQueryResult::CachedSticker(r)
-    });
-
-    TG.client
-        .answer_inline_query(query.id.as_str(), stickers)
-        .await?;
+        TG.client
+            .answer_inline_query(query.id.as_str(), stickers)
+            .await?;
+    }
     Ok(())
 }
 
@@ -302,7 +316,7 @@ async fn delete_sticker(message: &Message, args: Vec<Arg>) -> Result<()> {
         let uuid = Uuid::from_str(uuid.as_str())?;
         entities::stickers::Entity::delete_many()
             .filter(entities::stickers::Column::Uuid.eq(uuid))
-            .exec(DB.deref())
+            .exec(DB.deref().deref())
             .await?;
         TG.client()
             .send_message(message.chat.id, "Successfully deleted sticker")
@@ -319,7 +333,7 @@ async fn list_stickers(message: &Message) -> Result<()> {
     if let Some(sender) = message.from() {
         let stickers = entities::stickers::Entity::find()
             .filter(entities::stickers::Column::OwnerId.eq(sender.id))
-            .all(DB.deref())
+            .all(DB.deref().deref())
             .await?;
         let stickers = stickers
             .into_iter()
@@ -415,11 +429,11 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
                 chosen_name: Set(Some(stickername)),
             };
 
-            sticker.insert(DB.deref()).await?;
+            sticker.insert(DB.deref().deref()).await?;
 
             info!("inserting tags {}", tags.len());
             entities::tags::Entity::insert_many(tags)
-                .exec(DB.deref())
+                .exec(DB.deref().deref())
                 .await?;
 
             let text = conversation.transition(TRANSITION_DONE).await?;

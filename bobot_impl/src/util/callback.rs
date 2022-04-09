@@ -18,9 +18,19 @@ pub trait SingleCallback<'a, T, U>: Send + Sync {
     fn cb(self, val: &'a T) -> Self::Fut;
 }
 
+pub trait BiCallback<'a, T, U, R>: Send + Sync {
+    type Fut: 'a + Future<Output = R> + Send;
+    fn cb(self, val: &'a T, val2: &'a U) -> Self::Fut;
+}
+
 pub trait BoxedSingleCallback<'a, T, U>: Send + Sync {
     type Fut: 'a + Future<Output = U> + Send;
     fn cb_boxed(self: Box<Self>, val: &'a T) -> Self::Fut;
+}
+
+pub trait BoxedBiCallback<'a, T, U, R>: Send + Sync {
+    type Fut: 'a + Future<Output = R> + Send;
+    fn cb_boxed_bi(self: Box<Self>, val: &'a T, val2: &'a U) -> Self::Fut;
 }
 
 // all functions that meet the criteria implement the trait
@@ -49,8 +59,34 @@ where
     }
 }
 
+impl<'a, F, T, Fut, U, R> BiCallback<'a, T, U, R> for F
+where
+    T: 'a,
+    U: 'a,
+    F: FnOnce(&'a T, &'a U) -> Fut + Send + Sync,
+    Fut: 'a + Future<Output = R> + Send,
+{
+    type Fut = Fut;
+    fn cb(self, val: &'a T, val2: &'a U) -> Self::Fut {
+        self(val, val2)
+    }
+}
+
+impl<'a, F, T, Fut, U, R> BoxedBiCallback<'a, T, U, R> for F
+where
+    T: 'a,
+    U: 'a,
+    F: FnOnce(&'a T, &'a U) -> Fut + Send + Sync,
+    Fut: 'a + Future<Output = R> + Send,
+{
+    type Fut = Fut;
+    fn cb_boxed_bi(self: Box<Self>, val: &'a T, val2: &'a U) -> Self::Fut {
+        (*self)(val, val2)
+    }
+}
+
 // type erasure on the future
-struct OutputBoxer<F>(F);
+pub(crate) struct OutputBoxer<F>(pub(crate) F);
 impl<'a, F, T, U> BoxedSingleCallback<'a, T, U> for OutputBoxer<F>
 where
     F: SingleCallback<'a, T, U>,
@@ -62,15 +98,41 @@ where
     }
 }
 
-// type erasure on the function, with the future already type-erased
+impl<'a, F, T, U, R> BoxedBiCallback<'a, T, U, R> for OutputBoxer<F>
+where
+    F: BiCallback<'a, T, U, R>,
+    R: 'a,
+{
+    type Fut = BotDbFuture<'a, R>;
+    fn cb_boxed_bi(self: Box<Self>, val: &'a T, val2: &'a U) -> Self::Fut {
+        (*self).0.cb(val, val2).boxed()
+    }
+}
+
+// type erFutction, with the future already type-erased
 pub struct BoxedDbCallback<T, U>(
     Box<dyn for<'a> BoxedSingleCallback<'a, T, U, Fut = BotDbFuture<'a, U>>>,
 );
+
+pub struct BoxedBiCallbackStruct<T, U, R>(
+    Box<dyn for<'a> BoxedBiCallback<'a, T, U, R, Fut = BotDbFuture<'a, R>>>,
+);
+
 impl<'a, T, U: 'a> BoxedDbCallback<T, U> {
     pub fn new<F>(f: F) -> Self
     where
         F: for<'b> SingleCallback<'b, T, U> + 'static,
         U: 'static,
+    {
+        Self(Box::new(OutputBoxer(f)))
+    }
+}
+
+impl<'a, T, U, R: 'a> BoxedBiCallbackStruct<T, U, R> {
+    pub fn new<F>(f: F) -> Self
+    where
+        F: for<'b> BiCallback<'b, T, U, R> + 'static,
+        R: 'static,
     {
         Self(Box::new(OutputBoxer(f)))
     }
@@ -84,5 +146,16 @@ where
 
     fn cb(self, val: &'a T) -> Self::Fut {
         self.0.cb_boxed(val)
+    }
+}
+
+impl<'a, T, U, R> BiCallback<'a, T, U, R> for BoxedBiCallbackStruct<T, U, R>
+where
+    R: 'a,
+{
+    type Fut = BotDbFuture<'a, R>;
+
+    fn cb(self, val: &'a T, val2: &'a U) -> Self::Fut {
+        self.0.cb_boxed_bi(val, val2)
     }
 }

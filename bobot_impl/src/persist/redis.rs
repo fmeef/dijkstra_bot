@@ -1,14 +1,20 @@
 use super::Result;
-use crate::util::error::BotError;
+use crate::util::{
+    callback::{BiCallback, BotDbFuture, BoxedBiCallback, BoxedBiCallbackStruct, OutputBoxer},
+    error::BotError,
+};
 use anyhow::anyhow;
+use sea_orm::DatabaseConnection;
 use std::ops::DerefMut;
 
 use bb8::{Pool, PooledConnection};
 use bb8_redis::RedisConnectionManager;
 
-use futures::Future;
+use async_trait::async_trait;
+use futures::{future::BoxFuture, Future, FutureExt};
 use redis::{AsyncCommands, ErrorKind, FromRedisValue, Pipeline, RedisError, ToRedisArgs};
 use serde::{de::DeserializeOwned, Serialize};
+use std::sync::Arc;
 use teloxide::types::Message;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
@@ -19,6 +25,153 @@ pub const KEY_TYPE_PREFIX: &str = "wc:typeprefix";
 pub const KEY_WRAPPER: &str = "wc:wrapper";
 pub const KEY_TYPE_VAL: &str = "wc:typeval";
 pub const KEY_UUID: &str = "wc:uuid";
+
+struct CacheCb<T, R>(
+    Box<dyn for<'a> BoxedCacheCallback<'a, T, R, Fut = BotDbFuture<'a, Result<Option<R>>>>>,
+);
+
+impl<'a, T, R> CacheCallback<'a, T, R> for CacheCb<T, R>
+where
+    R: DeserializeOwned + 'static,
+{
+    type Fut = BotDbFuture<'a, Result<Option<R>>>;
+    fn cb(self, key: String, db: T) -> Self::Fut {
+        self.0.cb_boxed(key, db)
+    }
+}
+
+pub trait CacheCallback<'a, T, R>: Send + Sync {
+    type Fut: Future<Output = Result<Option<R>>> + Send + 'a;
+    fn cb(self, key: String, db: T) -> Self::Fut;
+}
+
+pub trait BoxedCacheCallback<'a, T, R>: Send + Sync {
+    type Fut: Future<Output = Result<Option<R>>> + Send + 'a;
+    fn cb_boxed(self: Box<Self>, key: String, db: T) -> Self::Fut;
+}
+
+impl<'a, F, T, R, Fut> CacheCallback<'a, T, R> for F
+where
+    F: FnOnce(String, T) -> Fut + Sync + Send + 'static,
+    R: DeserializeOwned + 'static,
+    Fut: Future<Output = Result<Option<R>>> + Send + 'static,
+{
+    type Fut = Fut;
+    fn cb(self, key: String, db: T) -> Self::Fut {
+        self(key, db)
+    }
+}
+
+impl<'a, F, T, R> BoxedCacheCallback<'a, T, R> for OutputBoxer<F>
+where
+    F: CacheCallback<'a, T, R>,
+    R: 'a,
+{
+    type Fut = BotDbFuture<'a, Result<Option<R>>>;
+    fn cb_boxed(self: Box<Self>, key: String, db: T) -> Self::Fut {
+        (*self).0.cb(key, db).boxed()
+    }
+}
+
+impl<'a, F, T, R, Fut> BoxedCacheCallback<'a, T, R> for F
+where
+    F: FnOnce(String, T) -> Fut + Sync + Send + 'static,
+    R: DeserializeOwned + 'static,
+    Fut: Future<Output = Result<Option<R>>> + Send + 'static,
+{
+    type Fut = Fut;
+    fn cb_boxed(self: Box<Self>, key: String, db: T) -> Self::Fut {
+        (*self)(key, db)
+    }
+}
+
+pub(crate) struct CachedQuery<R> {
+    redis_query: CacheCb<RedisPool, R>,
+    sql_query: CacheCb<Arc<DatabaseConnection>, R>,
+}
+
+pub(crate) struct CachedQueryBuilder<R> {
+    redis_query: Option<CacheCb<RedisPool, R>>,
+    sql_query: Option<CacheCb<Arc<DatabaseConnection>, R>>,
+}
+
+impl<R> CachedQueryBuilder<R> {
+    pub(crate) fn redis_query<F, Fut>(mut self, func: F) -> Self
+    where
+        F: FnOnce(String, RedisPool) -> Fut + Sync + Send + 'static,
+        R: DeserializeOwned + 'static,
+        Fut: Future<Output = Result<Option<R>>> + Send + 'static,
+    {
+        let b = Box::new(OutputBoxer(func));
+        self.redis_query = Some(CacheCb(b));
+        self
+    }
+
+    pub(crate) fn sql_query<F, Fut>(mut self, func: F) -> Self
+    where
+        F: FnOnce(String, Arc<DatabaseConnection>) -> Fut + Sync + Send + 'static,
+        R: DeserializeOwned + 'static,
+        Fut: Future<Output = Result<Option<R>>> + Send + 'static,
+    {
+        self.sql_query = Some(CacheCb(Box::new(OutputBoxer(func))));
+        self
+    }
+
+    pub(crate) fn build(self) -> Result<CachedQuery<R>> {
+        if let (Some(sql_query), Some(redis_query)) = (self.sql_query, self.redis_query) {
+            Ok(CachedQuery {
+                sql_query,
+                redis_query,
+            })
+        } else {
+            Err(anyhow!(BotError::new("failed to build CachedQuery")))
+        }
+    }
+}
+
+#[async_trait]
+pub(crate) trait CachedQueryTrait<R>
+where
+    R: DeserializeOwned + 'static,
+{
+    async fn query(
+        self,
+        db: Arc<DatabaseConnection>,
+        redis: RedisPool,
+        key: String,
+    ) -> Result<Option<R>>;
+}
+
+impl<R> CachedQuery<R>
+where
+    R: DeserializeOwned,
+{
+    pub(crate) fn builder() -> CachedQueryBuilder<R> {
+        CachedQueryBuilder {
+            redis_query: None,
+            sql_query: None,
+        }
+    }
+}
+
+#[async_trait]
+impl<R> CachedQueryTrait<R> for CachedQuery<R>
+where
+    R: DeserializeOwned + Send + 'static,
+{
+    async fn query(
+        self,
+        db: Arc<DatabaseConnection>,
+        redis: RedisPool,
+        key: String,
+    ) -> Result<Option<R>> {
+        if let Some(redis) = self.redis_query.cb(key.clone(), redis).await? {
+            Ok(Some(redis))
+        } else {
+            self.sql_query.cb(key, db).await
+        }
+    }
+}
 
 pub fn error_mapper(err: RedisError) -> BotError {
     match err.kind() {
