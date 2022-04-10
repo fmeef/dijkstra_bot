@@ -1,6 +1,6 @@
 use super::Result;
 use crate::util::{
-    callback::{CacheCallback, CacheCb, OutputBoxer},
+    callback::{CacheCallback, CacheCb, CacheMissCallback, CacheMissCb, OutputBoxer},
     error::BotError,
 };
 use anyhow::anyhow;
@@ -29,11 +29,13 @@ pub const KEY_UUID: &str = "wc:uuid";
 pub(crate) struct CachedQuery<R> {
     redis_query: CacheCb<RedisPool, R>,
     sql_query: CacheCb<Arc<DatabaseConnection>, R>,
+    miss_query: CacheMissCb<RedisPool, R>,
 }
 
 pub(crate) struct CachedQueryBuilder<R> {
     redis_query: Option<CacheCb<RedisPool, R>>,
     sql_query: Option<CacheCb<Arc<DatabaseConnection>, R>>,
+    miss_query: Option<CacheMissCb<RedisPool, R>>,
 }
 
 impl<R> CachedQueryBuilder<R> {
@@ -58,11 +60,25 @@ impl<R> CachedQueryBuilder<R> {
         self
     }
 
+    pub(crate) fn miss_query<F, Fut>(mut self, func: F) -> Self
+    where
+        F: FnOnce(String, R, RedisPool) -> Fut + Sync + Send + 'static,
+        R: Serialize + 'static,
+        Fut: Future<Output = Result<()>> + Send + 'static,
+    {
+        let b = Box::new(OutputBoxer(func));
+        self.miss_query = Some(CacheMissCb(b));
+        self
+    }
+
     pub(crate) fn build(self) -> Result<CachedQuery<R>> {
-        if let (Some(sql_query), Some(redis_query)) = (self.sql_query, self.redis_query) {
+        if let (Some(sql_query), Some(redis_query), Some(miss_query)) =
+            (self.sql_query, self.redis_query, self.miss_query)
+        {
             Ok(CachedQuery {
                 sql_query,
                 redis_query,
+                miss_query,
             })
         } else {
             Err(anyhow!(BotError::new("failed to build CachedQuery")))
@@ -91,6 +107,7 @@ where
         CachedQueryBuilder {
             redis_query: None,
             sql_query: None,
+            miss_query: None,
         }
     }
 }
@@ -98,7 +115,7 @@ where
 #[async_trait]
 impl<R> CachedQueryTrait<R> for CachedQuery<R>
 where
-    R: DeserializeOwned + Send + 'static,
+    R: DeserializeOwned + Serialize + Clone + Send + Sync + 'static,
 {
     async fn query(
         self,
@@ -106,10 +123,16 @@ where
         redis: RedisPool,
         key: String,
     ) -> Result<Option<R>> {
-        if let Some(redis) = self.redis_query.cb(key.clone(), redis).await? {
-            Ok(Some(redis))
+        if let Some(val) = self.redis_query.cb(key.clone(), redis.clone()).await? {
+            Ok(Some(val))
         } else {
-            self.sql_query.cb(key, db).await
+            let val = if let Some(val) = self.sql_query.cb(key.clone(), Arc::clone(&db)).await? {
+                self.miss_query.cb(key, val.clone(), redis).await?;
+                Some(val)
+            } else {
+                None
+            };
+            Ok(val)
         }
     }
 }
