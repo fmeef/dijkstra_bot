@@ -1,6 +1,6 @@
 use super::Result;
 use crate::util::{
-    callback::{BiCallback, BotDbFuture, BoxedBiCallback, BoxedBiCallbackStruct, OutputBoxer},
+    callback::{CacheCallback, CacheCb, OutputBoxer},
     error::BotError,
 };
 use anyhow::anyhow;
@@ -11,7 +11,7 @@ use bb8::{Pool, PooledConnection};
 use bb8_redis::RedisConnectionManager;
 
 use async_trait::async_trait;
-use futures::{future::BoxFuture, Future, FutureExt};
+use futures::Future;
 use redis::{AsyncCommands, ErrorKind, FromRedisValue, Pipeline, RedisError, ToRedisArgs};
 use serde::{de::DeserializeOwned, Serialize};
 use std::sync::Arc;
@@ -25,65 +25,6 @@ pub const KEY_TYPE_PREFIX: &str = "wc:typeprefix";
 pub const KEY_WRAPPER: &str = "wc:wrapper";
 pub const KEY_TYPE_VAL: &str = "wc:typeval";
 pub const KEY_UUID: &str = "wc:uuid";
-
-struct CacheCb<T, R>(
-    Box<dyn for<'a> BoxedCacheCallback<'a, T, R, Fut = BotDbFuture<'a, Result<Option<R>>>>>,
-);
-
-impl<'a, T, R> CacheCallback<'a, T, R> for CacheCb<T, R>
-where
-    R: DeserializeOwned + 'static,
-{
-    type Fut = BotDbFuture<'a, Result<Option<R>>>;
-    fn cb(self, key: String, db: T) -> Self::Fut {
-        self.0.cb_boxed(key, db)
-    }
-}
-
-pub trait CacheCallback<'a, T, R>: Send + Sync {
-    type Fut: Future<Output = Result<Option<R>>> + Send + 'a;
-    fn cb(self, key: String, db: T) -> Self::Fut;
-}
-
-pub trait BoxedCacheCallback<'a, T, R>: Send + Sync {
-    type Fut: Future<Output = Result<Option<R>>> + Send + 'a;
-    fn cb_boxed(self: Box<Self>, key: String, db: T) -> Self::Fut;
-}
-
-impl<'a, F, T, R, Fut> CacheCallback<'a, T, R> for F
-where
-    F: FnOnce(String, T) -> Fut + Sync + Send + 'static,
-    R: DeserializeOwned + 'static,
-    Fut: Future<Output = Result<Option<R>>> + Send + 'static,
-{
-    type Fut = Fut;
-    fn cb(self, key: String, db: T) -> Self::Fut {
-        self(key, db)
-    }
-}
-
-impl<'a, F, T, R> BoxedCacheCallback<'a, T, R> for OutputBoxer<F>
-where
-    F: CacheCallback<'a, T, R>,
-    R: 'a,
-{
-    type Fut = BotDbFuture<'a, Result<Option<R>>>;
-    fn cb_boxed(self: Box<Self>, key: String, db: T) -> Self::Fut {
-        (*self).0.cb(key, db).boxed()
-    }
-}
-
-impl<'a, F, T, R, Fut> BoxedCacheCallback<'a, T, R> for F
-where
-    F: FnOnce(String, T) -> Fut + Sync + Send + 'static,
-    R: DeserializeOwned + 'static,
-    Fut: Future<Output = Result<Option<R>>> + Send + 'static,
-{
-    type Fut = Fut;
-    fn cb_boxed(self: Box<Self>, key: String, db: T) -> Self::Fut {
-        (*self)(key, db)
-    }
-}
 
 pub(crate) struct CachedQuery<R> {
     redis_query: CacheCb<RedisPool, R>,
