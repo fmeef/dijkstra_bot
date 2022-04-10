@@ -41,7 +41,7 @@ pub(crate) struct CachedQueryBuilder<R> {
 impl<R> CachedQueryBuilder<R> {
     pub(crate) fn redis_query<F, Fut>(mut self, func: F) -> Self
     where
-        F: FnOnce(String, RedisPool) -> Fut + Sync + Send + 'static,
+        F: for<'b> FnOnce(&'b String, &'b RedisPool) -> Fut + Sync + Send + 'static,
         R: DeserializeOwned + 'static,
         Fut: Future<Output = Result<Option<R>>> + Send + 'static,
     {
@@ -52,7 +52,7 @@ impl<R> CachedQueryBuilder<R> {
 
     pub(crate) fn sql_query<F, Fut>(mut self, func: F) -> Self
     where
-        F: FnOnce(String, Arc<DatabaseConnection>) -> Fut + Sync + Send + 'static,
+        F: for<'b> FnOnce(&'b String, &'b Arc<DatabaseConnection>) -> Fut + Sync + Send + 'static,
         R: DeserializeOwned + 'static,
         Fut: Future<Output = Result<Option<R>>> + Send + 'static,
     {
@@ -62,7 +62,7 @@ impl<R> CachedQueryBuilder<R> {
 
     pub(crate) fn miss_query<F, Fut>(mut self, func: F) -> Self
     where
-        F: FnOnce(String, R, RedisPool) -> Fut + Sync + Send + 'static,
+        F: for<'b> FnOnce(&'b String, &'b R, &'b RedisPool) -> Fut + Sync + Send + 'static,
         R: Serialize + 'static,
         Fut: Future<Output = Result<()>> + Send + 'static,
     {
@@ -123,11 +123,11 @@ where
         redis: RedisPool,
         key: String,
     ) -> Result<Option<R>> {
-        if let Some(val) = self.redis_query.cb(key.clone(), redis.clone()).await? {
+        if let Some(val) = self.redis_query.cb(&key, &redis).await? {
             Ok(Some(val))
         } else {
-            let val = if let Some(val) = self.sql_query.cb(key.clone(), Arc::clone(&db)).await? {
-                self.miss_query.cb(key, val.clone(), redis).await?;
+            let val = if let Some(val) = self.sql_query.cb(&key, &db).await? {
+                self.miss_query.cb(&key, &val, &redis).await?;
                 Some(val)
             } else {
                 None

@@ -28,29 +28,29 @@ where
     R: DeserializeOwned + 'static,
 {
     type Fut = BotDbFuture<'a, Result<Option<R>>>;
-    fn cb(self, key: String, db: T) -> Self::Fut {
+    fn cb(self, key: &String, db: &T) -> Self::Fut {
         self.0.cb_boxed(key, db)
     }
 }
 
 pub trait CacheCallback<'a, T, R>: Send + Sync {
     type Fut: Future<Output = Result<Option<R>>> + Send + 'a;
-    fn cb(self, key: String, db: T) -> Self::Fut;
+    fn cb(self, key: &String, db: &T) -> Self::Fut;
 }
 
 pub trait BoxedCacheCallback<'a, T, R>: Send + Sync {
     type Fut: Future<Output = Result<Option<R>>> + Send + 'a;
-    fn cb_boxed(self: Box<Self>, key: String, db: T) -> Self::Fut;
+    fn cb_boxed(self: Box<Self>, key: &String, db: &T) -> Self::Fut;
 }
 
 impl<'a, F, T, R, Fut> CacheCallback<'a, T, R> for F
 where
-    F: FnOnce(String, T) -> Fut + Sync + Send + 'static,
+    F: for<'b> FnOnce(&'b String, &'b T) -> Fut + Sync + Send + 'static,
     R: DeserializeOwned + 'static,
     Fut: Future<Output = Result<Option<R>>> + Send + 'static,
 {
     type Fut = Fut;
-    fn cb(self, key: String, db: T) -> Self::Fut {
+    fn cb(self, key: &String, db: &T) -> Self::Fut {
         self(key, db)
     }
 }
@@ -61,19 +61,19 @@ where
     R: 'a,
 {
     type Fut = BotDbFuture<'a, Result<Option<R>>>;
-    fn cb_boxed(self: Box<Self>, key: String, db: T) -> Self::Fut {
+    fn cb_boxed(self: Box<Self>, key: &String, db: &T) -> Self::Fut {
         (*self).0.cb(key, db).boxed()
     }
 }
 
 impl<'a, F, T, R, Fut> BoxedCacheCallback<'a, T, R> for F
 where
-    F: FnOnce(String, T) -> Fut + Sync + Send + 'static,
+    F: for<'b> FnOnce(&'b String, &'b T) -> Fut + Sync + Send + 'static,
     R: DeserializeOwned + 'static,
     Fut: Future<Output = Result<Option<R>>> + Send + 'static,
 {
     type Fut = Fut;
-    fn cb_boxed(self: Box<Self>, key: String, db: T) -> Self::Fut {
+    fn cb_boxed(self: Box<Self>, key: &String, db: &T) -> Self::Fut {
         (*self)(key, db)
     }
 }
@@ -88,29 +88,29 @@ where
     V: Serialize + 'static,
 {
     type Fut = BotDbFuture<'a, Result<()>>;
-    fn cb(self, key: String, val: V, db: T) -> Self::Fut {
+    fn cb(self, key: &String, val: &V, db: &T) -> Self::Fut {
         self.0.cb_boxed(key, val, db)
     }
 }
 
 pub trait CacheMissCallback<'a, T, V>: Send + Sync {
     type Fut: Future<Output = Result<()>> + Send + 'a;
-    fn cb(self, key: String, val: V, db: T) -> Self::Fut;
+    fn cb(self, key: &String, val: &V, db: &T) -> Self::Fut;
 }
 
 pub trait BoxedCacheMissCallback<'a, T, V>: Send + Sync {
     type Fut: Future<Output = Result<()>> + Send + 'a;
-    fn cb_boxed(self: Box<Self>, key: String, val: V, db: T) -> Self::Fut;
+    fn cb_boxed(self: Box<Self>, key: &String, val: &V, db: &T) -> Self::Fut;
 }
 
 impl<'a, F, T, V, Fut> CacheMissCallback<'a, T, V> for F
 where
-    F: FnOnce(String, V, T) -> Fut + Sync + Send + 'static,
+    F: for<'b> FnOnce(&'b String, &'b V, &'b T) -> Fut + Sync + Send + 'static,
     V: Serialize + 'static,
     Fut: Future<Output = Result<()>> + Send + 'static,
 {
     type Fut = Fut;
-    fn cb(self, key: String, val: V, db: T) -> Self::Fut {
+    fn cb(self, key: &String, val: &V, db: &T) -> Self::Fut {
         self(key, val, db)
     }
 }
@@ -121,19 +121,19 @@ where
     V: Serialize + 'static, 
 {
     type Fut = BotDbFuture<'a, Result<()>>;
-    fn cb_boxed(self: Box<Self>, key: String, val: V, db: T) -> Self::Fut {
+    fn cb_boxed(self: Box<Self>, key: &String, val: &V, db: &T) -> Self::Fut {
         (*self).0.cb(key,val,  db).boxed()
     }
 }
 
 impl<'a, F, T, V, Fut> BoxedCacheMissCallback<'a, T, V> for F
 where
-    F: FnOnce(String, V, T) -> Fut + Sync + Send + 'static,
+    F: for<'b> FnOnce(&'b String, &'b V, &'b T) -> Fut + Sync + Send + 'static,
     V: Serialize + 'static,
     Fut: Future<Output = Result<()>> + Send + 'static,
 {
     type Fut = Fut;
-    fn cb_boxed(self: Box<Self>, key: String, val: V, db: T) -> Self::Fut {
+    fn cb_boxed(self: Box<Self>, key: &String, val: &V, db: &T) -> Self::Fut {
         (*self)(key, val, db)
     }
 }
