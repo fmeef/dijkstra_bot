@@ -23,34 +23,47 @@ pub(crate) struct CacheCb<T, R>(
     pub(crate) Box<dyn for<'a> BoxedCacheCallback<'a, T, R, Fut = BotDbFuture<'a, Result<Option<R>>>>>,
 );
 
+impl <'a, T, R: 'a> CacheCb<T, R> {
+
+    pub(crate) fn new<F>(func: F) -> Self 
+    where 
+        F: for<'b> CacheCallback<'b, T, R> + 'static,
+    R: DeserializeOwned + 'static
+    {
+        Self(Box::new(OutputBoxer(func)))
+        
+    }
+}
+
 impl<'a, T, R> CacheCallback<'a, T, R> for CacheCb<T, R>
 where
-    R: DeserializeOwned + 'static,
+    R: DeserializeOwned + 'a,
 {
     type Fut = BotDbFuture<'a, Result<Option<R>>>;
-    fn cb(self, key: &String, db: &T) -> Self::Fut {
+    fn cb(self, key: &'a String, db: &'a T) -> Self::Fut {
         self.0.cb_boxed(key, db)
     }
 }
 
 pub trait CacheCallback<'a, T, R>: Send + Sync {
     type Fut: Future<Output = Result<Option<R>>> + Send + 'a;
-    fn cb(self, key: &String, db: &T) -> Self::Fut;
+    fn cb(self, key: &'a String, db: &'a T) -> Self::Fut;
 }
 
 pub trait BoxedCacheCallback<'a, T, R>: Send + Sync {
     type Fut: Future<Output = Result<Option<R>>> + Send + 'a;
-    fn cb_boxed(self: Box<Self>, key: &String, db: &T) -> Self::Fut;
+    fn cb_boxed(self: Box<Self>, key: &'a String, db: &'a T) -> Self::Fut;
 }
 
 impl<'a, F, T, R, Fut> CacheCallback<'a, T, R> for F
 where
-    F: for<'b> FnOnce(&'b String, &'b T) -> Fut + Sync + Send + 'static,
-    R: DeserializeOwned + 'static,
-    Fut: Future<Output = Result<Option<R>>> + Send + 'static,
+    F: FnOnce(&'a String, &'a T) -> Fut + Sync + Send + 'a,
+    R: DeserializeOwned + 'a,
+    T: 'a,
+    Fut: Future<Output = Result<Option<R>>> + Send + 'a,
 {
     type Fut = Fut;
-    fn cb(self, key: &String, db: &T) -> Self::Fut {
+    fn cb(self, key: &'a String, db: &'a T) -> Self::Fut {
         self(key, db)
     }
 }
@@ -58,22 +71,23 @@ where
 impl<'a, F, T, R> BoxedCacheCallback<'a, T, R> for OutputBoxer<F>
 where
     F: CacheCallback<'a, T, R>,
-    R: 'a,
+    R: DeserializeOwned + 'a
 {
     type Fut = BotDbFuture<'a, Result<Option<R>>>;
-    fn cb_boxed(self: Box<Self>, key: &String, db: &T) -> Self::Fut {
+    fn cb_boxed(self: Box<Self>, key: &'a String, db: &'a T) -> Self::Fut {
         (*self).0.cb(key, db).boxed()
     }
 }
 
 impl<'a, F, T, R, Fut> BoxedCacheCallback<'a, T, R> for F
 where
-    F: for<'b> FnOnce(&'b String, &'b T) -> Fut + Sync + Send + 'static,
-    R: DeserializeOwned + 'static,
-    Fut: Future<Output = Result<Option<R>>> + Send + 'static,
+    F: FnOnce(&'a String, &'a T) -> Fut + Sync + Send + 'a,
+    R: 'a,
+    T: 'a,
+    Fut: Future<Output = Result<Option<R>>> + Send + 'a,
 {
     type Fut = Fut;
-    fn cb_boxed(self: Box<Self>, key: &String, db: &T) -> Self::Fut {
+    fn cb_boxed(self: Box<Self>, key: &'a String, db: &'a T) -> Self::Fut {
         (*self)(key, db)
     }
 }

@@ -1,7 +1,9 @@
 use std::str::FromStr;
 
 use self::entities::tags::ModelRedis;
-use crate::persist::redis::{scope_key_by_chatuser, CachedQuery, CachedQueryTrait, RedisStr};
+use crate::persist::redis::{
+    scope_key_by_chatuser, CachedQuery, CachedQueryTrait, RedisPool, RedisStr,
+};
 use crate::persist::Result;
 use crate::statics::{DB, REDIS, TG};
 use crate::tg::command::{parse_cmd, Arg};
@@ -21,6 +23,8 @@ use teloxide::types::{
     InlineQuery, InlineQueryResult, InlineQueryResultCachedSticker, MediaKind, Message,
     MessageCommon, MessageKind, Update, UpdateKind,
 };
+
+use higher_order_closure;
 
 // redis keys
 const KEY_TYPE_TAG: &str = "wc:tag";
@@ -244,7 +248,10 @@ async fn handle_inline(query: &InlineQuery) -> Result<()> {
                 Ok(Some(stickers))
             }
         })
-        .redis_query(|key, redis| async move { Ok(None) })
+        .redis_query(|key: &_, redis: &_| async move {
+            println!("key{}", key);
+            Ok(None)
+        })
         .build()?
         .query(
             Arc::clone(DB.deref()),

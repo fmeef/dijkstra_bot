@@ -1,6 +1,9 @@
 use super::Result;
 use crate::util::{
-    callback::{CacheCallback, CacheCb, CacheMissCallback, CacheMissCb, OutputBoxer},
+    callback::{
+        BotDbFuture, BoxedCacheCallback, CacheCallback, CacheCb, CacheMissCallback, CacheMissCb,
+        OutputBoxer,
+    },
     error::BotError,
 };
 use anyhow::anyhow;
@@ -12,6 +15,7 @@ use bb8_redis::RedisConnectionManager;
 
 use async_trait::async_trait;
 use futures::Future;
+use higher_order_closure::higher_order_closure;
 use redis::{AsyncCommands, ErrorKind, FromRedisValue, Pipeline, RedisError, ToRedisArgs};
 use serde::{de::DeserializeOwned, Serialize};
 use std::sync::Arc;
@@ -39,24 +43,21 @@ pub(crate) struct CachedQueryBuilder<R> {
 }
 
 impl<R> CachedQueryBuilder<R> {
-    pub(crate) fn redis_query<F, Fut>(mut self, func: F) -> Self
+    pub(crate) fn redis_query<'a, F>(mut self, func: F) -> Self
     where
-        F: for<'b> FnOnce(&'b String, &'b RedisPool) -> Fut + Sync + Send + 'static,
-        R: DeserializeOwned + 'static,
-        Fut: Future<Output = Result<Option<R>>> + Send + 'static,
+        F: for<'b> CacheCallback<'b, RedisPool, R> + 'static,
     {
-        let b = Box::new(OutputBoxer(func));
-        self.redis_query = Some(CacheCb(b));
+        //       self.redis_query = Some(CacheCb::new(func));
         self
     }
 
-    pub(crate) fn sql_query<F, Fut>(mut self, func: F) -> Self
+    pub(crate) fn sql_query<'a, F, Fut>(mut self, func: F) -> Self
     where
-        F: for<'b> FnOnce(&'b String, &'b Arc<DatabaseConnection>) -> Fut + Sync + Send + 'static,
-        R: DeserializeOwned + 'static,
-        Fut: Future<Output = Result<Option<R>>> + Send + 'static,
+        F: for<'b> FnOnce(&'b String, &'b Arc<DatabaseConnection>) -> Fut + Sync + Send + 'a,
+        R: DeserializeOwned + 'a,
+        Fut: Future<Output = Result<Option<R>>> + Send + 'a,
     {
-        self.sql_query = Some(CacheCb(Box::new(OutputBoxer(func))));
+        //self.sql_query = Some(CacheCb(Box::new(OutputBoxer(func))));
         self
     }
 
