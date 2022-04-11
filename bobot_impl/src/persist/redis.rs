@@ -34,7 +34,7 @@ pub(crate) struct CachedQuery<'r, T, R, S, M>
 where
     T: Serialize + DeserializeOwned + Send + Sync,
     R: CacheCallback<'r, RedisPool, T> + Send + Sync,
-    S: CacheCallback<'r, Arc<DatabaseConnection>, T> + Send + Sync,
+    S: CacheCallback<'r, DatabaseConnection, T> + Send + Sync,
     M: CacheMissCallback<'r, RedisPool, T> + Send + Sync,
 {
     redis_query: R,
@@ -50,7 +50,7 @@ where
 {
     async fn query(
         self,
-        db: &'r Arc<DatabaseConnection>,
+        db: &'r DatabaseConnection,
         redis: &'r RedisPool,
         key: &'r String,
     ) -> Result<Option<R>>;
@@ -60,7 +60,7 @@ impl<'r, T, R, S, M> CachedQuery<'r, T, R, S, M>
 where
     T: Serialize + DeserializeOwned + Send + Sync,
     R: CacheCallback<'r, RedisPool, T> + Send + Sync,
-    S: CacheCallback<'r, Arc<DatabaseConnection>, T> + Send + Sync,
+    S: CacheCallback<'r, DatabaseConnection, T> + Send + Sync,
     M: CacheMissCallback<'r, RedisPool, T> + Send + Sync,
 {
     pub(crate) fn new(sql_query: S, redis_query: R, miss_query: M) -> Self {
@@ -78,20 +78,20 @@ impl<'r, T, R, S, M> CachedQueryTrait<'r, T> for CachedQuery<'r, T, R, S, M>
 where
     T: Serialize + DeserializeOwned + Send + Sync + 'static,
     R: CacheCallback<'r, RedisPool, T> + Send + Sync,
-    S: CacheCallback<'r, Arc<DatabaseConnection>, T> + Send + Sync,
+    S: CacheCallback<'r, DatabaseConnection, T> + Send + Sync,
     M: CacheMissCallback<'r, RedisPool, T> + Send + Sync,
 {
     async fn query(
         self,
-        db: &'r Arc<DatabaseConnection>,
+        db: &'r DatabaseConnection,
         redis: &'r RedisPool,
         key: &'r String,
     ) -> Result<Option<T>> {
-        if let Some(val) = self.redis_query.cb(&key, &redis).await? {
+        if let Some(val) = self.redis_query.cb(key, redis).await? {
             Ok(Some(val))
         } else {
-            let val = if let Some(val) = self.sql_query.cb(&key, &db).await? {
-                self.miss_query.cb(&key, &val, &redis).await?;
+            let val = if let Some(val) = self.sql_query.cb(key, db).await? {
+                self.miss_query.cb(key, &val, redis).await?;
                 Some(val)
             } else {
                 None

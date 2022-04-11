@@ -230,23 +230,20 @@ async fn handle_inline(query: &InlineQuery) -> Result<()> {
     log::info!("query! owner: {} tag: {}", query.from.id, query.query);
     let id = query.from.id;
     if let Some(stickers) = CachedQuery::new(
-        move |key, sql| {
-            let sql = Arc::clone(sql);
+        move |key, sql| async move {
             let key = format!("%{}%", key);
-            async move {
-                let stickers = entities::stickers::Entity::find()
-                    .join(
-                        sea_orm::JoinType::InnerJoin,
-                        entities::stickers::Relation::Tags.def(),
-                    )
-                    .group_by(entities::stickers::Column::UniqueId)
-                    .filter(entities::stickers::Column::OwnerId.eq(id))
-                    .filter(entities::tags::Column::Tag.like(&key))
-                    .limit(10)
-                    .all(&*sql)
-                    .await?;
-                Ok(Some(stickers))
-            }
+            let stickers = entities::stickers::Entity::find()
+                .join(
+                    sea_orm::JoinType::InnerJoin,
+                    entities::stickers::Relation::Tags.def(),
+                )
+                .group_by(entities::stickers::Column::UniqueId)
+                .filter(entities::stickers::Column::OwnerId.eq(id))
+                .filter(entities::tags::Column::Tag.like(&key))
+                .limit(10)
+                .all(sql)
+                .await?;
+            Ok(Some(stickers))
         },
         |key, redis| async move {
             println!("key{}", key);
