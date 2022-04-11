@@ -229,8 +229,8 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
 async fn handle_inline(query: &InlineQuery) -> Result<()> {
     log::info!("query! owner: {} tag: {}", query.from.id, query.query);
     let id = query.from.id;
-    if let Some(stickers) = CachedQuery::<Vec<entities::stickers::Model>>::builder()
-        .sql_query(move |key, sql| {
+    if let Some(stickers) = CachedQuery::new(
+        move |key, sql| {
             let sql = Arc::clone(sql);
             let key = format!("%{}%", key);
             async move {
@@ -243,22 +243,19 @@ async fn handle_inline(query: &InlineQuery) -> Result<()> {
                     .filter(entities::stickers::Column::OwnerId.eq(id))
                     .filter(entities::tags::Column::Tag.like(&key))
                     .limit(10)
-                    .all(sql.deref())
+                    .all(&*sql)
                     .await?;
                 Ok(Some(stickers))
             }
-        })
-        .redis_query(|key: &_, redis: &_| async move {
+        },
+        |key, redis| async move {
             println!("key{}", key);
             Ok(None)
-        })
-        .build()?
-        .query(
-            Arc::clone(DB.deref()),
-            REDIS.clone(),
-            query.query.to_owned(),
-        )
-        .await?
+        },
+        |key: &_, val: &_, redis: &_| async move { Ok(()) },
+    )
+    .query(&DB.deref(), &REDIS, &query.query)
+    .await?
     {
         let stickers = stickers.into_iter().map(|s| {
             let r = InlineQueryResultCachedSticker {

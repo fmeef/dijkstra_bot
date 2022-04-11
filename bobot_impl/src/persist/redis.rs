@@ -8,7 +8,7 @@ use crate::util::{
 };
 use anyhow::anyhow;
 use sea_orm::DatabaseConnection;
-use std::ops::DerefMut;
+use std::{marker::PhantomData, ops::DerefMut};
 
 use bb8::{Pool, PooledConnection};
 use bb8_redis::RedisConnectionManager;
@@ -30,100 +30,63 @@ pub const KEY_WRAPPER: &str = "wc:wrapper";
 pub const KEY_TYPE_VAL: &str = "wc:typeval";
 pub const KEY_UUID: &str = "wc:uuid";
 
-pub(crate) struct CachedQuery<R> {
-    redis_query: CacheCb<RedisPool, R>,
-    sql_query: CacheCb<Arc<DatabaseConnection>, R>,
-    miss_query: CacheMissCb<RedisPool, R>,
-}
-
-pub(crate) struct CachedQueryBuilder<R> {
-    redis_query: Option<CacheCb<RedisPool, R>>,
-    sql_query: Option<CacheCb<Arc<DatabaseConnection>, R>>,
-    miss_query: Option<CacheMissCb<RedisPool, R>>,
-}
-
-impl<R> CachedQueryBuilder<R> {
-    pub(crate) fn redis_query<'a, F>(mut self, func: F) -> Self
-    where
-        F: for<'b> CacheCallback<'b, RedisPool, R> + 'static,
-    {
-        //       self.redis_query = Some(CacheCb::new(func));
-        self
-    }
-
-    pub(crate) fn sql_query<'a, F, Fut>(mut self, func: F) -> Self
-    where
-        F: for<'b> FnOnce(&'b String, &'b Arc<DatabaseConnection>) -> Fut + Sync + Send + 'a,
-        R: DeserializeOwned + 'a,
-        Fut: Future<Output = Result<Option<R>>> + Send + 'a,
-    {
-        //self.sql_query = Some(CacheCb(Box::new(OutputBoxer(func))));
-        self
-    }
-
-    pub(crate) fn miss_query<F, Fut>(mut self, func: F) -> Self
-    where
-        F: for<'b> FnOnce(&'b String, &'b R, &'b RedisPool) -> Fut + Sync + Send + 'static,
-        R: Serialize + 'static,
-        Fut: Future<Output = Result<()>> + Send + 'static,
-    {
-        let b = Box::new(OutputBoxer(func));
-        self.miss_query = Some(CacheMissCb(b));
-        self
-    }
-
-    pub(crate) fn build(self) -> Result<CachedQuery<R>> {
-        if let (Some(sql_query), Some(redis_query), Some(miss_query)) =
-            (self.sql_query, self.redis_query, self.miss_query)
-        {
-            Ok(CachedQuery {
-                sql_query,
-                redis_query,
-                miss_query,
-            })
-        } else {
-            Err(anyhow!(BotError::new("failed to build CachedQuery")))
-        }
-    }
+pub(crate) struct CachedQuery<'r, T, R, S, M>
+where
+    T: Serialize + DeserializeOwned + Send + Sync,
+    R: CacheCallback<'r, RedisPool, T> + Send + Sync,
+    S: CacheCallback<'r, Arc<DatabaseConnection>, T> + Send + Sync,
+    M: CacheMissCallback<'r, RedisPool, T> + Send + Sync,
+{
+    redis_query: R,
+    sql_query: S,
+    miss_query: M,
+    phantom: PhantomData<&'r T>,
 }
 
 #[async_trait]
-pub(crate) trait CachedQueryTrait<R>
+pub(crate) trait CachedQueryTrait<'r, R>
 where
     R: DeserializeOwned + 'static,
 {
     async fn query(
         self,
-        db: Arc<DatabaseConnection>,
-        redis: RedisPool,
-        key: String,
+        db: &'r Arc<DatabaseConnection>,
+        redis: &'r RedisPool,
+        key: &'r String,
     ) -> Result<Option<R>>;
 }
 
-impl<R> CachedQuery<R>
+impl<'r, T, R, S, M> CachedQuery<'r, T, R, S, M>
 where
-    R: DeserializeOwned,
+    T: Serialize + DeserializeOwned + Send + Sync,
+    R: CacheCallback<'r, RedisPool, T> + Send + Sync,
+    S: CacheCallback<'r, Arc<DatabaseConnection>, T> + Send + Sync,
+    M: CacheMissCallback<'r, RedisPool, T> + Send + Sync,
 {
-    pub(crate) fn builder() -> CachedQueryBuilder<R> {
-        CachedQueryBuilder {
-            redis_query: None,
-            sql_query: None,
-            miss_query: None,
+    pub(crate) fn new(sql_query: S, redis_query: R, miss_query: M) -> Self {
+        Self {
+            redis_query,
+            sql_query,
+            miss_query,
+            phantom: PhantomData,
         }
     }
 }
 
 #[async_trait]
-impl<R> CachedQueryTrait<R> for CachedQuery<R>
+impl<'r, T, R, S, M> CachedQueryTrait<'r, T> for CachedQuery<'r, T, R, S, M>
 where
-    R: DeserializeOwned + Serialize + Clone + Send + Sync + 'static,
+    T: Serialize + DeserializeOwned + Send + Sync + 'static,
+    R: CacheCallback<'r, RedisPool, T> + Send + Sync,
+    S: CacheCallback<'r, Arc<DatabaseConnection>, T> + Send + Sync,
+    M: CacheMissCallback<'r, RedisPool, T> + Send + Sync,
 {
     async fn query(
         self,
-        db: Arc<DatabaseConnection>,
-        redis: RedisPool,
-        key: String,
-    ) -> Result<Option<R>> {
+        db: &'r Arc<DatabaseConnection>,
+        redis: &'r RedisPool,
+        key: &'r String,
+    ) -> Result<Option<T>> {
         if let Some(val) = self.redis_query.cb(&key, &redis).await? {
             Ok(Some(val))
         } else {

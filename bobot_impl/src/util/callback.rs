@@ -58,7 +58,7 @@ pub trait BoxedCacheCallback<'a, T, R>: Send + Sync {
 impl<'a, F, T, R, Fut> CacheCallback<'a, T, R> for F
 where
     F: FnOnce(&'a String, &'a T) -> Fut + Sync + Send + 'a,
-    R: DeserializeOwned + 'a,
+    R: DeserializeOwned,
     T: 'a,
     Fut: Future<Output = Result<Option<R>>> + Send + 'a,
 {
