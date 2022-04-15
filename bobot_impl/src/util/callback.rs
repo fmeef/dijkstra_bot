@@ -40,30 +40,30 @@ where
     R: DeserializeOwned + 'a,
 {
     type Fut = BotDbFuture<'a, Result<Option<R>>>;
-    fn cb(self, key: &'a String, db: &'a T) -> Self::Fut {
+    fn cb(self, key: &'a str, db: &'a T) -> Self::Fut {
         self.0.cb_boxed(key, db)
     }
 }
 
 pub trait CacheCallback<'a, T, R>: Send + Sync {
     type Fut: Future<Output = Result<Option<R>>> + Send + 'a;
-    fn cb(self, key: &'a String, db: &'a T) -> Self::Fut;
+    fn cb(self, key: &'a str, db: &'a T) -> Self::Fut;
 }
 
 pub trait BoxedCacheCallback<'a, T, R>: Send + Sync {
     type Fut: Future<Output = Result<Option<R>>> + Send + 'a;
-    fn cb_boxed(self: Box<Self>, key: &'a String, db: &'a T) -> Self::Fut;
+    fn cb_boxed(self: Box<Self>, key: &'a str, db: &'a T) -> Self::Fut;
 }
 
 impl<'a, F, T, R, Fut> CacheCallback<'a, T, R> for F
 where
-    F: FnOnce(&'a String, &'a T) -> Fut + Sync + Send + 'a,
+    F: FnOnce(&'a str, &'a T) -> Fut + Sync + Send + 'a,
     R: DeserializeOwned,
     T: 'a,
     Fut: Future<Output = Result<Option<R>>> + Send + 'a,
 {
     type Fut = Fut;
-    fn cb(self, key: &'a String, db: &'a T) -> Self::Fut {
+    fn cb(self, key: &'a str, db: &'a T) -> Self::Fut {
         self(key, db)
     }
 }
@@ -74,20 +74,20 @@ where
     R: DeserializeOwned + 'a
 {
     type Fut = BotDbFuture<'a, Result<Option<R>>>;
-    fn cb_boxed(self: Box<Self>, key: &'a String, db: &'a T) -> Self::Fut {
+    fn cb_boxed(self: Box<Self>, key: &'a str, db: &'a T) -> Self::Fut {
         (*self).0.cb(key, db).boxed()
     }
 }
 
 impl<'a, F, T, R, Fut> BoxedCacheCallback<'a, T, R> for F
 where
-    F: FnOnce(&'a String, &'a T) -> Fut + Sync + Send + 'a,
+    F: FnOnce(&'a str, &'a T) -> Fut + Sync + Send + 'a,
     R: 'a,
     T: 'a,
     Fut: Future<Output = Result<Option<R>>> + Send + 'a,
 {
     type Fut = Fut;
-    fn cb_boxed(self: Box<Self>, key: &'a String, db: &'a T) -> Self::Fut {
+    fn cb_boxed(self: Box<Self>, key: &'a str, db: &'a T) -> Self::Fut {
         (*self)(key, db)
     }
 }
@@ -102,30 +102,30 @@ where
     V: Serialize + 'a,
 {
     type Fut = BotDbFuture<'a, Result<V>>;
-    fn cb(self, key: &'a String, val: V, db: &'a T) -> Self::Fut {
+    fn cb(self, key: &'a str, val: V, db: &'a T) -> Self::Fut {
         self.0.cb_boxed(key, val, db)
     }
 }
 
 pub trait CacheMissCallback<'a, T, V>: Send + Sync {
     type Fut: Future<Output = Result<V>> + Send + 'a;
-    fn cb(self, key: &'a String, val: V, db: &'a T) -> Self::Fut;
+    fn cb(self, key: &'a str, val: V, db: &'a T) -> Self::Fut;
 }
 
 pub trait BoxedCacheMissCallback<'a, T, V>: Send + Sync {
     type Fut: Future<Output = Result<V>> + Send + 'a;
-    fn cb_boxed(self: Box<Self>, key: &'a String, val: V, db: &'a T) -> Self::Fut;
+    fn cb_boxed(self: Box<Self>, key: &'a str, val: V, db: &'a T) -> Self::Fut;
 }
 
 impl<'a, F, T, V, Fut> CacheMissCallback<'a, T, V> for F
 where
-    F: FnOnce(&'a String, V, &'a T) -> Fut + Sync + Send + 'a,
+    F: FnOnce(&'a str, V, &'a T) -> Fut + Sync + Send + 'a,
     V: Serialize + 'a,
     T: 'a,
     Fut: Future<Output = Result<V>> + Send + 'a,
 {
     type Fut = Fut;
-    fn cb(self, key: &'a String, val: V, db: &'a T) -> Self::Fut {
+    fn cb(self, key: &'a str, val: V, db: &'a T) -> Self::Fut {
         self(key, val, db)
     }
 }
@@ -136,20 +136,20 @@ where
     V: Serialize + 'a, 
 {
     type Fut = BotDbFuture<'a, Result<V>>;
-    fn cb_boxed(self: Box<Self>, key: &'a String, val: V, db: &'a T) -> Self::Fut {
+    fn cb_boxed(self: Box<Self>, key: &'a str, val: V, db: &'a T) -> Self::Fut {
         (*self).0.cb(key,val,  db).boxed()
     }
 }
 
 impl<'a, F, T, V, Fut> BoxedCacheMissCallback<'a, T, V> for F
 where
-    F: FnOnce(&'a String, V, &'a T) -> Fut + Sync + Send + 'a,
+    F: FnOnce(&'a str, V, &'a T) -> Fut + Sync + Send + 'a,
     V: Serialize + 'a,
     T: 'a,
     Fut: Future<Output = Result<V>> + Send + 'a,
 {
     type Fut = Fut;
-    fn cb_boxed(self: Box<Self>, key: &'a String, val: V, db: &'a T) -> Self::Fut {
+    fn cb_boxed(self: Box<Self>, key: &'a str, val: V, db: &'a T) -> Self::Fut {
         (*self)(key, val, db)
     }
 }

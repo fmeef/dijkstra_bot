@@ -429,7 +429,7 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
             let stickername = stickername.0;
 
             let tags = REDIS
-                .drain_list::<String, ModelRedis>(&taglist)
+                .drain_list::<ModelRedis>(&taglist)
                 .await?
                 .into_iter()
                 .map(|m| {

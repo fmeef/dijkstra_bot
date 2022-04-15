@@ -1,9 +1,6 @@
 use super::Result;
 use crate::util::{
-    callback::{
-        BotDbFuture, BoxedCacheCallback, CacheCallback, CacheCb, CacheMissCallback, CacheMissCb,
-        OutputBoxer,
-    },
+    callback::{CacheCallback, CacheMissCallback},
     error::BotError,
 };
 use anyhow::anyhow;
@@ -15,10 +12,10 @@ use bb8_redis::RedisConnectionManager;
 
 use async_trait::async_trait;
 use futures::Future;
-use higher_order_closure::higher_order_closure;
+
 use redis::{AsyncCommands, ErrorKind, FromRedisValue, Pipeline, RedisError, ToRedisArgs};
 use serde::{de::DeserializeOwned, Serialize};
-use std::sync::Arc;
+
 use teloxide::types::Message;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
@@ -160,29 +157,29 @@ impl ToRedisArgs for RedisStr {
 }
 
 #[inline(always)]
-pub fn random_key<T: AsRef<str>>(prefix: &T) -> String {
+pub fn random_key(prefix: &str) -> String {
     let uuid = Uuid::new_v4();
-    format!("r:{}:{}", prefix.as_ref(), uuid.to_string())
+    format!("r:{}:{}", prefix, uuid.to_string())
 }
 
 #[inline(always)]
-pub fn scope_key_by_user<T: AsRef<str>>(key: &T, user: i64) -> String {
-    format!("u:{}:{}", user, key.as_ref())
+pub fn scope_key_by_user(key: &str, user: i64) -> String {
+    format!("u:{}:{}", user, key)
 }
 
 #[inline(always)]
-pub fn scope_key<T: AsRef<str>>(key: &T, message: &Message, prefix: &str) -> Result<String> {
+pub fn scope_key(key: &str, message: &Message, prefix: &str) -> Result<String> {
     let user_id = message
         .from()
         .ok_or_else(|| BotError::new("message without sender"))?
         .id;
     let chat_id = message.chat.id;
-    let res = format!("{}:{}:{}:{}", prefix, chat_id, user_id, key.as_ref());
+    let res = format!("{}:{}:{}:{}", prefix, chat_id, user_id, key);
     Ok(res)
 }
 
 #[inline(always)]
-pub fn scope_key_by_chatuser<T: AsRef<str>>(key: &T, message: &Message) -> Result<String> {
+pub fn scope_key_by_chatuser(key: &str, message: &Message) -> Result<String> {
     scope_key(key, message, "cu")
 }
 
@@ -216,18 +213,17 @@ impl RedisPool {
 
     // atomically create a list out of multipole Serialize types
     // any previous list at this key will be overwritten
-    pub async fn create_list<T, U, V>(&self, key: &T, obj: U) -> Result<()>
+    pub async fn create_list<U, V>(&self, key: &str, obj: U) -> Result<()>
     where
-        T: AsRef<str> + Send + Sync,
         V: Serialize + Send + Sync,
         U: Iterator<Item = V>,
     {
         self.try_pipe(|p| {
             let p = p.atomic();
-            let p = p.del(key.as_ref());
+            let p = p.del(key);
             for item in obj {
                 let obj = RedisStr::new(&item)?;
-                p.lpush(key.as_ref(), &obj);
+                p.lpush(key, &obj);
             }
             Ok(p)
         })
@@ -236,13 +232,12 @@ impl RedisPool {
     }
 
     // remove and deserialize all items in a list.
-    pub async fn drain_list<T, R>(&self, key: &T) -> Result<Vec<R>>
+    pub async fn drain_list<R>(&self, key: &str) -> Result<Vec<R>>
     where
-        T: AsRef<str> + Send + Sync,
         R: DeserializeOwned + Send + Sync,
     {
         let mut conn = self.pool.get().await?;
-        conn.lrange::<&str, Vec<Vec<u8>>>(key.as_ref(), 0, -1)
+        conn.lrange::<&str, Vec<Vec<u8>>>(key, 0, -1)
             .await?
             .into_iter()
             .map(|v| {
