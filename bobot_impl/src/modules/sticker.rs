@@ -231,6 +231,7 @@ async fn handle_inline(query: &InlineQuery) -> Result<()> {
     let id = query.from.id;
     if let Some(stickers) = CachedQuery::new(
         move |key, sql| async move {
+            let sql: &DatabaseConnection = sql;
             let key = format!("%{}%", key);
             let stickers = entities::stickers::Entity::find()
                 .join(
@@ -246,10 +247,21 @@ async fn handle_inline(query: &InlineQuery) -> Result<()> {
             Ok(Some(stickers))
         },
         |key, redis| async move {
-            println!("key{}", key);
-            Ok(None)
+            let redis: &RedisPool = redis; //cry noises, can't have type annotations because lifetime bs
+            let res: Vec<entities::stickers::Model> = redis.drain_list(key).await?;
+            if res.len() > 0 {
+                Ok(Some(res))
+            } else {
+                Ok(None)
+            }
         },
-        |key: &_, val: &_, redis: &_| async move { Ok(()) },
+        |key, val, redis| async move {
+            let redis: &RedisPool = redis;
+            let val: Vec<entities::stickers::Model> = val;
+            log::info!("miss query {}", val.len());
+            redis.create_list(key, val.iter()).await?;
+            Ok(val)
+        },
     )
     .query(&DB.deref(), &REDIS, &query.query)
     .await?

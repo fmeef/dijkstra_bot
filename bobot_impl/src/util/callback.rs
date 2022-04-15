@@ -95,36 +95,37 @@ where
 
 // Boxed closure type returning future for updating redis on cache miss
 pub(crate) struct CacheMissCb<T, V>(
-    pub(crate) Box<dyn for<'a> BoxedCacheMissCallback<'a, T,V,Fut = BotDbFuture<'a, Result<()>>>>,
+    pub(crate) Box<dyn for<'a> BoxedCacheMissCallback<'a, T,V,Fut = BotDbFuture<'a, Result<V>>>>,
 );
 impl<'a, T, V> CacheMissCallback<'a, T, V> for CacheMissCb<T, V>
 where
-    V: Serialize + 'static,
+    V: Serialize + 'a,
 {
-    type Fut = BotDbFuture<'a, Result<()>>;
-    fn cb(self, key: &String, val: &V, db: &T) -> Self::Fut {
+    type Fut = BotDbFuture<'a, Result<V>>;
+    fn cb(self, key: &'a String, val: V, db: &'a T) -> Self::Fut {
         self.0.cb_boxed(key, val, db)
     }
 }
 
 pub trait CacheMissCallback<'a, T, V>: Send + Sync {
-    type Fut: Future<Output = Result<()>> + Send + 'a;
-    fn cb(self, key: &String, val: &V, db: &T) -> Self::Fut;
+    type Fut: Future<Output = Result<V>> + Send + 'a;
+    fn cb(self, key: &'a String, val: V, db: &'a T) -> Self::Fut;
 }
 
 pub trait BoxedCacheMissCallback<'a, T, V>: Send + Sync {
-    type Fut: Future<Output = Result<()>> + Send + 'a;
-    fn cb_boxed(self: Box<Self>, key: &String, val: &V, db: &T) -> Self::Fut;
+    type Fut: Future<Output = Result<V>> + Send + 'a;
+    fn cb_boxed(self: Box<Self>, key: &'a String, val: V, db: &'a T) -> Self::Fut;
 }
 
 impl<'a, F, T, V, Fut> CacheMissCallback<'a, T, V> for F
 where
-    F: for<'b> FnOnce(&'b String, &'b V, &'b T) -> Fut + Sync + Send + 'static,
-    V: Serialize + 'static,
-    Fut: Future<Output = Result<()>> + Send + 'static,
+    F: FnOnce(&'a String, V, &'a T) -> Fut + Sync + Send + 'a,
+    V: Serialize + 'a,
+    T: 'a,
+    Fut: Future<Output = Result<V>> + Send + 'a,
 {
     type Fut = Fut;
-    fn cb(self, key: &String, val: &V, db: &T) -> Self::Fut {
+    fn cb(self, key: &'a String, val: V, db: &'a T) -> Self::Fut {
         self(key, val, db)
     }
 }
@@ -132,22 +133,23 @@ where
 impl<'a, F, T, V> BoxedCacheMissCallback<'a, T, V> for OutputBoxer<F>
 where
     F: CacheMissCallback<'a, T, V>,
-    V: Serialize + 'static, 
+    V: Serialize + 'a, 
 {
-    type Fut = BotDbFuture<'a, Result<()>>;
-    fn cb_boxed(self: Box<Self>, key: &String, val: &V, db: &T) -> Self::Fut {
+    type Fut = BotDbFuture<'a, Result<V>>;
+    fn cb_boxed(self: Box<Self>, key: &'a String, val: V, db: &'a T) -> Self::Fut {
         (*self).0.cb(key,val,  db).boxed()
     }
 }
 
 impl<'a, F, T, V, Fut> BoxedCacheMissCallback<'a, T, V> for F
 where
-    F: for<'b> FnOnce(&'b String, &'b V, &'b T) -> Fut + Sync + Send + 'static,
-    V: Serialize + 'static,
-    Fut: Future<Output = Result<()>> + Send + 'static,
+    F: FnOnce(&'a String, V, &'a T) -> Fut + Sync + Send + 'a,
+    V: Serialize + 'a,
+    T: 'a,
+    Fut: Future<Output = Result<V>> + Send + 'a,
 {
     type Fut = Fut;
-    fn cb_boxed(self: Box<Self>, key: &String, val: &V, db: &T) -> Self::Fut {
+    fn cb_boxed(self: Box<Self>, key: &'a String, val: V, db: &'a T) -> Self::Fut {
         (*self)(key, val, db)
     }
 }

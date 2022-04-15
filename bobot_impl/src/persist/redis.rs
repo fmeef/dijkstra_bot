@@ -46,7 +46,7 @@ where
 #[async_trait]
 pub(crate) trait CachedQueryTrait<'r, R>
 where
-    R: DeserializeOwned + 'static,
+    R: DeserializeOwned,
 {
     async fn query(
         self,
@@ -76,7 +76,7 @@ where
 #[async_trait]
 impl<'r, T, R, S, M> CachedQueryTrait<'r, T> for CachedQuery<'r, T, R, S, M>
 where
-    T: Serialize + DeserializeOwned + Send + Sync + 'static,
+    T: Serialize + DeserializeOwned + Send + Sync,
     R: CacheCallback<'r, RedisPool, T> + Send + Sync,
     S: CacheCallback<'r, DatabaseConnection, T> + Send + Sync,
     M: CacheMissCallback<'r, RedisPool, T> + Send + Sync,
@@ -90,13 +90,12 @@ where
         if let Some(val) = self.redis_query.cb(key, redis).await? {
             Ok(Some(val))
         } else {
-            let val = if let Some(val) = self.sql_query.cb(key, db).await? {
-                self.miss_query.cb(key, &val, redis).await?;
-                Some(val)
+            let val = self.sql_query.cb(key, db).await?;
+            if let Some(val) = val {
+                Ok(Some(self.miss_query.cb(key, val, redis).await?))
             } else {
-                None
-            };
-            Ok(val)
+                Ok(None)
+            }
         }
     }
 }
@@ -219,8 +218,8 @@ impl RedisPool {
     // any previous list at this key will be overwritten
     pub async fn create_list<T, U, V>(&self, key: &T, obj: U) -> Result<()>
     where
-        T: AsRef<str> + Send + Sync + 'static,
-        V: Serialize + Send + Sync + 'static,
+        T: AsRef<str> + Send + Sync,
+        V: Serialize + Send + Sync,
         U: Iterator<Item = V>,
     {
         self.try_pipe(|p| {
