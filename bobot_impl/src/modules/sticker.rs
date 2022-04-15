@@ -14,17 +14,15 @@ use anyhow::anyhow;
 use lazy_static::__Deref;
 use log::info;
 use sea_orm::entity::prelude::*;
-use sea_orm::{ActiveModelTrait, ConnectionTrait, IntoActiveModel, QuerySelect, Set};
+use sea_orm::{ActiveModelTrait, IntoActiveModel, QuerySelect, Set};
 use sea_schema::migration::{MigrationName, MigrationTrait};
-use std::sync::Arc;
+
 use teloxide::payloads::SendMessageSetters;
 use teloxide::prelude::Requester;
 use teloxide::types::{
     InlineQuery, InlineQueryResult, InlineQueryResultCachedSticker, MediaKind, Message,
     MessageCommon, MessageKind, Update, UpdateKind,
 };
-
-use higher_order_closure;
 
 // redis keys
 const KEY_TYPE_TAG: &str = "wc:tag";
