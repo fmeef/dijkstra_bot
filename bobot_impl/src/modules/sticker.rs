@@ -227,42 +227,46 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
 async fn handle_inline(query: &InlineQuery) -> Result<()> {
     log::info!("query! owner: {} tag: {}", query.from.id, query.query);
     let id = query.from.id;
-    if let Some(stickers) = CachedQuery::new(
-        move |key, sql| async move {
-            let sql: &DatabaseConnection = sql;
-            let key = format!("%{}%", key);
-            let stickers = entities::stickers::Entity::find()
-                .join(
-                    sea_orm::JoinType::InnerJoin,
-                    entities::stickers::Relation::Tags.def(),
-                )
-                .group_by(entities::stickers::Column::UniqueId)
-                .filter(entities::stickers::Column::OwnerId.eq(id))
-                .filter(entities::tags::Column::Tag.like(&key))
-                .limit(10)
-                .all(sql)
-                .await?;
-            Ok(Some(stickers))
-        },
-        |key, redis| async move {
-            let redis: &RedisPool = redis; //cry noises, can't have type annotations because lifetime bs
-            let res: Vec<entities::stickers::Model> = redis.drain_list(key).await?;
-            if res.len() > 0 {
-                Ok(Some(res))
-            } else {
-                Ok(None)
-            }
-        },
-        |key, val, redis| async move {
-            let redis: &RedisPool = redis;
-            let val: Vec<entities::stickers::Model> = val;
-            log::info!("miss query {}", val.len());
-            redis.create_list(key, val.iter()).await?;
-            Ok(val)
-        },
-    )
-    .query(&DB.deref(), &REDIS, &query.query)
-    .await?
+    let key = query.query.to_owned();
+    if let Some(stickers) = tokio::spawn(async move {
+        CachedQuery::new(
+            move |key, sql| async move {
+                let sql: &DatabaseConnection = sql;
+                let key = format!("%{}%", key);
+                let stickers = entities::stickers::Entity::find()
+                    .join(
+                        sea_orm::JoinType::InnerJoin,
+                        entities::stickers::Relation::Tags.def(),
+                    )
+                    .group_by(entities::stickers::Column::UniqueId)
+                    .filter(entities::stickers::Column::OwnerId.eq(id))
+                    .filter(entities::tags::Column::Tag.like(&key))
+                    .limit(10)
+                    .all(sql)
+                    .await?;
+                Ok(Some(stickers))
+            },
+            |key, redis| async move {
+                let redis: &RedisPool = redis; //cry noises, can't have type annotations because lifetime bs
+                let res: Vec<entities::stickers::Model> = redis.drain_list(key).await?;
+                if res.len() > 0 {
+                    Ok(Some(res))
+                } else {
+                    Ok(None)
+                }
+            },
+            |key, val, redis| async move {
+                let redis: &RedisPool = redis;
+                let val: Vec<entities::stickers::Model> = val;
+                log::info!("miss query {}", val.len());
+                redis.create_list(key, val.iter()).await?;
+                Ok(val)
+            },
+        )
+        .query(&DB.deref(), &REDIS, &key)
+        .await
+    })
+    .await??
     {
         let stickers = stickers.into_iter().map(|s| {
             let r = InlineQueryResultCachedSticker {

@@ -49,7 +49,7 @@ where
         self,
         db: &'r DatabaseConnection,
         redis: &'r RedisPool,
-        key: &'r String,
+        key: &'r str,
     ) -> Result<Option<R>>;
 }
 
@@ -82,7 +82,7 @@ where
         self,
         db: &'r DatabaseConnection,
         redis: &'r RedisPool,
-        key: &'r String,
+        key: &'r str,
     ) -> Result<Option<T>> {
         if let Some(val) = self.redis_query.cb(key, redis).await? {
             Ok(Some(val))
