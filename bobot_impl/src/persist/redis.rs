@@ -27,6 +27,37 @@ pub const KEY_WRAPPER: &str = "wc:wrapper";
 pub const KEY_TYPE_VAL: &str = "wc:typeval";
 pub const KEY_UUID: &str = "wc:uuid";
 
+async fn redis_query<'a, R>(key: &'a str, redis: &'a RedisPool) -> Result<Option<R>>
+where
+    R: DeserializeOwned + Sync + Send + 'a,
+{
+    let res: Option<RedisStr> = redis
+        .query(|mut c| async move {
+            if !c.exists(key).await? {
+                Ok(None)
+            } else {
+                Ok(Some(c.get(key).await?))
+            }
+        })
+        .await?;
+
+    let res = res.map(|v| v.get::<R>().ok()).flatten();
+    Ok(res)
+}
+
+async fn redis_miss<'a, V>(key: &'a str, val: V, redis: &'a RedisPool) -> Result<V>
+where
+    V: Serialize + 'a,
+{
+    let valstr = RedisStr::new(&val)?;
+    redis.pipe(|p| p.set(key, valstr)).await?;
+    Ok(val)
+}
+
+/*
+ * Helper type for caching a single value from the database
+ * in redis.
+ */
 pub(crate) struct CachedQuery<'r, T, R, S, M>
 where
     T: Serialize + DeserializeOwned + Send + Sync,
@@ -51,6 +82,19 @@ where
         redis: &'r RedisPool,
         key: &'r str,
     ) -> Result<Option<R>>;
+}
+
+/*
+ * Return a default cached query that stores cached values as
+ * single redis key. This behavior can be overridden if more
+ * complex redis structures are required
+ */
+pub(crate) fn default_cache_query<'r, T, S>(sql_query: S) -> impl CachedQueryTrait<'r, T>
+where
+    T: Serialize + DeserializeOwned + Send + Sync + 'r,
+    S: CacheCallback<'r, DatabaseConnection, T> + Send + Sync,
+{
+    CachedQuery::new(sql_query, redis_query, redis_miss)
 }
 
 impl<'r, T, R, S, M> CachedQuery<'r, T, R, S, M>
