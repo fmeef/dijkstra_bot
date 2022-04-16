@@ -27,6 +27,26 @@ pub const KEY_WRAPPER: &str = "wc:wrapper";
 pub const KEY_TYPE_VAL: &str = "wc:typeval";
 pub const KEY_UUID: &str = "wc:uuid";
 
+async fn redis_query_vec<'a, R>(key: &'a str, redis: &'a RedisPool) -> Result<Option<Vec<R>>>
+where
+    R: DeserializeOwned + DeserializeOwned + Sync + Send + 'a,
+{
+    let res: Vec<R> = redis.drain_list(key).await?;
+    if res.len() == 0 {
+        Ok(None)
+    } else {
+        Ok(Some(res))
+    }
+}
+
+async fn redis_miss_vec<'a, V>(key: &'a str, val: Vec<V>, redis: &'a RedisPool) -> Result<Vec<V>>
+where
+    V: Serialize + DeserializeOwned + Send + Sync + 'a,
+{
+    redis.create_list(key, val.iter()).await?;
+    Ok(val)
+}
+
 async fn redis_query<'a, R>(key: &'a str, redis: &'a RedisPool) -> Result<Option<R>>
 where
     R: DeserializeOwned + Sync + Send + 'a,
@@ -82,6 +102,14 @@ where
         redis: &'r RedisPool,
         key: &'r str,
     ) -> Result<Option<R>>;
+}
+
+pub(crate) fn default_cached_query_vec<'r, T, S>(sql_query: S) -> impl CachedQueryTrait<'r, Vec<T>>
+where
+    T: Serialize + DeserializeOwned + Send + Sync + 'r,
+    S: CacheCallback<'r, DatabaseConnection, Vec<T>> + Send + Sync,
+{
+    CachedQuery::new(sql_query, redis_query_vec, redis_miss_vec)
 }
 
 /*
@@ -257,18 +285,19 @@ impl RedisPool {
 
     // atomically create a list out of multipole Serialize types
     // any previous list at this key will be overwritten
-    pub async fn create_list<U, V>(&self, key: &str, obj: U) -> Result<()>
+    pub async fn create_list<U, V>(&self, key: &str, mut obj: U) -> Result<()>
     where
         V: Serialize + Send + Sync,
         U: Iterator<Item = V>,
     {
         self.try_pipe(|p| {
-            let p = p.atomic();
-            let p = p.del(key);
-            for item in obj {
-                let obj = RedisStr::new(&item)?;
-                p.lpush(key, &obj);
-            }
+            p.atomic();
+            p.del(key);
+            obj.try_for_each(|v| {
+                let v = RedisStr::new(&v)?;
+                p.lpush(key, v);
+                Ok::<(), anyhow::Error>(())
+            })?;
             Ok(p)
         })
         .await?;
