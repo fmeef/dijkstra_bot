@@ -313,10 +313,7 @@ impl RedisPool {
         conn.lrange::<&str, Vec<Vec<u8>>>(key, 0, -1)
             .await?
             .into_iter()
-            .map(|v| {
-                let res: Result<R> = rmp_serde::from_slice(&v.as_slice()).map_err(|e| anyhow!(e));
-                res
-            })
+            .map(|v| rmp_serde::from_slice(&v.as_slice()).map_err(|e| anyhow!(e)))
             .collect()
     }
 
