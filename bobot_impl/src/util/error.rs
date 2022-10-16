@@ -20,8 +20,6 @@ pub enum BotError {
     TgInvocationError(#[from] grammers_client::client::auth::InvocationError),
     #[error("io error")]
     IoError(#[from] std::io::Error),
-    #[error("teloxide request error")]
-    RequestError(#[from] teloxide::RequestError),
 }
 
 impl BotError {

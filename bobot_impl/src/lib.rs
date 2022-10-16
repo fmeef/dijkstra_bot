@@ -42,6 +42,7 @@ pub async fn async_main() -> Result<(), Box<dyn std::error::Error + Send + Sync>
         .start()?;
 
     TG.run().await?;
+    println!("complete");
     log::logger().flush();
     Ok(())
 }

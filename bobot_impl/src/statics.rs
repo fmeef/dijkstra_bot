@@ -14,12 +14,7 @@ use tokio::runtime::Runtime;
 //global configuration parameters
 lazy_static! {
     pub(crate) static ref ARGS: Args = Args::parse();
-    pub(crate) static ref API_ID: i32 = env::var("API_ID")
-        .expect("need to set API_ID")
-        .parse()
-        .expect("invalid API_ID");
-    pub(crate) static ref BOT_TOKEN: String = env::var("FMEFTOKEN").expect("need to set FMEFTOKEN");
-    pub(crate) static ref API_HASH: String = env::var("API_HASH").expect("need to set API_HASH");
+    pub(crate) static ref BOT_TOKEN: String = env::var("TOKEN").expect("need to set FMEFTOKEN");
     pub(crate) static ref PG_CONNECTION_STR: String =
         env::var("PG_CONNECTION_PROD").expect("need to set PG_CONNECTION_PROD");
     pub(crate) static ref REDIS_CONNECTION_STR: String =

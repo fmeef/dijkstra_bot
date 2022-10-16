@@ -1,15 +1,11 @@
-use teloxide::{
-    adaptors::AutoSend,
-    dispatching::update_listeners::{polling_default, AsUpdateStream},
-    Bot,
-};
+use botapi::{bot::Bot, ext::LongPoller};
 
 use futures::StreamExt;
 
 use super::Result;
 
 pub struct TgClient {
-    pub client: AutoSend<Bot>,
+    pub client: Bot,
 }
 
 impl TgClient {
@@ -18,14 +14,14 @@ impl TgClient {
         T: Into<String>,
     {
         Self {
-            client: AutoSend::new(Bot::new(token)),
+            client: Bot::new(token).unwrap(),
         }
     }
 
     pub async fn run(&self) -> Result<()> {
-        polling_default(self.client.clone())
+        let poll = LongPoller::new(&self.client);
+        poll.get_updates()
             .await
-            .as_stream()
             .for_each_concurrent(None, |update| async move {
                 tokio::spawn(async move {
                     if let Ok(update) = update {
@@ -39,7 +35,7 @@ impl TgClient {
         Ok(())
     }
 
-    pub fn client<'a>(&'a self) -> &'a AutoSend<Bot> {
+    pub fn client<'a>(&'a self) -> &'a Bot {
         &self.client
     }
 }

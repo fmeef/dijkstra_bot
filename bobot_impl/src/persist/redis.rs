@@ -13,10 +13,9 @@ use bb8_redis::RedisConnectionManager;
 use async_trait::async_trait;
 use futures::Future;
 
+use botapi::gen_types::Message;
 use redis::{AsyncCommands, ErrorKind, FromRedisValue, Pipeline, RedisError, ToRedisArgs};
 use serde::{de::DeserializeOwned, Serialize};
-
-use teloxide::types::Message;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
@@ -241,11 +240,12 @@ pub fn scope_key_by_user(key: &str, user: i64) -> String {
 
 #[inline(always)]
 pub fn scope_key(key: &str, message: &Message, prefix: &str) -> Result<String> {
-    let user_id = message
-        .from()
+    let user_id = *message
+        .get_from()
+        .as_ref()
         .ok_or_else(|| BotError::new("message without sender"))?
-        .id;
-    let chat_id = message.chat.id;
+        .get_id();
+    let chat_id = *message.get_chat().get_id();
     let res = format!("{}:{}:{}:{}", prefix, chat_id, user_id, key);
     Ok(res)
 }
