@@ -426,13 +426,10 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
 
     let sticker_id: (String,) = REDIS.pipe(|p| p.get(&key)).await?;
     let sticker_id = sticker_id.0;
-    let text = message
-        .get_text()
-        .as_deref()
-        .ok_or_else(|| BotError::new("no text"))?;
+    let text = message.get_text().ok_or_else(|| BotError::new("no text"))?;
     info!("moretags stickerid: {}", sticker_id);
     if let Some(user) = message.get_from() {
-        if text == "/done" {
+        if text.as_str() == "/done" {
             let stickername: (String,) = REDIS.pipe(|p| p.get(&namekey)).await?;
             let stickername = stickername.0;
 
@@ -472,7 +469,7 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
             let tag = RedisStr::new(&ModelRedis {
                 sticker_id,
                 owner_id: user.get_id(),
-                tag: text.to_owned(),
+                tag: text.to_string(),
             })?;
 
             REDIS
