@@ -42,8 +42,8 @@ fn get_conversation_key_message_prefix(message: &Message, prefix: &str) -> Resul
         let res = format!(
             "{}:{}:{}",
             prefix,
-            *message.get_chat().get_id(),
-            *user.get_id()
+            message.get_chat().get_id(),
+            user.get_id()
         );
         info!("conversation key: {}", res);
         Ok(res)
@@ -293,7 +293,7 @@ where
 impl Dialog {
     pub fn new(chat: &Chat) -> Self {
         Dialog {
-            chat_id: *chat.get_id(),
+            chat_id: chat.get_id(),
             last_activity: Utc::now(),
         }
     }

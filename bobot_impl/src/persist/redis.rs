@@ -240,12 +240,12 @@ pub fn scope_key_by_user(key: &str, user: i64) -> String {
 
 #[inline(always)]
 pub fn scope_key(key: &str, message: &Message, prefix: &str) -> Result<String> {
-    let user_id = *message
+    let user_id = message
         .get_from()
         .as_ref()
         .ok_or_else(|| BotError::new("message without sender"))?
         .get_id();
-    let chat_id = *message.get_chat().get_id();
+    let chat_id = message.get_chat().get_id();
     let res = format!("{}:{}:{}:{}", prefix, chat_id, user_id, key);
     Ok(res)
 }

@@ -42,8 +42,8 @@ fn upload_sticker_conversation(message: &Message) -> Result<Conversation> {
     let mut conversation = Conversation::new(
         UPLOAD_CMD.to_string(),
         STATE_START.to_string(),
-        *message.get_chat().get_id(),
-        *message
+        message.get_chat().get_id(),
+        message
             .get_from()
             .as_ref()
             .ok_or_else(|| BotError::new("message has no sender"))?
@@ -222,11 +222,11 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
 }
 
 async fn handle_inline(query: &InlineQuery) -> Result<()> {
-    let id = *query.get_from().get_id();
+    let id = query.get_from().get_id();
     let key = query.get_query().to_owned();
     log::info!(
         "query! owner: {} tag: {}",
-        *query.get_from().get_id(),
+        query.get_from().get_id(),
         query.get_query()
     );
     if let Some(stickers) = tokio::spawn(async move {
@@ -277,12 +277,12 @@ pub async fn handle_update(update: &UpdateExt) {
     let (res, id) = match update {
         UpdateExt::Message(ref message) => {
             let r = handle_message(message).await;
-            let id = *message.get_chat().get_id();
+            let id = message.get_chat().get_id();
             (r, Some(id))
         }
         UpdateExt::InlineQuery(ref query) => {
             let r = handle_inline(query).await;
-            let id = *query.get_from().get_id();
+            let id = query.get_from().get_id();
             (r, Some(id))
         }
         _ => (Ok(()), None),
@@ -335,10 +335,10 @@ async fn delete_sticker(message: &Message, args: Vec<Arg>) -> Result<()> {
             .await?;
         TG.client()
             .build_send_message(
-                *message.get_chat().get_id(),
+                message.get_chat().get_id(),
                 &"Successfully deleted sticker".to_owned(),
             )
-            .reply_to_message_id(Some(*message.get_message_id()))
+            .reply_to_message_id(Some(message.get_message_id()))
             .build()
             .await?;
         Ok(())
@@ -351,7 +351,7 @@ async fn list_stickers(message: &Message) -> Result<()> {
     drop_converstaion(message).await?;
     if let Some(sender) = message.get_from() {
         let stickers = entities::stickers::Entity::find()
-            .filter(entities::stickers::Column::OwnerId.eq(*sender.get_id()))
+            .filter(entities::stickers::Column::OwnerId.eq(sender.get_id()))
             .all(DB.deref().deref())
             .await?;
         let stickers = stickers
@@ -364,8 +364,8 @@ async fn list_stickers(message: &Message) -> Result<()> {
             });
 
         TG.client()
-            .build_send_message(*message.get_chat().get_id(), &stickers)
-            .reply_to_message_id(Some(*message.get_message_id()))
+            .build_send_message(message.get_chat().get_id(), &stickers)
+            .reply_to_message_id(Some(message.get_message_id()))
             .build()
             .await?;
     }
@@ -375,10 +375,10 @@ async fn list_stickers(message: &Message) -> Result<()> {
 async fn conv_start(conversation: Conversation, message: &Message) -> Result<()> {
     TG.client()
         .build_send_message(
-            *message.get_chat().get_id(),
+            message.get_chat().get_id(),
             &"Send a sticker to upload".to_owned(),
         )
-        .reply_to_message_id(Some(*message.get_message_id()))
+        .reply_to_message_id(Some(message.get_message_id()))
         .build()
         .await?;
     conversation.transition(TRANSITION_UPLOAD).await?;
@@ -397,8 +397,8 @@ async fn conv_upload(conversation: Conversation, message: &Message) -> Result<()
             .await?;
         let text = conversation.transition(TRANSITION_NAME).await?;
         TG.client()
-            .build_send_message(*message.get_chat().get_id(), &text.to_owned())
-            .reply_to_message_id(Some(*message.get_message_id()))
+            .build_send_message(message.get_chat().get_id(), &text.to_owned())
+            .reply_to_message_id(Some(message.get_message_id()))
             .build()
             .await?;
         Ok(())
@@ -412,8 +412,8 @@ async fn conv_name(conversation: Conversation, message: &Message) -> Result<()> 
     REDIS.pipe(|p| p.set(&key, message.get_text())).await?;
     let text = conversation.transition(TRANSITION_TAG).await?;
     TG.client()
-        .build_send_message(*message.get_chat().get_id(), &text.to_owned())
-        .reply_to_message_id(Some(*message.get_message_id()))
+        .build_send_message(message.get_chat().get_id(), &text.to_owned())
+        .reply_to_message_id(Some(message.get_message_id()))
         .build()
         .await?;
     Ok(())
@@ -449,7 +449,7 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
 
             let sticker = entities::stickers::ActiveModel {
                 unique_id: Set(sticker_id),
-                owner_id: Set(*user.get_id()),
+                owner_id: Set(user.get_id()),
                 uuid: Set(Uuid::new_v4()),
                 chosen_name: Set(Some(stickername)),
             };
@@ -463,15 +463,15 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
 
             let text = conversation.transition(TRANSITION_DONE).await?;
             TG.client()
-                .build_send_message(*message.get_chat().get_id(), &text.to_owned())
-                .reply_to_message_id(Some(*message.get_message_id()))
+                .build_send_message(message.get_chat().get_id(), &text.to_owned())
+                .reply_to_message_id(Some(message.get_message_id()))
                 .build()
                 .await?;
             Ok(())
         } else {
             let tag = RedisStr::new(&ModelRedis {
                 sticker_id,
-                owner_id: *user.get_id(),
+                owner_id: user.get_id(),
                 tag: text.to_owned(),
             })?;
 
@@ -484,8 +484,8 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
 
             let text = conversation.transition(TRANSITION_MORETAG).await?;
             TG.client()
-                .build_send_message(*message.get_chat().get_id(), &text.to_owned())
-                .reply_to_message_id(Some(*message.get_message_id()))
+                .build_send_message(message.get_chat().get_id(), &text.to_owned())
+                .reply_to_message_id(Some(message.get_message_id()))
                 .build()
                 .await?;
             Ok(())
