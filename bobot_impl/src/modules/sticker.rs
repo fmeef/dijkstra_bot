@@ -429,7 +429,7 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
     let text = message.get_text().ok_or_else(|| BotError::new("no text"))?;
     info!("moretags stickerid: {}", sticker_id);
     if let Some(user) = message.get_from() {
-        if text.as_str() == "/done" {
+        if text == "/done" {
             let stickername: (String,) = REDIS.pipe(|p| p.get(&namekey)).await?;
             let stickername = stickername.0;
 
