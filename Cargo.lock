@@ -478,7 +478,9 @@ dependencies = [
 
 [[package]]
 name = "botapi"
-version = "0.1.0"
+version = "0.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "20755453ae8a0ab1479e583d9e7ae2f15fe054d96857e8d3171bb081ab1404a4"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -652,12 +654,6 @@ checksum = "af4780a44ab5696ea9e28294517f1fffb421a83a25af521333c838635509db9c"
 dependencies = [
  "cache-padded",
 ]
-
-[[package]]
-name = "convert_case"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb4a24b1aaf0fd0ce8b45161144d6f42cd91677fd5940fd431183eb023b3a2b8"
 
 [[package]]
 name = "core-foundation"
@@ -1144,16 +1140,18 @@ dependencies = [
 
 [[package]]
 name = "generate"
-version = "0.1.0"
+version = "0.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "28002ee029508f7ec5961abcfdcc1d06ab0f9e8fa8a5fb4c4ff7eafd8c94453e"
 dependencies = [
- "anyhow",
- "convert_case",
- "itertools",
- "once_cell",
- "quote",
- "serde",
- "serde_json",
+ "generate-derive",
 ]
+
+[[package]]
+name = "generate-derive"
+version = "0.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d27a879e34d466f351475ec586eb061c86cf96bd248b5336f0222e623619ed8a"
 
 [[package]]
 name = "generic-array"

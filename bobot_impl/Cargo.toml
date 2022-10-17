@@ -37,4 +37,4 @@ pomelo = "0.1.5"
 regex = "1"
 flexi_logger = { version = "0.22", features = [ "async", "colors" ] }
 higher-order-closure = "0.0.5"
-botapi = { path = "./botapi-rs" }
+botapi = "0.0.1"

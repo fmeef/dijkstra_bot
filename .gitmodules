@@ -1,3 +1,0 @@
-[submodule "bobot_impl/botapi-rs"]
-	path = bobot_impl/botapi-rs
-	url = https://github.com/fmeef/botapi-rs.git
