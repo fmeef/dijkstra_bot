@@ -16,10 +16,9 @@ use botapi::gen_types::{
 };
 use lazy_static::__Deref;
 use log::info;
-use sea_orm::entity::prelude::*;
-use sea_orm::{ActiveModelTrait, IntoActiveModel, QuerySelect, Set};
-use sea_schema::migration::{MigrationName, MigrationTrait};
-
+use ::sea_orm::entity::prelude::*;
+use ::sea_orm::{ActiveModelTrait, IntoActiveModel, QuerySelect, Set};
+use ::sea_orm_migration::prelude::*;
 // redis keys
 const KEY_TYPE_TAG: &str = "wc:tag";
 const KEY_TYPE_STICKER_ID: &str = "wc:stickerid";
@@ -74,17 +73,17 @@ impl MigrationName for Migration {
 
 pub mod entities {
     use crate::persist::migrate::ManagerHelper;
-    use sea_schema::migration::prelude::*;
-    #[async_trait::async_trait]
+    use ::sea_orm_migration::prelude::*;
+     #[async_trait::async_trait]
     impl MigrationTrait for super::Migration {
         async fn up(
             &self,
-            manager: &sea_schema::migration::SchemaManager,
-        ) -> std::result::Result<(), sea_orm::DbErr> {
+            manager: &SchemaManager,
+        ) -> std::result::Result<(), DbErr> {
             manager
                 .create_table(
-                    Table::create()
-                        .table(tags::Entity)
+                    sea_query::Table::create()
+                        .table(stickers::Entity)
                         .col(
                             ColumnDef::new(tags::Column::Id)
                                 .big_integer()
@@ -105,7 +104,7 @@ pub mod entities {
             manager
                 .create_table(
                     Table::create()
-                        .table(stickers::Entity)
+                        .table(tags::Entity)
                         .col(
                             ColumnDef::new(stickers::Column::UniqueId)
                                 .text()
@@ -137,8 +136,8 @@ pub mod entities {
 
         async fn down(
             &self,
-            manager: &sea_schema::migration::SchemaManager,
-        ) -> std::result::Result<(), sea_orm::DbErr> {
+            manager: &SchemaManager,
+        ) -> std::result::Result<(), DbErr> {
             manager.drop_table_auto(tags::Entity).await?;
             manager.drop_table_auto(stickers::Entity).await?;
             Ok(())

@@ -73,8 +73,8 @@ pub(crate) fn autoimport(input: TokenStream) -> TokenStream {
     let output = quote! {
         #( mod #mods; )*
 
-        pub fn get_migrations() -> ::std::vec::Vec<::std::boxed::Box<dyn ::sea_schema::migration::MigrationTrait>> {
-            let mut _v = ::std::vec::Vec::<::std::boxed::Box<dyn ::sea_schema::migration::MigrationTrait>>::new();
+        pub fn get_migrations() -> ::std::vec::Vec<::std::boxed::Box<dyn ::sea_orm_migration::prelude::MigrationTrait>> {
+            let mut _v = ::std::vec::Vec::<::std::boxed::Box<dyn ::sea_orm_migration::prelude::MigrationTrait>>::new();
             #(
                 _v.append(&mut #funcs::get_migrations());
             )*

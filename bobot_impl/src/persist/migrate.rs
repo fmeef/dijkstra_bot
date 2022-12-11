@@ -1,9 +1,9 @@
 use async_trait::async_trait;
-use sea_schema::migration::*;
-use sea_schema::sea_query::{IntoTableRef, Table};
+use sea_orm_migration::prelude::*;
+use sea_orm_migration::manager::SchemaManager;
+use sea_orm_migration::DbErr;
 
-pub async fn remove_table<'a, T>(manager: &SchemaManager<'a>, table: T) -> Result<(), DbErr>
-where
+pub async fn remove_table<'a, T>(manager: &SchemaManager<'a>, table: T) -> Result<(), DbErr> where
     T: IntoTableRef + 'static,
 {
     manager

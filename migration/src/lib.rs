@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-pub use sea_schema::migration::*;
+pub use sea_orm_migration::*;
 
 mod m20220101_000001_create_table;
 

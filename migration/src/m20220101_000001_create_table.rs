@@ -1,6 +1,6 @@
 use bobot_impl::persist::core::*;
 use bobot_impl::persist::migrate::ManagerHelper;
-use sea_schema::migration::prelude::*;
+use sea_orm_migration::prelude::*;
 
 pub struct Migration;
 
