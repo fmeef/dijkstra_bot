@@ -2,7 +2,7 @@ use botapi::{bot::Bot, ext::LongPoller};
 
 use futures::StreamExt;
 
-use super::Result;
+use super::{user::record_user, Result};
 
 pub struct TgClient {
     pub client: Bot,
@@ -24,10 +24,16 @@ impl TgClient {
             .await
             .for_each_concurrent(None, |update| async move {
                 tokio::spawn(async move {
-                    if let Ok(update) = update {
-                        crate::modules::process_updates(update).await;
-                    } else {
-                        log::debug!("failed to process update");
+                    match update {
+                        Ok(update) => {
+                            if let Err(err) = record_user(&update).await {
+                                log::error!("failed to record_user: {}", err);
+                            }
+                            crate::modules::process_updates(update).await;
+                        }
+                        Err(err) => {
+                            log::error!("failed to process update: {}", err);
+                        }
                     }
                 });
             })

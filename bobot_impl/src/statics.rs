@@ -1,8 +1,10 @@
 use crate::persist::redis::{RedisPool, RedisPoolBuilder};
 use crate::tg::client::TgClient;
+use crate::Config;
 
 use super::Args;
 use clap::Parser;
+use confy::load_path;
 use futures::executor::block_on;
 use lazy_static::lazy_static;
 use sea_orm::entity::prelude::DatabaseConnection;
@@ -14,6 +16,7 @@ use tokio::runtime::Runtime;
 //global configuration parameters
 lazy_static! {
     pub(crate) static ref ARGS: Args = Args::parse();
+    pub(crate) static ref CONFIG: Config = load_path(&ARGS.config).expect("failed to load config");
     pub(crate) static ref BOT_TOKEN: String = env::var("TOKEN").expect("need to set FMEFTOKEN");
     pub(crate) static ref PG_CONNECTION_STR: String =
         env::var("PG_CONNECTION_PROD").expect("need to set PG_CONNECTION_PROD");

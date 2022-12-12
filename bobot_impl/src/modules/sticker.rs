@@ -49,11 +49,11 @@ fn upload_sticker_conversation(message: &Message) -> Result<Conversation> {
             .get_id(),
     )?;
     let start_state = conversation.get_start()?.state_id;
-    let upload_state = conversation.add_state(STATE_UPLOAD);
+    let upload_state = conversation.add_state(STATE_UPLOAD);    
     let name_state = conversation.add_state(STATE_NAME);
     let state_tags = conversation.add_state(STATE_TAGS);
     let state_done = conversation.add_state(STATE_DONE);
-
+    
     conversation.add_transition(start_state, upload_state, TRANSITION_UPLOAD);
     conversation.add_transition(upload_state, name_state, TRANSITION_NAME);
     conversation.add_transition(name_state, state_tags, TRANSITION_TAG);
@@ -73,7 +73,7 @@ impl MigrationName for Migration {
 
 pub mod entities {
     use crate::persist::migrate::ManagerHelper;
-    use ::sea_orm_migration::prelude::*;
+     use ::sea_orm_migration::prelude::*;
      #[async_trait::async_trait]
     impl MigrationTrait for super::Migration {
         async fn up(

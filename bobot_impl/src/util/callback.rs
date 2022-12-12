@@ -1,12 +1,11 @@
 /**
- * NOTE: async closures are not stable, so defining closure types returning future 
+ * NOTE: async closures are not stable, so defining closure types returning future
  * (and supporting both type erasure and sized-ness for storing in collections)
- * are extremely ugly and full of annoying boilerplate. 
+ * are extremely ugly and full of annoying boilerplate.
  *
  * This is the containment module for async-closure related workarounds until we get stable
  * support for native async closures
  */
-
 use futures::{future::BoxFuture, Future, FutureExt};
 use serde::{de::DeserializeOwned, Serialize};
 
@@ -17,21 +16,18 @@ pub type BotDbFuture<'a, T> = BoxFuture<'a, T>;
 // type erasure on the future
 pub(crate) struct OutputBoxer<F>(pub(crate) F);
 
-
 // boxed closure type returning future for handling cached redis/sql queries
 pub(crate) struct CacheCb<T, R>(
-    pub(crate) Box<dyn for<'a> BoxedCacheCallback<'a, T, R, Fut = BotDbFuture<'a, Result<Option<R>>>>>,
+    Box<dyn for<'a> BoxedCacheCallback<'a, T, R, Fut = BotDbFuture<'a, Result<Option<R>>>>>,
 );
 
-impl <'a, T, R: 'a> CacheCb<T, R> {
-
-    pub(crate) fn new<F>(func: F) -> Self 
-    where 
+impl<'a, T, R: 'a> CacheCb<T, R> {
+    pub(crate) fn new<F>(func: F) -> Self
+    where
         F: for<'b> CacheCallback<'b, T, R> + 'static,
-    R: DeserializeOwned + 'static
+        R: DeserializeOwned + 'static,
     {
         Self(Box::new(OutputBoxer(func)))
-        
     }
 }
 
@@ -71,7 +67,7 @@ where
 impl<'a, F, T, R> BoxedCacheCallback<'a, T, R> for OutputBoxer<F>
 where
     F: CacheCallback<'a, T, R>,
-    R: DeserializeOwned + 'a
+    R: DeserializeOwned + 'a,
 {
     type Fut = BotDbFuture<'a, Result<Option<R>>>;
     fn cb_boxed(self: Box<Self>, key: &'a str, db: &'a T) -> Self::Fut {
@@ -92,10 +88,9 @@ where
     }
 }
 
-
 // Boxed closure type returning future for updating redis on cache miss
 pub(crate) struct CacheMissCb<T, V>(
-    pub(crate) Box<dyn for<'a> BoxedCacheMissCallback<'a, T,V,Fut = BotDbFuture<'a, Result<V>>>>,
+    pub(crate) Box<dyn for<'a> BoxedCacheMissCallback<'a, T, V, Fut = BotDbFuture<'a, Result<V>>>>,
 );
 impl<'a, T, V> CacheMissCallback<'a, T, V> for CacheMissCb<T, V>
 where
@@ -133,11 +128,11 @@ where
 impl<'a, F, T, V> BoxedCacheMissCallback<'a, T, V> for OutputBoxer<F>
 where
     F: CacheMissCallback<'a, T, V>,
-    V: Serialize + 'a, 
+    V: Serialize + 'a,
 {
     type Fut = BotDbFuture<'a, Result<V>>;
     fn cb_boxed(self: Box<Self>, key: &'a str, val: V, db: &'a T) -> Self::Fut {
-        (*self).0.cb(key,val,  db).boxed()
+        (*self).0.cb(key, val, db).boxed()
     }
 }
 

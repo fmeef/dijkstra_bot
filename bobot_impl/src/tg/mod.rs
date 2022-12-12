@@ -7,3 +7,4 @@ pub mod client;
 pub(crate) mod dialog;
 
 pub(crate) mod command;
+pub(crate) mod user;
