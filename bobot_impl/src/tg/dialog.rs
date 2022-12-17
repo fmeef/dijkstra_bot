@@ -1,7 +1,7 @@
+use ::redis::AsyncCommands;
 use anyhow::anyhow;
 use botapi::gen_types::{Chat, Message};
 use chrono::{DateTime, Utc};
-use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::str::FromStr;

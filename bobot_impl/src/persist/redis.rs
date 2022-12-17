@@ -13,10 +13,10 @@ use bb8_redis::RedisConnectionManager;
 use async_trait::async_trait;
 use futures::Future;
 
-use botapi::gen_types::Message;
-use redis::{
+use ::redis::{
     AsyncCommands, ErrorKind, FromRedisValue, Pipeline, RedisError, RedisFuture, ToRedisArgs,
 };
+use botapi::gen_types::Message;
 use serde::{de::DeserializeOwned, Serialize};
 use tokio::task::JoinHandle;
 use uuid::Uuid;

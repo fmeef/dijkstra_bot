@@ -2,8 +2,6 @@ use std::fs::read_dir;
 
 use proc_macro2::{Ident, TokenStream};
 use quote::{quote, ToTokens};
-use syn::LitStr;
-
 pub struct PathBufWrapper(std::path::PathBuf);
 pub struct PathList(Vec<PathBufWrapper>);
 
@@ -63,9 +61,8 @@ fn get_module_list(dir: &PathBufWrapper) -> Vec<Ident> {
         .collect()
 }
 
-pub(crate) fn autoimport(input: TokenStream) -> TokenStream {
-    let input: LitStr = syn::parse2(input).unwrap();
-    let module_globs = glob_modules(input.value());
+pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
+    let module_globs = glob_modules(input);
     assert!(module_globs.len() > 0);
     let mods = module_globs.clone().into_iter();
     let updates = module_globs.clone().into_iter();

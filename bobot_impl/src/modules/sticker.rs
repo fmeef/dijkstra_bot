@@ -1,9 +1,7 @@
 use std::str::FromStr;
 
 use self::entities::tags::ModelRedis;
-use crate::persist::redis::{
-    default_cached_query_vec, scope_key_by_chatuser, CachedQueryTrait, RedisStr,
-};
+use crate::persist::redis as r;
 use crate::persist::Result;
 use crate::statics::{DB, REDIS, TG};
 use crate::tg::command::{parse_cmd, Arg};
@@ -11,16 +9,17 @@ use crate::tg::dialog::{drop_converstaion, Conversation};
 use crate::tg::dialog::{get_conversation, replace_conversation};
 use crate::tg::user::GetUser;
 use crate::util::error::BotError;
+use ::redis::AsyncCommands;
+use ::sea_orm::entity::prelude::*;
+use ::sea_orm::{ActiveModelTrait, IntoActiveModel, QuerySelect, Set};
+use ::sea_orm_migration::prelude::*;
 use anyhow::anyhow;
 use botapi::gen_types::{
     InlineQuery, InlineQueryResult, InlineQueryResultCachedSticker, Message, UpdateExt,
 };
 use lazy_static::__Deref;
 use log::info;
-use redis::AsyncCommands;
-use ::sea_orm::entity::prelude::*;
-use ::sea_orm::{ActiveModelTrait, IntoActiveModel, QuerySelect, Set};
-use ::sea_orm_migration::prelude::*;
+use r::{default_cached_query_vec, scope_key_by_chatuser, CachedQueryTrait, RedisStr};
 // redis keys
 const KEY_TYPE_TAG: &str = "wc:tag";
 const KEY_TYPE_STICKER_ID: &str = "wc:stickerid";
@@ -51,11 +50,11 @@ fn upload_sticker_conversation(message: &Message) -> Result<Conversation> {
             .get_id(),
     )?;
     let start_state = conversation.get_start()?.state_id;
-    let upload_state = conversation.add_state(STATE_UPLOAD);    
+    let upload_state = conversation.add_state(STATE_UPLOAD);
     let name_state = conversation.add_state(STATE_NAME);
     let state_tags = conversation.add_state(STATE_TAGS);
     let state_done = conversation.add_state(STATE_DONE);
-    
+
     conversation.add_transition(start_state, upload_state, TRANSITION_UPLOAD);
     conversation.add_transition(upload_state, name_state, TRANSITION_NAME);
     conversation.add_transition(name_state, state_tags, TRANSITION_TAG);
@@ -75,13 +74,10 @@ impl MigrationName for Migration {
 
 pub mod entities {
     use crate::persist::migrate::ManagerHelper;
-     use ::sea_orm_migration::prelude::*;
-     #[async_trait::async_trait]
+    use ::sea_orm_migration::prelude::*;
+    #[async_trait::async_trait]
     impl MigrationTrait for super::Migration {
-        async fn up(
-            &self,
-            manager: &SchemaManager,
-        ) -> std::result::Result<(), DbErr> {
+        async fn up(&self, manager: &SchemaManager) -> std::result::Result<(), DbErr> {
             manager
                 .create_table(
                     sea_query::Table::create()
@@ -136,10 +132,7 @@ pub mod entities {
             Ok(())
         }
 
-        async fn down(
-            &self,
-            manager: &SchemaManager,
-        ) -> std::result::Result<(), DbErr> {
+        async fn down(&self, manager: &SchemaManager) -> std::result::Result<(), DbErr> {
             manager.drop_table_auto(tags::Entity).await?;
             manager.drop_table_auto(stickers::Entity).await?;
             Ok(())
@@ -226,37 +219,37 @@ async fn handle_inline(query: &InlineQuery) -> Result<()> {
     let id = query.get_from().get_id();
     let key = query.get_query().to_owned();
     let cached = query.get_from().get_cached_user().await?;
-    let owner = cached.map(|v| v.username.unwrap_or_else(|| id.to_string())).unwrap_or_else(|| id.to_string());
-    let rkey = format!("{}:{}", id, key);    
-    log::info!(
-        "query! owner: {} tag: {}",
-        owner,
-        query.get_query()
-    );
+    let owner = cached
+        .map(|v| v.username.unwrap_or_else(|| id.to_string()))
+        .unwrap_or_else(|| id.to_string());
+    let rkey = format!("{}:{}", id, key);
+    log::info!("query! owner: {} tag: {}", owner, query.get_query());
     let stickers = default_cached_query_vec(move |_, sql| async move {
-            let sql: &DatabaseConnection = sql;
-            let key = format!("%{}%", key);
-            let stickers = entities::stickers::Entity::find()
-                .join(
-                    sea_orm::JoinType::InnerJoin,
-                    entities::stickers::Relation::Tags.def(),
-                )
-                .group_by(entities::stickers::Column::UniqueId)
-                .filter(entities::stickers::Column::OwnerId.eq(id))
-                .filter(entities::tags::Column::Tag.like(&key))
-                .limit(10)
-                .all(sql)
-                .await?;
-            Ok(Some(stickers))
-        })
-        .query(&DB.deref(), &REDIS, &rkey)
-        .await?.unwrap_or_else(|| Vec::new());
+        let sql: &DatabaseConnection = sql;
+        let key = format!("%{}%", key);
+        let stickers = entities::stickers::Entity::find()
+            .join(
+                sea_orm::JoinType::InnerJoin,
+                entities::stickers::Relation::Tags.def(),
+            )
+            .group_by(entities::stickers::Column::UniqueId)
+            .filter(entities::stickers::Column::OwnerId.eq(id))
+            .filter(entities::tags::Column::Tag.like(&key))
+            .limit(10)
+            .all(sql)
+            .await?;
+        Ok(Some(stickers))
+    })
+    .query(&DB.deref(), &REDIS, &rkey)
+    .await?
+    .unwrap_or_else(|| Vec::new());
     let stickers = stickers
         .into_iter()
         .map(|s| {
-            InlineQueryResult::InlineQueryResultCachedSticker(
-                InlineQueryResultCachedSticker::new(Uuid::new_v4().to_string(), s.unique_id),
-            )
+            InlineQueryResult::InlineQueryResultCachedSticker(InlineQueryResultCachedSticker::new(
+                Uuid::new_v4().to_string(),
+                s.unique_id,
+            ))
         })
         .collect::<Vec<InlineQueryResult>>();
     TG.client
@@ -335,10 +328,7 @@ async fn delete_sticker(message: &Message, args: Vec<Arg>) -> Result<()> {
             .exec(DB.deref().deref())
             .await?;
         TG.client()
-            .build_send_message(
-                message.get_chat().get_id(),
-                "Successfully deleted sticker",
-            )
+            .build_send_message(message.get_chat().get_id(), "Successfully deleted sticker")
             .reply_to_message_id(Some(message.get_message_id()))
             .build()
             .await?;
@@ -375,10 +365,7 @@ async fn list_stickers(message: &Message) -> Result<()> {
 
 async fn conv_start(conversation: Conversation, message: &Message) -> Result<()> {
     TG.client()
-        .build_send_message(
-            message.get_chat().get_id(),
-            "Send a sticker to upload",
-        )
+        .build_send_message(message.get_chat().get_id(), "Send a sticker to upload")
         .reply_to_message_id(Some(message.get_message_id()))
         .build()
         .await?;

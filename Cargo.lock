@@ -229,7 +229,6 @@ dependencies = [
  "clap 4.0.29",
  "dotenv",
  "macros",
- "migration",
  "tokio",
 ]
 
@@ -247,7 +246,6 @@ dependencies = [
  "chrono",
  "clap 4.0.29",
  "confy",
- "dashmap",
  "futures",
  "higher-order-closure",
  "lazy_static",
@@ -261,7 +259,6 @@ dependencies = [
  "sea-orm",
  "sea-orm-migration",
  "sea-query 0.28.0",
- "sea-schema",
  "serde",
  "serde_json",
  "thiserror",
@@ -650,19 +647,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "dashmap"
-version = "5.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "907076dfda823b0b36d2a1bb5f90c96660a5bbcd7729e10727f07858f22c4edc"
-dependencies = [
- "cfg-if",
- "hashbrown 0.12.3",
- "lock_api",
- "once_cell",
- "parking_lot_core 0.9.5",
 ]
 
 [[package]]
@@ -1304,18 +1288,6 @@ name = "memchr"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2dffe52ecf27772e601905b7522cb4ef790d2cc203488bbd0e2fe85fcb74566d"
-
-[[package]]
-name = "migration"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "bobot_impl",
- "sea-orm-migration",
- "sea-query 0.28.0",
- "sea-schema",
- "tokio",
-]
 
 [[package]]
 name = "mime"
@@ -2215,7 +2187,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "38d5fda574d980e9352b6c7abd6fc75697436fe0078cac2b548559b52643ad3b"
 dependencies = [
  "futures",
- "log",
  "sea-query 0.27.2",
  "sea-schema-derive",
 ]
