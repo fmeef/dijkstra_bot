@@ -228,7 +228,7 @@ dependencies = [
  "bobot_impl",
  "clap 4.0.29",
  "dotenv",
- "macros",
+ "migration",
  "tokio",
 ]
 
@@ -1290,6 +1290,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2dffe52ecf27772e601905b7522cb4ef790d2cc203488bbd0e2fe85fcb74566d"
 
 [[package]]
+name = "migration"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bobot_impl",
+ "sea-orm-migration",
+ "sea-query 0.28.0",
+ "sea-schema",
+ "tokio",
+]
+
+[[package]]
 name = "mime"
 version = "0.3.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2187,6 +2199,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "38d5fda574d980e9352b6c7abd6fc75697436fe0078cac2b548559b52643ad3b"
 dependencies = [
  "futures",
+ "log",
  "sea-query 0.27.2",
  "sea-schema-derive",
 ]

@@ -35,5 +35,5 @@ sea-orm-migration = "0.10.5"
 nonblock-logger = { version =  "0.2.2", features = [ "color" ] }
 
 [build-dependencies]
-macros = { path = "../macros" }
+macros = { path = "macros" }
 anyhow = "1.0.66"
