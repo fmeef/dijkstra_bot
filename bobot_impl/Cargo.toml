@@ -13,27 +13,27 @@ redis = { version = "0.22.1", features = ["acl", "aio", "r2d2", "geospatial", "s
 rmp-serde = "1.1.1"
 sea-orm = { version = "0.10.5", features = ["runtime-tokio-rustls", "sqlx-postgres", "macros", "default"] }
 sea-query = { version = "0.28.0", features = ["uuid", "bigdecimal", "with-bigdecimal", "with-chrono", "with-json", "backend-postgres", "sea-query-derive", "backend-postgres", "derive", "postgres-array", "with-uuid", "thread-safe"] }
-serde = { version = "1.0.149", features = ["derive"] }
-thiserror = "1.0.37"
+serde = { version = "1.0.151", features = ["derive"] }
+thiserror = "1.0.38"
 tokio = { version = "1.23.0", features = ["full"] }
 uuid = { version = "1.2.2", features = ["v4", "serde"] }
-anyhow = "1.0.66"
-async-trait = "0.1.59"
+anyhow = "1.0.67"
+async-trait = "0.1.60"
 async_executors = { version = "0.6.0", features = ["tokio_io", "tokio_tp", "tokio", "tokio_timer"] }
 async_nursery = "0.5.0"
 bb8 = "0.8.0"
 bb8-redis = "0.12.0"
 chrono = { version = "0.4.23", features = [ "serde" ] }
 clap = { version = "4.0.29", features = [ "derive" ] }
-serde_json = "1.0.89"
+serde_json = "1.0.90"
 pomelo = "0.1.5"
 regex = "1.7.0"
 higher-order-closure = "0.0.5"
 botapi = "0.0.5"
 confy = "0.5.1"
 sea-orm-migration = "0.10.5"
-nonblock-logger = { version =  "0.2.2", features = [ "color" ] }
+nonblock-logger = { version = "0.2.2", features = [ "color" ] }
 
 [build-dependencies]
 macros = { path = "macros" }
-anyhow = "1.0.66"
+anyhow = "1.0.67"
