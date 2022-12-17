@@ -9,6 +9,7 @@ use crate::statics::{DB, REDIS, TG};
 use crate::tg::command::{parse_cmd, Arg};
 use crate::tg::dialog::{drop_converstaion, Conversation};
 use crate::tg::dialog::{get_conversation, replace_conversation};
+use crate::tg::user::GetUser;
 use crate::util::error::BotError;
 use anyhow::anyhow;
 use botapi::gen_types::{
@@ -16,6 +17,7 @@ use botapi::gen_types::{
 };
 use lazy_static::__Deref;
 use log::info;
+use redis::AsyncCommands;
 use ::sea_orm::entity::prelude::*;
 use ::sea_orm::{ActiveModelTrait, IntoActiveModel, QuerySelect, Set};
 use ::sea_orm_migration::prelude::*;
@@ -223,13 +225,15 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
 async fn handle_inline(query: &InlineQuery) -> Result<()> {
     let id = query.get_from().get_id();
     let key = query.get_query().to_owned();
+    let cached = query.get_from().get_cached_user().await?;
+    let owner = cached.map(|v| v.username.unwrap_or_else(|| id.to_string())).unwrap_or_else(|| id.to_string());
+    let rkey = format!("{}:{}", id, key);    
     log::info!(
         "query! owner: {} tag: {}",
-        query.get_from().get_id(),
+        owner,
         query.get_query()
     );
-    if let Some(stickers) = tokio::spawn(async move {
-        default_cached_query_vec(move |key, sql| async move {
+    let stickers = default_cached_query_vec(move |_, sql| async move {
             let sql: &DatabaseConnection = sql;
             let key = format!("%{}%", key);
             let stickers = entities::stickers::Entity::find()
@@ -245,24 +249,22 @@ async fn handle_inline(query: &InlineQuery) -> Result<()> {
                 .await?;
             Ok(Some(stickers))
         })
-        .query(&DB.deref(), &REDIS, &key)
-        .await
-    })
-    .await??
-    {
-        let stickers = stickers
-            .into_iter()
-            .map(|s| {
-                InlineQueryResult::InlineQueryResultCachedSticker(
-                    InlineQueryResultCachedSticker::new(Uuid::new_v4().to_string(), s.unique_id),
-                )
-            })
-            .collect::<Vec<InlineQueryResult>>();
-        TG.client
-            .build_answer_inline_query(query.get_id(), &stickers)
-            .build()
-            .await?;
-    }
+        .query(&DB.deref(), &REDIS, &rkey)
+        .await?.unwrap_or_else(|| Vec::new());
+    let stickers = stickers
+        .into_iter()
+        .map(|s| {
+            InlineQueryResult::InlineQueryResultCachedSticker(
+                InlineQueryResultCachedSticker::new(Uuid::new_v4().to_string(), s.unique_id),
+            )
+        })
+        .collect::<Vec<InlineQueryResult>>();
+    TG.client
+        .build_answer_inline_query(query.get_id(), &stickers)
+        .is_personal(Some(true))
+        .build()
+        .await?;
+
     Ok(())
 }
 
@@ -335,7 +337,7 @@ async fn delete_sticker(message: &Message, args: Vec<Arg>) -> Result<()> {
         TG.client()
             .build_send_message(
                 message.get_chat().get_id(),
-                &"Successfully deleted sticker".to_owned(),
+                "Successfully deleted sticker",
             )
             .reply_to_message_id(Some(message.get_message_id()))
             .build()
@@ -375,7 +377,7 @@ async fn conv_start(conversation: Conversation, message: &Message) -> Result<()>
     TG.client()
         .build_send_message(
             message.get_chat().get_id(),
-            &"Send a sticker to upload".to_owned(),
+            "Send a sticker to upload",
         )
         .reply_to_message_id(Some(message.get_message_id()))
         .build()
@@ -408,7 +410,7 @@ async fn conv_upload(conversation: Conversation, message: &Message) -> Result<()
 
 async fn conv_name(conversation: Conversation, message: &Message) -> Result<()> {
     let key = scope_key_by_chatuser(&KEY_TYPE_STICKER_NAME, &message)?;
-    REDIS.pipe(|p| p.set(&key, message.get_text())).await?;
+    REDIS.sq(|p| p.set(&key, message.get_text())).await?;
     let text = conversation.transition(TRANSITION_TAG).await?;
     TG.client()
         .build_send_message(message.get_chat().get_id(), &text.to_owned())
@@ -423,14 +425,13 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
     let namekey = scope_key_by_chatuser(&KEY_TYPE_STICKER_NAME, &message)?;
     let taglist = scope_key_by_chatuser(&KEY_TYPE_TAG, &message)?;
 
-    let sticker_id: (String,) = REDIS.pipe(|p| p.get(&key)).await?;
-    let sticker_id = sticker_id.0;
+    let sticker_id: String = REDIS.sq(|p| p.get(&key)).await?;
+    let sticker_id = sticker_id;
     let text = message.get_text().ok_or_else(|| BotError::new("no text"))?;
     info!("moretags stickerid: {}", sticker_id);
     if let Some(user) = message.get_from() {
         if text == "/done" {
-            let stickername: (String,) = REDIS.pipe(|p| p.get(&namekey)).await?;
-            let stickername = stickername.0;
+            let stickername: String = REDIS.sq(|p| p.get(&namekey)).await?;
 
             let tags = REDIS
                 .drain_list::<ModelRedis>(&taglist)

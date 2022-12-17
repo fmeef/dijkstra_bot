@@ -202,8 +202,8 @@ impl Conversation {
     }
 
     pub async fn get_current<'a>(&'a self) -> Result<&'a FSMState> {
-        let current: (String,) = REDIS.pipe(|p| p.get(&self.rediskey.to_string())).await?;
-        let current = Uuid::from_str(&current.0)?;
+        let current: String = REDIS.sq(|p| p.get(&self.rediskey)).await?;
+        let current = Uuid::from_str(&current)?;
         if let Some(current) = self.states.get(&current) {
             Ok(current)
         } else {
@@ -245,7 +245,7 @@ pub(crate) async fn get_conversation(message: &Message) -> Result<Option<Convers
 
 pub(crate) async fn drop_converstaion(message: &Message) -> Result<()> {
     let key = get_conversation_key_message(message)?;
-    REDIS.pipe(|p| p.del(&key)).await?;
+    REDIS.sq(|p| p.del(&key)).await?;
     Ok(())
 }
 
@@ -256,7 +256,7 @@ where
     let key = get_conversation_key_message(message)?;
     let conversation = create(message)?;
     let conversationstr = RedisStr::new(&conversation)?;
-    let _: () = REDIS
+    REDIS
         .pipe(|p| {
             p.atomic();
             p.set(&key, conversationstr);

@@ -10,7 +10,7 @@ use nonblock_logger::{
 use sea_orm::ConnectionTrait;
 use serde::{Deserialize, Serialize};
 use statics::*;
-use std::{io};
+use std::io;
 
 lazy_static! {
     pub static ref EXEC: TokioTp = {
@@ -22,27 +22,20 @@ lazy_static! {
 
 fn log() -> JoinHandle {
     let formater = BaseFormater::new().local(true).color(true).level(4);
-    println!("{:?}", formater);
 
     let filter = BaseFilter::new()
         .starts_with(true)
-        .chain("logs", LevelFilter::Trace)
-        .chain("logt", LevelFilter::Off);
-    println!("{:?}", filter);
+        .max_level(LevelFilter::Info);
 
     let consumer = BaseConsumer::stdout(filter.max_level_get())
         .chain(LevelFilter::Error, io::stderr())
         .unwrap();
-    println!("{:?}", consumer);
 
     let logger = NonblockLogger::new()
         .formater(formater)
         .filter(filter)
         .and_then(|l| l.consumer(consumer))
         .unwrap();
-
-    println!("{:?}", logger);
-
     logger
         .spawn()
         .map_err(|e| eprintln!("failed to init nonblock_logger: {:?}", e))

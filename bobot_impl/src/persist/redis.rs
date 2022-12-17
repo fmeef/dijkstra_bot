@@ -14,7 +14,9 @@ use async_trait::async_trait;
 use futures::Future;
 
 use botapi::gen_types::Message;
-use redis::{AsyncCommands, ErrorKind, FromRedisValue, Pipeline, RedisError, ToRedisArgs};
+use redis::{
+    AsyncCommands, ErrorKind, FromRedisValue, Pipeline, RedisError, RedisFuture, ToRedisArgs,
+};
 use serde::{de::DeserializeOwned, Serialize};
 use tokio::task::JoinHandle;
 use uuid::Uuid;
@@ -342,6 +344,18 @@ impl RedisPool {
         let mut conn = self.pool.get().await?;
         let res: R = pipe.query_async(conn.deref_mut()).await?;
         Ok(res)
+    }
+
+    // Run a single redis query
+    pub async fn sq<'a, T, R>(&'a self, func: T) -> Result<R>
+    where
+        T: for<'b> FnOnce(
+                &'b mut PooledConnection<'a, RedisConnectionManager>,
+            ) -> RedisFuture<'b, R>
+            + Send,
+        R: FromRedisValue + Send + 'a,
+    {
+        Ok(func(&mut self.pool.get().await?).await?)
     }
 
     // Run one or more redis queries using the connection provided to the
