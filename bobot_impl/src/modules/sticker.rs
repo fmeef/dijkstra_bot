@@ -262,7 +262,7 @@ async fn handle_inline(query: &InlineQuery) -> Result<()> {
         .collect::<Vec<InlineQueryResult>>();
     TG.client
         .build_answer_inline_query(query.get_id(), &stickers)
-        .is_personal(Some(true))
+        .is_personal(true)
         .build()
         .await?;
 
@@ -337,7 +337,7 @@ async fn delete_sticker(message: &Message, args: VecDeque<Arg>) -> Result<()> {
             .await?;
         TG.client()
             .build_send_message(message.get_chat().get_id(), "Successfully deleted sticker")
-            .reply_to_message_id(Some(message.get_message_id()))
+            .reply_to_message_id(message.get_message_id())
             .build()
             .await?;
         Ok(())
@@ -364,7 +364,7 @@ async fn list_stickers(message: &Message) -> Result<()> {
 
         TG.client()
             .build_send_message(message.get_chat().get_id(), &stickers)
-            .reply_to_message_id(Some(message.get_message_id()))
+            .reply_to_message_id(message.get_message_id())
             .build()
             .await?;
     }
@@ -374,7 +374,7 @@ async fn list_stickers(message: &Message) -> Result<()> {
 async fn conv_start(conversation: Conversation, message: &Message) -> Result<()> {
     TG.client()
         .build_send_message(message.get_chat().get_id(), "Send a sticker to upload")
-        .reply_to_message_id(Some(message.get_message_id()))
+        .reply_to_message_id(message.get_message_id())
         .build()
         .await?;
     conversation.transition(TRANSITION_UPLOAD).await?;
@@ -394,7 +394,7 @@ async fn conv_upload(conversation: Conversation, message: &Message) -> Result<()
         let text = conversation.transition(TRANSITION_NAME).await?;
         TG.client()
             .build_send_message(message.get_chat().get_id(), &text.to_owned())
-            .reply_to_message_id(Some(message.get_message_id()))
+            .reply_to_message_id(message.get_message_id())
             .build()
             .await?;
         Ok(())
@@ -409,7 +409,7 @@ async fn conv_name(conversation: Conversation, message: &Message) -> Result<()> 
     let text = conversation.transition(TRANSITION_TAG).await?;
     TG.client()
         .build_send_message(message.get_chat().get_id(), &text.to_owned())
-        .reply_to_message_id(Some(message.get_message_id()))
+        .reply_to_message_id(message.get_message_id())
         .build()
         .await?;
     Ok(())
@@ -456,7 +456,7 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
             let text = conversation.transition(TRANSITION_DONE).await?;
             TG.client()
                 .build_send_message(message.get_chat().get_id(), &text.to_owned())
-                .reply_to_message_id(Some(message.get_message_id()))
+                .reply_to_message_id(message.get_message_id())
                 .build()
                 .await?;
             Ok(())
@@ -477,7 +477,7 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
             let text = conversation.transition(TRANSITION_MORETAG).await?;
             TG.client()
                 .build_send_message(message.get_chat().get_id(), &text.to_owned())
-                .reply_to_message_id(Some(message.get_message_id()))
+                .reply_to_message_id(message.get_message_id())
                 .build()
                 .await?;
             Ok(())

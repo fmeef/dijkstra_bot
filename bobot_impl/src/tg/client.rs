@@ -30,7 +30,7 @@ async fn show_help(
         let cmd = helps.get(cmd).unwrap_or(cnf);
         TG.client()
             .build_send_message(message.get_chat().get_id(), cmd)
-            .reply_to_message_id(Some(message.get_message_id()))
+            .reply_to_message_id(message.get_message_id())
             .build()
             .await?;
     } else {
@@ -39,7 +39,7 @@ async fn show_help(
                 message.get_chat().get_id(),
                 "Stop being the deflate brain menhera and fucking google it",
             )
-            .reply_to_message_id(Some(message.get_message_id()))
+            .reply_to_message_id(message.get_message_id())
             .build()
             .await?;
     }

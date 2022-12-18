@@ -315,9 +315,9 @@ dependencies = [
 
 [[package]]
 name = "botapi"
-version = "0.0.5"
+version = "0.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e363e0dca4cb00e319f9d6e3dd14fcb3e4ac5ad44fc0943f128c4e23ef593e24"
+checksum = "5587120fb964b91aa67398abd24148eb3db57df3d8e6b3bfae61faf57d1e13c1"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -325,6 +325,7 @@ dependencies = [
  "futures-core",
  "futures-util",
  "hyper",
+ "rand",
  "reqwest",
  "serde",
  "serde_json",
@@ -332,6 +333,7 @@ dependencies = [
  "serde_urlencoded",
  "tggen",
  "tokio",
+ "uuid",
 ]
 
 [[package]]
@@ -2591,9 +2593,9 @@ checksum = "222a222a5bfe1bba4a77b45ec488a741b3cb8872e5e499451fd7d0129c9c7c3d"
 
 [[package]]
 name = "tggen"
-version = "0.0.5"
+version = "0.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "69de72597e0b230855231350b6284e27c81f4478995c0f04b2b50ea0ccf4729e"
+checksum = "c2632edd56ddfd6474f6e59d5d76e3331d3b233076bd1b0c054bb57eade52335"
 dependencies = [
  "anyhow",
  "convert_case",
