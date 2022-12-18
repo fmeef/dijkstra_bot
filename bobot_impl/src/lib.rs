@@ -1,11 +1,11 @@
 use sea_orm::ConnectionTrait;
 use statics::get_executor;
 
+pub(crate) mod metadata;
+pub mod modules;
 pub mod persist;
 pub mod tg;
 pub(crate) mod util;
-
-pub mod modules;
 
 mod logger;
 pub mod statics;
@@ -24,6 +24,7 @@ pub fn what() {
 pub fn run() {
     let mut handle = logger::setup_log();
     init_db();
+    what();
     println!("complete");
     handle.join();
 }

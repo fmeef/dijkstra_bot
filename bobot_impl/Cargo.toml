@@ -33,6 +33,8 @@ botapi = "0.0.5"
 confy = "0.5.1"
 sea-orm-migration = "0.10.5"
 nonblock-logger = { version = "0.2.2", features = [ "color" ] }
+dashmap = "5.4.0"
+once_cell = "1.16.0"
 
 [build-dependencies]
 macros = { path = "macros" }

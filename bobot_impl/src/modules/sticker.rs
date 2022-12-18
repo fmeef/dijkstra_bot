@@ -1,6 +1,8 @@
+use std::collections::VecDeque;
 use std::str::FromStr;
 
 use self::entities::tags::ModelRedis;
+use crate::metadata::metadata;
 use crate::persist::redis as r;
 use crate::persist::Result;
 use crate::statics::{DB, REDIS, TG};
@@ -37,6 +39,12 @@ const STATE_UPLOAD: &str = "sticker uploaded";
 const STATE_NAME: &str = "Send a name for this sticker";
 const STATE_TAGS: &str = "Send tags for this sticker, one at a time. Send /done to stop";
 const STATE_DONE: &str = "Successfully uploaded sticker";
+
+metadata!("stickertag",
+    { command = "upload", help = "Uploads a sticker" },
+    { command = "list", help = "Lists available stickers"},
+    { command = "delete", help = "Deletes a sticker by uuid"}
+);
 
 fn upload_sticker_conversation(message: &Message) -> Result<Conversation> {
     let mut conversation = Conversation::new(
@@ -299,13 +307,13 @@ pub async fn handle_update(update: &UpdateExt) {
 
 async fn handle_command(message: &Message) -> Result<()> {
     if let Some(text) = message.get_text() {
-        let command = parse_cmd(text)?;
-        if let Some(Arg::Arg(cmd)) = command.first() {
+        let (command, args) = parse_cmd(text)?;
+        if let Arg::Arg(cmd) = command {
             info!("command {}", cmd);
             match cmd.as_str() {
                 "/upload" => upload(message).await,
                 "/list" => list_stickers(message).await,
-                "/delete" => delete_sticker(message, command).await,
+                "/delete" => delete_sticker(message, args).await,
                 _ => Ok(()),
             }?;
         }
@@ -319,9 +327,9 @@ async fn upload(message: &Message) -> Result<()> {
     Ok(())
 }
 
-async fn delete_sticker(message: &Message, args: Vec<Arg>) -> Result<()> {
+async fn delete_sticker(message: &Message, args: VecDeque<Arg>) -> Result<()> {
     drop_converstaion(message).await?;
-    if let [Arg::Arg(_), Arg::Arg(uuid)] = args.as_slice() {
+    if let Some(Arg::Arg(uuid)) = args.front() {
         let uuid = Uuid::from_str(uuid.as_str())?;
         entities::stickers::Entity::delete_many()
             .filter(entities::stickers::Column::Uuid.eq(uuid))

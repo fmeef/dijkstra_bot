@@ -66,7 +66,8 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
     assert!(module_globs.len() > 0);
     let mods = module_globs.clone().into_iter();
     let updates = module_globs.clone().into_iter();
-    let funcs = module_globs.into_iter();
+    let funcs = module_globs.iter();
+    let modules = module_globs.iter();
     let output = quote! {
         #( mod #mods; )*
 
@@ -76,6 +77,12 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
                 _v.append(&mut #funcs::get_migrations());
             )*
             _v
+        }
+
+        pub fn get_metadata() -> ::std::vec::Vec<crate::metadata::Metadata> {
+            vec![#(
+                 (*#modules::METADATA).clone()
+            ),*]
         }
 
         pub async fn process_updates(

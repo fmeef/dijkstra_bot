@@ -3,6 +3,7 @@ use std::fmt::Display;
 use lazy_static::lazy_static;
 use pomelo::pomelo;
 use regex::Regex;
+use std::collections::VecDeque;
 use thiserror::Error;
 
 #[cfg(test)]
@@ -46,17 +47,17 @@ impl Default for DefaultParseErr {
 
 pomelo! {
     %error super::DefaultParseErr;
-    %type input Vec<crate::tg::command::Arg>;
-    %type words Vec<crate::tg::command::Arg>;
+    %type input std::collections::VecDeque<crate::tg::command::Arg>;
+    %type words std::collections::VecDeque<crate::tg::command::Arg>;
     %type quoteinner Vec<String>;
     %type Word String;
     %type quote Vec<String>;
 
-    input ::= words?(A) { A.unwrap_or_else(Vec::new) }
-    words ::= Word(W) { vec![crate::tg::command::Arg::Arg(W)] }
-    words ::= words(mut L)  Word(W) { L.push(crate::tg::command::Arg::Arg(W)); L }
-    words ::= words(mut L)  quote(Q) { L.push(crate::tg::command::Arg::Quote(Q)); L }
-    words ::= quote(Q) { vec![crate::tg::command::Arg::Quote(Q)] }
+    input ::= words?(A) { A.unwrap_or_else(std::collections::VecDeque::new) }
+    words ::= Word(W) { std::collections::VecDeque::from([crate::tg::command::Arg::Arg(W)]) }
+    words ::= words(mut L)  Word(W) { L.push_back(crate::tg::command::Arg::Arg(W)); L }
+    words ::= words(mut L)  quote(Q) { L.push_back(crate::tg::command::Arg::Quote(Q)); L }
+    words ::= quote(Q) { std::collections::VecDeque::from([crate::tg::command::Arg::Quote(Q)]) }
     quoteinner ::= Word(W) { vec![W] }
     quoteinner ::= Word(W) quoteinner(mut L) { L.push(W); L }
     quote ::= QuoteMark quoteinner(Q) QuoteMark { Q }
@@ -95,17 +96,21 @@ impl DefaultTokenizer {
 }
 
 #[allow(dead_code)]
-pub(crate) fn parse_cmd<R: ToString>(cmd: R) -> Result<Vec<Arg>> {
+pub(crate) fn parse_cmd<R: ToString>(cmd: R) -> Result<(Arg, VecDeque<Arg>)> {
     let tokenizer = DefaultTokenizer::new(cmd.to_string());
 
     let mut parser = Parser::new();
     tokenizer.next_tokens().try_for_each(|t| parser.parse(t))?;
-    let res = parser.end_of_input()?;
-    Ok(res)
+
+    let mut res = parser.end_of_input()?;
+    Ok((
+        res.pop_front().ok_or_else(|| anyhow::anyhow!("empty"))?,
+        res,
+    ))
 }
 
 #[allow(dead_code)]
 pub(crate) fn parse_cmd_iter<R: ToString>(cmd: R) -> Result<impl Iterator<Item = Arg>> {
-    let iter = parse_cmd(cmd)?.into_iter();
+    let iter = parse_cmd(cmd)?.1.into_iter();
     Ok(iter)
 }
