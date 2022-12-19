@@ -72,7 +72,7 @@ pub struct ConversationState {
     pub user: i64,
     pub states: HashMap<Uuid, FSMState>,
     start: Uuid,
-    pub transitions: HashMap<String, FSMTransition>,
+    pub transitions: HashMap<(Uuid, String), FSMTransition>,
     rediskey: String,
 }
 
@@ -137,10 +137,8 @@ impl ConversationState {
     ) -> Uuid {
         let transition = FSMTransition::new(start, end);
         let uuid = transition.transition_id;
-        self.transitions.insert(
-            format!("{}{}", start.to_string(), triggerphrase.into()),
-            transition,
-        );
+        self.transitions
+            .insert((start, triggerphrase.into()), transition);
         uuid
     }
 
@@ -172,7 +170,7 @@ impl ConversationState {
             states,
             start,
             user,
-            transitions: HashMap::<String, FSMTransition>::new(),
+            transitions: HashMap::new(),
             rediskey: get_state_key(chat, user),
         };
 
@@ -197,10 +195,9 @@ impl Conversation {
     where
         S: Into<String>,
     {
-        let current = self.get_current().await?.state_id.to_string();
+        let current = self.get_current().await?.state_id;
         let current = if let Some(next) = {
-            let n = format!("{}{}", current, next.into());
-            log::info!("transition next {}", n);
+            let n = (current, next.into());
             self.0.transitions.get(&n)
         } {
             if let Some(next) = self.0.states.get(&next.end_state) {
@@ -278,7 +275,7 @@ impl Conversation {
                 me.0.transitions
                     .iter()
                     .filter(|(_, t)| t.start_state == state.state_id)
-                    .map(|(n, t)| {
+                    .map(|((_, n), t)| {
                         let b = InlineKeyboardButtonBuilder::new(n.to_owned())
                             .set_callback_data(Uuid::new_v4().to_string())
                             .build();
