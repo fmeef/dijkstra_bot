@@ -12,6 +12,7 @@ use dashmap::DashMap;
 
 use super::{
     button::{InlineKeyboardBuilder, OnPush},
+    dialog::{Conversation, ConversationState},
     user::GetUser,
 };
 use crate::statics::TG;
@@ -21,7 +22,7 @@ use crate::{
     tg::command::{parse_cmd, Arg},
     util::callback::{SingleCallback, SingleCb},
 };
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use futures::{Future, StreamExt};
 use std::sync::Arc;
 
@@ -46,6 +47,30 @@ impl MetadataCollection {
                 builder.command_button(m.to_owned(), format!("/help {}", m))
             })
             .build()
+    }
+
+    pub(crate) async fn get_conversation(&self, message: &Message) -> Result<Conversation> {
+        let mut state = ConversationState::new(
+            "/help".to_owned(),
+            "Welcome to Default Bot, a modular group management bot written in pyton and asynctio"
+                .to_owned(),
+            message.get_chat().get_id(),
+            message
+                .get_from()
+                .map(|u| u.get_id())
+                .ok_or_else(|| anyhow!("not user"))?,
+        )?;
+
+        let start = state.get_start()?.state_id;
+        self.modules.iter().for_each(|(_, n)| {
+            let s = state.add_state(&n.name);
+            state.add_transition(start, s, n.name.clone());
+            state.add_transition(s, start, "Back");
+        });
+
+        let conversation = state.build();
+        conversation.write_self().await?;
+        Ok(conversation)
     }
 }
 
@@ -75,8 +100,8 @@ async fn show_help(
                  "Welcome to Default Bot, a modular group management bot written in pyton and asynctio"
             )
             .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
-                helps.get_markup(),
-            ))
+                helps.get_conversation(&message).await?.get_current_markup().await?
+                            ))
             .reply_to_message_id(message.get_message_id())
             .build()
             .await?;

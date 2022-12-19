@@ -41,7 +41,7 @@ const STATE_NAME: &str = "Send a name for this sticker";
 const STATE_TAGS: &str = "Send tags for this sticker, one at a time. Send /done to stop";
 const STATE_DONE: &str = "Successfully uploaded sticker";
 
-metadata!("stickertag",
+metadata!("Sticker Organizer",
     { command = "upload", help = "Uploads a sticker" },
     { command = "list", help = "Lists available stickers"},
     { command = "delete", help = "Deletes a sticker by uuid"}

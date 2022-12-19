@@ -1,8 +1,7 @@
 use ::redis::AsyncCommands;
 use anyhow::anyhow;
 use botapi::gen_types::{
-    CallbackQuery, Chat, InlineKeyboardButton, InlineKeyboardButtonBuilder, InlineKeyboardMarkup,
-    Message,
+    CallbackQuery, Chat, InlineKeyboardButtonBuilder, InlineKeyboardMarkup, Message,
 };
 use chrono::{DateTime, Utc};
 use futures::future::BoxFuture;
@@ -22,12 +21,6 @@ use crate::persist::Result;
 use std::sync::Arc;
 
 use super::button::InlineKeyboardBuilder;
-#[cfg(test)]
-mod tests {
-
-    use super::Conversation;
-}
-
 pub const TYPE_DIALOG: &str = "DialogDb";
 
 #[inline(always)]
@@ -144,7 +137,10 @@ impl ConversationState {
     ) -> Uuid {
         let transition = FSMTransition::new(start, end);
         let uuid = transition.transition_id;
-        self.transitions.insert(triggerphrase.into(), transition);
+        self.transitions.insert(
+            format!("{}{}", start.to_string(), triggerphrase.into()),
+            transition,
+        );
         uuid
     }
 
@@ -201,14 +197,19 @@ impl Conversation {
     where
         S: Into<String>,
     {
-        let current = if let Some(next) = self.0.transitions.get(&next.into()) {
+        let current = self.get_current().await?.state_id.to_string();
+        let current = if let Some(next) = {
+            let n = format!("{}{}", current, next.into());
+            log::info!("transition next {}", n);
+            self.0.transitions.get(&n)
+        } {
             if let Some(next) = self.0.states.get(&next.end_state) {
                 Ok(next)
             } else {
                 Err(BotError::new("invalid choice"))
             }
         } else {
-            Err(BotError::new("invalid choice"))
+            Err(BotError::new("invalid choice current"))
         }?;
         self.write_key(current.state_id).await?;
         Ok(&current.content)
@@ -239,15 +240,16 @@ impl Conversation {
 
     async fn edit_button_transition(
         &self,
-        trans: String,
+        trans: Uuid,
         content: String,
         callback: &CallbackQuery,
     ) -> Result<()> {
         if let Some(message) = callback.get_message() {
-            REDIS.pipe(|p| p.set(&self.0.rediskey, trans)).await?;
+            self.write_key(trans).await?;
             TG.client()
                 .build_edit_message_text(&content)
                 .message_id(message.get_message_id())
+                .chat_id(message.get_chat().get_id())
                 .build()
                 .await?;
 
@@ -256,6 +258,7 @@ impl Conversation {
             TG.client()
                 .build_edit_message_reply_markup()
                 .message_id(message.get_message_id())
+                .chat_id(message.get_chat().get_id())
                 .reply_markup(&n)
                 .build()
                 .await?;
@@ -279,11 +282,11 @@ impl Conversation {
                         let b = InlineKeyboardButtonBuilder::new(n.to_owned())
                             .set_callback_data(Uuid::new_v4().to_string())
                             .build();
-                        let trans = t.transition_id.to_string();
+                        let trans = t.end_state.to_owned();
                         if let Some(newstate) = me.0.states.get(&t.end_state) {
                             let content = newstate.content.to_owned();
                             let me = me.clone();
-                            b.on_push(|callback| async move {
+                            b.on_push(move |callback| async move {
                                 if let Err(err) =
                                     me.edit_button_transition(trans, content, &callback).await
                                 {
