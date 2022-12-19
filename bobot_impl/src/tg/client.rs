@@ -43,18 +43,7 @@ impl MetadataCollection {
         self.modules
             .iter()
             .fold(InlineKeyboardBuilder::default(), |builder, (m, _)| {
-                let button = InlineKeyboardButtonBuilder::new(m.clone())
-                    .set_callback_data("fmef".to_owned())
-                    .build();
-                button.on_push(|q| async move {
-                    log::info!("callback query from {}", q.get_id());
-                    TG.client()
-                        .build_answer_callback_query(q.get_id())
-                        .build()
-                        .await
-                        .unwrap();
-                });
-                builder.button(button)
+                builder.command_button(m.to_owned(), format!("/help {}", m))
             })
             .build()
     }
@@ -81,7 +70,10 @@ async fn show_help(
             .await?;
     } else {
         TG.client()
-            .build_send_message(message.get_chat().get_id(), &helps.get_all_help())
+            .build_send_message(
+                message.get_chat().get_id(),
+                 "Welcome to Default Bot, a modular group management bot written in pyton and asynctio"
+            )
             .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
                 helps.get_markup(),
             ))

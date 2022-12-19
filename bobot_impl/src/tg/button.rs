@@ -1,7 +1,12 @@
-use botapi::gen_types::{CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup};
+use anyhow::Result;
+use botapi::gen_types::{
+    CallbackQuery, InlineKeyboardButton, InlineKeyboardButtonBuilder, InlineKeyboardMarkup, Message,
+};
 use futures::Future;
 
-use crate::statics::TG;
+use crate::{persist::redis::scope_key_by_chatuser, statics::TG};
+
+const MAX_BUTTONS: usize = 8;
 
 pub(crate) struct InlineKeyboardBuilder(Vec<Vec<InlineKeyboardButton>>);
 
@@ -14,9 +19,22 @@ impl Default for InlineKeyboardBuilder {
 impl InlineKeyboardBuilder {
     pub(crate) fn button(mut self, button: InlineKeyboardButton) -> Self {
         if let Some(v) = self.0.last_mut() {
-            v.push(button)
+            if v.len() < MAX_BUTTONS {
+                v.push(button);
+                self
+            } else {
+                self.newline().button(button)
+            }
+        } else {
+            self
         }
-        self
+    }
+
+    pub(crate) fn command_button(self, caption: String, command: String) -> Self {
+        let b = InlineKeyboardButtonBuilder::new(caption)
+            .set_switch_inline_query_current_chat(command)
+            .build();
+        self.button(b)
     }
 
     pub(crate) fn newline(mut self) -> Self {

@@ -1,6 +1,9 @@
 use ::redis::AsyncCommands;
 use anyhow::anyhow;
-use botapi::gen_types::{Chat, Message};
+use botapi::gen_types::{
+    CallbackQuery, Chat, InlineKeyboardButton, InlineKeyboardButtonBuilder, InlineKeyboardMarkup,
+    Message,
+};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -8,11 +11,14 @@ use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::persist::redis::RedisStr;
-use crate::statics::REDIS;
+use crate::statics::{REDIS, TG};
+use crate::tg::button::OnPush;
 use crate::util::error::BotError;
 use log::info;
 
 use crate::persist::Result;
+
+use super::button::InlineKeyboardBuilder;
 #[cfg(test)]
 mod tests {
 
@@ -123,6 +129,27 @@ impl FSMTransition {
     }
 }
 
+async fn edit_button_transition(
+    rediskey: String,
+    trans: String,
+    content: String,
+    callback: &CallbackQuery,
+) -> Result<()> {
+    if let Some(message) = callback.get_message() {
+        REDIS.pipe(|p| p.set(rediskey, trans)).await?;
+        TG.client()
+            .build_edit_message_text(&content)
+            .message_id(message.get_message_id())
+            .build()
+            .await?;
+        TG.client()
+            .build_answer_callback_query(callback.get_id())
+            .build()
+            .await?;
+    }
+    Ok(())
+}
+
 impl Conversation {
     pub fn add_state<S: Into<String>>(&mut self, reply: S) -> Uuid {
         let state = FSMState::new(self.conversation_id, false, reply.into());
@@ -209,6 +236,37 @@ impl Conversation {
         } else {
             Err(anyhow!(BotError::new("corrupt graph")))
         }
+    }
+
+    pub async fn get_current_markup<'a, T: AsRef<str>>(&'a self) -> Result<InlineKeyboardMarkup> {
+        let state = self.get_current().await?;
+        let markup = self
+            .transitions
+            .iter()
+            .filter(|(_, t)| t.start_state == state.state_id)
+            .map(|(n, t)| {
+                let b = InlineKeyboardButtonBuilder::new(n.to_owned())
+                    .set_callback_data(Uuid::new_v4().to_string())
+                    .build();
+                let rediskey = self.rediskey.to_string();
+                let trans = t.transition_id.to_string();
+                if let Some(newstate) = self.states.get(&t.end_state) {
+                    let content = newstate.content.to_owned();
+                    b.on_push(|callback| async move {
+                        if let Err(err) =
+                            edit_button_transition(rediskey, trans, content, &callback).await
+                        {
+                            log::error!("failed to transition: {}", err);
+                        }
+                    });
+                }
+                b
+            })
+            .fold(InlineKeyboardBuilder::default(), |builder, st| {
+                builder.button(st)
+            })
+            .build();
+        Ok(markup)
     }
 
     pub async fn get_current_text(&self) -> Result<String> {
