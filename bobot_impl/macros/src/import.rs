@@ -89,7 +89,7 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
             update: ::botapi::gen_types::UpdateExt
             ) -> () {
             #(
-                #updates::handle_update(&update).await
+                #updates::handle_update(&update).await;
             )*
         }
     };
