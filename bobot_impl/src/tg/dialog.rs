@@ -17,6 +17,7 @@ use crate::util::error::BotError;
 use log::info;
 
 use crate::persist::Result;
+use std::sync::Arc;
 
 use super::button::InlineKeyboardBuilder;
 #[cfg(test)]
@@ -69,7 +70,7 @@ pub fn get_state_key_message(message: &Message) -> Result<String> {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct Conversation {
+pub struct ConversationState {
     pub conversation_id: Uuid,
     pub triggerphrase: String,
     pub chat: i64,
@@ -79,6 +80,9 @@ pub struct Conversation {
     pub transitions: HashMap<String, FSMTransition>,
     rediskey: String,
 }
+
+#[derive(Serialize, Deserialize)]
+pub struct Conversation(Arc<ConversationState>);
 
 #[derive(Serialize, Deserialize)]
 pub struct FSMState {
@@ -150,14 +154,7 @@ async fn edit_button_transition(
     Ok(())
 }
 
-impl Conversation {
-    pub fn add_state<S: Into<String>>(&mut self, reply: S) -> Uuid {
-        let state = FSMState::new(self.conversation_id, false, reply.into());
-        let uuid = state.state_id;
-        self.states.insert(state.state_id, state);
-        uuid
-    }
-
+impl ConversationState {
     pub fn add_transition<S: Into<String>>(
         &mut self,
         start: Uuid,
@@ -170,24 +167,11 @@ impl Conversation {
         uuid
     }
 
-    pub fn new(triggerphrase: String, reply: String, chat: i64, user: i64) -> Result<Self> {
-        let conversation_id = Uuid::new_v4();
-        let startstate = FSMState::new(conversation_id, true, reply);
-        let mut states = HashMap::<Uuid, FSMState>::new();
-        let start = startstate.state_id;
-        states.insert(startstate.state_id, startstate);
-        let conversation = Conversation {
-            conversation_id,
-            triggerphrase,
-            chat,
-            states,
-            start,
-            user,
-            transitions: HashMap::<String, FSMTransition>::new(),
-            rediskey: get_state_key(chat, user),
-        };
-
-        Ok(conversation)
+    pub fn add_state<S: Into<String>>(&mut self, reply: S) -> Uuid {
+        let state = FSMState::new(self.conversation_id, false, reply.into());
+        let uuid = state.state_id;
+        self.states.insert(state.state_id, state);
+        uuid
     }
 
     pub fn get_start<'a>(&'a self) -> Result<&'a FSMState> {
@@ -198,12 +182,46 @@ impl Conversation {
         }
     }
 
+    pub fn new(triggerphrase: String, reply: String, chat: i64, user: i64) -> Result<Self> {
+        let conversation_id = Uuid::new_v4();
+        let startstate = FSMState::new(conversation_id, true, reply);
+        let mut states = HashMap::<Uuid, FSMState>::new();
+        let start = startstate.state_id;
+        states.insert(startstate.state_id, startstate);
+        let state = ConversationState {
+            conversation_id,
+            triggerphrase,
+            chat,
+            states,
+            start,
+            user,
+            transitions: HashMap::<String, FSMTransition>::new(),
+            rediskey: get_state_key(chat, user),
+        };
+
+        Ok(state)
+    }
+
+    pub fn build(self) -> Conversation {
+        Conversation(Arc::new(self))
+    }
+}
+
+impl Conversation {
+    pub fn get_start<'a>(&'a self) -> Result<&'a FSMState> {
+        if let Some(start) = self.0.states.get(&self.0.start) {
+            Ok(start)
+        } else {
+            Err(anyhow!(BotError::new("corrupt graph")))
+        }
+    }
+
     pub async fn transition<'a, S>(&'a self, next: S) -> Result<&'a str>
     where
         S: Into<String>,
     {
-        let current = if let Some(next) = self.transitions.get(&next.into()) {
-            if let Some(next) = self.states.get(&next.end_state) {
+        let current = if let Some(next) = self.0.transitions.get(&next.into()) {
+            if let Some(next) = self.0.states.get(&next.end_state) {
                 Ok(next)
             } else {
                 Err(BotError::new("invalid choice"))
@@ -217,21 +235,21 @@ impl Conversation {
 
     pub async fn write_key(&self, new: Uuid) -> Result<()> {
         REDIS
-            .pipe(|p| p.set(&self.rediskey.to_string(), new.to_string()))
+            .pipe(|p| p.set(&self.0.rediskey.to_string(), new.to_string()))
             .await?;
         Ok(())
     }
 
     pub async fn write_self(&self) -> Result<()> {
         REDIS
-            .pipe(|p| p.set(&self.rediskey.to_string(), self.start.to_string()))
+            .pipe(|p| p.set(&self.0.rediskey.to_string(), self.0.start.to_string()))
             .await
     }
 
     pub async fn get_current<'a>(&'a self) -> Result<&'a FSMState> {
-        let current: String = REDIS.sq(|p| p.get(&self.rediskey)).await?;
+        let current: String = REDIS.sq(|p| p.get(&self.0.rediskey)).await?;
         let current = Uuid::from_str(&current)?;
-        if let Some(current) = self.states.get(&current) {
+        if let Some(current) = self.0.states.get(&current) {
             Ok(current)
         } else {
             Err(anyhow!(BotError::new("corrupt graph")))
@@ -241,6 +259,7 @@ impl Conversation {
     pub async fn get_current_markup<'a, T: AsRef<str>>(&'a self) -> Result<InlineKeyboardMarkup> {
         let state = self.get_current().await?;
         let markup = self
+            .0
             .transitions
             .iter()
             .filter(|(_, t)| t.start_state == state.state_id)
@@ -248,9 +267,9 @@ impl Conversation {
                 let b = InlineKeyboardButtonBuilder::new(n.to_owned())
                     .set_callback_data(Uuid::new_v4().to_string())
                     .build();
-                let rediskey = self.rediskey.to_string();
+                let rediskey = self.0.rediskey.to_string();
                 let trans = t.transition_id.to_string();
-                if let Some(newstate) = self.states.get(&t.end_state) {
+                if let Some(newstate) = self.0.states.get(&t.end_state) {
                     let content = newstate.content.to_owned();
                     b.on_push(|callback| async move {
                         if let Err(err) =
@@ -275,7 +294,7 @@ impl Conversation {
     }
 
     pub async fn reset(self) -> Result<()> {
-        self.write_key(self.start).await
+        self.write_key(self.0.start).await
     }
 }
 
@@ -318,7 +337,7 @@ where
         .pipe(|p| {
             p.atomic();
             p.set(&key, conversationstr);
-            p.set(&conversation.rediskey, conversation.start.to_string())
+            p.set(&conversation.0.rediskey, conversation.0.start.to_string())
         })
         .await?;
     Ok(conversation)
@@ -341,10 +360,16 @@ where
             .pipe(|p| {
                 p.atomic();
                 p.set(&key, s);
-                p.set(&res.rediskey, res.start.to_string())
+                p.set(&res.0.rediskey, res.0.start.to_string())
             })
             .await?;
         Ok(res)
+    }
+}
+
+impl Clone for Conversation {
+    fn clone(&self) -> Self {
+        Self(Arc::clone(&self.0))
     }
 }
 

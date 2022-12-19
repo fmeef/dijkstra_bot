@@ -7,6 +7,7 @@ use crate::persist::redis as r;
 use crate::persist::Result;
 use crate::statics::{DB, REDIS, TG};
 use crate::tg::command::{parse_cmd, Arg};
+use crate::tg::dialog::ConversationState;
 use crate::tg::dialog::{drop_converstaion, Conversation};
 use crate::tg::dialog::{get_conversation, replace_conversation};
 use crate::tg::user::GetUser;
@@ -47,7 +48,7 @@ metadata!("stickertag",
 );
 
 fn upload_sticker_conversation(message: &Message) -> Result<Conversation> {
-    let mut conversation = Conversation::new(
+    let mut conversation = ConversationState::new(
         UPLOAD_CMD.to_string(),
         STATE_START.to_string(),
         message.get_chat().get_id(),
@@ -69,7 +70,7 @@ fn upload_sticker_conversation(message: &Message) -> Result<Conversation> {
     conversation.add_transition(state_tags, state_tags, TRANSITION_MORETAG);
     conversation.add_transition(state_tags, state_done, TRANSITION_DONE);
 
-    Ok(conversation)
+    Ok(conversation.build())
 }
 
 struct Migration;
