@@ -5,6 +5,8 @@ use botapi::gen_types::{
     Message,
 };
 use chrono::{DateTime, Utc};
+use futures::future::BoxFuture;
+use futures::FutureExt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -133,27 +135,6 @@ impl FSMTransition {
     }
 }
 
-async fn edit_button_transition(
-    rediskey: String,
-    trans: String,
-    content: String,
-    callback: &CallbackQuery,
-) -> Result<()> {
-    if let Some(message) = callback.get_message() {
-        REDIS.pipe(|p| p.set(rediskey, trans)).await?;
-        TG.client()
-            .build_edit_message_text(&content)
-            .message_id(message.get_message_id())
-            .build()
-            .await?;
-        TG.client()
-            .build_answer_callback_query(callback.get_id())
-            .build()
-            .await?;
-    }
-    Ok(())
-}
-
 impl ConversationState {
     pub fn add_transition<S: Into<String>>(
         &mut self,
@@ -256,36 +237,69 @@ impl Conversation {
         }
     }
 
-    pub async fn get_current_markup<'a, T: AsRef<str>>(&'a self) -> Result<InlineKeyboardMarkup> {
-        let state = self.get_current().await?;
-        let markup = self
-            .0
-            .transitions
-            .iter()
-            .filter(|(_, t)| t.start_state == state.state_id)
-            .map(|(n, t)| {
-                let b = InlineKeyboardButtonBuilder::new(n.to_owned())
-                    .set_callback_data(Uuid::new_v4().to_string())
-                    .build();
-                let rediskey = self.0.rediskey.to_string();
-                let trans = t.transition_id.to_string();
-                if let Some(newstate) = self.0.states.get(&t.end_state) {
-                    let content = newstate.content.to_owned();
-                    b.on_push(|callback| async move {
-                        if let Err(err) =
-                            edit_button_transition(rediskey, trans, content, &callback).await
-                        {
-                            log::error!("failed to transition: {}", err);
+    async fn edit_button_transition(
+        &self,
+        trans: String,
+        content: String,
+        callback: &CallbackQuery,
+    ) -> Result<()> {
+        if let Some(message) = callback.get_message() {
+            REDIS.pipe(|p| p.set(&self.0.rediskey, trans)).await?;
+            TG.client()
+                .build_edit_message_text(&content)
+                .message_id(message.get_message_id())
+                .build()
+                .await?;
+
+            let n = self.get_current_markup().await?;
+
+            TG.client()
+                .build_edit_message_reply_markup()
+                .message_id(message.get_message_id())
+                .reply_markup(&n)
+                .build()
+                .await?;
+            TG.client()
+                .build_answer_callback_query(callback.get_id())
+                .build()
+                .await?;
+        }
+        Ok(())
+    }
+
+    pub fn get_current_markup(&self) -> BoxFuture<'static, Result<InlineKeyboardMarkup>> {
+        let me = self.clone();
+        async move {
+            let state = me.get_current().await?;
+            let markup =
+                me.0.transitions
+                    .iter()
+                    .filter(|(_, t)| t.start_state == state.state_id)
+                    .map(|(n, t)| {
+                        let b = InlineKeyboardButtonBuilder::new(n.to_owned())
+                            .set_callback_data(Uuid::new_v4().to_string())
+                            .build();
+                        let trans = t.transition_id.to_string();
+                        if let Some(newstate) = me.0.states.get(&t.end_state) {
+                            let content = newstate.content.to_owned();
+                            let me = me.clone();
+                            b.on_push(|callback| async move {
+                                if let Err(err) =
+                                    me.edit_button_transition(trans, content, &callback).await
+                                {
+                                    log::error!("failed to transition: {}", err);
+                                }
+                            });
                         }
-                    });
-                }
-                b
-            })
-            .fold(InlineKeyboardBuilder::default(), |builder, st| {
-                builder.button(st)
-            })
-            .build();
-        Ok(markup)
+                        b
+                    })
+                    .fold(InlineKeyboardBuilder::default(), |builder, st| {
+                        builder.button(st)
+                    })
+                    .build();
+            Ok(markup)
+        }
+        .boxed()
     }
 
     pub async fn get_current_text(&self) -> Result<String> {
