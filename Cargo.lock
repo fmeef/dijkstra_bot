@@ -45,9 +45,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.67"
+version = "1.0.68"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7724808837b77f4b4de9d283820f9d98bcf496d5692934b857a2399d31ff22e6"
+checksum = "2cb2f989d18dd141ab8ae82f64d1a8cdd37e0840f73a406896cf5e99502fab61"
 
 [[package]]
 name = "arrayvec"
@@ -315,9 +315,9 @@ dependencies = [
 
 [[package]]
 name = "botapi"
-version = "0.0.6"
+version = "0.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5587120fb964b91aa67398abd24148eb3db57df3d8e6b3bfae61faf57d1e13c1"
+checksum = "18ef7c359f6e1a8d05a1ee422e1d76c2c8077a26b25ab02e84eaba9645917091"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -2312,9 +2312,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.90"
+version = "1.0.91"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8778cc0b528968fe72abec38b5db5a20a70d148116cd9325d2bc5f5180ca3faf"
+checksum = "877c235533714907a8c2464236f5c4b2a17262ef1bd71f38f35ea592c8da6883"
 dependencies = [
  "itoa",
  "ryu",
@@ -2593,9 +2593,9 @@ checksum = "222a222a5bfe1bba4a77b45ec488a741b3cb8872e5e499451fd7d0129c9c7c3d"
 
 [[package]]
 name = "tggen"
-version = "0.0.6"
+version = "0.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c2632edd56ddfd6474f6e59d5d76e3331d3b233076bd1b0c054bb57eade52335"
+checksum = "db83990b81e8b085b882c69d310f096a1c1a53e887c12313f37d7e3ebc3deae3"
 dependencies = [
  "anyhow",
  "convert_case",

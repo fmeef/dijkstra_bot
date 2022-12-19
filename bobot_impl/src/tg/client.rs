@@ -44,7 +44,7 @@ impl MetadataCollection {
             .iter()
             .fold(InlineKeyboardBuilder::default(), |builder, (m, _)| {
                 let button = InlineKeyboardButtonBuilder::new(m.clone())
-                    .set_callback_data(Some("fmef".to_owned()))
+                    .set_callback_data("fmef".to_owned())
                     .build();
                 button.on_push(|q| async move {
                     log::info!("callback query from {}", q.get_id());
