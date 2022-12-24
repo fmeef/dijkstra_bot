@@ -30,11 +30,19 @@ pub(crate) struct MetadataCollection {
 }
 
 impl MetadataCollection {
-    fn get_help<'a>(&'a self, module: &str) -> &'a str {
-        self.helps
+    fn get_module_text(&self, module: &str) -> String {
+        self.modules
             .get(module)
-            .map(|v| v.as_str())
-            .unwrap_or(INVALID)
+            .map(|v| {
+                let helps = v
+                    .commands
+                    .iter()
+                    .map(|(c, h)| format!("/{}: {}", c, h))
+                    .collect::<Vec<String>>()
+                    .join("\n");
+                format!("{}:\n{}", v.name, helps)
+            })
+            .unwrap_or_else(|| INVALID.to_owned())
     }
 
     pub(crate) async fn get_conversation(&self, message: &Message) -> Result<Conversation> {
@@ -52,7 +60,7 @@ impl MetadataCollection {
 
         let start = state.get_start()?.state_id;
         self.modules.iter().for_each(|(_, n)| {
-            let s = state.add_state(self.get_help(&n.name));
+            let s = state.add_state(self.get_module_text(&n.name));
             state.add_transition(start, s, n.name.clone());
             state.add_transition(s, start, "Back");
         });
