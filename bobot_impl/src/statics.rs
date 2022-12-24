@@ -11,7 +11,6 @@ use log::LevelFilter;
 use sea_orm::entity::prelude::DatabaseConnection;
 use sea_orm::{ConnectOptions, Database};
 use serde::{Deserialize, Serialize};
-use std::env;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -30,8 +29,16 @@ pub(crate) struct LogConfig {
 }
 
 #[derive(Serialize, Deserialize)]
+pub(crate) struct Persistence {
+    pub(crate) database_connection: String,
+    pub(crate) redis_connection: String,
+}
+
+#[derive(Serialize, Deserialize)]
 pub(crate) struct Config {
     pub(crate) cache_timeout: usize,
+    pub(crate) bot_token: String,
+    pub(crate) persistence: Persistence,
     pub(crate) webhook: WebhookConfig,
     pub(crate) logging: LogConfig,
 }
@@ -39,6 +46,15 @@ pub(crate) struct Config {
 impl LogConfig {
     pub(crate) fn get_log_level(&self) -> LevelFilter {
         self.log_level.0
+    }
+}
+
+impl Default for Persistence {
+    fn default() -> Self {
+        Self {
+            redis_connection: "redis://localhost".to_owned(),
+            database_connection: "postgresql://user:password@localhost/database".to_owned(),
+        }
     }
 }
 
@@ -64,6 +80,8 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             cache_timeout: Duration::hours(48).num_seconds() as usize,
+            bot_token: "changeme".to_owned(),
+            persistence: Persistence::default(),
             logging: LogConfig::default(),
             webhook: WebhookConfig::default(),
         }
@@ -90,17 +108,12 @@ lazy_static! {
 lazy_static! {
     pub(crate) static ref ARGS: Args = Args::parse();
     pub(crate) static ref CONFIG: Config = load_path(&ARGS.config).expect("failed to load config");
-    pub(crate) static ref BOT_TOKEN: String = env::var("TOKEN").expect("need to set FMEFTOKEN");
-    pub(crate) static ref PG_CONNECTION_STR: String =
-        env::var("PG_CONNECTION_PROD").expect("need to set PG_CONNECTION_PROD");
-    pub(crate) static ref REDIS_CONNECTION_STR: String =
-        env::var("REDIS_CONNECTION_PROD").expect("need to set REDIS_CONNECTION_PROD");
 }
 
 //redis client
 lazy_static! {
     pub(crate) static ref REDIS: RedisPool =
-        block_on(RedisPoolBuilder::new(REDIS_CONNECTION_STR.clone()).build())
+        block_on(RedisPoolBuilder::new(&CONFIG.persistence.redis_connection).build())
             .expect("failed to initialize redis pool");
 }
 
@@ -108,16 +121,18 @@ lazy_static! {
 lazy_static! {
     pub(crate) static ref DB: Arc<DatabaseConnection> =
         Runtime::new().unwrap().block_on(async move {
-            let db = Database::connect(ConnectOptions::new(PG_CONNECTION_STR.clone()))
-                .await
-                .expect("failed to initialize database");
+            let db = Database::connect(ConnectOptions::new(
+                CONFIG.persistence.database_connection.to_owned(),
+            ))
+            .await
+            .expect("failed to initialize database");
             Arc::new(db)
         });
 }
 
 //tg client
 lazy_static! {
-    pub(crate) static ref TG: TgClient = TgClient::connect(BOT_TOKEN.clone());
+    pub(crate) static ref TG: TgClient = TgClient::connect(CONFIG.bot_token.to_owned());
 }
 
 pub fn get_executor() -> TokioTp {
