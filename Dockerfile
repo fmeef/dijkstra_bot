@@ -38,6 +38,7 @@ FROM scratch
 COPY --from=builder /etc/passwd /etc/passwd
 COPY --from=builder /etc/group /etc/group
 WORKDIR /bobot
+COPY --from=builder /etc/ssl /etc/ssl
 COPY --from=builder /usr/local/cargo/bin/bobot ./
 USER bobot:bobot
 VOLUME /config

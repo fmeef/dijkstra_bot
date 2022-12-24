@@ -174,9 +174,14 @@ impl TgClient {
     }
 
     pub(crate) async fn run(&self) -> Result<()> {
-        log::debug!("run");
+        log::info!("run");
         match CONFIG.webhook.enable_webhook {
             false => {
+                self.client
+                    .build_delete_webhook()
+                    .drop_pending_updates(true)
+                    .build()
+                    .await?;
                 LongPoller::new(&self.client)
                     .get_updates()
                     .await

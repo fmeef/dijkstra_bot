@@ -1,0 +1,14 @@
+cache_timeout = 172800
+bot_token = 'changeme'
+
+[persistence]
+database_connection = 'postgresql://bobot:changeme@db/bobot'
+redis_connection = 'redis://redis'
+
+[webhook]
+enable_webhook = false
+webhook_url = 'https://bot.ustc.edu.cn'
+listen = '0.0.0.0:8080'
+
+[logging]
+log_level = 'trace'
