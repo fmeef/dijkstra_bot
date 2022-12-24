@@ -1,3 +1,4 @@
+use crate::logger::LevelFilterWrapper;
 use crate::persist::redis::{RedisPool, RedisPoolBuilder};
 use crate::tg::client::TgClient;
 use async_executors::{TokioTp, TokioTpBuilder};
@@ -6,23 +7,65 @@ use clap::Parser;
 use confy::load_path;
 use futures::executor::block_on;
 use lazy_static::lazy_static;
+use log::LevelFilter;
 use sea_orm::entity::prelude::DatabaseConnection;
 use sea_orm::{ConnectOptions, Database};
 use serde::{Deserialize, Serialize};
 use std::env;
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
 
 #[derive(Serialize, Deserialize)]
+pub(crate) struct WebhookConfig {
+    pub(crate) enable_webhook: bool,
+    pub(crate) webhook_url: String,
+    pub(crate) listen: SocketAddr,
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct LogConfig {
+    log_level: LevelFilterWrapper,
+}
+
+#[derive(Serialize, Deserialize)]
 pub(crate) struct Config {
     pub(crate) cache_timeout: usize,
+    pub(crate) webhook: WebhookConfig,
+    pub(crate) logging: LogConfig,
+}
+
+impl LogConfig {
+    pub(crate) fn get_log_level(&self) -> LevelFilter {
+        self.log_level.0
+    }
+}
+
+impl Default for LogConfig {
+    fn default() -> Self {
+        Self {
+            log_level: LevelFilterWrapper(log::LevelFilter::Info),
+        }
+    }
+}
+
+impl Default for WebhookConfig {
+    fn default() -> Self {
+        Self {
+            enable_webhook: false,
+            webhook_url: "https://bot.ustc.edu.cn".to_owned(),
+            listen: ([0, 0, 0, 0], 8080).into(),
+        }
+    }
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             cache_timeout: Duration::hours(48).num_seconds() as usize,
+            logging: LogConfig::default(),
+            webhook: WebhookConfig::default(),
         }
     }
 }

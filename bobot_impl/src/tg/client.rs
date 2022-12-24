@@ -2,7 +2,7 @@ use std::collections::{HashMap, VecDeque};
 
 use botapi::{
     bot::Bot,
-    ext::LongPoller,
+    ext::{BotUrl, LongPoller, Webhook},
     gen_types::{
         CallbackQuery, InlineKeyboardButton, InlineKeyboardButtonBuilder, InlineKeyboardMarkup,
         Message, UpdateExt,
@@ -15,7 +15,7 @@ use super::{
     dialog::{Conversation, ConversationState},
     user::GetUser,
 };
-use crate::statics::TG;
+use crate::statics::{CONFIG, TG};
 use crate::{
     metadata::Metadata,
     modules,
@@ -153,41 +153,66 @@ impl TgClient {
             button_events: Arc::new(DashMap::new()),
         }
     }
-    pub(crate) async fn run(&self) -> Result<()> {
-        log::debug!("run");
-        let poll = LongPoller::new(&self.client);
-        poll.get_updates()
-            .await
-            .for_each_concurrent(None, |update| async move {
-                let modules = Arc::clone(&self.modules);
-                let callbacks = Arc::clone(&self.button_events);
-                tokio::spawn(async move {
-                    match update {
-                        Ok(UpdateExt::CallbackQuery(callbackquery)) => {
-                            if let Some(data) = callbackquery.get_data() {
-                                if let Some(cb) = callbacks.remove(data) {
-                                    cb.1.cb(callbackquery).await;
-                                }
-                            }
-                        }
-                        Ok(update) => {
-                            if let Err(err) = update.record_user().await {
-                                log::error!("failed to record_user: {}", err);
-                            }
 
-                            match handle_help(&update, modules).await {
-                                Ok(false) => crate::modules::process_updates(update).await,
-                                Err(err) => log::error!("failed to show help: {}", err),
-                                _ => (),
-                            }
-                        }
-                        Err(err) => {
-                            log::error!("failed to process update: {}", err);
+    async fn handle_update(&self, update: Result<UpdateExt>) {
+        let modules = Arc::clone(&self.modules);
+        let callbacks = Arc::clone(&self.button_events);
+        tokio::spawn(async move {
+            match update {
+                Ok(UpdateExt::CallbackQuery(callbackquery)) => {
+                    if let Some(data) = callbackquery.get_data() {
+                        if let Some(cb) = callbacks.remove(data) {
+                            cb.1.cb(callbackquery).await;
                         }
                     }
-                });
-            })
-            .await;
+                }
+                Ok(update) => {
+                    if let Err(err) = update.record_user().await {
+                        log::error!("failed to record_user: {}", err);
+                    }
+
+                    match handle_help(&update, modules).await {
+                        Ok(false) => crate::modules::process_updates(update).await,
+                        Err(err) => log::error!("failed to show help: {}", err),
+                        _ => (),
+                    }
+                }
+                Err(err) => {
+                    log::error!("failed to process update: {}", err);
+                }
+            }
+        });
+    }
+
+    pub(crate) async fn run(&self) -> Result<()> {
+        log::debug!("run");
+        match CONFIG.webhook.enable_webhook {
+            false => {
+                LongPoller::new(&self.client)
+                    .get_updates()
+                    .await
+                    .for_each_concurrent(
+                        None,
+                        |update| async move { self.handle_update(update).await },
+                    )
+                    .await
+            }
+            true => {
+                Webhook::new(
+                    &self.client,
+                    BotUrl::Host(CONFIG.webhook.webhook_url.to_owned()),
+                    false,
+                    CONFIG.webhook.listen.to_owned(),
+                )
+                .get_updates()
+                .await?
+                .for_each_concurrent(
+                    None,
+                    |update| async move { self.handle_update(update).await },
+                )
+                .await
+            }
+        }
         Ok(())
     }
 
