@@ -1,4 +1,4 @@
-use crate::persist::{core::users::Model as UserModel, redis::RedisStr};
+use crate::persist::redis::RedisStr;
 use crate::statics::{CONFIG, REDIS};
 use anyhow::Result;
 use async_trait::async_trait;
@@ -12,8 +12,7 @@ pub(crate) fn get_user_cache_key(user: i64) -> String {
 }
 
 pub(crate) async fn record_cache_user(user: &User) -> Result<()> {
-    let user: UserModel = user.into();
-    let key = get_user_cache_key(user.user_id);
+    let key = get_user_cache_key(user.get_id());
     let st = RedisStr::new(&user)?;
     REDIS
         .pipe(|p| p.set(&key, st).expire(&key, CONFIG.cache_timeout))
@@ -29,21 +28,25 @@ pub(crate) async fn record_cache_update(update: &UpdateExt) -> Result<()> {
 }
 
 #[allow(dead_code)]
-pub(crate) async fn get_user(user: i64) -> Result<Option<UserModel>> {
+pub(crate) async fn get_user(user: i64) -> Result<Option<User>> {
     let key = get_user_cache_key(user);
     let model: Option<RedisStr> = REDIS.sq(|p| p.get(&key)).await?;
     Ok(model
-        .map(|v| v.get::<UserModel>())
+        .map(|v| v.get::<User>())
         .map_or(Ok(None), |v| v.map(Some))?)
 }
 #[async_trait]
-pub(crate) trait GetUser {
+pub(crate) trait RecordUser {
     fn get_user<'a>(&'a self) -> Option<&'a User>;
     async fn record_user(&self) -> Result<()>;
-    async fn get_cached_user(&self) -> Result<Option<UserModel>>;
 }
 
-impl From<&User> for UserModel {
+#[async_trait]
+pub(crate) trait GetUser {
+    async fn get_cached_user(&self) -> Result<Option<User>>;
+}
+
+impl From<&User> for crate::persist::core::users::Model {
     fn from(user: &User) -> Self {
         Self {
             user_id: user.get_id(),
@@ -53,7 +56,14 @@ impl From<&User> for UserModel {
 }
 
 #[async_trait]
-impl GetUser for User {
+impl GetUser for i64 {
+    async fn get_cached_user(&self) -> Result<Option<User>> {
+        get_user(*self).await
+    }
+}
+
+#[async_trait]
+impl RecordUser for User {
     fn get_user<'a>(&'a self) -> Option<&'a User> {
         Some(&self)
     }
@@ -61,14 +71,10 @@ impl GetUser for User {
     async fn record_user(&self) -> Result<()> {
         record_cache_user(self).await
     }
-
-    async fn get_cached_user(&self) -> Result<Option<UserModel>> {
-        get_user(self.get_id()).await
-    }
 }
 
 #[async_trait]
-impl GetUser for UpdateExt {
+impl RecordUser for UpdateExt {
     fn get_user<'a>(&'a self) -> Option<&'a User> {
         match self {
             UpdateExt::Message(ref message) => message.get_from(),
@@ -91,13 +97,5 @@ impl GetUser for UpdateExt {
 
     async fn record_user(&self) -> Result<()> {
         record_cache_update(self).await
-    }
-
-    async fn get_cached_user(&self) -> Result<Option<UserModel>> {
-        if let Some(user) = self.get_user() {
-            get_user(user.get_id()).await
-        } else {
-            Ok(None)
-        }
     }
 }

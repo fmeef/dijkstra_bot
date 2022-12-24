@@ -10,7 +10,7 @@ use crate::tg::command::{parse_cmd, Arg};
 use crate::tg::dialog::ConversationState;
 use crate::tg::dialog::{drop_converstaion, Conversation};
 use crate::tg::dialog::{get_conversation, replace_conversation};
-use crate::tg::user::GetUser;
+use crate::tg::user::{GetUser, RecordUser};
 use crate::util::error::BotError;
 use ::redis::AsyncCommands;
 use ::sea_orm::entity::prelude::*;
@@ -227,12 +227,14 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
 async fn handle_inline(query: &InlineQuery) -> Result<()> {
     let id = query.get_from().get_id();
     let key = query.get_query().to_owned();
-    let cached = query.get_from().get_cached_user().await?;
-    let owner = cached
-        .map(|v| v.username.unwrap_or_else(|| id.to_string()))
-        .unwrap_or_else(|| id.to_string());
     let rkey = format!("{}:{}", id, key);
-    log::info!("query! owner: {} tag: {}", owner, query.get_query());
+
+    let cached = query.get_from().get_id().get_cached_user().await?;
+    if let Some(cached) = cached {
+        if let Some(owner) = cached.get_username() {
+            log::info!("query! owner: {} tag: {}", owner, query.get_query());
+        }
+    }
     let stickers = default_cached_query_vec(move |_, sql| async move {
         let sql: &DatabaseConnection = sql;
         let key = format!("%{}%", key);

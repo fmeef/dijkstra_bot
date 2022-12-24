@@ -11,9 +11,9 @@ use botapi::{
 use dashmap::DashMap;
 
 use super::{
-    button::{InlineKeyboardBuilder, OnPush},
+    button::InlineKeyboardBuilder,
     dialog::{Conversation, ConversationState},
-    user::GetUser,
+    user::RecordUser,
 };
 use crate::statics::{CONFIG, TG};
 use crate::{
