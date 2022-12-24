@@ -11,4 +11,4 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![]
 }
 
-pub async fn handle_update(update: &UpdateExt) {}
+pub async fn handle_update(_update: &UpdateExt) {}

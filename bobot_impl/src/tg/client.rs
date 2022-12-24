@@ -3,15 +3,11 @@ use std::collections::{HashMap, VecDeque};
 use botapi::{
     bot::Bot,
     ext::{BotUrl, LongPoller, Webhook},
-    gen_types::{
-        CallbackQuery, InlineKeyboardButton, InlineKeyboardButtonBuilder, InlineKeyboardMarkup,
-        Message, UpdateExt,
-    },
+    gen_types::{CallbackQuery, InlineKeyboardButton, Message, UpdateExt},
 };
 use dashmap::DashMap;
 
 use super::{
-    button::InlineKeyboardBuilder,
     dialog::{Conversation, ConversationState},
     user::RecordUser,
 };
@@ -26,27 +22,19 @@ use anyhow::{anyhow, Result};
 use futures::{Future, StreamExt};
 use std::sync::Arc;
 
+static INVALID: &str = "invalid";
+
 pub(crate) struct MetadataCollection {
     pub(crate) helps: HashMap<String, String>,
     pub(crate) modules: HashMap<String, Metadata>,
 }
 
 impl MetadataCollection {
-    pub(crate) fn get_all_help(&self) -> String {
-        self.modules
-            .iter()
-            .map(|(m, _)| format!("{}: send /help {}", m, m))
-            .collect::<Vec<String>>()
-            .join("\n")
-    }
-
-    pub(crate) fn get_markup(&self) -> InlineKeyboardMarkup {
-        self.modules
-            .iter()
-            .fold(InlineKeyboardBuilder::default(), |builder, (m, _)| {
-                builder.command_button(m.to_owned(), format!("/help {}", m))
-            })
-            .build()
+    fn get_help<'a>(&'a self, module: &str) -> &'a str {
+        self.helps
+            .get(module)
+            .map(|v| v.as_str())
+            .unwrap_or(INVALID)
     }
 
     pub(crate) async fn get_conversation(&self, message: &Message) -> Result<Conversation> {
@@ -64,7 +52,7 @@ impl MetadataCollection {
 
         let start = state.get_start()?.state_id;
         self.modules.iter().for_each(|(_, n)| {
-            let s = state.add_state(&n.name);
+            let s = state.add_state(self.get_help(&n.name));
             state.add_transition(start, s, n.name.clone());
             state.add_transition(s, start, "Back");
         });

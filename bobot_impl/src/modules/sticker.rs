@@ -10,7 +10,7 @@ use crate::tg::command::{parse_cmd, Arg};
 use crate::tg::dialog::ConversationState;
 use crate::tg::dialog::{drop_converstaion, Conversation};
 use crate::tg::dialog::{get_conversation, replace_conversation};
-use crate::tg::user::{GetUser, RecordUser};
+use crate::tg::user::GetUser;
 use crate::util::error::BotError;
 use ::redis::AsyncCommands;
 use ::sea_orm::entity::prelude::*;

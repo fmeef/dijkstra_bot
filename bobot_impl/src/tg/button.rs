@@ -1,10 +1,9 @@
-use anyhow::Result;
 use botapi::gen_types::{
-    CallbackQuery, InlineKeyboardButton, InlineKeyboardButtonBuilder, InlineKeyboardMarkup, Message,
+    CallbackQuery, InlineKeyboardButton, InlineKeyboardButtonBuilder, InlineKeyboardMarkup,
 };
 use futures::Future;
 
-use crate::{persist::redis::scope_key_by_chatuser, statics::TG};
+use crate::statics::TG;
 
 const MAX_BUTTONS: usize = 8;
 
@@ -16,6 +15,7 @@ impl Default for InlineKeyboardBuilder {
     }
 }
 
+#[allow(dead_code)]
 impl InlineKeyboardBuilder {
     pub(crate) fn button(mut self, button: InlineKeyboardButton) -> Self {
         if let Some(v) = self.0.last_mut() {

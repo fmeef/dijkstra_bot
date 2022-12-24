@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 
 use std::io;
 
+use crate::statics::CONFIG;
+
 pub(crate) struct LevelFilterWrapper(pub(crate) LevelFilter);
 
 impl Serialize for LevelFilterWrapper {
@@ -51,7 +53,7 @@ pub fn setup_log() -> JoinHandle {
 
     let filter = BaseFilter::new()
         .starts_with(true)
-        .max_level(LevelFilter::Info);
+        .max_level(CONFIG.logging.get_log_level());
     let consumer = BaseConsumer::stdout(filter.max_level_get())
         .chain(LevelFilter::Error, io::stderr())
         .unwrap();
