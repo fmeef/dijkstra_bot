@@ -50,7 +50,7 @@ impl MetadataCollection {
     }
 
     pub(crate) async fn get_conversation(&self, message: &Message) -> Result<Conversation> {
-        let mut state = ConversationState::new(
+        let mut state = ConversationState::new_prefix(
             "/help".to_owned(),
             "Welcome to Default Bot, a modular group management bot written in pyton and asynctio"
                 .to_owned(),
@@ -59,6 +59,7 @@ impl MetadataCollection {
                 .get_from()
                 .map(|u| u.get_id())
                 .ok_or_else(|| anyhow!("not user"))?,
+            "button",
         )?;
 
         let start = state.get_start()?.state_id;

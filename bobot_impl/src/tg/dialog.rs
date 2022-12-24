@@ -158,6 +158,16 @@ impl ConversationState {
     }
 
     pub fn new(triggerphrase: String, reply: String, chat: i64, user: i64) -> Result<Self> {
+        Self::new_prefix(triggerphrase, reply, chat, user, "convstate")
+    }
+
+    pub fn new_prefix(
+        triggerphrase: String,
+        reply: String,
+        chat: i64,
+        user: i64,
+        prefix: &str,
+    ) -> Result<Self> {
         let conversation_id = Uuid::new_v4();
         let startstate = FSMState::new(conversation_id, true, reply);
         let mut states = HashMap::<Uuid, FSMState>::new();
@@ -171,7 +181,7 @@ impl ConversationState {
             start,
             user,
             transitions: HashMap::new(),
-            rediskey: get_state_key(chat, user),
+            rediskey: get_conversation_key_prefix(chat, user, prefix),
         };
 
         Ok(state)
