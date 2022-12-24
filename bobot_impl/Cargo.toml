@@ -35,6 +35,8 @@ sea-orm-migration = "0.10.5"
 nonblock-logger = { version = "0.2.2", features = [ "color" ] }
 dashmap = "5.4.0"
 once_cell = "1.16.0"
+openssl = { version = "0.10.35", features = ["vendored"] }
+
 
 [build-dependencies]
 macros = { path = "macros" }
