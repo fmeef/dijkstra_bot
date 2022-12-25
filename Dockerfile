@@ -1,5 +1,5 @@
 
-FROM rust:latest AS builder
+FROM docker.io/library/rust:latest AS builder
 RUN apt update && apt install -y musl-tools musl-dev libssl-dev pkg-config musl-tools clang llvm 
 RUN update-ca-certificates
 
