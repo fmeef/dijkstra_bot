@@ -90,7 +90,7 @@ pub mod entities {
             manager
                 .create_table(
                     sea_query::Table::create()
-                        .table(stickers::Entity)
+                        .table(tags::Entity)
                         .col(
                             ColumnDef::new(tags::Column::Id)
                                 .big_integer()
@@ -111,7 +111,7 @@ pub mod entities {
             manager
                 .create_table(
                     Table::create()
-                        .table(tags::Entity)
+                        .table(stickers::Entity)
                         .col(
                             ColumnDef::new(stickers::Column::UniqueId)
                                 .text()
