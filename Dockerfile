@@ -34,8 +34,9 @@ rustup target add $ARCHITECTURE-unknown-linux-musl && \
  cargo install --target  $ARCHITECTURE-unknown-linux-musl --path .
 
 FROM builder AS admin 
+RUN apt update && apt install -y coreutils
 RUN cargo install sea-orm-cli
-CMD [ "bash" ]
+CMD [ "tail -f" ]
 
 FROM scratch
 
