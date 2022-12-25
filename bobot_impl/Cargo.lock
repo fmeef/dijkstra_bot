@@ -232,6 +232,7 @@ dependencies = [
  "bb8",
  "bb8-redis",
  "botapi",
+ "bson",
  "chrono",
  "clap 4.0.32",
  "confy",
@@ -251,11 +252,10 @@ dependencies = [
  "sea-orm-migration",
  "sea-query 0.28.0",
  "serde",
- "serde_cbor",
  "serde_json",
  "thiserror",
  "tokio",
- "uuid",
+ "uuid 1.2.2",
 ]
 
 [[package]]
@@ -323,7 +323,29 @@ dependencies = [
  "serde_urlencoded",
  "tggen",
  "tokio",
- "uuid",
+ "uuid 1.2.2",
+]
+
+[[package]]
+name = "bson"
+version = "2.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "99d76085681585d39016f4d3841eb019201fc54d2dd0d92ad1e4fab3bfb32754"
+dependencies = [
+ "ahash",
+ "base64",
+ "chrono",
+ "hex",
+ "indexmap",
+ "lazy_static",
+ "rand",
+ "serde",
+ "serde_bytes",
+ "serde_json",
+ "serde_with",
+ "time 0.3.17",
+ "uuid 0.8.2",
+ "uuid 1.2.2",
 ]
 
 [[package]]
@@ -644,6 +666,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "darling"
+version = "0.13.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a01d95850c592940db9b8194bc39f4bc0e89dee5c4265e4b1807c34a9aba453c"
+dependencies = [
+ "darling_core",
+ "darling_macro",
+]
+
+[[package]]
+name = "darling_core"
+version = "0.13.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "859d65a907b6852c9361e3185c862aae7fafd2887876799fa55f5f99dc40d610"
+dependencies = [
+ "fnv",
+ "ident_case",
+ "proc-macro2",
+ "quote",
+ "strsim",
+ "syn",
+]
+
+[[package]]
+name = "darling_macro"
+version = "0.13.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9c972679f83bdf9c42bd905396b6c3588a843a17f0f16dfcfa3e2c5d57441835"
+dependencies = [
+ "darling_core",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "dashmap"
 version = "5.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -942,12 +999,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "half"
-version = "1.8.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eabb4a44450da02c90444cf74558da904edde8fb4e9035a9a6a4e15445af0bd7"
-
-[[package]]
 name = "hashbrown"
 version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1134,6 +1185,12 @@ dependencies = [
  "cxx",
  "cxx-build",
 ]
+
+[[package]]
+name = "ident_case"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 
 [[package]]
 name = "idna"
@@ -2059,7 +2116,7 @@ dependencies = [
  "time 0.3.17",
  "tracing",
  "url",
- "uuid",
+ "uuid 1.2.2",
 ]
 
 [[package]]
@@ -2118,7 +2175,7 @@ dependencies = [
  "sea-query-derive 0.2.0",
  "serde_json",
  "time 0.3.17",
- "uuid",
+ "uuid 1.2.2",
 ]
 
 [[package]]
@@ -2131,7 +2188,7 @@ dependencies = [
  "chrono",
  "sea-query-derive 0.3.0",
  "serde_json",
- "uuid",
+ "uuid 1.2.2",
 ]
 
 [[package]]
@@ -2146,7 +2203,7 @@ dependencies = [
  "serde_json",
  "sqlx",
  "time 0.3.17",
- "uuid",
+ "uuid 1.2.2",
 ]
 
 [[package]]
@@ -2265,12 +2322,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde_cbor"
-version = "0.11.2"
+name = "serde_bytes"
+version = "0.11.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2bef2ebfde456fb76bbcf9f59315333decc4fda0b2b44b420243c11e0f5ec1f5"
+checksum = "718dc5fff5b36f99093fc49b280cfc96ce6fc824317783bff5a1fed0c7a64819"
 dependencies = [
- "half",
  "serde",
 ]
 
@@ -2291,6 +2347,7 @@ version = "1.0.91"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "877c235533714907a8c2464236f5c4b2a17262ef1bd71f38f35ea592c8da6883"
 dependencies = [
+ "indexmap",
  "itoa",
  "ryu",
  "serde",
@@ -2315,6 +2372,28 @@ dependencies = [
  "itoa",
  "ryu",
  "serde",
+]
+
+[[package]]
+name = "serde_with"
+version = "1.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "678b5a069e50bf00ecd22d0cd8ddf7c236f68581b03db652061ed5eb13a312ff"
+dependencies = [
+ "serde",
+ "serde_with_macros",
+]
+
+[[package]]
+name = "serde_with_macros"
+version = "1.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e182d6ec6f05393cc0e5ed1bf81ad6db3a8feedf8ee515ecdd369809bcce8082"
+dependencies = [
+ "darling",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -2468,7 +2547,7 @@ dependencies = [
  "time 0.3.17",
  "tokio-stream",
  "url",
- "uuid",
+ "uuid 1.2.2",
  "webpki-roots",
  "whoami",
 ]
@@ -2893,6 +2972,16 @@ dependencies = [
  "form_urlencoded",
  "idna",
  "percent-encoding",
+]
+
+[[package]]
+name = "uuid"
+version = "0.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc5cf98d8186244414c848017f0e2676b3fcb46807f6668a97dfe67359a3c4b7"
+dependencies = [
+ "getrandom",
+ "serde",
 ]
 
 [[package]]
