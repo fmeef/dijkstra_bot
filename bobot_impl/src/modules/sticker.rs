@@ -131,6 +131,7 @@ pub mod entities {
             manager
                 .create_foreign_key(
                     ForeignKey::create()
+                        .name("sticker_id_fk")
                         .from(tags::Entity, tags::Column::StickerId)
                         .to(stickers::Entity, stickers::Column::UniqueId)
                         .on_delete(ForeignKeyAction::Cascade)
@@ -144,6 +145,9 @@ pub mod entities {
         async fn down(&self, manager: &SchemaManager) -> std::result::Result<(), DbErr> {
             manager.drop_table_auto(tags::Entity).await?;
             manager.drop_table_auto(stickers::Entity).await?;
+            manager
+                .drop_foreign_key(ForeignKey::drop().name("sticker_id_fk").to_owned())
+                .await?;
             Ok(())
         }
     }
