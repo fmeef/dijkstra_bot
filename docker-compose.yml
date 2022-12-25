@@ -18,7 +18,13 @@ services:
     image: redis:7.0.7-alpine
     restart: always
     volumes: 
-      - bobot-redis:/data     
+      - bobot-redis:/data  
+  admin:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: admin
+       
 volumes:
   bobot-redis:
   bobot-db:

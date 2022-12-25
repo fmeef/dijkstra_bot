@@ -33,6 +33,10 @@ rustup target add $ARCHITECTURE-unknown-linux-musl && \
 #cargo install --target $ARCHITECTURE-unknown-linux-musl sea-orm-cli && \
  cargo install --target  $ARCHITECTURE-unknown-linux-musl --path .
 
+FROM builder AS admin 
+RUN cargo install sea-orm-cli
+CMD [ "bash" ]
+
 FROM scratch
 
 COPY --from=builder /etc/passwd /etc/passwd
