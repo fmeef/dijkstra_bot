@@ -8,6 +8,10 @@ pub enum BotError {
     RedisErr(#[from] redis::RedisError),
     #[error("redis pool error")]
     RedisPoolErr(#[from] bb8::RunError<redis::RedisError>),
+    #[error("serialization error")]
+    SerializationErr(#[from] rmp_serde::encode::Error),
+    #[error("deserialization error")]
+    DeserializationErr(#[from] rmp_serde::decode::Error),
     #[error("nursery error")]
     NurseryErr(#[from] async_nursery::NurseErr),
     #[error("io error")]
