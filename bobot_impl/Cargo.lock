@@ -305,9 +305,9 @@ dependencies = [
 
 [[package]]
 name = "botapi"
-version = "0.0.7"
+version = "0.0.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "18ef7c359f6e1a8d05a1ee422e1d76c2c8077a26b25ab02e84eaba9645917091"
+checksum = "eab4c2a90e751f8d3fa2435886d80e871b3366859e647335f03cca9f1abbe2c3"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -2574,9 +2574,9 @@ checksum = "222a222a5bfe1bba4a77b45ec488a741b3cb8872e5e499451fd7d0129c9c7c3d"
 
 [[package]]
 name = "tggen"
-version = "0.0.7"
+version = "0.0.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "db83990b81e8b085b882c69d310f096a1c1a53e887c12313f37d7e3ebc3deae3"
+checksum = "e234f3e973c53074a62b42c3defd87e46fb534ad9b57e04123139761b51b8116"
 dependencies = [
  "anyhow",
  "convert_case",

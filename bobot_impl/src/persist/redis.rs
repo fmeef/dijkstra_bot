@@ -188,7 +188,7 @@ impl RedisStr {
 
     pub async fn new_async<T: Serialize + Send + 'static>(val: T) -> Result<Self> {
         tokio::spawn(async move {
-            let v: Result<Self> = Ok(RedisStr(rmp_serde::to_vec(&val)?));
+            let v: Result<Self> = Ok(RedisStr(rmp_serde::to_vec_named(&val)?));
             v
         })
         .await?

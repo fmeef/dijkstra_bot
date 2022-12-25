@@ -29,7 +29,7 @@ serde_json = "1.0.91"
 pomelo = "0.1.5"
 regex = "1.7.0"
 higher-order-closure = "0.0.5"
-botapi = "0.0.7"
+botapi = "0.0.9"
 confy = "0.5.1"
 sea-orm-migration = "0.10.6"
 nonblock-logger = { version = "0.2.2", features = [ "color" ] }
