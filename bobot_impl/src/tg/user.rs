@@ -13,7 +13,7 @@ pub(crate) fn get_user_cache_key(user: i64) -> String {
 
 pub(crate) async fn record_cache_user(user: &User) -> Result<()> {
     let key = get_user_cache_key(user.get_id());
-    let st = RedisStr::new(&user)?;
+    let st = RedisStr::new(user)?;
     REDIS
         .pipe(|p| p.set(&key, st).expire(&key, CONFIG.cache_timeout))
         .await?;
@@ -31,9 +31,11 @@ pub(crate) async fn record_cache_update(update: &UpdateExt) -> Result<()> {
 pub(crate) async fn get_user(user: i64) -> Result<Option<User>> {
     let key = get_user_cache_key(user);
     let model: Option<RedisStr> = REDIS.sq(|p| p.get(&key)).await?;
-    Ok(model
-        .map(|v| v.get::<User>())
-        .map_or(Ok(None), |v| v.map(Some))?)
+    if let Some(model) = model {
+        Ok(Some(model.get()?))
+    } else {
+        Ok(None)
+    }
 }
 #[async_trait]
 pub(crate) trait RecordUser {

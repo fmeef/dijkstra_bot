@@ -182,7 +182,7 @@ pub struct RedisStr(Vec<u8>);
 
 impl RedisStr {
     pub fn new<T: Serialize>(val: &T) -> Result<Self> {
-        let bytes = rmp_serde::to_vec(val)?;
+        let bytes = rmp_serde::to_vec_named(val)?;
         Ok(RedisStr(bytes))
     }
 
