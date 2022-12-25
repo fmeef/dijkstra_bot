@@ -182,13 +182,13 @@ pub struct RedisStr(Vec<u8>);
 
 impl RedisStr {
     pub fn new<T: Serialize>(val: &T) -> Result<Self> {
-        let bytes = rmp_serde::to_vec_named(val)?;
+        let bytes = bson::ser::to_vec(val)?;
         Ok(RedisStr(bytes))
     }
 
     pub async fn new_async<T: Serialize + Send + 'static>(val: T) -> Result<Self> {
         tokio::spawn(async move {
-            let v: Result<Self> = Ok(RedisStr(rmp_serde::to_vec(&val)?));
+            let v: Result<Self> = Ok(RedisStr(bson::ser::to_vec(&val)?));
             v
         })
         .await?
@@ -198,7 +198,7 @@ impl RedisStr {
     where
         T: DeserializeOwned,
     {
-        let res: T = rmp_serde::from_read(self.0.as_slice())?;
+        let res: T = bson::de::from_slice(self.0.as_slice())?;
         Ok(res)
     }
 }
@@ -315,7 +315,7 @@ impl RedisPool {
         conn.lrange::<&str, Vec<Vec<u8>>>(key, 0, -1)
             .await?
             .into_iter()
-            .map(|v| rmp_serde::from_slice(&v.as_slice()).map_err(|e| anyhow!(e)))
+            .map(|v| bson::de::from_slice(&v.as_slice()).map_err(|e| anyhow!(e)))
             .collect()
     }
 

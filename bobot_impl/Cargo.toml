@@ -10,8 +10,7 @@ futures = "0.3.25"
 lazy_static = "1.4.0"
 log = "0.4.17"
 redis = { version = "0.22.1", features = ["acl", "aio", "r2d2", "geospatial", "script", "tokio-comp", "cluster"] }
-rmp-serde = "1.1.1"
-sea-orm = { version = "0.10.6", features = ["runtime-tokio-rustls", "sqlx-postgres", "macros", "default"] }
+sea-orm = { version = "0.10.5", features = ["runtime-tokio-rustls", "sqlx-postgres", "macros", "default"] }
 sea-query = { version = "0.28.0", features = ["uuid", "bigdecimal", "with-bigdecimal", "with-chrono", "with-json", "backend-postgres", "sea-query-derive", "backend-postgres", "derive", "postgres-array", "with-uuid", "thread-safe"] }
 serde = { version = "1.0.151", features = ["derive"] }
 thiserror = "1.0.38"
@@ -24,19 +23,19 @@ async_nursery = "0.5.0"
 bb8 = "0.8.0"
 bb8-redis = "0.12.0"
 chrono = { version = "0.4.23", features = [ "serde" ] }
-clap = { version = "4.0.32", features = [ "derive" ] }
+clap = { version = "4.0.29", features = [ "derive" ] }
 serde_json = "1.0.91"
 pomelo = "0.1.5"
 regex = "1.7.0"
 higher-order-closure = "0.0.5"
-botapi = "0.0.7"
+botapi = "0.0.8"
 confy = "0.5.1"
-sea-orm-migration = "0.10.6"
+sea-orm-migration = "0.10.5"
 nonblock-logger = { version = "0.2.2", features = [ "color" ] }
 dashmap = "5.4.0"
 once_cell = "1.16.0"
-openssl = { version = "0.10.45", features = ["vendored"] }
-
+openssl = { version = "0.10.35", features = ["vendored"] }
+bson = { version = "2.3.0", features = [ "chrono-0_4", "uuid-0_8", "uuid-1", "serde_with" ] }
 
 [build-dependencies]
 macros = { path = "macros" }
