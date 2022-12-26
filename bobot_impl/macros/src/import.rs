@@ -89,7 +89,9 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
             update: ::botapi::gen_types::UpdateExt
             ) -> () {
             #(
-                #updates::handle_update(&update).await;
+                if let Err(err) = #updates::handle_update(&update).await {
+                    log::error!("handle_update {} error: {}", #updates::METADATA.name, err);
+                }
             )*
         }
     };

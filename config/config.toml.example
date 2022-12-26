@@ -12,3 +12,4 @@ listen = '0.0.0.0:8080'
 
 [logging]
 log_level = 'trace'
+prometheus_hook = '0.0.0.0:9999'

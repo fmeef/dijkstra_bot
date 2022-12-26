@@ -18,13 +18,9 @@ async fn handle_command(_message: &Message) -> Result<()> {
 }
 
 #[allow(dead_code)]
-pub async fn handle_update(update: &UpdateExt) {
+pub async fn handle_update(update: &UpdateExt) -> Result<()> {
     match update {
-        UpdateExt::Message(ref message) => {
-            if let Err(err) = handle_command(message).await {
-                log::error!("cry {}", err);
-            }
-        }
-        _ => (),
+        UpdateExt::Message(ref message) => handle_command(message).await,
+        _ => Ok(()),
     }
 }

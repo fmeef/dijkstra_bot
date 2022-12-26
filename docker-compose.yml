@@ -17,6 +17,11 @@ services:
       - POSTGRES_DB=bobot
     volumes: 
       - bobot-db:/var/lib/postgresql/data 
+    healthcheck:
+      test: pg_isready -U bobot
+      interval: 10s
+      timeout: 3s
+      retries: 10
   redis:
     image: redis:7.0.7-alpine
     restart: always
@@ -27,7 +32,16 @@ services:
       context: .
       dockerfile: Dockerfile
       target: admin
+  prometheus:
+    image: prom/prometheus:v2.41.0
+    ports:
+      - 9000:9090
+    volumes:
+      - ./prometheus:/etc/prometheus
+      - prometheus-data:/prometheus
+    command: --web.enable-lifecycle  --config.file=/etc/prometheus/prometheus.yml
        
 volumes:
   bobot-redis:
   bobot-db:
+  prometheus-data:

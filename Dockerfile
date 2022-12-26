@@ -36,7 +36,7 @@ rustup target add $ARCHITECTURE-unknown-linux-musl && \
 FROM builder AS admin 
 RUN apt update && apt install -y coreutils postgresql
 RUN cargo install sea-orm-cli
-CMD [ "tail -f" ]
+CMD [ "tail", "-f" ]
 
 FROM scratch
 

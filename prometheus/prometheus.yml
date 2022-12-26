@@ -1,0 +1,8 @@
+global:
+  scrape_interval: 30s
+  scrape_timeout: 10s
+scrape_configs:
+  - job_name: 'bot_telemetry'
+    static_configs:
+      - targets:
+          - 'bobot:9999'

@@ -282,7 +282,7 @@ async fn handle_message(message: &Message) -> Result<()> {
     Ok(())
 }
 
-pub async fn handle_update(update: &UpdateExt) {
+pub async fn handle_update(update: &UpdateExt) -> Result<()> {
     let (res, id) = match update {
         UpdateExt::Message(ref message) => {
             let r = handle_message(message).await;
@@ -309,6 +309,9 @@ pub async fn handle_update(update: &UpdateExt) {
                 log::error!("failed to send error message: {}", send_err);
             }
         }
+        Err(err)
+    } else {
+        Ok(())
     }
 }
 

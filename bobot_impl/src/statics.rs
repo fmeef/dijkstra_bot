@@ -8,6 +8,7 @@ use confy::load_path;
 use futures::executor::block_on;
 use lazy_static::lazy_static;
 use log::LevelFilter;
+use prometheus::{register_int_counter, IntCounter};
 use sea_orm::entity::prelude::DatabaseConnection;
 use sea_orm::{ConnectOptions, Database};
 use serde::{Deserialize, Serialize};
@@ -26,6 +27,7 @@ pub(crate) struct WebhookConfig {
 #[derive(Serialize, Deserialize)]
 pub(crate) struct LogConfig {
     log_level: LevelFilterWrapper,
+    pub(crate) prometheus_hook: SocketAddr,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -62,6 +64,7 @@ impl Default for LogConfig {
     fn default() -> Self {
         Self {
             log_level: LevelFilterWrapper(log::LevelFilter::Info),
+            prometheus_hook: ([0, 0, 0, 0], 9999).into(),
         }
     }
 }
@@ -133,6 +136,12 @@ lazy_static! {
 //tg client
 lazy_static! {
     pub(crate) static ref TG: TgClient = TgClient::connect(CONFIG.bot_token.to_owned());
+}
+
+//counters
+lazy_static! {
+    pub(crate) static ref TEST_COUNTER: IntCounter =
+        register_int_counter!("testlabel", "testhelp").unwrap();
 }
 
 pub fn get_executor() -> TokioTp {
