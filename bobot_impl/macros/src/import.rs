@@ -72,11 +72,11 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
         #( mod #mods; )*
 
         pub fn get_migrations() -> ::std::vec::Vec<::std::boxed::Box<dyn ::sea_orm_migration::prelude::MigrationTrait>> {
-            let mut _v = ::std::vec::Vec::<::std::boxed::Box<dyn ::sea_orm_migration::prelude::MigrationTrait>>::new();
+            let mut v = ::std::vec::Vec::<::std::boxed::Box<dyn ::sea_orm_migration::prelude::MigrationTrait>>::new();
             #(
-                _v.append(&mut #funcs::get_migrations());
+                v.append(&mut #funcs::get_migrations());
             )*
-            _v
+            v
         }
 
         pub fn get_metadata() -> ::std::vec::Vec<crate::metadata::Metadata> {
