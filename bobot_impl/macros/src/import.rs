@@ -91,6 +91,12 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
             #(
                 if let Err(err) = #updates::handle_update(&update).await {
                     log::error!("handle_update {} error: {}", #updates::METADATA.name, err);
+                    if let Some(err) = err.get_response() {
+                        if let Some(error_code) = err.error_code {
+                           log::error!("handle_update {} registering error code: {}", #updates::METADATA.name, error_code as f64);
+                            crate::statics::ERROR_CODES.observe(error_code as f64);
+                        }
+                    }
                 }
             )*
         }

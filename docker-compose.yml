@@ -1,6 +1,9 @@
 services:
   bobot:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: prod
     ports:
       - "8080:8080"
     volumes:
@@ -30,8 +33,7 @@ services:
   admin:
     build:
       context: .
-      dockerfile: Dockerfile
-      target: admin
+      dockerfile: Dockerfile.admin
   prometheus:
     image: prom/prometheus:v2.41.0
     ports:

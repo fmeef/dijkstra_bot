@@ -8,7 +8,7 @@ use confy::load_path;
 use futures::executor::block_on;
 use lazy_static::lazy_static;
 use log::LevelFilter;
-use prometheus::{register_int_counter, IntCounter};
+use prometheus::{register_histogram, register_int_counter, Histogram, IntCounter};
 use sea_orm::entity::prelude::DatabaseConnection;
 use sea_orm::{ConnectOptions, Database};
 use serde::{Deserialize, Serialize};
@@ -142,6 +142,8 @@ lazy_static! {
 lazy_static! {
     pub(crate) static ref TEST_COUNTER: IntCounter =
         register_int_counter!("testlabel", "testhelp").unwrap();
+    pub(crate) static ref ERROR_CODES: Histogram =
+        register_histogram!("module_fails", "Telegram api cries").unwrap();
 }
 
 pub fn get_executor() -> TokioTp {

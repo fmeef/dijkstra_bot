@@ -10,9 +10,11 @@ path = "src/lib.rs"
 
 [dependencies]
 sea-schema = { version = "0.10.3", default-features = false, features = [ "debug-print"] }
-sea-orm-migration = "0.10.6"
+sea-orm-migration = "0.10.5"
 sea-query = { version = "0.28.0", features = ["uuid", "bigdecimal", "with-bigdecimal", "with-chrono", "with-json", "backend-postgres", "sea-query-derive", "backend-postgres", "derive", "postgres-array", "with-uuid", "thread-safe"] }
 bobot_impl = { path = "../bobot_impl" }
+botapi = { path = "../bobot_impl/botapi-rs" }
+tggen = { path = "../bobot_impl/botapi-rs/generate" }
 async-trait = "0.1.60"
-openssl = { version = "0.10.45", features = ["vendored"] }
+openssl = { version = "0.10.35", features = ["vendored"] }
 tokio = { version = "1.23.0", features = ["net", "socket2", "io-util", "tokio-macros"] }

@@ -17,6 +17,8 @@ use ::sea_orm::entity::prelude::*;
 use ::sea_orm::{ActiveModelTrait, IntoActiveModel, QuerySelect, Set};
 use ::sea_orm_migration::prelude::*;
 use anyhow::anyhow;
+
+use botapi::bot::BotResult;
 use botapi::gen_types::{
     InlineQuery, InlineQueryResult, InlineQueryResultCachedSticker, Message, UpdateExt,
 };
@@ -282,7 +284,7 @@ async fn handle_message(message: &Message) -> Result<()> {
     Ok(())
 }
 
-pub async fn handle_update(update: &UpdateExt) -> Result<()> {
+pub async fn handle_update(update: &UpdateExt) -> BotResult<()> {
     let (res, id) = match update {
         UpdateExt::Message(ref message) => {
             let r = handle_message(message).await;
@@ -309,7 +311,7 @@ pub async fn handle_update(update: &UpdateExt) -> Result<()> {
                 log::error!("failed to send error message: {}", send_err);
             }
         }
-        Err(err)
+        Err(err.into())
     } else {
         Ok(())
     }

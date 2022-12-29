@@ -25,20 +25,19 @@ RUN adduser \
 WORKDIR /bobot
 
 COPY ./ .
-RUN if [ "$TARGETPLATFORM" = "linux/amd64" ]; then ARCHITECTURE=x86_64; \
+RUN --mount=type=cache,target=/bobot/target \
+--mount=type=cache,target=/usr/local/rustup \
+--mount=type=cache,target=/usr/local/cargo/registry \
+if  [ "$TARGETPLATFORM" = "linux/amd64" ]; then ARCHITECTURE=x86_64; \
 elif [ "$TARGETPLATFORM" = "linux/arm/v7" ]; then ARCHITECTURE=arm; \
 elif [ "$TARGETPLATFORM" = "linux/arm64" ]; then ARCHITECTURE=aarch64; \
 else ARCHITECTURE=x86_64; fi && \
+rustup default stable && \
 rustup target add $ARCHITECTURE-unknown-linux-musl && \
 #cargo install --target $ARCHITECTURE-unknown-linux-musl sea-orm-cli && \
  cargo install --target  $ARCHITECTURE-unknown-linux-musl --path .
 
-FROM builder AS admin 
-RUN apt update && apt install -y coreutils postgresql
-RUN cargo install sea-orm-cli
-CMD [ "tail", "-f" ]
-
-FROM scratch
+FROM scratch AS prod
 
 COPY --from=builder /etc/passwd /etc/passwd
 COPY --from=builder /etc/group /etc/group
@@ -47,4 +46,5 @@ COPY --from=builder /etc/ssl /etc/ssl
 COPY --from=builder /usr/local/cargo/bin/bobot ./
 USER bobot:bobot
 VOLUME /config
+
 ENTRYPOINT [ "/bobot/bobot", "--config", "/config/config.toml"]
