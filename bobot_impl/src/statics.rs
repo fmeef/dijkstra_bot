@@ -5,6 +5,7 @@ use async_executors::{TokioTp, TokioTpBuilder};
 use chrono::Duration;
 use clap::Parser;
 use confy::load_path;
+use dashmap::DashMap;
 use futures::executor::block_on;
 use lazy_static::lazy_static;
 use log::LevelFilter;
@@ -14,7 +15,7 @@ use sea_orm::{ConnectOptions, Database};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::sync::Arc;
+
 use tokio::runtime::Runtime;
 
 #[derive(Serialize, Deserialize)]
@@ -122,15 +123,14 @@ lazy_static! {
 
 //db client
 lazy_static! {
-    pub(crate) static ref DB: Arc<DatabaseConnection> =
-        Runtime::new().unwrap().block_on(async move {
-            let db = Database::connect(ConnectOptions::new(
-                CONFIG.persistence.database_connection.to_owned(),
-            ))
-            .await
-            .expect("failed to initialize database");
-            Arc::new(db)
-        });
+    pub(crate) static ref DB: DatabaseConnection = Runtime::new().unwrap().block_on(async move {
+        let db = Database::connect(ConnectOptions::new(
+            CONFIG.persistence.database_connection.to_owned(),
+        ))
+        .await
+        .expect("failed to initialize database");
+        db
+    });
 }
 
 //tg client
@@ -144,6 +144,14 @@ lazy_static! {
         register_int_counter!("testlabel", "testhelp").unwrap();
     pub(crate) static ref ERROR_CODES: Histogram =
         register_histogram!("module_fails", "Telegram api cries").unwrap();
+    pub(crate) static ref ERROR_CODES_MAP: DashMap<i64, IntCounter> = DashMap::new();
+}
+
+pub(crate) fn count_error_code(err: i64) {
+    let counter = ERROR_CODES_MAP.entry(err).or_insert_with(|| {
+        register_int_counter!(format! {"errcode_{}", err}, "Telegram error counter").unwrap()
+    });
+    counter.value().inc();
 }
 
 pub fn get_executor() -> TokioTp {
