@@ -9,6 +9,7 @@ use dashmap::DashMap;
 
 use super::{
     dialog::{Conversation, ConversationState},
+    markdown::MarkupBuilder,
     user::RecordUser,
 };
 use crate::statics::{CONFIG, TG};
@@ -85,8 +86,13 @@ async fn show_help(
     let cnf = "Command not found";
     if let Some(Arg::Arg(ref cmd)) = args.front() {
         let cmd = helps.helps.get(cmd).map(|v| v.as_str()).unwrap_or(cnf);
+        let (cmd, entities) = MarkupBuilder::new()
+            .strikethrough("@everyone")
+            .text(format!(" {}", cmd))
+            .build();
         TG.client()
-            .build_send_message(message.get_chat().get_id(), cmd)
+            .build_send_message(message.get_chat().get_id(), &cmd)
+            .entities(&entities)
             .reply_to_message_id(message.get_message_id())
             .build()
             .await?;
