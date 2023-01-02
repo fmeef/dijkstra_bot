@@ -12,3 +12,4 @@ migration = { path = "migration" }
 bobot_impl = { path = "bobot_impl" }
 openssl = { version = "0.10.45", features = ["vendored"] }
 clap = { version = "4.0.32", features = ["derive"] }
+markdown = "0.3.0"

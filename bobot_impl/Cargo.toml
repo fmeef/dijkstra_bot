@@ -39,6 +39,7 @@ openssl = { version = "0.10.45", features = ["vendored"] }
 prometheus = "0.13.3"
 warp = "0.3.3"
 prometheus-hyper = "0.1.5"
+markdown = "0.3.0"
 
 
 [build-dependencies]

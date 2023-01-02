@@ -86,7 +86,8 @@ async fn show_help(
     let cnf = "Command not found";
     if let Some(Arg::Arg(ref cmd)) = args.front() {
         let cmd = helps.helps.get(cmd).map(|v| v.as_str()).unwrap_or(cnf);
-        let (cmd, entities) = MarkupBuilder::new()
+        let mut builder = MarkupBuilder::new();
+        let (cmd, entities) = builder
             .strikethrough("@everyone")
             .text(format!(" {}", cmd))
             .build();
