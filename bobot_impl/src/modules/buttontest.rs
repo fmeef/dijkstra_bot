@@ -7,7 +7,10 @@ use sea_orm_migration::MigrationTrait;
 use crate::{
     metadata::metadata,
     statics::TG,
-    tg::command::{parse_cmd, Arg},
+    tg::{
+        command::{parse_cmd, Arg},
+        markdown::MarkupBuilder,
+    },
 };
 
 metadata!("Piracy detection",
@@ -18,6 +21,21 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![]
 }
 
+async fn handle_markdown(message: &Message) -> BotResult<bool> {
+    if let Some(message) = message.get_reply_to_message() {
+        if let Some(text) = message.get_text() {
+            let md = MarkupBuilder::from_markdown(text);
+            let (msg, entities) = md.build();
+            TG.client()
+                .build_send_message(message.get_chat().get_id(), msg)
+                .entities(entities)
+                .build()
+                .await?;
+        }
+    }
+    Ok(false)
+}
+
 #[allow(dead_code)]
 async fn handle_command(message: &Message) -> BotResult<()> {
     if let Some(text) = message.get_text() {
@@ -26,6 +44,7 @@ async fn handle_command(message: &Message) -> BotResult<()> {
             log::info!("piracy command {}", command);
             match command.as_str() {
                 "/crash" => TG.client().close().await?,
+                "/markdown" => handle_markdown(message).await?,
                 _ => false,
             };
         }
