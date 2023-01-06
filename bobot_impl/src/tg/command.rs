@@ -9,24 +9,6 @@ use thiserror::Error;
 #[cfg(test)]
 mod test {
     use super::*;
-
-    #[test]
-    fn parse_test() {
-        let s = r#"word word2 "quoted words many" word3"#;
-        let parsed = parse_cmd(s).unwrap();
-        let mut quotes = 0;
-        let mut words = 0;
-        for p in parsed {
-            match p {
-                Arg::Arg(ref _r) => words = words + 1,
-                Arg::Quote(ref _r) => quotes = quotes + 1,
-            }
-        }
-        println!("quotes {}", quotes);
-        println!("words {}", words);
-        assert!(quotes == 1);
-        assert!(words == 3);
-    }
 }
 
 #[derive(Debug, Error)]

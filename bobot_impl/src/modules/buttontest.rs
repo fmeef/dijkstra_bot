@@ -14,13 +14,43 @@ use crate::{
 };
 
 metadata!("Piracy detection",
-   { command = "report", help = "Report a pirate for termination" }
+    { command = "report", help = "Report a pirate for termination" },
+    { command = "crash", help = "Intentionally trigger a floodwait for debugging"},
+    { command = "markdown", help = "Reply to a message to parse as markdown"},
+    { command = "murkdown", help = "Reply to a message to parse as murkdown" }
 );
 
 pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![]
 }
 
+async fn handle_murkdown(message: &Message) -> BotResult<bool> {
+    if let Some(message) = message.get_reply_to_message() {
+        if let Some(text) = message.get_text() {
+            match MarkupBuilder::from_murkdown(text) {
+                Ok(md) => {
+                    let (msg, entities) = md.build();
+                    TG.client()
+                        .build_send_message(message.get_chat().get_id(), msg)
+                        .entities(entities)
+                        .build()
+                        .await?;
+                }
+
+                Err(err) => {
+                    TG.client()
+                        .build_send_message(
+                            message.get_chat().get_id(),
+                            &format!("invalid murkdown: {}", err),
+                        )
+                        .build()
+                        .await?;
+                }
+            }
+        }
+    }
+    Ok(false)
+}
 async fn handle_markdown(message: &Message) -> BotResult<bool> {
     if let Some(message) = message.get_reply_to_message() {
         if let Some(text) = message.get_text() {
@@ -45,6 +75,7 @@ async fn handle_command(message: &Message) -> BotResult<()> {
             match command.as_str() {
                 "/crash" => TG.client().close().await?,
                 "/markdown" => handle_markdown(message).await?,
+                "/murkdown" => handle_murkdown(message).await?,
                 _ => false,
             };
         }

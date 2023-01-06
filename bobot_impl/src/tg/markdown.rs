@@ -1,10 +1,142 @@
 use botapi::gen_types::{MessageEntity, MessageEntityBuilder, User};
 use markdown::{Block, ListItem, Span};
 
+use lazy_static::lazy_static;
+use pomelo::pomelo;
+use regex::Regex;
+use std::fmt::Display;
+use std::{iter::Peekable, str::Chars};
+use thiserror::Error;
+
 pub(crate) struct MarkupBuilder {
     entities: Vec<MessageEntity>,
     offset: i64,
     text: String,
+}
+
+#[derive(Debug, Error)]
+pub struct DefaultParseErr {}
+
+impl Display for DefaultParseErr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("default parse error")?;
+        Ok(())
+    }
+}
+
+impl Default for DefaultParseErr {
+    fn default() -> Self {
+        DefaultParseErr {}
+    }
+}
+
+pub enum TgSpan {
+    Code(String),
+    Italic(Vec<TgSpan>),
+    Bold(Vec<TgSpan>),
+    Strikethrough(Vec<TgSpan>),
+    Underline(Vec<TgSpan>),
+    Spoiler(Vec<TgSpan>),
+    Link(Vec<TgSpan>, String),
+    Raw(String),
+}
+
+lazy_static! {
+    static ref RAWSTR: Regex = Regex::new(r#"([^\s"]+|")"#).unwrap();
+}
+
+pomelo! {
+    %error super::DefaultParseErr;
+    %type input Vec<super::TgSpan>;
+    %type words Vec<super::TgSpan>;
+    %type main Vec<super::TgSpan>;
+    %type code super::TgSpan;
+    %type bold super::TgSpan;
+    %type link super::TgSpan;
+    %type strike super::TgSpan;
+    %type italic super::TgSpan;
+    %type underline super::TgSpan;
+    %type spoiler super::TgSpan;
+    %type word super::TgSpan;
+    %type wordraw (super::TgSpan, super::TgSpan);
+    %type RawChar char;
+    %type raw String;
+    input     ::= main(A) { A }
+
+    main     ::= words?(A) { A.unwrap_or_else(Vec::new) }
+
+    word     ::= code(C) { C }
+    word     ::= bold(P) { P }
+    word     ::= link(P) { P }
+    word     ::= strike(P) { P }
+    word     ::= underline(P) { P }
+    word     ::= italic(P) { P }
+    word     ::= spoiler(P) { P }
+
+    wordraw  ::= word(W) raw(R) { (W, super::TgSpan::Raw(R)) }
+
+    words    ::=  words(mut L) word(C) { L.push(C); L }
+    words    ::= words(mut L) wordraw(W) { L.push(W.0); L.push(W.1); L }
+    words    ::= wordraw(W) { vec![W.0, W.1] }
+    words    ::= word(C) { vec![C] }
+    words    ::= raw(R) { vec![super::TgSpan::Raw(R)]}
+
+    raw       ::= RawChar(C) { C.into() }
+    raw       ::= raw(mut R) RawChar(C) { R.push(C); R }
+
+    code      ::= LSBracket Tick raw(W) RSBracket { super::TgSpan::Code(W) }
+    bold      ::= LSBracket Star main(S) RSBracket { super::TgSpan::Bold(S) }
+    link      ::= LSBracket main(H) RSBracket LParen raw(L) RParen { super::TgSpan::Link(H, L) }
+    strike    ::= LSBracket Tilde words(R) RSBracket { super::TgSpan::Strikethrough(R) }
+    italic    ::= LSBracket Underscore main(R) RSBracket { super::TgSpan::Italic(R) }
+    underline ::= LSBracket DoubleUnderscore main(R) RSBracket { super::TgSpan::Underline(R) }
+    spoiler   ::= LSBracket DoubleBar main(R) RSBracket { super::TgSpan::Spoiler(R) }
+}
+
+use parser::{Parser, Token};
+
+struct Lexer<'a>(Peekable<Chars<'a>>);
+
+impl<'a> Lexer<'a> {
+    fn new(input: &'a str) -> Self {
+        let chars = input.chars().peekable();
+        Self(chars)
+    }
+
+    fn next_token(&mut self) -> Option<Token> {
+        if let Some(char) = self.0.next() {
+            //println!("{}", char);
+            match char {
+                '\\' => self.0.next().map(|char| Token::RawChar(char)),
+                '_' => {
+                    if let Some('_') = self.0.peek() {
+                        self.0.next();
+                        Some(Token::DoubleUnderscore)
+                    } else {
+                        Some(Token::Underscore)
+                    }
+                }
+                '|' => {
+                    if let Some('|') = self.0.peek() {
+                        self.0.next();
+                        Some(Token::DoubleBar)
+                    } else {
+                        self.next_token()
+                    }
+                }
+                '~' => Some(Token::Tilde),
+                '`' => Some(Token::Tick),
+                '*' => Some(Token::Star),
+                '[' => Some(Token::LSBracket),
+                ']' => Some(Token::RSBracket),
+                '(' => Some(Token::LParen),
+                ')' => Some(Token::RParen),
+                _ => Some(Token::RawChar(char)),
+            }
+        } else {
+            None
+        }
+    }
 }
 
 #[allow(dead_code)]
@@ -15,6 +147,56 @@ impl MarkupBuilder {
             offset: 0,
             text: String::new(),
         }
+    }
+
+    fn parse_tgspan(&mut self, span: Vec<TgSpan>) -> (i64, i64) {
+        let mut res = (0, 0);
+        for span in span {
+            match span {
+                TgSpan::Code(code) => {
+                    self.code(&code);
+                }
+                TgSpan::Italic(s) => {
+                    let (s, e) = self.parse_tgspan(s);
+                    self.manual("italic", s, e);
+                }
+                TgSpan::Bold(s) => {
+                    let (s, e) = self.parse_tgspan(s);
+                    self.manual("bold", s, e);
+                }
+                TgSpan::Strikethrough(s) => {
+                    let (s, e) = self.parse_tgspan(s);
+                    self.manual("strikethrough", s, e);
+                }
+                TgSpan::Underline(s) => {
+                    let (s, e) = self.parse_tgspan(s);
+                    self.manual("underline", s, e);
+                }
+                TgSpan::Spoiler(s) => {
+                    let (s, e) = self.parse_tgspan(s);
+                    self.manual("spoiler", s, e);
+                }
+                TgSpan::Link(hint, link) => {
+                    let (s, e) = self.parse_tgspan(hint);
+
+                    let entity = MessageEntityBuilder::new(s, e)
+                        .set_type("text_link".to_owned())
+                        .set_url(link)
+                        .build();
+                    self.entities.push(entity);
+                }
+
+                TgSpan::Raw(s) => {
+                    //     println!("raw {}", s);
+                    let size = s.encode_utf16().count() as i64;
+
+                    res = (self.offset, size);
+                    self.text(s);
+                }
+            };
+            // println!("span {}", s);
+        }
+        res
     }
 
     fn parse_listitem(&mut self, list_item: ListItem) {
@@ -109,10 +291,30 @@ impl MarkupBuilder {
         s
     }
 
+    pub(crate) fn from_murkdown<T: AsRef<str>>(text: T) -> anyhow::Result<Self> {
+        let text = text.as_ref();
+        let mut s = Self::new();
+        let mut parser = Parser::new();
+        let mut tokenizer = Lexer::new(text);
+        while let Some(token) = tokenizer.next_token() {
+            parser.parse(token)?;
+        }
+        let res = parser.end_of_input()?;
+        s.parse_tgspan(res);
+        Ok(s)
+    }
+
     pub(crate) fn text<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
         self.text.push_str(text.as_ref());
         self.offset += text.as_ref().encode_utf16().count() as i64;
         self
+    }
+
+    fn manual(&mut self, entity_type: &str, start: i64, end: i64) {
+        let entity = MessageEntityBuilder::new(start, end)
+            .set_type(entity_type.to_owned())
+            .build();
+        self.entities.push(entity);
     }
 
     fn regular<'a, T: AsRef<str>>(
@@ -266,5 +468,125 @@ impl MarkupBuilder {
 
     pub(crate) fn build_owned(self) -> (String, Vec<MessageEntity>) {
         (self.text, self.entities)
+    }
+}
+
+#[allow(dead_code)]
+mod test {
+    use super::*;
+    const MARKDOWN_TEST: &str = "what
+        [*bold]
+        thing
+        [coinscam](http://coinscam.org)
+        ";
+
+    const MARKDOWN_SIMPLE: &str = "[*bold]";
+
+    const NESTED_BOLD: &str = "[*[*bold] [*bold]]";
+    const EMPTY: &str = "";
+
+    const RAW: &str = "thing";
+
+    const ESCAPE: &str = "\\[ thing";
+
+    fn test_parse(markdown: &str) -> Vec<TgSpan> {
+        let mut parser = Parser::new();
+        let mut tokenizer = Lexer::new(markdown);
+        while let Some(token) = tokenizer.next_token() {
+            parser.parse(token).unwrap();
+        }
+
+        parser.end_of_input().unwrap()
+    }
+
+    #[test]
+    fn tokenize_test() {
+        let mut tokenizer = Lexer::new(MARKDOWN_SIMPLE);
+        if let Some(Token::LSBracket) = tokenizer.next_token() {
+        } else {
+            panic!("got invalid token");
+        }
+
+        if let Some(Token::Star) = tokenizer.next_token() {
+        } else {
+            panic!("got invalid token");
+        }
+
+        for c in ['b', 'o', 'l', 'd'] {
+            if let Some(Token::RawChar(s)) = tokenizer.next_token() {
+                assert_eq!(s, c);
+            } else {
+                panic!("got invalid token");
+            }
+        }
+
+        if let Some(Token::RSBracket) = tokenizer.next_token() {
+        } else {
+            panic!("got invalid token");
+        }
+
+        if let Some(_) = tokenizer.next_token() {
+            assert!(false);
+        }
+    }
+
+    #[test]
+    fn parse_simple() {
+        test_parse(MARKDOWN_SIMPLE);
+    }
+
+    #[test]
+    fn parse_empty() {
+        test_parse(EMPTY);
+    }
+
+    #[test]
+    fn parse_nested() {
+        test_parse(EMPTY);
+    }
+
+    #[test]
+    fn parse_multi() {
+        let tokens = test_parse(MARKDOWN_TEST);
+        let mut counter = 0;
+        for token in tokens {
+            if let TgSpan::Raw(raw) = token {
+                println!("RAW {}", raw);
+                counter += 1;
+            }
+        }
+        assert_eq!(counter, 3);
+    }
+
+    #[test]
+    fn raw_test() {
+        if let Some(TgSpan::Raw(res)) = test_parse(RAW).get(0) {
+            assert_eq!(res, RAW);
+        } else {
+            panic!("failed to parse");
+        }
+    }
+
+    #[test]
+    fn nested_bold() {
+        test_parse(NESTED_BOLD);
+    }
+
+    #[test]
+    fn escape() {
+        if let Some(TgSpan::Raw(res)) = test_parse(ESCAPE).get(0) {
+            assert_eq!(res, ESCAPE.replace("\\", "").as_str());
+        } else {
+            panic!("failed to parse");
+        }
+    }
+
+    #[test]
+    fn markup_builder() {
+        let p = test_parse(MARKDOWN_TEST);
+        let mut b = MarkupBuilder::new();
+        b.parse_tgspan(p);
+        assert_eq!(b.entities.len(), 2);
+        println!("{}", b.text);
     }
 }
