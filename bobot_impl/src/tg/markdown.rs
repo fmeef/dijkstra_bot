@@ -50,13 +50,6 @@ pomelo! {
     %type input Vec<super::TgSpan>;
     %type words Vec<super::TgSpan>;
     %type main Vec<super::TgSpan>;
-    %type code super::TgSpan;
-    %type bold super::TgSpan;
-    %type link super::TgSpan;
-    %type strike super::TgSpan;
-    %type italic super::TgSpan;
-    %type underline super::TgSpan;
-    %type spoiler super::TgSpan;
     %type word super::TgSpan;
     %type wordraw (super::TgSpan, super::TgSpan);
     %type RawChar char;
@@ -64,14 +57,6 @@ pomelo! {
     input     ::= main(A) { A }
 
     main     ::= words?(A) { A.unwrap_or_else(Vec::new) }
-
-    word     ::= code(C) { C }
-    word     ::= bold(P) { P }
-    word     ::= link(P) { P }
-    word     ::= strike(P) { P }
-    word     ::= underline(P) { P }
-    word     ::= italic(P) { P }
-    word     ::= spoiler(P) { P }
 
     wordraw  ::= word(W) raw(R) { (W, super::TgSpan::Raw(R)) }
 
@@ -84,13 +69,13 @@ pomelo! {
     raw       ::= RawChar(C) { C.into() }
     raw       ::= raw(mut R) RawChar(C) { R.push(C); R }
 
-    code      ::= LSBracket Tick raw(W) RSBracket { super::TgSpan::Code(W) }
-    bold      ::= LSBracket Star main(S) RSBracket { super::TgSpan::Bold(S) }
-    link      ::= LSBracket main(H) RSBracket LParen raw(L) RParen { super::TgSpan::Link(H, L) }
-    strike    ::= LSBracket Tilde words(R) RSBracket { super::TgSpan::Strikethrough(R) }
-    italic    ::= LSBracket Underscore main(R) RSBracket { super::TgSpan::Italic(R) }
-    underline ::= LSBracket DoubleUnderscore main(R) RSBracket { super::TgSpan::Underline(R) }
-    spoiler   ::= LSBracket DoubleBar main(R) RSBracket { super::TgSpan::Spoiler(R) }
+    word      ::= LSBracket Tick raw(W) RSBracket { super::TgSpan::Code(W) }
+    word      ::= LSBracket Star main(S) RSBracket { super::TgSpan::Bold(S) }
+    word      ::= LSBracket main(H) RSBracket LParen raw(L) RParen { super::TgSpan::Link(H, L) }
+    word      ::= LSBracket Tilde words(R) RSBracket { super::TgSpan::Strikethrough(R) }
+    word      ::= LSBracket Underscore main(R) RSBracket { super::TgSpan::Italic(R) }
+    word      ::= LSBracket DoubleUnderscore main(R) RSBracket { super::TgSpan::Underline(R) }
+    word      ::= LSBracket DoubleBar main(R) RSBracket { super::TgSpan::Spoiler(R) }
 }
 
 use parser::{Parser, Token};

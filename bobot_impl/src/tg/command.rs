@@ -6,11 +6,6 @@ use regex::Regex;
 use std::collections::VecDeque;
 use thiserror::Error;
 
-#[cfg(test)]
-mod test {
-    use super::*;
-}
-
 #[derive(Debug, Error)]
 pub struct DefaultParseErr {}
 
