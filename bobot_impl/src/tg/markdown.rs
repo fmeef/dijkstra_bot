@@ -135,7 +135,7 @@ impl MarkupBuilder {
     }
 
     fn parse_tgspan(&mut self, span: Vec<TgSpan>) -> (i64, i64) {
-        let mut res = (0, 0);
+        let mut size = 0;
         for span in span {
             match span {
                 TgSpan::Code(code) => {
@@ -143,27 +143,32 @@ impl MarkupBuilder {
                 }
                 TgSpan::Italic(s) => {
                     let (s, e) = self.parse_tgspan(s);
+                    size += e;
                     self.manual("italic", s, e);
                 }
                 TgSpan::Bold(s) => {
                     let (s, e) = self.parse_tgspan(s);
+                    size += e;
                     self.manual("bold", s, e);
                 }
                 TgSpan::Strikethrough(s) => {
                     let (s, e) = self.parse_tgspan(s);
+                    size += e;
                     self.manual("strikethrough", s, e);
                 }
                 TgSpan::Underline(s) => {
                     let (s, e) = self.parse_tgspan(s);
+                    size += e;
                     self.manual("underline", s, e);
                 }
                 TgSpan::Spoiler(s) => {
                     let (s, e) = self.parse_tgspan(s);
+                    size += e;
                     self.manual("spoiler", s, e);
                 }
                 TgSpan::Link(hint, link) => {
                     let (s, e) = self.parse_tgspan(hint);
-
+                    size += e;
                     let entity = MessageEntityBuilder::new(s, e)
                         .set_type("text_link".to_owned())
                         .set_url(link)
@@ -172,16 +177,13 @@ impl MarkupBuilder {
                 }
 
                 TgSpan::Raw(s) => {
-                    //     println!("raw {}", s);
-                    let size = s.encode_utf16().count() as i64;
-
-                    res = (self.offset, size);
+                    size += s.encode_utf16().count() as i64;
                     self.text(s);
                 }
             };
-            // println!("span {}", s);
         }
-        res
+        let offset = self.offset - size;
+        (offset, size)
     }
 
     fn parse_listitem(&mut self, list_item: ListItem) {
