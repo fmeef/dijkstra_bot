@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{
     persist::redis::RedisStr,
     statics::{REDIS, TG},
@@ -14,29 +16,44 @@ fn get_chat_admin_cache_key(chat: i64) -> String {
 
 #[async_trait]
 pub(crate) trait GetCachedAdmins {
-    async fn get_cached_admins(&self) -> Result<Vec<ChatMember>>;
-    async fn refresh_cached_admins(&self) -> Result<Vec<ChatMember>>;
+    async fn get_cached_admins(&self) -> Result<HashMap<i64, ChatMember>>;
+    async fn refresh_cached_admins(&self) -> Result<HashMap<i64, ChatMember>>;
+    async fn is_admin(&self, user: i64) -> Result<Option<ChatMemberAdministrator>>;
 }
 
 #[async_trait]
 impl GetCachedAdmins for Chat {
-    async fn get_cached_admins(&self) -> Result<Vec<ChatMember>> {
+    async fn get_cached_admins(&self) -> Result<HashMap<i64, ChatMember>> {
         let key = get_chat_admin_cache_key(self.get_id());
         let admins: Option<RedisStr> = REDIS.sq(|q| q.get(&key)).await?;
         if let Some(admins) = admins {
-            Ok(admins.get::<Vec<ChatMember>>()?)
+            Ok(admins.get::<HashMap<i64, ChatMember>>()?)
         } else {
             self.refresh_cached_admins().await
         }
     }
 
-    async fn refresh_cached_admins(&self) -> Result<Vec<ChatMember>> {
+    async fn refresh_cached_admins(&self) -> Result<HashMap<i64, ChatMember>> {
         let admins = TG
             .client()
             .build_get_chat_administrators(self.get_id())
             .chat_id(self.get_id())
             .build()
             .await?;
+        let admins = admins
+            .into_iter()
+            .map(|cm| {
+                let id = match &cm {
+                    ChatMember::ChatMemberOwner(o) => o.get_user().get_id(),
+                    ChatMember::ChatMemberAdministrator(o) => o.get_user().get_id(),
+                    ChatMember::ChatMemberMember(o) => o.get_user().get_id(),
+                    ChatMember::ChatMemberRestricted(o) => o.get_user().get_id(),
+                    ChatMember::ChatMemberLeft(o) => o.get_user().get_id(),
+                    ChatMember::ChatMemberBanned(o) => o.get_user().get_id(),
+                };
+                (id, cm)
+            })
+            .collect::<HashMap<i64, ChatMember>>();
         let key = get_chat_admin_cache_key(self.get_id());
 
         let st = RedisStr::new(&admins)?;

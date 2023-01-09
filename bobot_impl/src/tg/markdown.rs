@@ -54,6 +54,7 @@ pomelo! {
     %type wordraw (super::TgSpan, super::TgSpan);
     %type RawChar char;
     %type raw String;
+
     input     ::= main(A) { A }
 
     main     ::= words?(A) { A.unwrap_or_else(Vec::new) }
@@ -90,7 +91,6 @@ impl<'a> Lexer<'a> {
 
     fn next_token(&mut self) -> Option<Token> {
         if let Some(char) = self.0.next() {
-            //println!("{}", char);
             match char {
                 '\\' => self.0.next().map(|char| Token::RawChar(char)),
                 '_' => {
