@@ -18,7 +18,7 @@ fn get_chat_admin_cache_key(chat: i64) -> String {
 pub(crate) trait GetCachedAdmins {
     async fn get_cached_admins(&self) -> Result<HashMap<i64, ChatMember>>;
     async fn refresh_cached_admins(&self) -> Result<HashMap<i64, ChatMember>>;
-    async fn is_admin(&self, user: i64) -> Result<Option<ChatMemberAdministrator>>;
+    async fn is_admin(&self, user: i64) -> Result<Option<ChatMember>>;
 }
 
 #[async_trait]
@@ -33,6 +33,11 @@ impl GetCachedAdmins for Chat {
         }
     }
 
+    async fn is_admin(&self, user: i64) -> Result<Option<ChatMember>> {
+        let mut admins = self.get_cached_admins().await?;
+        Ok(admins.remove(&user))
+    }
+
     async fn refresh_cached_admins(&self) -> Result<HashMap<i64, ChatMember>> {
         let admins = TG
             .client()
@@ -42,17 +47,7 @@ impl GetCachedAdmins for Chat {
             .await?;
         let admins = admins
             .into_iter()
-            .map(|cm| {
-                let id = match &cm {
-                    ChatMember::ChatMemberOwner(o) => o.get_user().get_id(),
-                    ChatMember::ChatMemberAdministrator(o) => o.get_user().get_id(),
-                    ChatMember::ChatMemberMember(o) => o.get_user().get_id(),
-                    ChatMember::ChatMemberRestricted(o) => o.get_user().get_id(),
-                    ChatMember::ChatMemberLeft(o) => o.get_user().get_id(),
-                    ChatMember::ChatMemberBanned(o) => o.get_user().get_id(),
-                };
-                (id, cm)
-            })
+            .map(|cm| (cm.get_user().get_id(), cm))
             .collect::<HashMap<i64, ChatMember>>();
         let key = get_chat_admin_cache_key(self.get_id());
 

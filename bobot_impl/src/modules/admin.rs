@@ -6,6 +6,7 @@ use sea_orm_migration::MigrationTrait;
 
 use crate::{
     metadata::metadata,
+    statics::TG,
     tg::{
         admin_helpers::GetCachedAdmins,
         command::{parse_cmd, Arg},
