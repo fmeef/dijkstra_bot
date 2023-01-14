@@ -8,7 +8,7 @@ use crate::{
     metadata::metadata,
     statics::TG,
     tg::{
-        admin_helpers::GetCachedAdmins,
+        admin_helpers::{self_admin_or_die, GetCachedAdmins, IsAdmin},
         command::{parse_cmd, Arg},
     },
 };
@@ -47,6 +47,29 @@ async fn handle_command(message: &Message) -> BotResult<()> {
                         )
                         .build()
                         .await?;
+                }
+                "/kickme" => {
+                    self_admin_or_die(message.get_chat()).await?;
+                    if message.get_from().is_admin(message.get_chat()).await? {
+                        TG.client()
+                            .build_send_message(
+                                message.get_chat().get_id(),
+                                "I'm not going to kick an admin",
+                            )
+                            .build()
+                            .await?;
+                    } else {
+                        if let Some(from) = message.get_from() {
+                            TG.client()
+                                .build_ban_chat_member(message.get_chat().get_id(), from.get_id())
+                                .build()
+                                .await?;
+                            TG.client()
+                                .build_unban_chat_member(message.get_chat().get_id(), from.get_id())
+                                .build()
+                                .await?;
+                        }
+                    }
                 }
                 _ => (),
             };
