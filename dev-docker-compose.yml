@@ -10,6 +10,8 @@ services:
       - DATABASE_URL=postgresql://bobot:changeme@db/bobot    
     volumes:
       - ./:/bobot:z
+      - dev-cargo-cache:/usr/local/cargo/registry
+      - build-volume:/bobot/target
     depends_on:
       db-dev:
         condition: service_healthy
@@ -47,3 +49,5 @@ volumes:
   dev-bobot-redis:
   dev-bobot-db:
   dev-prometheus-data:
+  dev-cargo-cache:
+  build-volume:
