@@ -8,7 +8,7 @@ use std::fmt::Display;
 use std::{iter::Peekable, str::Chars};
 use thiserror::Error;
 
-pub(crate) struct MarkupBuilder {
+pub struct MarkupBuilder {
     entities: Vec<MessageEntity>,
     offset: i64,
     text: String,
@@ -126,7 +126,7 @@ impl<'a> Lexer<'a> {
 
 #[allow(dead_code)]
 impl MarkupBuilder {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             entities: Vec::new(),
             offset: 0,
@@ -269,7 +269,7 @@ impl MarkupBuilder {
         }
     }
 
-    pub(crate) fn from_markdown<T: AsRef<str>>(text: T) -> Self {
+    pub fn from_markdown<T: AsRef<str>>(text: T) -> Self {
         let text = text.as_ref();
         let mut s = Self::new();
         markdown::tokenize(text).into_iter().for_each(|v| {
@@ -278,7 +278,7 @@ impl MarkupBuilder {
         s
     }
 
-    pub(crate) fn from_murkdown<T: AsRef<str>>(text: T) -> anyhow::Result<Self> {
+    pub fn from_murkdown<T: AsRef<str>>(text: T) -> anyhow::Result<Self> {
         let text = text.as_ref();
         let mut s = Self::new();
         let mut parser = Parser::new();
@@ -291,7 +291,7 @@ impl MarkupBuilder {
         Ok(s)
     }
 
-    pub(crate) fn text<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
+    pub fn text<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
         self.text.push_str(text.as_ref());
         self.offset += text.as_ref().encode_utf16().count() as i64;
         self
@@ -321,7 +321,7 @@ impl MarkupBuilder {
         self
     }
 
-    pub(crate) fn text_link<'a, T: AsRef<str>>(
+    pub fn text_link<'a, T: AsRef<str>>(
         &'a mut self,
         text: T,
         link: String,
@@ -339,7 +339,7 @@ impl MarkupBuilder {
         self
     }
 
-    pub(crate) fn text_mention<'a, T: AsRef<str>>(
+    pub fn text_mention<'a, T: AsRef<str>>(
         &'a mut self,
         text: T,
         mention: User,
@@ -357,7 +357,7 @@ impl MarkupBuilder {
         self
     }
 
-    pub(crate) fn pre<'a, T: AsRef<str>>(
+    pub fn pre<'a, T: AsRef<str>>(
         &'a mut self,
         text: T,
         language: String,
@@ -375,7 +375,7 @@ impl MarkupBuilder {
         self
     }
 
-    pub(crate) fn custom_emoji<'a, T: AsRef<str>>(
+    pub fn custom_emoji<'a, T: AsRef<str>>(
         &'a mut self,
         text: T,
         emoji_id: String,
@@ -393,55 +393,55 @@ impl MarkupBuilder {
         self
     }
 
-    pub(crate) fn strikethrough<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
+    pub fn strikethrough<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
         self.regular(text, "strikethrough", None)
     }
 
-    pub(crate) fn hashtag<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
+    pub fn hashtag<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
         self.regular(text, "hashtag", None)
     }
 
-    pub(crate) fn cashtag<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
+    pub fn cashtag<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
         self.regular(text, "cashtag", None)
     }
 
-    pub(crate) fn bot_command<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
+    pub fn bot_command<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
         self.regular(text, "bot_command", None)
     }
 
-    pub(crate) fn email<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
+    pub fn email<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
         self.regular(text, "email", None)
     }
 
-    pub(crate) fn phone_number<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
+    pub fn phone_number<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
         self.regular(text, "phone_number", None)
     }
 
-    pub(crate) fn bold<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
+    pub fn bold<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
         self.regular(text, "bold", None)
     }
 
-    pub(crate) fn italic<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
+    pub fn italic<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
         self.regular(text, "italic", None)
     }
 
-    pub(crate) fn underline<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
+    pub fn underline<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
         self.regular(text, "underline", None)
     }
 
-    pub(crate) fn spoiler<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
+    pub fn spoiler<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
         self.regular(text, "spoiler", None)
     }
 
-    pub(crate) fn code<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
+    pub fn code<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
         self.regular(text, "code", None)
     }
 
-    pub(crate) fn mention<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
+    pub fn mention<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
         self.regular(text, "mention", None)
     }
 
-    pub(crate) fn s<'a>(&'a mut self) -> &'a mut Self {
+    pub fn s<'a>(&'a mut self) -> &'a mut Self {
         let t = " ";
         let count = t.encode_utf16().count() as i64;
         self.offset += count;
@@ -449,11 +449,11 @@ impl MarkupBuilder {
         self
     }
 
-    pub(crate) fn build<'a>(&'a self) -> (&'a str, &'a Vec<MessageEntity>) {
+    pub fn build<'a>(&'a self) -> (&'a str, &'a Vec<MessageEntity>) {
         (&self.text, &self.entities)
     }
 
-    pub(crate) fn build_owned(self) -> (String, Vec<MessageEntity>) {
+    pub fn build_owned(self) -> (String, Vec<MessageEntity>) {
         (self.text, self.entities)
     }
 }

@@ -14,12 +14,12 @@ use super::user::GetUser;
 
 static CACHE_ME: &str = "getme";
 
-pub(crate) async fn is_self_admin(chat: &Chat) -> Result<bool> {
+pub async fn is_self_admin(chat: &Chat) -> Result<bool> {
     let me = get_me().await?;
     Ok(chat.is_user_admin(me.get_id()).await?.is_some())
 }
 
-pub(crate) async fn self_admin_or_die(chat: &Chat) -> Result<()> {
+pub async fn self_admin_or_die(chat: &Chat) -> Result<()> {
     if !is_self_admin(chat).await? {
         TG.client()
             .build_send_message(
@@ -34,7 +34,7 @@ pub(crate) async fn self_admin_or_die(chat: &Chat) -> Result<()> {
     }
 }
 
-pub(crate) async fn get_me() -> Result<User> {
+pub async fn get_me() -> Result<User> {
     let st: Option<RedisStr> = REDIS.sq(|q| q.get(&CACHE_ME)).await?;
     if let Some(st) = st {
         st.get::<User>()
@@ -56,13 +56,13 @@ fn get_chat_admin_cache_key(chat: i64) -> String {
 }
 
 #[async_trait]
-pub(crate) trait IsAdmin {
+pub trait IsAdmin {
     async fn is_admin(&self, chat: &Chat) -> Result<bool>;
     async fn admin_or_die(&self, chat: &Chat) -> Result<()>;
 }
 
 #[async_trait]
-pub(crate) trait GetCachedAdmins {
+pub trait GetCachedAdmins {
     async fn get_cached_admins(&self) -> Result<HashMap<i64, ChatMember>>;
     async fn refresh_cached_admins(&self) -> Result<HashMap<i64, ChatMember>>;
     async fn is_user_admin(&self, user: i64) -> Result<Option<ChatMember>>;

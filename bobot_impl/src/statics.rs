@@ -19,35 +19,35 @@ use std::path::PathBuf;
 use tokio::runtime::Runtime;
 
 #[derive(Serialize, Deserialize)]
-pub(crate) struct WebhookConfig {
-    pub(crate) enable_webhook: bool,
-    pub(crate) webhook_url: String,
-    pub(crate) listen: SocketAddr,
+pub struct WebhookConfig {
+    pub enable_webhook: bool,
+    pub webhook_url: String,
+    pub listen: SocketAddr,
 }
 
 #[derive(Serialize, Deserialize)]
-pub(crate) struct LogConfig {
+pub struct LogConfig {
     log_level: LevelFilterWrapper,
-    pub(crate) prometheus_hook: SocketAddr,
+    pub prometheus_hook: SocketAddr,
 }
 
 #[derive(Serialize, Deserialize)]
-pub(crate) struct Persistence {
-    pub(crate) database_connection: String,
-    pub(crate) redis_connection: String,
+pub struct Persistence {
+    pub database_connection: String,
+    pub redis_connection: String,
 }
 
 #[derive(Serialize, Deserialize)]
-pub(crate) struct Config {
-    pub(crate) cache_timeout: usize,
-    pub(crate) bot_token: String,
-    pub(crate) persistence: Persistence,
-    pub(crate) webhook: WebhookConfig,
-    pub(crate) logging: LogConfig,
+pub struct Config {
+    pub cache_timeout: usize,
+    pub bot_token: String,
+    pub persistence: Persistence,
+    pub webhook: WebhookConfig,
+    pub logging: LogConfig,
 }
 
 impl LogConfig {
-    pub(crate) fn get_log_level(&self) -> LevelFilter {
+    pub fn get_log_level(&self) -> LevelFilter {
         self.log_level.0
     }
 }
@@ -111,20 +111,20 @@ lazy_static! {
 
 //global configuration parameters
 lazy_static! {
-    pub(crate) static ref ARGS: Args = Args::parse();
-    pub(crate) static ref CONFIG: Config = load_path(&ARGS.config).expect("failed to load config");
+    pub static ref ARGS: Args = Args::parse();
+    pub static ref CONFIG: Config = load_path(&ARGS.config).expect("failed to load config");
 }
 
 //redis client
 lazy_static! {
-    pub(crate) static ref REDIS: RedisPool =
+    pub static ref REDIS: RedisPool =
         block_on(RedisPoolBuilder::new(&CONFIG.persistence.redis_connection).build())
             .expect("failed to initialize redis pool");
 }
 
 //db client
 lazy_static! {
-    pub(crate) static ref DB: DatabaseConnection = Runtime::new().unwrap().block_on(async move {
+    pub static ref DB: DatabaseConnection = Runtime::new().unwrap().block_on(async move {
         let db = Database::connect(ConnectOptions::new(
             CONFIG.persistence.database_connection.to_owned(),
         ))
@@ -136,19 +136,19 @@ lazy_static! {
 
 //tg client
 lazy_static! {
-    pub(crate) static ref TG: TgClient = TgClient::connect(CONFIG.bot_token.to_owned());
+    pub static ref TG: TgClient = TgClient::connect(CONFIG.bot_token.to_owned());
 }
 
 //counters
 lazy_static! {
-    pub(crate) static ref TEST_COUNTER: IntCounter =
+    pub static ref TEST_COUNTER: IntCounter =
         register_int_counter!("testlabel", "testhelp").unwrap();
-    pub(crate) static ref ERROR_CODES: Histogram =
+    pub static ref ERROR_CODES: Histogram =
         register_histogram!("module_fails", "Telegram api cries").unwrap();
-    pub(crate) static ref ERROR_CODES_MAP: DashMap<i64, IntCounter> = DashMap::new();
+    pub static ref ERROR_CODES_MAP: DashMap<i64, IntCounter> = DashMap::new();
 }
 
-pub(crate) fn count_error_code(err: i64) {
+pub fn count_error_code(err: i64) {
     let counter = ERROR_CODES_MAP.entry(err).or_insert_with(|| {
         register_int_counter!(format! {"errcode_{}", err}, "Telegram error counter").unwrap()
     });

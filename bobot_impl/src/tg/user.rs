@@ -7,11 +7,11 @@ use redis::AsyncCommands;
 
 const USER_PREFIX: &str = "usrc";
 
-pub(crate) fn get_user_cache_key(user: i64) -> String {
+pub fn get_user_cache_key(user: i64) -> String {
     return format!("{}:{}", USER_PREFIX, user);
 }
 
-pub(crate) async fn record_cache_user(user: &User) -> Result<()> {
+pub async fn record_cache_user(user: &User) -> Result<()> {
     let key = get_user_cache_key(user.get_id());
     let st = RedisStr::new(user)?;
     REDIS
@@ -20,7 +20,7 @@ pub(crate) async fn record_cache_user(user: &User) -> Result<()> {
     Ok(())
 }
 
-pub(crate) async fn record_cache_update(update: &UpdateExt) -> Result<()> {
+pub async fn record_cache_update(update: &UpdateExt) -> Result<()> {
     if let Some(user) = update.get_user() {
         record_cache_user(user).await?;
     }
@@ -28,7 +28,7 @@ pub(crate) async fn record_cache_update(update: &UpdateExt) -> Result<()> {
 }
 
 #[allow(dead_code)]
-pub(crate) async fn get_user(user: i64) -> Result<Option<User>> {
+pub async fn get_user(user: i64) -> Result<Option<User>> {
     let key = get_user_cache_key(user);
     let model: Option<RedisStr> = REDIS.sq(|p| p.get(&key)).await?;
     if let Some(model) = model {
@@ -38,13 +38,13 @@ pub(crate) async fn get_user(user: i64) -> Result<Option<User>> {
     }
 }
 #[async_trait]
-pub(crate) trait RecordUser {
+pub trait RecordUser {
     fn get_user<'a>(&'a self) -> Option<&'a User>;
     async fn record_user(&self) -> Result<()>;
 }
 
 #[async_trait]
-pub(crate) trait GetUser {
+pub trait GetUser {
     async fn get_cached_user(&self) -> Result<Option<User>>;
 }
 

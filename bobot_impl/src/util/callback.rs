@@ -14,19 +14,19 @@ use crate::persist::Result;
 pub type BotDbFuture<'a, T> = BoxFuture<'a, T>;
 
 // type erasure on the future
-pub(crate) struct OutputBoxer<F>(pub(crate) F);
+pub struct OutputBoxer<F>(pub F);
 
 // boxed closure type returning future for handling cached redis/sql queries
-pub(crate) struct CacheCb<T, R>(
+pub struct CacheCb<T, R>(
     Box<dyn for<'a> BoxedCacheCallback<'a, T, R, Fut = BotDbFuture<'a, Result<Option<R>>>>>,
 );
 
-pub(crate) struct SingleCb<T, R>(
+pub struct SingleCb<T, R>(
     Box<dyn for<'a> BoxedSingleCallback<'a, T, R, Fut = BotDbFuture<'a, R>>>,
 );
 
 impl<'a, T, R: 'a> CacheCb<T, R> {
-    pub(crate) fn new<F>(func: F) -> Self
+    pub fn new<F>(func: F) -> Self
     where
         F: for<'b> CacheCallback<'b, T, R> + 'static,
         R: DeserializeOwned + 'static,
@@ -36,7 +36,7 @@ impl<'a, T, R: 'a> CacheCb<T, R> {
 }
 
 impl<'a, T, R: 'a> SingleCb<T, R> {
-    pub(crate) fn new<F>(func: F) -> Self
+    pub fn new<F>(func: F) -> Self
     where
         F: for<'b> SingleCallback<'b, T, R> + 'static,
         R: 'static,
@@ -146,8 +146,8 @@ where
 }
 
 // Boxed closure type returning future for updating redis on cache miss
-pub(crate) struct CacheMissCb<T, V>(
-    pub(crate) Box<dyn for<'a> BoxedCacheMissCallback<'a, T, V, Fut = BotDbFuture<'a, Result<V>>>>,
+pub struct CacheMissCb<T, V>(
+    pub Box<dyn for<'a> BoxedCacheMissCallback<'a, T, V, Fut = BotDbFuture<'a, Result<V>>>>,
 );
 impl<'a, T, V> CacheMissCallback<'a, T, V> for CacheMissCb<T, V>
 where

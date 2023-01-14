@@ -54,7 +54,7 @@ use parser::{Parser, Token};
 
 use crate::persist::Result;
 
-pub(crate) struct DefaultTokenizer(String);
+pub struct DefaultTokenizer(String);
 
 impl DefaultTokenizer {
     pub fn new(val: String) -> Self {
@@ -73,7 +73,7 @@ impl DefaultTokenizer {
 }
 
 #[allow(dead_code)]
-pub(crate) fn parse_cmd<R: ToString>(cmd: R) -> Result<(Arg, VecDeque<Arg>)> {
+pub fn parse_cmd<R: ToString>(cmd: R) -> Result<(Arg, VecDeque<Arg>)> {
     let tokenizer = DefaultTokenizer::new(cmd.to_string());
 
     let mut parser = Parser::new();
@@ -87,7 +87,7 @@ pub(crate) fn parse_cmd<R: ToString>(cmd: R) -> Result<(Arg, VecDeque<Arg>)> {
 }
 
 #[allow(dead_code)]
-pub(crate) fn parse_cmd_iter<R: ToString>(cmd: R) -> Result<impl Iterator<Item = Arg>> {
+pub fn parse_cmd_iter<R: ToString>(cmd: R) -> Result<impl Iterator<Item = Arg>> {
     let iter = parse_cmd(cmd)?.1.into_iter();
     Ok(iter)
 }

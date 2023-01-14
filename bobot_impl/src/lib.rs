@@ -6,7 +6,7 @@ use sea_orm::ConnectionTrait;
 use statics::{get_executor, CONFIG};
 use tokio::sync::Notify;
 
-pub(crate) mod metadata;
+pub mod metadata;
 pub mod modules;
 pub mod persist;
 pub mod tg;

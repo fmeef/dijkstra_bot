@@ -12,7 +12,7 @@ use sea_orm::{prelude::ChronoDateTimeWithTimeZone, EntityTrait, IntoActiveModel}
 
 use crate::persist::core::dialogs;
 
-pub(crate) async fn get_chat_lang(chat: i64) -> Result<Lang> {
+pub async fn get_chat_lang(chat: i64) -> Result<Lang> {
     Ok(dialogs::Entity::find_by_id(chat)
         .one(DB.deref().deref())
         .await?
@@ -20,7 +20,7 @@ pub(crate) async fn get_chat_lang(chat: i64) -> Result<Lang> {
         .unwrap_or_else(|| Lang::En))
 }
 
-pub(crate) async fn set_chat_lang(chat: i64, lang: Lang) -> Result<()> {
+pub async fn set_chat_lang(chat: i64, lang: Lang) -> Result<()> {
     let c = dialogs::Model {
         chat_id: chat,
         last_activity: ChronoDateTimeWithTimeZone::default(),

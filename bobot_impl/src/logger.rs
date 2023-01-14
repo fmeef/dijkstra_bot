@@ -8,7 +8,7 @@ use std::io;
 
 use crate::statics::CONFIG;
 
-pub(crate) struct LevelFilterWrapper(pub(crate) LevelFilter);
+pub struct LevelFilterWrapper(pub LevelFilter);
 
 impl Serialize for LevelFilterWrapper {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>

@@ -79,7 +79,7 @@ where
  * Helper type for caching a single value from the database
  * in redis.
  */
-pub(crate) struct CachedQuery<'r, T, R, S, M>
+pub struct CachedQuery<'r, T, R, S, M>
 where
     T: Serialize + DeserializeOwned + Send + Sync,
     R: CacheCallback<'r, RedisPool, T> + Send + Sync,
@@ -93,7 +93,7 @@ where
 }
 
 #[async_trait]
-pub(crate) trait CachedQueryTrait<'r, R>
+pub trait CachedQueryTrait<'r, R>
 where
     R: DeserializeOwned,
 {
@@ -105,7 +105,7 @@ where
     ) -> Result<Option<R>>;
 }
 
-pub(crate) fn default_cached_query_vec<'r, T, S>(sql_query: S) -> impl CachedQueryTrait<'r, Vec<T>>
+pub fn default_cached_query_vec<'r, T, S>(sql_query: S) -> impl CachedQueryTrait<'r, Vec<T>>
 where
     T: Serialize + DeserializeOwned + Send + Sync + 'r,
     S: CacheCallback<'r, DatabaseConnection, Vec<T>> + Send + Sync,
@@ -118,7 +118,7 @@ where
  * single redis key. This behavior can be overridden if more
  * complex redis structures are required
  */
-pub(crate) fn default_cache_query<'r, T, S>(sql_query: S) -> impl CachedQueryTrait<'r, T>
+pub fn default_cache_query<'r, T, S>(sql_query: S) -> impl CachedQueryTrait<'r, T>
 where
     T: Serialize + DeserializeOwned + Send + Sync + 'r,
     S: CacheCallback<'r, DatabaseConnection, T> + Send + Sync,
@@ -133,7 +133,7 @@ where
     S: CacheCallback<'r, DatabaseConnection, T> + Send + Sync,
     M: CacheMissCallback<'r, RedisPool, T> + Send + Sync,
 {
-    pub(crate) fn new(sql_query: S, redis_query: R, miss_query: M) -> Self {
+    pub fn new(sql_query: S, redis_query: R, miss_query: M) -> Self {
         Self {
             redis_query,
             sql_query,

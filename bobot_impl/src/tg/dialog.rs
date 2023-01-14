@@ -334,7 +334,7 @@ impl Conversation {
     }
 }
 
-pub(crate) async fn get_conversation(message: &Message) -> Result<Option<Conversation>> {
+pub async fn get_conversation(message: &Message) -> Result<Option<Conversation>> {
     let key = get_conversation_key_message(&message)?;
     let rstr = REDIS
         .query(|mut c| async move {
@@ -356,13 +356,13 @@ pub(crate) async fn get_conversation(message: &Message) -> Result<Option<Convers
     Ok(res)
 }
 
-pub(crate) async fn drop_converstaion(message: &Message) -> Result<()> {
+pub async fn drop_converstaion(message: &Message) -> Result<()> {
     let key = get_conversation_key_message(message)?;
     REDIS.sq(|p| p.del(&key)).await?;
     Ok(())
 }
 
-pub(crate) async fn replace_conversation<F>(message: &Message, create: F) -> Result<Conversation>
+pub async fn replace_conversation<F>(message: &Message, create: F) -> Result<Conversation>
 where
     F: FnOnce(&Message) -> Result<Conversation>,
 {
@@ -379,7 +379,7 @@ where
     Ok(conversation)
 }
 
-pub(crate) async fn get_or_create_conversation<F>(
+pub async fn get_or_create_conversation<F>(
     message: &Message,
     create: F,
 ) -> Result<Conversation>

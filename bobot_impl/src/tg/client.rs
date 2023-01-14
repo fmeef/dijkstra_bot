@@ -26,9 +26,9 @@ use std::sync::Arc;
 
 static INVALID: &str = "invalid";
 
-pub(crate) struct MetadataCollection {
-    pub(crate) helps: HashMap<String, String>,
-    pub(crate) modules: HashMap<String, Metadata>,
+pub struct MetadataCollection {
+    pub helps: HashMap<String, String>,
+    pub modules: HashMap<String, Metadata>,
 }
 
 impl MetadataCollection {
@@ -47,7 +47,7 @@ impl MetadataCollection {
             .unwrap_or_else(|| INVALID.to_owned())
     }
 
-    pub(crate) async fn get_conversation(&self, message: &Message) -> Result<Conversation> {
+    pub async fn get_conversation(&self, message: &Message) -> Result<Conversation> {
         let me = crate::tg::admin_helpers::get_me().await?;
         let mut state = ConversationState::new_prefix(
             "/help".to_owned(),
@@ -76,10 +76,10 @@ impl MetadataCollection {
     }
 }
 
-pub(crate) struct TgClient {
-    pub(crate) client: Bot,
-    pub(crate) modules: Arc<MetadataCollection>,
-    pub(crate) button_events: Arc<DashMap<String, SingleCb<CallbackQuery, ()>>>,
+pub struct TgClient {
+    pub client: Bot,
+    pub modules: Arc<MetadataCollection>,
+    pub button_events: Arc<DashMap<String, SingleCb<CallbackQuery, ()>>>,
 }
 
 async fn show_help(
@@ -139,7 +139,7 @@ async fn handle_help(update: &UpdateExt, helps: Arc<MetadataCollection>) -> Resu
 }
 
 impl TgClient {
-    pub(crate) fn register_button<F, Fut>(&self, button: &InlineKeyboardButton, func: F)
+    pub fn register_button<F, Fut>(&self, button: &InlineKeyboardButton, func: F)
     where
         F: FnOnce(CallbackQuery) -> Fut + Sync + Send + 'static,
         Fut: Future<Output = ()> + Send + 'static,
@@ -150,7 +150,7 @@ impl TgClient {
                 .insert(data.to_owned(), SingleCb::new(func));
         }
     }
-    pub(crate) fn connect<T>(token: T) -> Self
+    pub fn connect<T>(token: T) -> Self
     where
         T: Into<String>,
     {
@@ -200,7 +200,7 @@ impl TgClient {
         });
     }
 
-    pub(crate) async fn run(&self) -> Result<()> {
+    pub async fn run(&self) -> Result<()> {
         log::info!("run");
         match CONFIG.webhook.enable_webhook {
             false => {
@@ -237,7 +237,7 @@ impl TgClient {
         Ok(())
     }
 
-    pub(crate) fn client<'a>(&'a self) -> &'a Bot {
+    pub fn client<'a>(&'a self) -> &'a Bot {
         &self.client
     }
 }

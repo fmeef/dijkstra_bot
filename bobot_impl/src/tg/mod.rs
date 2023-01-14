@@ -1,8 +1,8 @@
-pub(crate) mod admin_helpers;
-pub(crate) mod button;
+pub mod admin_helpers;
+pub mod button;
 pub mod client;
-pub(crate) mod command;
+pub mod command;
 #[allow(dead_code)]
-pub(crate) mod dialog;
-pub(crate) mod markdown;
-pub(crate) mod user;
+pub mod dialog;
+pub mod markdown;
+pub mod user;
