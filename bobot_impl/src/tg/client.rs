@@ -8,6 +8,7 @@ use botapi::{
 use dashmap::DashMap;
 
 use super::{
+    admin_helpers::get_me,
     dialog::{Conversation, ConversationState},
     markdown::MarkupBuilder,
     user::RecordUser,
@@ -47,10 +48,13 @@ impl MetadataCollection {
     }
 
     pub(crate) async fn get_conversation(&self, message: &Message) -> Result<Conversation> {
+        let me = crate::tg::admin_helpers::get_me().await?;
         let mut state = ConversationState::new_prefix(
             "/help".to_owned(),
-            "Welcome to Default Bot, a modular group management bot written in pyton and asynctio"
-                .to_owned(),
+            format!(
+                "Welcome to {}, a modular group management bot written in pyton and asynctio",
+                me.get_first_name()
+            ),
             message.get_chat().get_id(),
             message
                 .get_from()
@@ -98,14 +102,22 @@ async fn show_help(
             .build()
             .await?;
     } else {
+        let me = get_me().await?;
         TG.client()
             .build_send_message(
                 message.get_chat().get_id(),
-                 "Welcome to Default Bot, a modular group management bot written in pyton and asynctio"
+                &format!(
+                    "Welcome to {}, a modular group management bot written in pyton and asynctio",
+                    me.get_first_name()
+                ),
             )
             .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
-                helps.get_conversation(&message).await?.get_current_markup().await?
-                            ))
+                helps
+                    .get_conversation(&message)
+                    .await?
+                    .get_current_markup()
+                    .await?,
+            ))
             .reply_to_message_id(message.get_message_id())
             .build()
             .await?;

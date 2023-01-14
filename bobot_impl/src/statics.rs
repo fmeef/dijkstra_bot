@@ -91,6 +91,7 @@ impl Default for Config {
         }
     }
 }
+
 // Mildly competent moduler telegram bot
 #[derive(Parser)]
 #[clap(author, version, long_about = None)]
