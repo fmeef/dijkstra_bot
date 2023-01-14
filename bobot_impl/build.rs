@@ -1,4 +1,4 @@
-use macros::autoimport;
+use buildhelpers::autoimport;
 use std::fs;
 fn main() {
     let f = autoimport("./src/modules").to_string();

@@ -1,0 +1,5 @@
+test: "Invalid murkdown: {}"
+thing: "thing"
+setlang: "Successfully set language"
+currentlang: "Choose a language from the list"
+invalidlang: "Invalid language selected"

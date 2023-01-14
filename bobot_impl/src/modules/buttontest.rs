@@ -2,6 +2,7 @@ use botapi::{
     bot::BotResult,
     gen_types::{Message, UpdateExt},
 };
+use macros::rlformat;
 use sea_orm_migration::MigrationTrait;
 
 use crate::{
@@ -11,6 +12,7 @@ use crate::{
         command::{parse_cmd, Arg},
         markdown::MarkupBuilder,
     },
+    util::string::Lang,
 };
 
 metadata!("Piracy detection",
@@ -41,7 +43,7 @@ async fn handle_murkdown(message: &Message) -> BotResult<bool> {
                     TG.client()
                         .build_send_message(
                             message.get_chat().get_id(),
-                            &format!("invalid murkdown: {}", err),
+                            &rlformat!(Lang::En, "test", err),
                         )
                         .build()
                         .await?;

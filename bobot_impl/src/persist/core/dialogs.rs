@@ -7,6 +7,8 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub chat_id: i64,
     pub last_activity: DateTimeWithTimeZone,
+    #[sea_orm(default = crate::util::string::Lang::En)]
+    pub language: crate::util::string::Lang,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

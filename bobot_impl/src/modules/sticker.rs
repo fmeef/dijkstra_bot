@@ -438,6 +438,7 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
     info!("moretags stickerid: {}", sticker_id);
     if let Some(user) = message.get_from() {
         if text == "/done" {
+            let text = conversation.transition(TRANSITION_DONE).await?;
             let stickername: String = REDIS.sq(|p| p.get(&namekey)).await?;
 
             let tags = REDIS
@@ -465,7 +466,6 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
                 .exec(DB.deref().deref())
                 .await?;
 
-            let text = conversation.transition(TRANSITION_DONE).await?;
             TG.client()
                 .build_send_message(message.get_chat().get_id(), &text.to_owned())
                 .reply_to_message_id(message.get_message_id())

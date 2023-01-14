@@ -41,8 +41,9 @@ warp = "0.3.3"
 prometheus-hyper = "0.1.5"
 markdown = "0.3.0"
 itertools = "0.10.5"
+macros = { path = "macros" }
 
 
 [build-dependencies]
-macros = { path = "macros" }
+buildhelpers = { path = "buildhelpers" }
 anyhow = "1.0.68"

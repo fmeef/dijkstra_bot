@@ -3,6 +3,7 @@ pub use sea_orm_migration::*;
 
 mod m20220101_000001_create_table;
 mod m20221217_150626_create_user;
+mod m20230113_005856_addlang;
 
 pub struct Migrator;
 
@@ -13,6 +14,7 @@ impl MigratorTrait for Migrator {
         let mut core_migrations: Vec<Box<dyn MigrationTrait>> = vec![
             Box::new(m20220101_000001_create_table::Migration),
             Box::new(m20221217_150626_create_user::Migration),
+            Box::new(m20230113_005856_addlang::Migration),
         ];
         core_migrations.append(&mut module_migrations);
         core_migrations

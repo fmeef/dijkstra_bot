@@ -74,6 +74,8 @@ pub struct ConversationState {
     start: Uuid,
     pub transitions: HashMap<(Uuid, String), FSMTransition>,
     rediskey: String,
+    #[serde(default, skip)]
+    state_callback: Option<Box<dyn Fn(Uuid, Conversation) -> () + Send + Sync>>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -161,6 +163,14 @@ impl ConversationState {
         Self::new_prefix(triggerphrase, reply, chat, user, "convstate")
     }
 
+    pub fn state_callback<F>(&mut self, callback: F) -> &mut Self
+    where
+        F: Fn(Uuid, Conversation) -> () + Send + Sync + 'static,
+    {
+        self.state_callback = Some(Box::new(callback));
+        self
+    }
+
     pub fn new_prefix(
         triggerphrase: String,
         reply: String,
@@ -182,6 +192,7 @@ impl ConversationState {
             user,
             transitions: HashMap::new(),
             rediskey: get_conversation_key_prefix(chat, user, prefix),
+            state_callback: None,
         };
 
         Ok(state)
@@ -199,6 +210,10 @@ impl Conversation {
         } else {
             Err(anyhow!(BotError::new("corrupt graph")))
         }
+    }
+
+    pub fn get_state<'a>(&'a self, uuid: &Uuid) -> Option<&'a FSMState> {
+        self.0.states.get(uuid)
     }
 
     pub async fn transition<'a, S>(&'a self, next: S) -> Result<&'a str>
@@ -219,6 +234,9 @@ impl Conversation {
             Err(BotError::new("invalid choice current"))
         }?;
         self.write_key(current.state_id).await?;
+        if let Some(cb) = self.0.state_callback.as_ref() {
+            cb(current.state_id, self.clone());
+        }
         Ok(&current.content)
     }
 
@@ -253,22 +271,16 @@ impl Conversation {
     ) -> Result<()> {
         if let Some(message) = callback.get_message() {
             self.write_key(trans).await?;
+
+            let n = self.get_current_markup().await?;
             TG.client()
                 .build_edit_message_text(&content)
                 .message_id(message.get_message_id())
-                .chat_id(message.get_chat().get_id())
-                .build()
-                .await?;
-
-            let n = self.get_current_markup().await?;
-
-            TG.client()
-                .build_edit_message_reply_markup()
-                .message_id(message.get_message_id())
-                .chat_id(message.get_chat().get_id())
                 .reply_markup(&n)
+                .chat_id(message.get_chat().get_id())
                 .build()
                 .await?;
+
             TG.client()
                 .build_answer_callback_query(callback.get_id())
                 .build()

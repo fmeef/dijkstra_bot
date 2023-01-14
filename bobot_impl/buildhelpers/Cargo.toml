@@ -1,18 +1,12 @@
 [package]
-name = "macros"
+name = "buildhelpers"
 version = "0.1.0"
 edition = "2021"
 
-[lib]
-proc-macro = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 syn = "1.0.106"
 quote = "1.0.22"
 proc-macro2 = "1.0.48"
-include_dir = "0.7.3"
-serde_yaml = "0.9.16"
-serde = { version = "1.0.152", features = ["derive"] }
-lazy_static = "1.4.0"
-convert_case = "0.6.0"
+glob = "0.3.0"

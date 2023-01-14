@@ -10,7 +10,7 @@ pub(crate) mod metadata;
 pub mod modules;
 pub mod persist;
 pub mod tg;
-pub(crate) mod util;
+pub mod util;
 
 mod logger;
 pub mod statics;
