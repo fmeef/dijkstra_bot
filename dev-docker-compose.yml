@@ -13,8 +13,9 @@ services:
       - dev-cargo-cache:/usr/local/cargo/registry
       - build-volume:/bobot/target
     depends_on:
-      db-dev:
-        condition: service_healthy
+      - redis-dev
+      - prometheus-dev
+      - db-dev
     stdin_open: true
     tty: true
   db-dev:
