@@ -1,0 +1,49 @@
+services:
+  bobot-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+    ports:
+      - "8083:8080"
+    environment:
+      - DATABASE_URL=postgresql://bobot:changeme@db/bobot    
+    volumes:
+      - ./:/bobot:z
+    depends_on:
+      db-dev:
+        condition: service_healthy
+    stdin_open: true
+    tty: true
+  db-dev:
+    image: postgres:15.1-alpine
+    restart: always
+    environment:
+      - POSTGRES_USER=bobot
+      - POSTGRES_PASSWORD=changeme
+      - POSTGRES_DB=bobot
+    volumes: 
+      - dev-bobot-db:/var/lib/postgresql/data 
+    healthcheck:
+      test: pg_isready -U bobot
+      interval: 10s
+      timeout: 3s
+      retries: 10
+  redis-dev:
+    image: redis:7.0.7-alpine
+    restart: always
+    volumes: 
+      - dev-bobot-redis:/data  
+  prometheus-dev:
+    image: prom/prometheus:v2.41.0
+    ports:
+      - 9001:9090
+    volumes:
+      - ./prometheus:/etc/prometheus
+      - dev-prometheus-data:/prometheus
+    command: --web.enable-lifecycle  --config.file=/etc/prometheus/prometheus.yml
+       
+volumes:
+  dev-bobot-redis:
+  dev-bobot-db:
+  dev-prometheus-data:

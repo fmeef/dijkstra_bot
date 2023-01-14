@@ -7,7 +7,21 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./config:/config:Z
+      - ./config:/config:z
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrate
+    volumes:
+      - ./:/migrate:z
+      - cargo-cache:/home/bobot/.cargo/registry
+      - migration-target:/migrate/migration/target
+    environment:
+      - DATABASE_URL=postgresql://bobot:changeme@db/bobot
     depends_on:
       db:
         condition: service_healthy
@@ -30,10 +44,6 @@ services:
     restart: always
     volumes: 
       - bobot-redis:/data  
-  admin:
-    build:
-      context: .
-      dockerfile: Dockerfile.admin
   prometheus:
     image: prom/prometheus:v2.41.0
     ports:
@@ -47,3 +57,5 @@ volumes:
   bobot-redis:
   bobot-db:
   prometheus-data:
+  cargo-cache:
+  migration-target:
