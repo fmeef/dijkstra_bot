@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::RwLock};
 
 use convert_case::{Case, Casing};
 use include_dir::{include_dir, Dir};
@@ -7,16 +7,18 @@ use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use serde::Deserialize;
 use syn::{
+    braced,
     parse::{Parse, ParseStream},
     parse_macro_input,
     punctuated::Punctuated,
+    token::Brace,
     Expr, LitStr, Token,
 };
 
 static STRINGS_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/strings");
 
 lazy_static! {
-    static ref LOCALE: Locale = get_locale();
+    static ref LOCALE: RwLock<Locale> = RwLock::new(get_locale());
 }
 
 #[derive(Deserialize)]
@@ -92,6 +94,46 @@ impl Parse for LangLocaleInput {
             format: input.parse_terminated(Expr::parse)?,
         })
     }
+}
+
+struct InlineRow {
+    lang: LitStr,
+    yaml: LitStr,
+}
+
+struct InlineInput(Punctuated<InlineRow, Token![,]>);
+
+impl Parse for InlineRow {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let content;
+        let _: Brace = braced!(content in input);
+        let lang: LitStr = content.parse()?;
+        let _: Token![=>] = content.parse()?;
+        let yaml: LitStr = content.parse()?;
+        Ok(Self { lang, yaml })
+    }
+}
+
+impl Parse for InlineInput {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        Ok(Self(input.parse_terminated(InlineRow::parse)?))
+    }
+}
+
+#[proc_macro]
+pub fn inline_lang(tokens: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(tokens as InlineInput);
+    let mut locale = LOCALE.write().unwrap();
+    for row in input.0 {
+        let s: Strings = serde_yaml::from_str(&row.yaml.value()).expect("invalid yaml");
+        if let Some(lang) = locale.langs.get_mut(&row.lang.value()) {
+            lang.strings.extend(s.strings.into_iter());
+        } else {
+            locale.langs.insert(row.lang.value(), s);
+        }
+    }
+    let res = quote! {};
+    TokenStream::from(res)
 }
 
 #[proc_macro]
@@ -187,7 +229,8 @@ pub fn get_langs(_: TokenStream) -> TokenStream {
 pub fn rformat(tokens: TokenStream) -> TokenStream {
     let input = parse_macro_input!(tokens as LocaleInput);
     let key = input.st;
-    let format = LOCALE
+    let locale = LOCALE.read().unwrap();
+    let format = locale
         .langs
         .get("en")
         .expect("invalid language")
@@ -207,7 +250,8 @@ pub fn rlformat(tokens: TokenStream) -> TokenStream {
     let input = parse_macro_input!(tokens as LangLocaleInput);
     let key = input.st;
     let language = input.lang;
-    let format = LOCALE
+    let locale = LOCALE.read().unwrap();
+    let format = locale
         .langs
         .get("en")
         .expect("invalid language")
