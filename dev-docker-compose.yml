@@ -3,15 +3,16 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      target: base
+      target: dev
     ports:
       - "8080:8080"
     environment:
-      - DATABASE_URL=postgresql://bobot:changeme@db/bobot    
+      - DATABASE_URL=postgresql://bobot:changeme@db-dev/bobot    
     volumes:
       - ./:/bobot:z
       - dev-cargo-cache:/usr/local/cargo/registry
       - build-volume:/bobot/target
+      - migration-volume:/bobot/migration/target
     depends_on:
       - redis-dev
       - prometheus-dev
@@ -52,3 +53,4 @@ volumes:
   dev-prometheus-data:
   dev-cargo-cache:
   build-volume:
+  migration-volume:

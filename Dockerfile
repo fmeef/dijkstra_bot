@@ -56,8 +56,8 @@ COPY --from=builder /etc/passwd /etc/passwd
 COPY --from=builder /etc/group /etc/group
 RUN apk add cargo openssl-dev
 COPY --from=builder /usr/local/cargo/bin/sea-orm-cli /
-RUN mkdir -p /migrate/migration/target && mkdir -p /home/bobot/.cargo/registry && \ 
-  chown -R bobot:bobot /home/bobot && chown -R bobot:bobot /migrate
+RUN mkdir -p /migrate/migration/target && mkdir -p /home/bobot/.cargo/registry && \
+chown -R bobot:bobot /home/bobot && chown -R bobot:bobot /migrate
 USER bobot:bobot
 ENV OPENSSL_NO_VENDOR=1
 WORKDIR /migrate
@@ -77,3 +77,16 @@ COPY --from=builder /usr/local/cargo/bin/sea-orm-cli ./
 USER bobot:bobot
 VOLUME /config
 ENTRYPOINT [ "/bobot/bobot", "--config", "/config/config.toml"]
+
+
+FROM base AS dev
+RUN rustup component add rustfmt
+RUN --mount=type=cache,target=/bobot/target \
+--mount=type=cache,target=/usr/local/rustup \
+--mount=type=cache,target=/usr/local/cargo/registry \
+cargo install sea-orm-cli
+RUN mkdir -p /bobot/target && chown -R bobot:bobot /bobot && \
+chown -R bobot:bobot /usr/local && mkdir -p /bobot/migration/target && \
+chown -R bobot:bobot /bobot/migration/target
+USER bobot:bobot
+WORKDIR /bobot
