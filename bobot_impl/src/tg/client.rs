@@ -6,6 +6,7 @@ use botapi::{
     gen_types::{CallbackQuery, InlineKeyboardButton, Message, UpdateExt},
 };
 use dashmap::DashMap;
+use macros::rlformat;
 
 use super::{
     admin_helpers::get_me,
@@ -13,12 +14,15 @@ use super::{
     markdown::MarkupBuilder,
     user::RecordUser,
 };
-use crate::statics::{CONFIG, TG};
 use crate::{
     metadata::Metadata,
     modules,
     tg::command::{parse_cmd, Arg},
     util::callback::{SingleCallback, SingleCb},
+};
+use crate::{
+    statics::{CONFIG, TG},
+    util::string::get_chat_lang,
 };
 use anyhow::{anyhow, Result};
 use futures::{Future, StreamExt};
@@ -49,12 +53,11 @@ impl MetadataCollection {
 
     pub async fn get_conversation(&self, message: &Message) -> Result<Conversation> {
         let me = crate::tg::admin_helpers::get_me().await?;
+
+        let lang = get_chat_lang(message.get_chat().get_id()).await?;
         let mut state = ConversationState::new_prefix(
             "/help".to_owned(),
-            format!(
-                "Welcome to {}, a modular group management bot written in pyton and asynctio",
-                me.get_first_name()
-            ),
+            rlformat!(lang, "welcome", me.get_first_name()),
             message.get_chat().get_id(),
             message
                 .get_from()
@@ -87,9 +90,10 @@ async fn show_help(
     message: &Message,
     helps: Arc<MetadataCollection>,
 ) -> Result<bool> {
-    let cnf = "Command not found";
+    let lang = get_chat_lang(message.get_chat().get_id()).await?;
+    let cnf = rlformat!(lang, "commandnotfound");
     if let Some(Arg::Arg(ref cmd)) = args.front() {
-        let cmd = helps.helps.get(cmd).map(|v| v.as_str()).unwrap_or(cnf);
+        let cmd = helps.helps.get(cmd).map(|v| v.as_str()).unwrap_or(&cnf);
         let mut builder = MarkupBuilder::new();
         let (cmd, entities) = builder
             .strikethrough("@everyone")
@@ -106,10 +110,7 @@ async fn show_help(
         TG.client()
             .build_send_message(
                 message.get_chat().get_id(),
-                &format!(
-                    "Welcome to {}, a modular group management bot written in pyton and asynctio",
-                    me.get_first_name()
-                ),
+                &rlformat!(lang, "welcome", me.get_first_name()),
             )
             .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
                 helps

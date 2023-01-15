@@ -2,6 +2,7 @@ use botapi::{
     bot::BotResult,
     gen_types::{Message, UpdateExt},
 };
+use macros::rlformat;
 use sea_orm_migration::MigrationTrait;
 
 use crate::{
@@ -11,6 +12,7 @@ use crate::{
         admin_helpers::{self_admin_or_die, GetCachedAdmins, IsAdmin},
         command::{parse_cmd, Arg},
     },
+    util::string::get_chat_lang,
 };
 
 metadata!("Admin",
@@ -27,13 +29,15 @@ async fn handle_command(message: &Message) -> BotResult<()> {
         let (command, _) = parse_cmd(text)?;
         if let Arg::Arg(command) = command {
             log::info!("admin command {}", command);
+
+            let lang = get_chat_lang(message.get_chat().get_id()).await?;
             match command.as_str() {
                 "/admincache" => {
                     message.get_chat().refresh_cached_admins().await?;
                     TG.client()
                         .build_send_message(
                             message.get_chat().get_id(),
-                            "Successfully refreshed admin cache",
+                            &rlformat!(lang, "refreshac"),
                         )
                         .build()
                         .await?;
@@ -43,7 +47,7 @@ async fn handle_command(message: &Message) -> BotResult<()> {
                     TG.client()
                         .build_send_message(
                             message.get_chat().get_id(),
-                            &format!("Found {} admins", admins.len()),
+                            &rlformat!(lang, "foundadmins", admins.len()),
                         )
                         .build()
                         .await?;
@@ -54,7 +58,7 @@ async fn handle_command(message: &Message) -> BotResult<()> {
                         TG.client()
                             .build_send_message(
                                 message.get_chat().get_id(),
-                                "I'm not going to kick an admin",
+                                &rlformat!(lang, "kickadmin"),
                             )
                             .build()
                             .await?;

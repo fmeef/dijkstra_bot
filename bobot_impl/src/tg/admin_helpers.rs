@@ -3,11 +3,13 @@ use std::collections::HashMap;
 use crate::{
     persist::redis::RedisStr,
     statics::{REDIS, TG},
+    util::string::get_chat_lang,
 };
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use botapi::gen_types::{Chat, ChatMember, User};
 use chrono::Duration;
+use macros::rlformat;
 use redis::AsyncCommands;
 
 use super::user::GetUser;
@@ -21,11 +23,9 @@ pub async fn is_self_admin(chat: &Chat) -> Result<bool> {
 
 pub async fn self_admin_or_die(chat: &Chat) -> Result<()> {
     if !is_self_admin(chat).await? {
+        let lang = get_chat_lang(chat.get_id()).await?;
         TG.client()
-            .build_send_message(
-                chat.get_id(),
-                "I'm sorry, Dave. I need to be admin to function in this group",
-            )
+            .build_send_message(chat.get_id(), &rlformat!(lang, "needtobeadmin"))
             .build()
             .await?;
         Err(anyhow!("not admin"))
@@ -78,8 +78,10 @@ impl IsAdmin for User {
         if self.is_admin(chat).await? {
             Ok(())
         } else {
-            let msg = format!(
-                "User {} lacking admin rights",
+            let lang = get_chat_lang(chat.get_id()).await?;
+            let msg = rlformat!(
+                lang,
+                "lackingadminrights",
                 self.get_username()
                     .unwrap_or(self.get_id().to_string().as_str())
             );
@@ -107,8 +109,10 @@ impl IsAdmin for Option<&User> {
             if user.is_admin(chat).await? {
                 Ok(())
             } else {
-                let msg = format!(
-                    "User {} lacking admin rights",
+                let lang = get_chat_lang(chat.get_id()).await?;
+                let msg = rlformat!(
+                    lang,
+                    "lackingadminrights",
                     user.get_username()
                         .unwrap_or(user.get_id().to_string().as_str())
                 );
@@ -134,13 +138,15 @@ impl IsAdmin for i64 {
         if self.is_admin(chat).await? {
             Ok(())
         } else {
+            let lang = get_chat_lang(chat.get_id()).await?;
             let msg = if let Some(user) = self.get_cached_user().await? {
-                format!(
-                    "User {} lacking admin rights",
+                rlformat!(
+                    lang,
+                    "lackingadminrights",
                     user.get_username().unwrap_or(self.to_string().as_str())
                 )
             } else {
-                format!("User {} lacking admin rights", self)
+                rlformat!(lang, "lackingadminrights", self)
             };
             TG.client()
                 .build_send_message(chat.get_id(), &msg)
