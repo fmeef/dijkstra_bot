@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile
       target: base
     ports:
-      - "8083:8080"
+      - "8080:8080"
     environment:
       - DATABASE_URL=postgresql://bobot:changeme@db/bobot    
     volumes:
@@ -40,7 +40,7 @@ services:
   prometheus-dev:
     image: prom/prometheus:v2.41.0
     ports:
-      - 9001:9090
+      - 9009:9090
     volumes:
       - ./prometheus:/etc/prometheus
       - dev-prometheus-data:/prometheus
