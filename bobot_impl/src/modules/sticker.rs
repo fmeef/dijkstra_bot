@@ -232,7 +232,7 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
 
 async fn handle_inline(query: &InlineQuery) -> Result<()> {
     let id = query.get_from().get_id();
-    let key = query.get_query().to_owned();
+    let key = query.get_query();
     let rkey = format!("{}:{}", id, key);
 
     let cached = query.get_from().get_id().get_cached_user().await?;

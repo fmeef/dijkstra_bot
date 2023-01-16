@@ -109,7 +109,7 @@ where
     R: DeserializeOwned,
 {
     async fn query(
-        self,
+        &self,
         db: &'r DatabaseConnection,
         redis: &'r RedisPool,
         key: &'r str,
@@ -165,7 +165,7 @@ where
     M: CacheMissCallback<'r, RedisPool, T> + Send + Sync,
 {
     async fn query(
-        self,
+        &self,
         db: &'r DatabaseConnection,
         redis: &'r RedisPool,
         key: &'r str,
