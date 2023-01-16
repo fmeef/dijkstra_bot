@@ -1,4 +1,4 @@
-use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisStr};
+use crate::persist::redis::{default_cache_query, static_query, RedisStr};
 use crate::statics::{DB, REDIS};
 use anyhow::Result;
 
@@ -15,24 +15,27 @@ use sea_orm::{prelude::ChronoDateTimeWithTimeZone, EntityTrait, IntoActiveModel}
 
 use crate::persist::core::dialogs;
 
-fn get_lang_key(chat: i64) -> String {
-    format!("lang:{}", chat)
-}
-
-pub async fn get_chat_lang(chat: i64) -> Result<Lang> {
-    let key = get_lang_key(chat);
-    let res = default_cache_query(
-        |_, sql, _| async move {
+static_query! {
+    static ref QUERY_NEW: ( i64 => Lang ) =
+default_cache_query(
+        |_, chat| async move {
             Ok(dialogs::Entity::find_by_id(chat)
-                .one(sql)
+                .one(DB.deref())
                 .await?
                 .map(|v| v.language)
                 .unwrap_or_else(|| Lang::En))
         },
         Duration::hours(12),
     )
-    .query(&DB.deref(), &REDIS, &key, &())
-    .await?;
+}
+
+fn get_lang_key(chat: i64) -> String {
+    format!("lang:{}", chat)
+}
+
+pub async fn get_chat_lang(chat: i64) -> Result<Lang> {
+    let key = get_lang_key(chat);
+    let res = QUERY_NEW.query(key, chat).await?;
     Ok(res)
 }
 

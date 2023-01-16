@@ -4,6 +4,7 @@ use std::str::FromStr;
 use self::entities::tags::ModelRedis;
 use crate::metadata::metadata;
 use crate::persist::redis as r;
+
 use crate::persist::Result;
 use crate::statics::{DB, REDIS, TG};
 use crate::tg::command::{parse_cmd, Arg};
@@ -17,6 +18,7 @@ use ::sea_orm::entity::prelude::*;
 use ::sea_orm::{ActiveModelTrait, IntoActiveModel, QuerySelect, Set};
 use ::sea_orm_migration::prelude::*;
 use anyhow::anyhow;
+use chrono::Duration;
 
 use botapi::bot::BotResult;
 use botapi::gen_types::{
@@ -241,23 +243,25 @@ async fn handle_inline(query: &InlineQuery) -> Result<()> {
             log::info!("query! owner: {} tag: {}", owner, query.get_query());
         }
     }
-    let stickers = default_cached_query_vec(move |_, sql, key| async move {
-        let sql: &DatabaseConnection = sql;
-        let key = format!("%{}%", key);
-        let stickers = entities::stickers::Entity::find()
-            .join(
-                sea_orm::JoinType::InnerJoin,
-                entities::stickers::Relation::Tags.def(),
-            )
-            .group_by(entities::stickers::Column::UniqueId)
-            .filter(entities::stickers::Column::OwnerId.eq(id))
-            .filter(entities::tags::Column::Tag.like(&key))
-            .limit(10)
-            .all(sql)
-            .await?;
-        Ok(stickers)
-    })
-    .query(&DB.deref(), &REDIS, &rkey, &key)
+    let stickers = default_cached_query_vec(
+        move |_, key| async move {
+            let key = format!("%{}%", key);
+            let stickers = entities::stickers::Entity::find()
+                .join(
+                    sea_orm::JoinType::InnerJoin,
+                    entities::stickers::Relation::Tags.def(),
+                )
+                .group_by(entities::stickers::Column::UniqueId)
+                .filter(entities::stickers::Column::OwnerId.eq(id))
+                .filter(entities::tags::Column::Tag.like(&key))
+                .limit(10)
+                .all(DB.deref())
+                .await?;
+            Ok(stickers)
+        },
+        Duration::hours(1),
+    )
+    .query(rkey, key)
     .await?;
     let stickers = stickers
         .into_iter()

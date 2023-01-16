@@ -42,9 +42,9 @@ pub trait SingleCallback<'a, T, R>: Send + Sync {
     type Fut: Future<Output = R> + Send + 'a;
     fn cb(self, db: T) -> Self::Fut;
 }
-pub trait CacheCallback<'a, T, R, P>: Send + Sync {
-    type Fut: Future<Output = Result<R>> + Send + 'a;
-    fn cb(&self, key: &'a str, db: &'a T, param: &'a P) -> Self::Fut;
+pub trait CacheCallback<R, P>: Send + Sync {
+    type Fut: Future<Output = Result<R>> + Send;
+    fn cb(&self, key: String, param: P) -> Self::Fut;
 }
 
 pub trait BoxedSingleCallback<'a, T, R>: Send + Sync {
@@ -52,17 +52,16 @@ pub trait BoxedSingleCallback<'a, T, R>: Send + Sync {
     fn cb_boxed(self: Box<Self>, db: T) -> Self::Fut;
 }
 
-impl<'a, F, T, R, P, Fut> CacheCallback<'a, T, R, P> for F
+impl<F, R, P, Fut> CacheCallback<R, P> for F
 where
-    F: Fn(&'a str, &'a T, &'a P) -> Fut + Sync + Send + 'a,
+    F: Fn(String, P) -> Fut + Sync + Send,
     R: DeserializeOwned,
-    T: 'a,
-    P: Send + Sync + 'a,
-    Fut: Future<Output = Result<R>> + Send + 'a,
+    P: Send + Sync,
+    Fut: Future<Output = Result<R>> + Send,
 {
     type Fut = Fut;
-    fn cb(&self, key: &'a str, db: &'a T, param: &'a P) -> Self::Fut {
-        self(key, db, param)
+    fn cb(&self, key: String, param: P) -> Self::Fut {
+        self(key, param)
     }
 }
 
@@ -90,20 +89,19 @@ where
     }
 }
 
-pub trait CacheMissCallback<'a, T, V>: Send + Sync {
-    type Fut: Future<Output = Result<V>> + Send + 'a;
-    fn cb(&self, key: &'a str, val: V, db: &'a T) -> Self::Fut;
+pub trait CacheMissCallback<V>: Send + Sync {
+    type Fut: Future<Output = Result<V>> + Send;
+    fn cb(&self, key: String, val: V) -> Self::Fut;
 }
 
-impl<'a, F, T, V, Fut> CacheMissCallback<'a, T, V> for F
+impl<F, V, Fut> CacheMissCallback<V> for F
 where
-    F: Fn(&'a str, V, &'a T) -> Fut + Sync + Send + 'a,
-    V: Serialize + 'a,
-    T: 'a,
-    Fut: Future<Output = Result<V>> + Send + 'a,
+    F: Fn(String, V) -> Fut + Sync + Send,
+    V: Serialize,
+    Fut: Future<Output = Result<V>> + Send,
 {
     type Fut = Fut;
-    fn cb(&self, key: &'a str, val: V, db: &'a T) -> Self::Fut {
-        self(key, val, db)
+    fn cb(&self, key: String, val: V) -> Self::Fut {
+        self(key, val)
     }
 }
