@@ -80,7 +80,7 @@ ENTRYPOINT [ "/bobot/bobot", "--config", "/config/config.toml"]
 
 
 FROM base AS dev
-RUN rustup component add rustfmt
+RUN rustup default stable && rustup component add rustfmt
 RUN --mount=type=cache,target=/bobot/target \
 --mount=type=cache,target=/usr/local/rustup \
 --mount=type=cache,target=/usr/local/cargo/registry \
