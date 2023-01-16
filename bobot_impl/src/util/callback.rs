@@ -42,9 +42,9 @@ pub trait SingleCallback<'a, T, R>: Send + Sync {
     type Fut: Future<Output = R> + Send + 'a;
     fn cb(self, db: T) -> Self::Fut;
 }
-pub trait CacheCallback<'a, T, R>: Send + Sync {
+pub trait CacheCallback<'a, T, R, P>: Send + Sync {
     type Fut: Future<Output = Result<R>> + Send + 'a;
-    fn cb(&self, key: &'a str, db: &'a T) -> Self::Fut;
+    fn cb(&self, key: &'a str, db: &'a T, param: &'a P) -> Self::Fut;
 }
 
 pub trait BoxedSingleCallback<'a, T, R>: Send + Sync {
@@ -52,16 +52,17 @@ pub trait BoxedSingleCallback<'a, T, R>: Send + Sync {
     fn cb_boxed(self: Box<Self>, db: T) -> Self::Fut;
 }
 
-impl<'a, F, T, R, Fut> CacheCallback<'a, T, R> for F
+impl<'a, F, T, R, P, Fut> CacheCallback<'a, T, R, P> for F
 where
-    F: Fn(&'a str, &'a T) -> Fut + Sync + Send + 'a,
+    F: Fn(&'a str, &'a T, &'a P) -> Fut + Sync + Send + 'a,
     R: DeserializeOwned,
     T: 'a,
+    P: Send + Sync + 'a,
     Fut: Future<Output = Result<R>> + Send + 'a,
 {
     type Fut = Fut;
-    fn cb(&self, key: &'a str, db: &'a T) -> Self::Fut {
-        self(key, db)
+    fn cb(&self, key: &'a str, db: &'a T, param: &'a P) -> Self::Fut {
+        self(key, db, param)
     }
 }
 

@@ -232,7 +232,7 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
 
 async fn handle_inline(query: &InlineQuery) -> Result<()> {
     let id = query.get_from().get_id();
-    let key = query.get_query();
+    let key = query.get_query().to_owned();
     let rkey = format!("{}:{}", id, key);
 
     let cached = query.get_from().get_id().get_cached_user().await?;
@@ -241,7 +241,7 @@ async fn handle_inline(query: &InlineQuery) -> Result<()> {
             log::info!("query! owner: {} tag: {}", owner, query.get_query());
         }
     }
-    let stickers = default_cached_query_vec(move |_, sql| async move {
+    let stickers = default_cached_query_vec(move |_, sql, key| async move {
         let sql: &DatabaseConnection = sql;
         let key = format!("%{}%", key);
         let stickers = entities::stickers::Entity::find()
@@ -257,7 +257,7 @@ async fn handle_inline(query: &InlineQuery) -> Result<()> {
             .await?;
         Ok(stickers)
     })
-    .query(&DB.deref(), &REDIS, &rkey)
+    .query(&DB.deref(), &REDIS, &rkey, &key)
     .await?;
     let stickers = stickers
         .into_iter()

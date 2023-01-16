@@ -29,9 +29,14 @@ pub const KEY_WRAPPER: &str = "wc:wrapper";
 pub const KEY_TYPE_VAL: &str = "wc:typeval";
 pub const KEY_UUID: &str = "wc:uuid";
 
-async fn redis_query_vec<'a, R>(key: &'a str, redis: &'a RedisPool) -> Result<Option<Vec<R>>>
+async fn redis_query_vec<'a, R, P>(
+    key: &'a str,
+    redis: &'a RedisPool,
+    _: &'a P,
+) -> Result<Option<Vec<R>>>
 where
     R: DeserializeOwned + DeserializeOwned + Sync + Send + 'a,
+    P: Send + Sync,
 {
     let res: Vec<R> = redis.drain_list(key).await?;
     if res.len() == 0 {
@@ -49,9 +54,10 @@ where
     Ok(val)
 }
 
-async fn redis_query<'a, R>(key: &'a str, redis: &'a RedisPool) -> Result<Option<R>>
+async fn redis_query<'a, R, P>(key: &'a str, redis: &'a RedisPool, _: &'a P) -> Result<Option<R>>
 where
     R: DeserializeOwned + Sync + Send + 'a,
+    P: Send + Sync + 'a,
 {
     let res: Option<RedisStr> = redis
         .query(|mut c| async move {
@@ -90,36 +96,41 @@ where
  * Helper type for caching a single value from the database
  * in redis.
  */
-pub struct CachedQuery<'r, T, R, S, M>
+pub struct CachedQuery<'r, T, R, S, M, P>
 where
     T: Serialize + DeserializeOwned + Send + Sync,
-    R: CacheCallback<'r, RedisPool, Option<T>> + Send + Sync,
-    S: CacheCallback<'r, DatabaseConnection, T> + Send + Sync,
+    P: Send + Sync + 'r,
+    R: CacheCallback<'r, RedisPool, Option<T>, P> + Send + Sync,
+    S: CacheCallback<'r, DatabaseConnection, T, P> + Send + Sync,
     M: CacheMissCallback<'r, RedisPool, T> + Send + Sync,
 {
     redis_query: R,
     sql_query: S,
     miss_query: M,
     phantom: PhantomData<&'r T>,
+    phantom2: PhantomData<&'r P>,
 }
 
 #[async_trait]
-pub trait CachedQueryTrait<'r, R>
+pub trait CachedQueryTrait<'r, R, P>
 where
     R: DeserializeOwned,
+    P: Send + Sync + 'r,
 {
     async fn query(
         &self,
         db: &'r DatabaseConnection,
         redis: &'r RedisPool,
         key: &'r str,
+        param: &'r P,
     ) -> Result<R>;
 }
 
-pub fn default_cached_query_vec<'r, T, S>(sql_query: S) -> impl CachedQueryTrait<'r, Vec<T>>
+pub fn default_cached_query_vec<'r, T, S, P>(sql_query: S) -> impl CachedQueryTrait<'r, Vec<T>, P>
 where
     T: Serialize + DeserializeOwned + Send + Sync + 'r,
-    S: CacheCallback<'r, DatabaseConnection, Vec<T>> + Send + Sync,
+    P: Send + Sync + 'r,
+    S: CacheCallback<'r, DatabaseConnection, Vec<T>, P> + Send + Sync,
 {
     CachedQuery::new(sql_query, redis_query_vec, redis_miss_vec)
 }
@@ -129,21 +140,26 @@ where
  * single redis key. This behavior can be overridden if more
  * complex redis structures are required
  */
-pub fn default_cache_query<'r, T, S>(sql_query: S, expire: Duration) -> impl CachedQueryTrait<'r, T>
+pub fn default_cache_query<'r, T, S, P>(
+    sql_query: S,
+    expire: Duration,
+) -> impl CachedQueryTrait<'r, T, P>
 where
     T: Serialize + DeserializeOwned + Send + Sync + 'r,
-    S: CacheCallback<'r, DatabaseConnection, T> + Send + Sync,
+    P: Send + Sync + 'r,
+    S: CacheCallback<'r, DatabaseConnection, T, P> + Send + Sync,
 {
     CachedQuery::new(sql_query, redis_query, move |key, val, db| async move {
         redis_miss(key, val, db, expire).await
     })
 }
 
-impl<'r, T, R, S, M> CachedQuery<'r, T, R, S, M>
+impl<'r, T, R, S, M, P> CachedQuery<'r, T, R, S, M, P>
 where
     T: Serialize + DeserializeOwned + Send + Sync,
-    R: CacheCallback<'r, RedisPool, Option<T>> + Send + Sync,
-    S: CacheCallback<'r, DatabaseConnection, T> + Send + Sync,
+    P: Send + Sync + 'r,
+    R: CacheCallback<'r, RedisPool, Option<T>, P> + Send + Sync,
+    S: CacheCallback<'r, DatabaseConnection, T, P> + Send + Sync,
     M: CacheMissCallback<'r, RedisPool, T> + Send + Sync,
 {
     pub fn new(sql_query: S, redis_query: R, miss_query: M) -> Self {
@@ -152,16 +168,18 @@ where
             sql_query,
             miss_query,
             phantom: PhantomData,
+            phantom2: PhantomData,
         }
     }
 }
 
 #[async_trait]
-impl<'r, T, R, S, M> CachedQueryTrait<'r, T> for CachedQuery<'r, T, R, S, M>
+impl<'r, T, R, S, M, P> CachedQueryTrait<'r, T, P> for CachedQuery<'r, T, R, S, M, P>
 where
     T: Serialize + DeserializeOwned + Send + Sync,
-    R: CacheCallback<'r, RedisPool, Option<T>> + Send + Sync,
-    S: CacheCallback<'r, DatabaseConnection, T> + Send + Sync,
+    P: Send + Sync,
+    R: CacheCallback<'r, RedisPool, Option<T>, P> + Send + Sync,
+    S: CacheCallback<'r, DatabaseConnection, T, P> + Send + Sync,
     M: CacheMissCallback<'r, RedisPool, T> + Send + Sync,
 {
     async fn query(
@@ -169,11 +187,12 @@ where
         db: &'r DatabaseConnection,
         redis: &'r RedisPool,
         key: &'r str,
+        param: &'r P,
     ) -> Result<T> {
-        if let Some(val) = self.redis_query.cb(key, redis).await? {
+        if let Some(val) = self.redis_query.cb(key, redis, param).await? {
             Ok(val)
         } else {
-            let val = self.sql_query.cb(key, db).await?;
+            let val = self.sql_query.cb(key, db, param).await?;
             Ok(self.miss_query.cb(key, val, redis).await?)
         }
     }

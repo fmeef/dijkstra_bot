@@ -22,7 +22,7 @@ fn get_lang_key(chat: i64) -> String {
 pub async fn get_chat_lang(chat: i64) -> Result<Lang> {
     let key = get_lang_key(chat);
     let res = default_cache_query(
-        |_, sql| async move {
+        |_, sql, _| async move {
             Ok(dialogs::Entity::find_by_id(chat)
                 .one(sql)
                 .await?
@@ -31,7 +31,7 @@ pub async fn get_chat_lang(chat: i64) -> Result<Lang> {
         },
         Duration::hours(12),
     )
-    .query(&DB.deref(), &REDIS, &key)
+    .query(&DB.deref(), &REDIS, &key, &())
     .await?;
     Ok(res)
 }
