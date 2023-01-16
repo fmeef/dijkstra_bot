@@ -255,11 +255,10 @@ async fn handle_inline(query: &InlineQuery) -> Result<()> {
             .limit(10)
             .all(sql)
             .await?;
-        Ok(Some(stickers))
+        Ok(stickers)
     })
     .query(&DB.deref(), &REDIS, &rkey)
-    .await?
-    .unwrap_or_else(|| Vec::new());
+    .await?;
     let stickers = stickers
         .into_iter()
         .map(|s| {

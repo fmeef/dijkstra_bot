@@ -18,12 +18,10 @@ pub struct OutputBoxer<F>(pub F);
 
 // boxed closure type returning future for handling cached redis/sql queries
 pub struct CacheCb<T, R>(
-    Box<dyn for<'a> BoxedCacheCallback<'a, T, R, Fut = BotDbFuture<'a, Result<Option<R>>>>>,
+    Box<dyn for<'a> BoxedCacheCallback<'a, T, R, Fut = BotDbFuture<'a, Result<R>>>>,
 );
 
-pub struct SingleCb<T, R>(
-    Box<dyn for<'a> BoxedSingleCallback<'a, T, R, Fut = BotDbFuture<'a, R>>>,
-);
+pub struct SingleCb<T, R>(Box<dyn for<'a> BoxedSingleCallback<'a, T, R, Fut = BotDbFuture<'a, R>>>);
 
 impl<'a, T, R: 'a> CacheCb<T, R> {
     pub fn new<F>(func: F) -> Self
@@ -49,7 +47,7 @@ impl<'a, T, R> CacheCallback<'a, T, R> for CacheCb<T, R>
 where
     R: DeserializeOwned + 'a,
 {
-    type Fut = BotDbFuture<'a, Result<Option<R>>>;
+    type Fut = BotDbFuture<'a, Result<R>>;
     fn cb(self, key: &'a str, db: &'a T) -> Self::Fut {
         self.0.cb_boxed(key, db)
     }
@@ -70,7 +68,7 @@ pub trait SingleCallback<'a, T, R>: Send + Sync {
     fn cb(self, db: T) -> Self::Fut;
 }
 pub trait CacheCallback<'a, T, R>: Send + Sync {
-    type Fut: Future<Output = Result<Option<R>>> + Send + 'a;
+    type Fut: Future<Output = Result<R>> + Send + 'a;
     fn cb(self, key: &'a str, db: &'a T) -> Self::Fut;
 }
 
@@ -80,7 +78,7 @@ pub trait BoxedSingleCallback<'a, T, R>: Send + Sync {
 }
 
 pub trait BoxedCacheCallback<'a, T, R>: Send + Sync {
-    type Fut: Future<Output = Result<Option<R>>> + Send + 'a;
+    type Fut: Future<Output = Result<R>> + Send + 'a;
     fn cb_boxed(self: Box<Self>, key: &'a str, db: &'a T) -> Self::Fut;
 }
 
@@ -89,7 +87,7 @@ where
     F: FnOnce(&'a str, &'a T) -> Fut + Sync + Send + 'a,
     R: DeserializeOwned,
     T: 'a,
-    Fut: Future<Output = Result<Option<R>>> + Send + 'a,
+    Fut: Future<Output = Result<R>> + Send + 'a,
 {
     type Fut = Fut;
     fn cb(self, key: &'a str, db: &'a T) -> Self::Fut {
@@ -126,7 +124,7 @@ where
     F: CacheCallback<'a, T, R>,
     R: DeserializeOwned + 'a,
 {
-    type Fut = BotDbFuture<'a, Result<Option<R>>>;
+    type Fut = BotDbFuture<'a, Result<R>>;
     fn cb_boxed(self: Box<Self>, key: &'a str, db: &'a T) -> Self::Fut {
         (*self).0.cb(key, db).boxed()
     }
@@ -137,7 +135,7 @@ where
     F: FnOnce(&'a str, &'a T) -> Fut + Sync + Send + 'a,
     R: 'a,
     T: 'a,
-    Fut: Future<Output = Result<Option<R>>> + Send + 'a,
+    Fut: Future<Output = Result<R>> + Send + 'a,
 {
     type Fut = Fut;
     fn cb_boxed(self: Box<Self>, key: &'a str, db: &'a T) -> Self::Fut {

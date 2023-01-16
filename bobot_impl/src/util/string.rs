@@ -1,4 +1,4 @@
-use crate::persist::redis::RedisStr;
+use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisStr};
 use crate::statics::{DB, REDIS};
 use anyhow::Result;
 
@@ -9,7 +9,7 @@ use macros::get_langs;
 get_langs!();
 
 pub use langs::*;
-use redis::AsyncCommands;
+
 use sea_orm::sea_query::OnConflict;
 use sea_orm::{prelude::ChronoDateTimeWithTimeZone, EntityTrait, IntoActiveModel};
 
@@ -21,26 +21,19 @@ fn get_lang_key(chat: i64) -> String {
 
 pub async fn get_chat_lang(chat: i64) -> Result<Lang> {
     let key = get_lang_key(chat);
-    let r: Option<RedisStr> = REDIS.sq(|r| r.get(&key)).await?;
-    if let Some(st) = r {
-        let r = st.get::<Lang>()?;
-        Ok(r)
-    } else {
-        let lang = dialogs::Entity::find_by_id(chat)
-            .one(DB.deref().deref())
-            .await?
-            .map(|v| v.language)
-            .unwrap_or_else(|| Lang::En);
-
-        let r = RedisStr::new(&lang)?;
-        REDIS
-            .pipe(|p| {
-                p.set(&key, r)
-                    .expire(&key, Duration::hours(12).num_seconds() as usize)
-            })
-            .await?;
-        Ok(lang)
-    }
+    let res = default_cache_query(
+        |_, sql| async move {
+            Ok(dialogs::Entity::find_by_id(chat)
+                .one(sql)
+                .await?
+                .map(|v| v.language)
+                .unwrap_or_else(|| Lang::En))
+        },
+        Duration::hours(12),
+    )
+    .query(&DB.deref(), &REDIS, &key)
+    .await?;
+    Ok(res)
 }
 
 pub async fn set_chat_lang(chat: i64, lang: Lang) -> Result<()> {

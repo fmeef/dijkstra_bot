@@ -87,6 +87,7 @@ RUN --mount=type=cache,target=/bobot/target \
 cargo install sea-orm-cli
 RUN mkdir -p /bobot/target && chown -R bobot:bobot /bobot && \
 chown -R bobot:bobot /usr/local && mkdir -p /bobot/migration/target && \
-chown -R bobot:bobot /bobot/migration/target
+chown -R bobot:bobot /bobot/migration/target && mkdir -p /bobot/bobot_impl/target && \
+chown -R bobot:bobot /bobot/bobot_impl/target
 USER bobot:bobot
 WORKDIR /bobot

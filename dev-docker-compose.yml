@@ -13,6 +13,7 @@ services:
       - dev-cargo-cache:/usr/local/cargo/registry
       - build-volume:/bobot/target
       - migration-volume:/bobot/migration/target
+      - impl-volume:/bobot/bobot_impl/target
     depends_on:
       - redis-dev
       - prometheus-dev
@@ -54,3 +55,4 @@ volumes:
   dev-cargo-cache:
   build-volume:
   migration-volume:
+  impl-volume:
