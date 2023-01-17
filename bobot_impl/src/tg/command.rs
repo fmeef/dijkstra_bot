@@ -29,12 +29,16 @@ pomelo! {
     %type quoteinner Vec<String>;
     %type Word String;
     %type quote Vec<String>;
+    %type commond String;
 
-    input ::= words?(A) { A.unwrap_or_else(std::collections::VecDeque::new) }
-    words ::= Word(W) { std::collections::VecDeque::from([crate::tg::command::Arg::Arg(W)]) }
-    words ::= words(mut L)  Word(W) { L.push_back(crate::tg::command::Arg::Arg(W)); L }
-    words ::= words(mut L)  quote(Q) { L.push_back(crate::tg::command::Arg::Quote(Q)); L }
-    words ::= quote(Q) { std::collections::VecDeque::from([crate::tg::command::Arg::Quote(Q)]) }
+    input   ::= commond(C) { std::collections::VecDeque::from([crate::tg::command::Arg::Command(C)]) }
+    input   ::= commond(C) words(mut L) { L.push_back(crate::tg::command::Arg::Command(C)); L }
+    commond ::= Exclaimation Word(W) { W }
+    commond ::= Slash Word(W) { W }
+    words   ::= Word(W) { std::collections::VecDeque::from([crate::tg::command::Arg::Arg(W)]) }
+    words   ::= words(mut L)  Word(W) { L.push_back(crate::tg::command::Arg::Arg(W)); L }
+    words   ::= words(mut L)  quote(Q) { L.push_back(crate::tg::command::Arg::Quote(Q)); L }
+    words   ::= quote(Q) { std::collections::VecDeque::from([crate::tg::command::Arg::Quote(Q)]) }
     quoteinner ::= Word(W) { vec![W] }
     quoteinner ::= Word(W) quoteinner(mut L) { L.push(W); L }
     quote ::= QuoteMark quoteinner(Q) QuoteMark { Q }
@@ -42,12 +46,13 @@ pomelo! {
 }
 
 lazy_static! {
-    static ref TOKENS: Regex = Regex::new(r#"([^\s"]+|")"#).unwrap();
+    static ref TOKENS: Regex = Regex::new(r#"([^\s"!/]+|"|^!|^/)"#).unwrap();
 }
 
 pub enum Arg {
     Arg(String),
     Quote(Vec<String>),
+    Command(String),
 }
 
 use parser::{Parser, Token};
@@ -62,18 +67,16 @@ impl DefaultTokenizer {
     }
 
     pub fn next_tokens<'a>(&'a self) -> impl Iterator<Item = Token> + 'a {
-        TOKENS.find_iter(&self.0).map(|m| {
-            if m.as_str() == r#"""# {
-                Token::QuoteMark
-            } else {
-                Token::Word(m.as_str().to_owned())
-            }
+        TOKENS.find_iter(&self.0).map(|m| match m.as_str() {
+            r#"""# => Token::QuoteMark,
+            "!" => Token::Exclaimation,
+            "/" => Token::Slash,
+            _ => Token::Word(m.as_str().to_owned()),
         })
     }
 }
 
-#[allow(dead_code)]
-pub fn parse_cmd<R: ToString>(cmd: R) -> Result<(Arg, VecDeque<Arg>)> {
+fn parse_cmd_r<R: ToString>(cmd: R) -> Result<(Arg, VecDeque<Arg>)> {
     let tokenizer = DefaultTokenizer::new(cmd.to_string());
 
     let mut parser = Parser::new();
@@ -86,8 +89,15 @@ pub fn parse_cmd<R: ToString>(cmd: R) -> Result<(Arg, VecDeque<Arg>)> {
     ))
 }
 
-#[allow(dead_code)]
-pub fn parse_cmd_iter<R: ToString>(cmd: R) -> Result<impl Iterator<Item = Arg>> {
-    let iter = parse_cmd(cmd)?.1.into_iter();
+pub fn parse_cmd<R: ToString>(cmd: R) -> Option<(Arg, VecDeque<Arg>)> {
+    parse_cmd_r(cmd).ok()
+}
+
+pub fn parse_cmd_iter<R: ToString>(cmd: R) -> Option<impl Iterator<Item = Arg>> {
+    parse_cmd_iter_r(cmd).ok()
+}
+
+fn parse_cmd_iter_r<R: ToString>(cmd: R) -> Result<impl Iterator<Item = Arg>> {
+    let iter = parse_cmd_r(cmd)?.1.into_iter();
     Ok(iter)
 }

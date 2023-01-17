@@ -35,7 +35,7 @@ const KEY_TYPE_STICKER_ID: &str = "wc:stickerid";
 const KEY_TYPE_STICKER_NAME: &str = "wc:stickername";
 
 // conversation state machine globals
-const UPLOAD_CMD: &str = "/upload";
+const UPLOAD_CMD: &str = "upload";
 const TRANSITION_NAME: &str = "stickername";
 const TRANSITION_DONE: &str = "stickerdone";
 const TRANSITION_UPLOAD: &str = "upload";
@@ -314,15 +314,16 @@ pub async fn handle_update(update: &UpdateExt) -> BotResult<()> {
 
 async fn handle_command(message: &Message) -> Result<()> {
     if let Some(text) = message.get_text() {
-        let (command, args) = parse_cmd(text)?;
-        if let Arg::Arg(cmd) = command {
-            info!("command {}", cmd);
-            match cmd.as_str() {
-                "/upload" => upload(message).await,
-                "/list" => list_stickers(message).await,
-                "/delete" => delete_sticker(message, args).await,
-                _ => Ok(()),
-            }?;
+        if let Some((command, args)) = parse_cmd(text) {
+            if let Arg::Command(cmd) = command {
+                info!("command {}", cmd);
+                match cmd.as_str() {
+                    "upload" => upload(message).await,
+                    "list" => list_stickers(message).await,
+                    "delete" => delete_sticker(message, args).await,
+                    _ => Ok(()),
+                }?;
+            }
         }
     };
 
@@ -337,7 +338,7 @@ async fn upload(message: &Message) -> Result<()> {
 
 async fn delete_sticker(message: &Message, args: VecDeque<Arg>) -> Result<()> {
     drop_converstaion(message).await?;
-    if let Some(Arg::Arg(uuid)) = args.front() {
+    if let Some(Arg::Command(uuid)) = args.front() {
         let uuid = Uuid::from_str(uuid.as_str())?;
         entities::stickers::Entity::delete_many()
             .filter(entities::stickers::Column::Uuid.eq(uuid))

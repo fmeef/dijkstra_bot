@@ -71,15 +71,16 @@ async fn handle_markdown(message: &Message) -> BotResult<bool> {
 #[allow(dead_code)]
 async fn handle_command(message: &Message) -> BotResult<()> {
     if let Some(text) = message.get_text() {
-        let (command, _) = parse_cmd(text)?;
-        if let Arg::Arg(command) = command {
-            log::info!("piracy command {}", command);
-            match command.as_str() {
-                "/crash" => TG.client().close().await?,
-                "/markdown" => handle_markdown(message).await?,
-                "/murkdown" => handle_murkdown(message).await?,
-                _ => false,
-            };
+        if let Some((command, _)) = parse_cmd(text) {
+            if let Arg::Command(command) = command {
+                log::info!("piracy command {}", command);
+                match command.as_str() {
+                    "crash" => TG.client().close().await?,
+                    "markdown" => handle_markdown(message).await?,
+                    "murkdown" => handle_murkdown(message).await?,
+                    _ => false,
+                };
+            }
         }
     }
     Ok(())

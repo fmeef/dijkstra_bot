@@ -56,7 +56,7 @@ impl MetadataCollection {
 
         let lang = get_chat_lang(message.get_chat().get_id()).await?;
         let mut state = ConversationState::new_prefix(
-            "/help".to_owned(),
+            "help".to_owned(),
             rlformat!(lang, "welcome", me.get_first_name()),
             message.get_chat().get_id(),
             message
@@ -92,7 +92,7 @@ async fn show_help(
 ) -> Result<bool> {
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
     let cnf = rlformat!(lang, "commandnotfound");
-    if let Some(Arg::Arg(ref cmd)) = args.front() {
+    if let Some(Arg::Command(ref cmd)) = args.front() {
         let cmd = helps.helps.get(cmd).map(|v| v.as_str()).unwrap_or(&cnf);
         let mut builder = MarkupBuilder::new();
         let (cmd, entities) = builder
@@ -129,9 +129,9 @@ async fn show_help(
 
 async fn handle_help(update: &UpdateExt, helps: Arc<MetadataCollection>) -> Result<bool> {
     if let UpdateExt::Message(ref message) = update {
-        if let Ok((Arg::Arg(cmd), args)) = parse_cmd(message.get_text().unwrap_or("")) {
+        if let Some((Arg::Command(cmd), args)) = parse_cmd(message.get_text().unwrap_or("")) {
             return match cmd.as_str() {
-                "/help" => show_help(args, message, helps).await,
+                "help" => show_help(args, message, helps).await,
                 _ => Ok(false),
             };
         }
