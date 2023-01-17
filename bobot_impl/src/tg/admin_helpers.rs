@@ -21,6 +21,23 @@ pub async fn is_self_admin(chat: &Chat) -> Result<bool> {
     Ok(chat.is_user_admin(me.get_id()).await?.is_some())
 }
 
+pub fn is_dm(chat: &Chat) -> bool {
+    chat.get_tg_type() == "private"
+}
+
+pub async fn is_dm_or_die(chat: &Chat) -> Result<()> {
+    let lang = get_chat_lang(chat.get_id()).await?;
+    if !is_dm(chat) {
+        TG.client()
+            .build_send_message(chat.get_id(), &rlformat!(lang, "notdm"))
+            .build()
+            .await?;
+        Err(anyhow!("chat is not dm"))
+    } else {
+        Ok(())
+    }
+}
+
 pub async fn self_admin_or_die(chat: &Chat) -> Result<()> {
     if !is_self_admin(chat).await? {
         let lang = get_chat_lang(chat.get_id()).await?;

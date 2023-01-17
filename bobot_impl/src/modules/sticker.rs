@@ -7,6 +7,8 @@ use crate::persist::redis as r;
 
 use crate::persist::Result;
 use crate::statics::{DB, REDIS, TG};
+use crate::tg::admin_helpers::is_dm;
+use crate::tg::admin_helpers::is_dm_or_die;
 use crate::tg::command::{parse_cmd, Arg};
 use crate::tg::dialog::ConversationState;
 use crate::tg::dialog::{drop_converstaion, Conversation};
@@ -288,7 +290,7 @@ async fn handle_message(message: &Message) -> Result<()> {
 }
 
 pub async fn handle_update(update: &UpdateExt) -> BotResult<()> {
-    let (res, id) = match update {
+    let (res, _) = match update {
         UpdateExt::Message(ref message) => {
             let r = handle_message(message).await;
             let id = message.get_chat().get_id();
@@ -304,16 +306,6 @@ pub async fn handle_update(update: &UpdateExt) -> BotResult<()> {
 
     if let Err(err) = res {
         info!("error {}", err);
-        if let Some(id) = id {
-            if let Err(send_err) = TG
-                .client()
-                .build_send_message(id, &err.to_string())
-                .build()
-                .await
-            {
-                log::error!("failed to send error message: {}", send_err);
-            }
-        }
         Err(err.into())
     } else {
         Ok(())
@@ -338,6 +330,7 @@ async fn handle_command(message: &Message) -> Result<()> {
 }
 
 async fn upload(message: &Message) -> Result<()> {
+    is_dm_or_die(message.get_chat()).await?;
     replace_conversation(message, |message| upload_sticker_conversation(message)).await?;
     Ok(())
 }
@@ -503,6 +496,9 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
 }
 
 async fn handle_conversation(message: &Message) -> Result<()> {
+    if !is_dm(message.get_chat()) {
+        return Ok(());
+    }
     if let Some(conversation) = get_conversation(&message).await? {
         match conversation.get_current_text().await?.as_str() {
             STATE_START => conv_start(conversation, &message).await,
