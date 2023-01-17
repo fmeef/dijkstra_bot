@@ -18,8 +18,8 @@ use crate::persist::core::dialogs;
 static_query! {
     static ref QUERY_NEW: ( i64 => Lang ) =
 default_cache_query(
-        |_, chat| async move {
-            Ok(dialogs::Entity::find_by_id(chat)
+        |_, chat: std::sync::Arc<i64>| async move {
+            Ok(dialogs::Entity::find_by_id(*chat)
                 .one(DB.deref())
                 .await?
                 .map(|v| v.language)

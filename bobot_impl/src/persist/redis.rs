@@ -6,6 +6,7 @@ use crate::util::{
 };
 use anyhow::anyhow;
 use chrono::Duration;
+use std::sync::Arc;
 
 use std::{marker::PhantomData, ops::DerefMut};
 
@@ -40,7 +41,7 @@ macro_rules! static_query {
 
 pub(crate) use static_query;
 
-async fn redis_query_vec<'a, R, P, S>(key: S, _: P) -> Result<Option<Vec<R>>>
+async fn redis_query_vec<'a, R, P, S>(key: S, _: Arc<P>) -> Result<Option<Vec<R>>>
 where
     R: DeserializeOwned + DeserializeOwned + Sync + Send + 'a,
     P: Send + Sync,
@@ -65,7 +66,7 @@ where
     Ok(val)
 }
 
-async fn redis_query<R, P>(key: String, _: P) -> Result<Option<R>>
+async fn redis_query<R, P>(key: String, _: Arc<P>) -> Result<Option<R>>
 where
     R: DeserializeOwned + Sync + Send,
     P: Send + Sync,
@@ -106,8 +107,8 @@ pub struct CachedQuery<T, R, S, M, P>
 where
     T: Serialize + DeserializeOwned + Send + Sync,
     P: Send + Sync,
-    R: CacheCallback<Option<T>, P> + Send + Sync,
-    S: CacheCallback<T, P> + Send + Sync,
+    R: CacheCallback<Option<T>, Arc<P>> + Send + Sync,
+    S: CacheCallback<T, Arc<P>> + Send + Sync,
     M: CacheMissCallback<T> + Send + Sync,
 {
     redis_query: R,
@@ -133,7 +134,7 @@ pub fn default_cached_query_vec<T, S, P>(
 where
     T: Serialize + DeserializeOwned + Send + Sync + 'static,
     P: Send + Sync + Clone,
-    S: CacheCallback<Vec<T>, P> + Send + Sync,
+    S: CacheCallback<Vec<T>, Arc<P>> + Send + Sync,
 {
     CachedQuery::new(sql_query, redis_query_vec, move |key, val| async move {
         redis_miss_vec(key, val, expire).await
@@ -149,7 +150,7 @@ pub fn default_cache_query<T, S, P>(sql_query: S, expire: Duration) -> impl Cach
 where
     T: Serialize + DeserializeOwned + Send + Sync,
     P: Send + Sync + Clone,
-    S: CacheCallback<T, P> + Send + Sync,
+    S: CacheCallback<T, Arc<P>> + Send + Sync,
 {
     CachedQuery::new(sql_query, redis_query, move |key, val| async move {
         redis_miss(key, val, expire).await
@@ -160,8 +161,8 @@ impl<'r, T, R, S, M, P> CachedQuery<T, R, S, M, P>
 where
     T: Serialize + DeserializeOwned + Send + Sync,
     P: Send + Sync + Clone,
-    R: CacheCallback<Option<T>, P> + Send + Sync,
-    S: CacheCallback<T, P> + Send + Sync,
+    R: CacheCallback<Option<T>, Arc<P>> + Send + Sync,
+    S: CacheCallback<T, Arc<P>> + Send + Sync,
     M: CacheMissCallback<T> + Send + Sync,
 {
     pub fn new(sql_query: S, redis_query: R, miss_query: M) -> Self {
@@ -180,15 +181,16 @@ impl<T, R, S, M, P> CachedQueryTrait<T, P> for CachedQuery<T, R, S, M, P>
 where
     T: Serialize + DeserializeOwned + Send + Sync,
     P: Send + Sync + Clone,
-    R: CacheCallback<Option<T>, P> + Send + Sync,
-    S: CacheCallback<T, P> + Send + Sync,
+    R: CacheCallback<Option<T>, Arc<P>> + Send + Sync,
+    S: CacheCallback<T, Arc<P>> + Send + Sync,
     M: CacheMissCallback<T> + Send + Sync,
 {
     async fn query(&self, key: String, param: P) -> Result<T> {
-        if let Some(val) = self.redis_query.cb(key.clone(), param.clone()).await? {
+        let param = Arc::new(param);
+        if let Some(val) = self.redis_query.cb(key.clone(), Arc::clone(&param)).await? {
             Ok(val)
         } else {
-            let val = self.sql_query.cb(key.clone(), param.clone()).await?;
+            let val = self.sql_query.cb(key.clone(), Arc::clone(&param)).await?;
             Ok(self.miss_query.cb(key, val).await?)
         }
     }
