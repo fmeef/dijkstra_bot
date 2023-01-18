@@ -8,10 +8,7 @@ use sea_orm_migration::MigrationTrait;
 use crate::{
     metadata::metadata,
     statics::TG,
-    tg::{
-        command::{parse_cmd, Arg},
-        markdown::MarkupBuilder,
-    },
+    tg::{command::parse_cmd, markdown::MarkupBuilder},
     util::string::Lang,
 };
 
@@ -72,15 +69,13 @@ async fn handle_markdown(message: &Message) -> BotResult<bool> {
 async fn handle_command(message: &Message) -> BotResult<()> {
     if let Some(text) = message.get_text() {
         if let Some((command, _)) = parse_cmd(text) {
-            if let Arg::Command(command) = command {
-                log::info!("piracy command {}", command);
-                match command.as_str() {
-                    "crash" => TG.client().close().await?,
-                    "markdown" => handle_markdown(message).await?,
-                    "murkdown" => handle_murkdown(message).await?,
-                    _ => false,
-                };
-            }
+            log::info!("piracy command {}", command);
+            match command {
+                "crash" => TG.client().close().await?,
+                "markdown" => handle_markdown(message).await?,
+                "murkdown" => handle_murkdown(message).await?,
+                _ => false,
+            };
         }
     }
     Ok(())

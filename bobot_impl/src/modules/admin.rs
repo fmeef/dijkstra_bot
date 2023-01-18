@@ -10,7 +10,7 @@ use crate::{
     statics::TG,
     tg::{
         admin_helpers::{self_admin_or_die, GetCachedAdmins, IsAdmin},
-        command::{parse_cmd, Arg},
+        command::parse_cmd,
     },
     util::string::get_chat_lang,
 };
@@ -27,63 +27,55 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
 async fn handle_command(message: &Message) -> BotResult<()> {
     if let Some(text) = message.get_text() {
         if let Some((command, _)) = parse_cmd(text) {
-            if let Arg::Command(command) = command {
-                log::info!("admin command {}", command);
+            log::info!("admin command {}", command);
 
-                let lang = get_chat_lang(message.get_chat().get_id()).await?;
-                match command.as_str() {
-                    "admincache" => {
-                        message.get_chat().refresh_cached_admins().await?;
+            let lang = get_chat_lang(message.get_chat().get_id()).await?;
+            match command {
+                "admincache" => {
+                    message.get_chat().refresh_cached_admins().await?;
+                    TG.client()
+                        .build_send_message(
+                            message.get_chat().get_id(),
+                            &rlformat!(lang, "refreshac"),
+                        )
+                        .build()
+                        .await?;
+                }
+                "countadmins" => {
+                    let admins = message.get_chat().get_cached_admins().await?;
+                    TG.client()
+                        .build_send_message(
+                            message.get_chat().get_id(),
+                            &rlformat!(lang, "foundadmins", admins.len()),
+                        )
+                        .build()
+                        .await?;
+                }
+                "kickme" => {
+                    self_admin_or_die(message.get_chat()).await?;
+                    if message.get_from().is_admin(message.get_chat()).await? {
                         TG.client()
                             .build_send_message(
                                 message.get_chat().get_id(),
-                                &rlformat!(lang, "refreshac"),
+                                &rlformat!(lang, "kickadmin"),
                             )
                             .build()
                             .await?;
-                    }
-                    "countadmins" => {
-                        let admins = message.get_chat().get_cached_admins().await?;
-                        TG.client()
-                            .build_send_message(
-                                message.get_chat().get_id(),
-                                &rlformat!(lang, "foundadmins", admins.len()),
-                            )
-                            .build()
-                            .await?;
-                    }
-                    "kickme" => {
-                        self_admin_or_die(message.get_chat()).await?;
-                        if message.get_from().is_admin(message.get_chat()).await? {
+                    } else {
+                        if let Some(from) = message.get_from() {
                             TG.client()
-                                .build_send_message(
-                                    message.get_chat().get_id(),
-                                    &rlformat!(lang, "kickadmin"),
-                                )
+                                .build_ban_chat_member(message.get_chat().get_id(), from.get_id())
                                 .build()
                                 .await?;
-                        } else {
-                            if let Some(from) = message.get_from() {
-                                TG.client()
-                                    .build_ban_chat_member(
-                                        message.get_chat().get_id(),
-                                        from.get_id(),
-                                    )
-                                    .build()
-                                    .await?;
-                                TG.client()
-                                    .build_unban_chat_member(
-                                        message.get_chat().get_id(),
-                                        from.get_id(),
-                                    )
-                                    .build()
-                                    .await?;
-                            }
+                            TG.client()
+                                .build_unban_chat_member(message.get_chat().get_id(), from.get_id())
+                                .build()
+                                .await?;
                         }
                     }
-                    _ => (),
-                };
-            }
+                }
+                _ => (),
+            };
         }
     }
     Ok(())

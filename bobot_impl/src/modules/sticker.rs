@@ -312,18 +312,16 @@ pub async fn handle_update(update: &UpdateExt) -> BotResult<()> {
     }
 }
 
-async fn handle_command(message: &Message) -> Result<()> {
+async fn handle_command<'a>(message: &'a Message) -> Result<()> {
     if let Some(text) = message.get_text() {
-        if let Some((command, args)) = parse_cmd(text) {
-            if let Arg::Command(cmd) = command {
-                info!("command {}", cmd);
-                match cmd.as_str() {
-                    "upload" => upload(message).await,
-                    "list" => list_stickers(message).await,
-                    "delete" => delete_sticker(message, args).await,
-                    _ => Ok(()),
-                }?;
-            }
+        if let Some((cmd, args)) = parse_cmd(text) {
+            info!("command {}", cmd);
+            match cmd {
+                "upload" => upload(message).await,
+                "list" => list_stickers(message).await,
+                "delete" => delete_sticker(message, args).await,
+                _ => Ok(()),
+            }?;
         }
     };
 
@@ -336,10 +334,11 @@ async fn upload(message: &Message) -> Result<()> {
     Ok(())
 }
 
-async fn delete_sticker(message: &Message, args: VecDeque<Arg>) -> Result<()> {
+async fn delete_sticker<'a>(message: &'a Message, args: VecDeque<Arg<'a>>) -> Result<()> {
     drop_converstaion(message).await?;
-    if let Some(Arg::Command(uuid)) = args.front() {
-        let uuid = Uuid::from_str(uuid.as_str())?;
+    if let Some(Arg::Arg(uuid)) = args.front() {
+        log::info!("uuid {}", uuid);
+        let uuid = Uuid::from_str(uuid)?;
         entities::stickers::Entity::delete_many()
             .filter(entities::stickers::Column::Uuid.eq(uuid))
             .exec(DB.deref().deref())

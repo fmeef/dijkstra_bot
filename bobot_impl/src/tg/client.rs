@@ -85,15 +85,15 @@ pub struct TgClient {
     pub button_events: Arc<DashMap<String, SingleCb<CallbackQuery, ()>>>,
 }
 
-async fn show_help(
-    args: VecDeque<Arg>,
+async fn show_help<'a>(
+    args: VecDeque<Arg<'a>>,
     message: &Message,
     helps: Arc<MetadataCollection>,
 ) -> Result<bool> {
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
     let cnf = rlformat!(lang, "commandnotfound");
-    if let Some(Arg::Command(ref cmd)) = args.front() {
-        let cmd = helps.helps.get(cmd).map(|v| v.as_str()).unwrap_or(&cnf);
+    if let Some(Arg::Arg(cmd)) = args.front() {
+        let cmd = helps.helps.get(*cmd).map(|v| v.as_str()).unwrap_or(&cnf);
         let mut builder = MarkupBuilder::new();
         let (cmd, entities) = builder
             .strikethrough("@everyone")
@@ -129,8 +129,8 @@ async fn show_help(
 
 async fn handle_help(update: &UpdateExt, helps: Arc<MetadataCollection>) -> Result<bool> {
     if let UpdateExt::Message(ref message) = update {
-        if let Some((Arg::Command(cmd), args)) = parse_cmd(message.get_text().unwrap_or("")) {
-            return match cmd.as_str() {
+        if let Some((cmd, args)) = parse_cmd(message.get_text().unwrap_or("")) {
+            return match cmd {
                 "help" => show_help(args, message, helps).await,
                 _ => Ok(false),
             };
