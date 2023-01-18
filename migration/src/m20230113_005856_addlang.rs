@@ -1,3 +1,4 @@
+use bobot_impl::persist::core::dialogs;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -9,15 +10,21 @@ impl MigrationTrait for Migration {
         manager
             .alter_table(
                 Table::alter()
-                    .table(bobot_impl::persist::core::dialogs::Entity)
+                    .table(dialogs::Entity)
+                    .add_column(
+                        ColumnDef::new(dialogs::Column::ChatType)
+                            .string()
+                            .not_null(),
+                    )
                     .add_column(
                         ColumnDef::new_with_type(
-                            bobot_impl::persist::core::dialogs::Column::Language,
+                            dialogs::Column::Language,
                             bobot_impl::util::string::Lang::column_type(),
                         )
                         .default(bobot_impl::util::string::Lang::En)
                         .not_null(),
                     )
+                    .add_column(ColumnDef::new(dialogs::Column::WarnLimit).integer())
                     .to_owned(),
             )
             .await
@@ -27,8 +34,10 @@ impl MigrationTrait for Migration {
         manager
             .alter_table(
                 Table::alter()
-                    .table(bobot_impl::persist::core::dialogs::Entity)
-                    .drop_column(bobot_impl::persist::core::dialogs::Column::Language)
+                    .table(dialogs::Entity)
+                    .drop_column(dialogs::Column::Language)
+                    .drop_column(dialogs::Column::ChatType)
+                    .drop_column(dialogs::Column::WarnLimit)
                     .to_owned(),
             )
             .await

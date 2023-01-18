@@ -2,6 +2,7 @@ use crate::persist::redis::{default_cache_query, static_query, RedisStr};
 use crate::statics::{DB, REDIS};
 use anyhow::Result;
 
+use botapi::gen_types::Chat;
 use chrono::Duration;
 use lazy_static::__Deref;
 use macros::get_langs;
@@ -39,14 +40,16 @@ pub async fn get_chat_lang(chat: i64) -> Result<Lang> {
     Ok(res)
 }
 
-pub async fn set_chat_lang(chat: i64, lang: Lang) -> Result<()> {
+pub async fn set_chat_lang(chat: &Chat, lang: Lang) -> Result<()> {
     let r = RedisStr::new(&lang)?;
     let c = dialogs::Model {
-        chat_id: chat,
+        chat_id: chat.get_id(),
         last_activity: ChronoDateTimeWithTimeZone::default(),
         language: lang,
+        chat_type: chat.get_tg_type().to_owned(),
+        warn_limit: None,
     };
-    let key = get_lang_key(chat);
+    let key = get_lang_key(chat.get_id());
     REDIS
         .pipe(|p| {
             p.set(&key, r)

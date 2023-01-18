@@ -80,11 +80,12 @@ ENTRYPOINT [ "/bobot/bobot", "--config", "/config/config.toml"]
 
 
 FROM base AS dev
-RUN rustup default stable && rustup component add rustfmt
 RUN --mount=type=cache,target=/bobot/target \
 --mount=type=cache,target=/usr/local/rustup \
 --mount=type=cache,target=/usr/local/cargo/registry \
-cargo install sea-orm-cli
+rustup default stable && rustup component add rustfmt && \
+ cargo install sea-orm-cli
+RUN apt update && apt install -y postgresql-client
 RUN mkdir -p /bobot/target && chown -R bobot:bobot /bobot && \
 chown -R bobot:bobot /usr/local && mkdir -p /bobot/migration/target && \
 chown -R bobot:bobot /bobot/migration/target && mkdir -p /bobot/bobot_impl/target && \

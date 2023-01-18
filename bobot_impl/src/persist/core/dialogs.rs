@@ -9,6 +9,8 @@ pub struct Model {
     pub last_activity: DateTimeWithTimeZone,
     #[sea_orm(default = crate::util::string::Lang::En)]
     pub language: crate::util::string::Lang,
+    pub chat_type: String,
+    pub warn_limit: Option<i32>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

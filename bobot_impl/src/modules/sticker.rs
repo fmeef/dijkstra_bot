@@ -149,11 +149,19 @@ pub mod entities {
         }
 
         async fn down(&self, manager: &SchemaManager) -> std::result::Result<(), DbErr> {
-            manager.drop_table_auto(tags::Entity).await?;
-            manager.drop_table_auto(stickers::Entity).await?;
             manager
-                .drop_foreign_key(ForeignKey::drop().name("sticker_id_fk").to_owned())
+                .drop_foreign_key(
+                    ForeignKey::drop()
+                        .table(tags::Entity)
+                        .name("sticker_id_fk")
+                        .to_owned(),
+                )
                 .await?;
+
+            manager.drop_table_auto(stickers::Entity).await?;
+
+            manager.drop_table_auto(tags::Entity).await?;
+
             Ok(())
         }
     }
