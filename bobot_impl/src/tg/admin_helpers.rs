@@ -47,7 +47,7 @@ pub async fn get_actions(chat: &Chat, user: &User) -> Result<Option<actions::Mod
     let user = user.get_id();
     let key = get_action_key(user, chat);
     let res = default_cache_query(
-        move |_, _, _| async move {
+        move |_, _| async move {
             let res = actions::Entity::find_by_id((user, chat))
                 .one(DB.deref())
                 .await?;
@@ -55,7 +55,7 @@ pub async fn get_actions(chat: &Chat, user: &User) -> Result<Option<actions::Mod
         },
         Duration::hours(1),
     )
-    .query(&DB.deref(), &REDIS.deref(), &key, &())
+    .query(&key, &())
     .await?;
     Ok(res)
 }

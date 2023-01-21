@@ -42,9 +42,9 @@ pub trait SingleCallback<'a, T, R>: Send + Sync {
     type Fut: Future<Output = R> + Send + 'a;
     fn cb(self, db: T) -> Self::Fut;
 }
-pub trait CacheCallback<'a, T, R, P>: Send + Sync {
+pub trait CacheCallback<'a, R, P>: Send + Sync {
     type Fut: Future<Output = Result<R>> + Send + 'a;
-    fn cb(&self, key: &'a str, db: &'a T, param: &'a P) -> Self::Fut;
+    fn cb(&self, key: &'a str, param: &'a P) -> Self::Fut;
 }
 
 pub trait BoxedSingleCallback<'a, T, R>: Send + Sync {
@@ -52,17 +52,16 @@ pub trait BoxedSingleCallback<'a, T, R>: Send + Sync {
     fn cb_boxed(self: Box<Self>, db: T) -> Self::Fut;
 }
 
-impl<'a, F, T, R, P, Fut> CacheCallback<'a, T, R, P> for F
+impl<'a, F, R, P, Fut> CacheCallback<'a, R, P> for F
 where
-    F: Fn(&'a str, &'a T, &'a P) -> Fut + Sync + Send + 'a,
+    F: Fn(&'a str, &'a P) -> Fut + Sync + Send + 'a,
     R: DeserializeOwned,
-    T: 'a,
     P: Send + Sync + 'a,
     Fut: Future<Output = Result<R>> + Send + 'a,
 {
     type Fut = Fut;
-    fn cb(&self, key: &'a str, db: &'a T, param: &'a P) -> Self::Fut {
-        self(key, db, param)
+    fn cb(&self, key: &'a str, param: &'a P) -> Self::Fut {
+        self(key, param)
     }
 }
 
@@ -90,20 +89,19 @@ where
     }
 }
 
-pub trait CacheMissCallback<'a, T, V>: Send + Sync {
+pub trait CacheMissCallback<'a, V>: Send + Sync {
     type Fut: Future<Output = Result<V>> + Send + 'a;
-    fn cb(&self, key: &'a str, val: V, db: &'a T) -> Self::Fut;
+    fn cb(&self, key: &'a str, val: V) -> Self::Fut;
 }
 
-impl<'a, F, T, V, Fut> CacheMissCallback<'a, T, V> for F
+impl<'a, F, V, Fut> CacheMissCallback<'a, V> for F
 where
-    F: Fn(&'a str, V, &'a T) -> Fut + Sync + Send + 'a,
+    F: Fn(&'a str, V) -> Fut + Sync + Send + 'a,
     V: Serialize + 'a,
-    T: 'a,
     Fut: Future<Output = Result<V>> + Send + 'a,
 {
     type Fut = Fut;
-    fn cb(&self, key: &'a str, val: V, db: &'a T) -> Self::Fut {
-        self(key, val, db)
+    fn cb(&self, key: &'a str, val: V) -> Self::Fut {
+        self(key, val)
     }
 }

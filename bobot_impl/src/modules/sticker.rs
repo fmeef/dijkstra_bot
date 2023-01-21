@@ -252,8 +252,7 @@ async fn handle_inline(query: &InlineQuery) -> Result<()> {
             log::info!("query! owner: {} tag: {}", owner, query.get_query());
         }
     }
-    let stickers = default_cached_query_vec(move |_, sql, key| async move {
-        let sql: &DatabaseConnection = sql;
+    let stickers = default_cached_query_vec(move |_, key| async move {
         let key = format!("%{}%", key);
         let stickers = entities::stickers::Entity::find()
             .join(
@@ -264,11 +263,11 @@ async fn handle_inline(query: &InlineQuery) -> Result<()> {
             .filter(entities::stickers::Column::OwnerId.eq(id))
             .filter(entities::tags::Column::Tag.like(&key))
             .limit(10)
-            .all(sql)
+            .all(DB.deref())
             .await?;
         Ok(stickers)
     })
-    .query(&DB.deref(), &REDIS, &rkey, &key)
+    .query(&rkey, &key)
     .await?;
     let stickers = stickers
         .into_iter()

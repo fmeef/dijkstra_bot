@@ -17,13 +17,14 @@ use sea_orm::{prelude::ChronoDateTimeWithTimeZone, EntityTrait, IntoActiveModel}
 
 use crate::persist::core::dialogs;
 /*
-fn get_query<'r, T, P>() -> impl CachedQueryTrait<'r, T, P>
+fn get_query<'r, T, P>() -> Box<dyn CachedQueryTrait<'r, T, P>>
 where
     T: Serialize + DeserializeOwned + Send + Sync + 'r,
     P: Send + Sync + 'r,
 {
-    default_cache_query(
-        |_: &str, db: &DatabaseConnection, chat: &i64| async move {
+    let res = default_cache_query(
+        |_, chat| async move {
+            let chat: &i64 = chat;
             Ok(dialogs::Entity::find_by_id(*chat)
                 .one(DB.deref())
                 .await?
@@ -31,9 +32,11 @@ where
                 .unwrap_or_else(|| Lang::En))
         },
         Duration::hours(12),
-    )
+    );
+    Box::new(res)
 }
 */
+
 fn get_lang_key(chat: i64) -> String {
     format!("lang:{}", chat)
 }
@@ -41,16 +44,16 @@ fn get_lang_key(chat: i64) -> String {
 pub async fn get_chat_lang(chat: i64) -> Result<Lang> {
     let key = get_lang_key(chat);
     let res = default_cache_query(
-        |_, sql, _| async move {
+        |_, _| async move {
             Ok(dialogs::Entity::find_by_id(chat)
-                .one(sql)
+                .one(DB.deref())
                 .await?
                 .map(|v| v.language)
                 .unwrap_or_else(|| Lang::En))
         },
         Duration::hours(12),
     )
-    .query(&DB.deref(), &REDIS, &key, &())
+    .query(&key, &())
     .await?;
     Ok(res)
 }
