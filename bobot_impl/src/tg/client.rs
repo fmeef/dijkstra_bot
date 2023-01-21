@@ -9,9 +9,9 @@ use dashmap::DashMap;
 use macros::rlformat;
 
 use super::{
-    admin_helpers::get_me,
     dialog::{Conversation, ConversationState},
     markdown::MarkupBuilder,
+    user::get_me,
     user::RecordUser,
 };
 use crate::{
@@ -52,7 +52,7 @@ impl MetadataCollection {
     }
 
     pub async fn get_conversation(&self, message: &Message) -> Result<Conversation> {
-        let me = crate::tg::admin_helpers::get_me().await?;
+        let me = get_me().await?;
 
         let lang = get_chat_lang(message.get_chat().get_id()).await?;
         let mut state = ConversationState::new_prefix(

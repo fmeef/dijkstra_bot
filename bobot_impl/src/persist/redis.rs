@@ -371,7 +371,7 @@ impl RedisPool {
     pub async fn query<'a, T, R, Fut>(&'a self, func: T) -> Result<R>
     where
         T: FnOnce(PooledConnection<'a, RedisConnectionManager>) -> Fut + Send,
-        Fut: Future<Output = std::result::Result<R, RedisError>> + Send,
+        Fut: Future<Output = anyhow::Result<R>> + Send,
         R: Send,
     {
         Ok(func(self.pool.get().await?).await?)
@@ -382,7 +382,7 @@ impl RedisPool {
     pub async fn query_spawn<T, R, Fut>(&self, func: T) -> JoinHandle<Result<R>>
     where
         T: for<'b> FnOnce(PooledConnection<'b, RedisConnectionManager>) -> Fut + Send + 'static,
-        Fut: Future<Output = std::result::Result<R, RedisError>> + Send,
+        Fut: Future<Output = anyhow::Result<R>> + Send,
         R: Send + 'static,
     {
         let r = self.clone();

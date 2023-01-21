@@ -1,6 +1,6 @@
 use botapi::{
     bot::BotResult,
-    gen_types::{Message, UpdateExt},
+    gen_types::{ChatPermissionsBuilder, Message, UpdateExt},
 };
 use macros::rlformat;
 use sea_orm_migration::MigrationTrait;
@@ -8,10 +8,10 @@ use sea_orm_migration::MigrationTrait;
 use crate::{
     metadata::metadata,
     statics::TG,
-    tg::user::get_user_username,
+    tg::admin_helpers::mute_user_message,
     tg::{
         admin_helpers::{is_group_or_die, self_admin_or_die, GetCachedAdmins, IsAdmin},
-        command::{parse_cmd, EntityArg},
+        command::parse_cmd,
     },
     util::string::get_chat_lang,
 };
@@ -74,49 +74,40 @@ async fn handle_command(message: &Message) -> BotResult<()> {
                 }
             }
             "mute" => {
-                is_group_or_die(message.get_chat()).await?;
-                self_admin_or_die(message.get_chat()).await?;
-                message.get_from().admin_or_die(message.get_chat()).await?;
-                let lang = get_chat_lang(message.get_chat().get_id()).await?;
-                match entities.front() {
-                    Some(EntityArg::Mention(name)) => {
-                        if let Some(user) = get_user_username(name).await? {
-                            TG.client()
-                                .build_send_message(
-                                    message.get_chat().get_id(),
-                                    &format!("found user {}", user.get_id()),
-                                )
-                                .build()
-                                .await?;
-                        } else {
-                            TG.client()
-                                .build_send_message(
-                                    message.get_chat().get_id(),
-                                    &rlformat!(lang, "usernotfound"),
-                                )
-                                .build()
-                                .await?;
-                        }
-                    }
-                    Some(EntityArg::TextMention(user)) => {
-                        TG.client()
-                            .build_send_message(
-                                message.get_chat().get_id(),
-                                &format!("found user {}", user.get_id()),
-                            )
-                            .build()
-                            .await?;
-                    }
-                    _ => {
-                        TG.client()
-                            .build_send_message(
-                                message.get_chat().get_id(),
-                                &rlformat!(lang, "specifyuser"),
-                            )
-                            .build()
-                            .await?;
-                    }
-                };
+                mute_user_message(
+                    message,
+                    &entities,
+                    &ChatPermissionsBuilder::new()
+                        .set_can_send_messages(false)
+                        .set_can_send_media_messages(false)
+                        .set_can_send_polls(false)
+                        .set_can_send_other_messages(false)
+                        .build(),
+                )
+                .await?;
+
+                TG.client()
+                    .build_send_message(message.get_chat().get_id(), &rlformat!(lang, "muteuser"))
+                    .build()
+                    .await?;
+            }
+            "unmute" => {
+                mute_user_message(
+                    message,
+                    &entities,
+                    &ChatPermissionsBuilder::new()
+                        .set_can_send_messages(true)
+                        .set_can_send_media_messages(true)
+                        .set_can_send_polls(true)
+                        .set_can_send_other_messages(true)
+                        .build(),
+                )
+                .await?;
+
+                TG.client()
+                    .build_send_message(message.get_chat().get_id(), &rlformat!(lang, "unmuteuser"))
+                    .build()
+                    .await?;
             }
             _ => (),
         };

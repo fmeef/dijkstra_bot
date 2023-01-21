@@ -1,5 +1,5 @@
 use crate::persist::redis::RedisStr;
-use crate::statics::{CONFIG, REDIS};
+use crate::statics::{CONFIG, REDIS, TG};
 use anyhow::Result;
 use async_trait::async_trait;
 use botapi::gen_types::{Chat, UpdateExt, User};
@@ -15,6 +15,23 @@ pub fn get_username_cache_key(username: &str) -> String {
 
 fn get_chat_cache_key(chat: i64) -> String {
     format!("chat:{}", chat)
+}
+
+pub async fn get_me() -> Result<User> {
+    let me_key = "user_me";
+    REDIS
+        .query(|mut q| async move {
+            let me: Option<RedisStr> = q.get(&me_key).await?;
+            if let Some(me) = me {
+                Ok(me.get()?)
+            } else {
+                let me = TG.client().get_me().await?;
+                let me_str = RedisStr::new(&me)?;
+                q.set(&me_key, me_str).await?;
+                Ok(me)
+            }
+        })
+        .await
 }
 
 pub async fn record_cache_user(user: &User) -> Result<()> {
@@ -50,6 +67,19 @@ pub async fn record_cache_chat(chat: &Chat) -> Result<()> {
 pub async fn record_cache_update(update: &UpdateExt) -> Result<()> {
     if let Some(user) = update.get_user() {
         record_cache_user(user).await?;
+    }
+    if let UpdateExt::Message(m) = update {
+        if let Some(m) = m.get_reply_to_message() {
+            if let Some(user) = m.get_from() {
+                user.record_user().await?;
+            }
+            if let Some(m) = m.get_forward_from() {
+                m.record_user().await?;
+            }
+        }
+        if let Some(m) = m.get_forward_from() {
+            m.record_user().await?;
+        }
     }
     Ok(())
 }

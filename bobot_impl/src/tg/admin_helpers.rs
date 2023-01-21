@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 use crate::{
     persist::{
@@ -10,16 +10,17 @@ use crate::{
 };
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use botapi::gen_types::{Chat, ChatMember, Message, User};
+use botapi::gen_types::{Chat, ChatMember, ChatPermissions, Message, User};
 use chrono::Duration;
 use lazy_static::__Deref;
 use macros::rlformat;
 use redis::AsyncCommands;
 use sea_orm::{sea_query::OnConflict, EntityTrait, IntoActiveModel};
 
-use super::user::GetUser;
-
-static CACHE_ME: &str = "getme";
+use super::{
+    command::EntityArg,
+    user::{get_me, get_user_username, GetUser},
+};
 
 pub async fn is_self_admin(chat: &Chat) -> Result<bool> {
     let me = get_me().await?;
@@ -34,11 +35,80 @@ fn get_action_key(user: i64, chat: i64) -> String {
     format!("act:{}:{}", user, chat)
 }
 
-pub async fn ban_user(chat: &Chat, user: &User) -> Result<()> {
-    Ok(())
+pub async fn mute_user(chat: &Chat, user: &User, permissions: &ChatPermissions) -> Result<()> {
+    let me = get_me().await?;
+    let lang = get_chat_lang(chat.get_id()).await?;
+    if user.is_admin(chat).await? {
+        TG.client()
+            .build_send_message(chat.get_id(), &rlformat!(lang, "muteadmin"))
+            .build()
+            .await?;
+        Err(anyhow!("mute admin"))
+    } else {
+        if user.get_id() == me.get_id() {
+            TG.client()
+                .build_send_message(chat.get_id(), "I am not going to mute myself")
+                .build()
+                .await?;
+            Err(anyhow!("mute myself"))
+        } else {
+            TG.client()
+                .build_restrict_chat_member(chat.get_id(), user.get_id(), permissions)
+                .build()
+                .await?;
+            Ok(())
+        }
+    }
 }
 
-pub async fn ban_user_message(message: &Message) -> Result<()> {
+pub async fn mute_user_message<'a>(
+    message: &Message,
+    entities: &VecDeque<EntityArg<'a>>,
+    permissions: &ChatPermissions,
+) -> Result<()> {
+    is_group_or_die(message.get_chat()).await?;
+    self_admin_or_die(message.get_chat()).await?;
+    message.get_from().admin_or_die(message.get_chat()).await?;
+    let lang = get_chat_lang(message.get_chat().get_id()).await?;
+
+    if let Some(user) = message
+        .get_reply_to_message()
+        .map(|m| m.get_from())
+        .flatten()
+    {
+        mute_user(message.get_chat(), user, permissions).await?;
+    } else {
+        match entities.front() {
+            Some(EntityArg::Mention(name)) => {
+                if let Some(user) = get_user_username(name).await? {
+                    mute_user(message.get_chat(), &user, permissions).await?;
+                } else {
+                    TG.client()
+                        .build_send_message(
+                            message.get_chat().get_id(),
+                            &rlformat!(lang, "usernotfound"),
+                        )
+                        .build()
+                        .await?;
+                    return Err(anyhow!("user not found"));
+                }
+            }
+            Some(EntityArg::TextMention(user)) => {
+                mute_user(message.get_chat(), &user, permissions).await?;
+            }
+            _ => {
+                TG.client()
+                    .build_send_message(
+                        message.get_chat().get_id(),
+                        &rlformat!(lang, "specifyuser"),
+                    )
+                    .build()
+                    .await?;
+
+                return Err(anyhow!("usernotspecified"));
+            }
+        };
+    }
     Ok(())
 }
 
@@ -129,23 +199,6 @@ pub async fn self_admin_or_die(chat: &Chat) -> Result<()> {
         Err(anyhow!("not admin"))
     } else {
         Ok(())
-    }
-}
-
-pub async fn get_me() -> Result<User> {
-    let st: Option<RedisStr> = REDIS.sq(|q| q.get(&CACHE_ME)).await?;
-    if let Some(st) = st {
-        st.get::<User>()
-    } else {
-        let user = TG.client().get_me().await?;
-        let u = RedisStr::new(&user)?;
-        REDIS
-            .pipe(|p| {
-                p.set(&CACHE_ME, u)
-                    .expire(&CACHE_ME, Duration::minutes(10).num_seconds() as usize)
-            })
-            .await?;
-        Ok(user)
     }
 }
 

@@ -95,7 +95,7 @@ RUN --mount=type=cache,target=/bobot/target \
     cd /opt/helix && rustup override set nightly && \
     cargo install --path helix-term && cargo clean
 
-RUN apt update && apt install -y postgresql-client
+RUN apt update && apt install -y postgresql-client redis
 RUN mkdir -p /bobot/target && chown -R bobot:bobot /bobot && \
 chown -R bobot:bobot /usr/local && mkdir -p /bobot/migration/target && \
 chown -R bobot:bobot /bobot/migration/target && mkdir -p /bobot/bobot_impl/target && \
