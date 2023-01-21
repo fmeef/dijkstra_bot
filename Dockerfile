@@ -17,7 +17,6 @@ RUN adduser \
     --gecos "" \
     --home "/home/bobot" \
     --shell "/sbin/nologin" \
-    --no-create-home \
     --uid "${UID}" \
     "${USER}"
 
