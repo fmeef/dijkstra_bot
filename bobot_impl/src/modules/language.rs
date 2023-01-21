@@ -98,26 +98,24 @@ async fn get_lang_conversation(message: &Message) -> Result<Conversation> {
 }
 
 async fn handle_command(message: &Message) -> BotResult<()> {
-    if let Some(text) = message.get_text() {
-        if let Some((command, _)) = parse_cmd(text) {
-            log::info!("language command {}", command);
-            match command {
-                "setlang" => {
-                    let conv = get_lang_conversation(message).await?;
-                    TG.client()
-                        .build_send_message(
-                            message.get_chat().get_id(),
-                            &conv.get_current().await?.content,
-                        )
-                        .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
-                            conv.get_current_markup().await?,
-                        ))
-                        .build()
-                        .await?;
-                }
-                _ => (),
-            };
-        }
+    if let Some((command, _, _)) = parse_cmd(message) {
+        log::info!("language command {}", command);
+        match command {
+            "setlang" => {
+                let conv = get_lang_conversation(message).await?;
+                TG.client()
+                    .build_send_message(
+                        message.get_chat().get_id(),
+                        &conv.get_current().await?.content,
+                    )
+                    .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
+                        conv.get_current_markup().await?,
+                    ))
+                    .build()
+                    .await?;
+            }
+            _ => (),
+        };
     }
     Ok(())
 }

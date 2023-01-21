@@ -17,7 +17,7 @@ use super::{
 use crate::{
     metadata::Metadata,
     modules,
-    tg::command::{parse_cmd, Arg},
+    tg::command::{parse_cmd, TextArg},
     util::callback::{SingleCallback, SingleCb},
 };
 use crate::{
@@ -86,13 +86,13 @@ pub struct TgClient {
 }
 
 async fn show_help<'a>(
-    args: VecDeque<Arg<'a>>,
+    args: VecDeque<TextArg<'a>>,
     message: &Message,
     helps: Arc<MetadataCollection>,
 ) -> Result<bool> {
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
     let cnf = rlformat!(lang, "commandnotfound");
-    if let Some(Arg::Arg(cmd)) = args.front() {
+    if let Some(TextArg::Arg(cmd)) = args.front() {
         let cmd = helps.helps.get(*cmd).map(|v| v.as_str()).unwrap_or(&cnf);
         let mut builder = MarkupBuilder::new();
         let (cmd, entities) = builder
@@ -129,9 +129,9 @@ async fn show_help<'a>(
 
 async fn handle_help(update: &UpdateExt, helps: Arc<MetadataCollection>) -> Result<bool> {
     if let UpdateExt::Message(ref message) = update {
-        if let Some((cmd, args)) = parse_cmd(message.get_text().unwrap_or("")) {
+        if let Some((cmd, args, _)) = parse_cmd(message) {
             return match cmd {
-                "help" => show_help(args, message, helps).await,
+                "help" => show_help(args.args, message, helps).await,
                 _ => Ok(false),
             };
         }

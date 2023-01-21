@@ -5,10 +5,12 @@ use async_trait::async_trait;
 use botapi::gen_types::{Chat, UpdateExt, User};
 use redis::AsyncCommands;
 
-const USER_PREFIX: &str = "usrc";
-
 pub fn get_user_cache_key(user: i64) -> String {
-    format!("{}:{}", USER_PREFIX, user)
+    format!("usrc:{}", user)
+}
+
+pub fn get_username_cache_key(username: &str) -> String {
+    format!("uname:{}", username)
 }
 
 fn get_chat_cache_key(chat: i64) -> String {
@@ -18,9 +20,21 @@ fn get_chat_cache_key(chat: i64) -> String {
 pub async fn record_cache_user(user: &User) -> Result<()> {
     let key = get_user_cache_key(user.get_id());
     let st = RedisStr::new(user)?;
-    REDIS
-        .pipe(|p| p.set(&key, st).expire(&key, CONFIG.cache_timeout))
-        .await?;
+    if let Some(username) = user.get_username() {
+        let uname = get_username_cache_key(username);
+        REDIS
+            .pipe(|p| {
+                p.set(&key, st)
+                    .expire(&key, CONFIG.cache_timeout)
+                    .set(&uname, user.get_id())
+                    .expire(&uname, CONFIG.cache_timeout)
+            })
+            .await?;
+    } else {
+        REDIS
+            .pipe(|p| p.set(&key, st).expire(&key, CONFIG.cache_timeout))
+            .await?;
+    }
     Ok(())
 }
 
@@ -45,6 +59,29 @@ pub async fn get_user(user: i64) -> Result<Option<User>> {
     let model: Option<RedisStr> = REDIS.sq(|p| p.get(&key)).await?;
     if let Some(model) = model {
         Ok(Some(model.get()?))
+    } else {
+        Ok(None)
+    }
+}
+
+pub async fn get_user_username<T: AsRef<str>>(username: T) -> Result<Option<User>> {
+    let username = username.as_ref();
+    let key = get_username_cache_key(username);
+    let id: Option<RedisStr> = REDIS
+        .query(|mut q| async move {
+            let id: Option<i64> = q.get(&key).await?;
+            let res = if let Some(id) = id {
+                let key = get_user_cache_key(id);
+                q.get(&key).await?
+            } else {
+                None
+            };
+            Ok(res)
+        })
+        .await?;
+
+    if let Some(id) = id {
+        Ok(Some(id.get::<User>()?))
     } else {
         Ok(None)
     }
@@ -91,6 +128,13 @@ impl From<&User> for crate::persist::core::users::Model {
 }
 
 #[async_trait]
+impl RecordChat for Chat {
+    async fn record_chat(&self) -> Result<()> {
+        record_cache_chat(self).await
+    }
+}
+
+#[async_trait]
 impl GetUser for i64 {
     async fn get_cached_user(&self) -> Result<Option<User>> {
         get_user(*self).await
@@ -101,13 +145,6 @@ impl GetUser for i64 {
 impl GetChat for i64 {
     async fn get_chat(&self) -> Result<Option<Chat>> {
         get_chat(*self).await
-    }
-}
-
-#[async_trait]
-impl RecordChat for Chat {
-    async fn record_chat(&self) -> Result<()> {
-        record_cache_chat(self).await
     }
 }
 

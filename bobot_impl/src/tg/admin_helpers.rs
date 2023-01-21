@@ -10,7 +10,7 @@ use crate::{
 };
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use botapi::gen_types::{Chat, ChatMember, User};
+use botapi::gen_types::{Chat, ChatMember, Message, User};
 use chrono::Duration;
 use lazy_static::__Deref;
 use macros::rlformat;
@@ -34,7 +34,15 @@ fn get_action_key(user: i64, chat: i64) -> String {
     format!("act:{}:{}", user, chat)
 }
 
-async fn get_actions(chat: &Chat, user: &User) -> Result<Option<actions::Model>> {
+pub async fn ban_user(chat: &Chat, user: &User) -> Result<()> {
+    Ok(())
+}
+
+pub async fn ban_user_message(message: &Message) -> Result<()> {
+    Ok(())
+}
+
+pub async fn get_actions(chat: &Chat, user: &User) -> Result<Option<actions::Model>> {
     let chat = chat.get_id();
     let user = user.get_id();
     default_cache_query(
@@ -50,7 +58,7 @@ async fn get_actions(chat: &Chat, user: &User) -> Result<Option<actions::Model>>
     .await
 }
 
-async fn update_actions(actions: actions::Model) -> Result<()> {
+pub async fn update_actions(actions: actions::Model) -> Result<()> {
     let r = RedisStr::new(&actions)?;
     let key = get_action_key(actions.user_id, actions.chat_id);
     REDIS
@@ -87,6 +95,26 @@ pub async fn is_dm_or_die(chat: &Chat) -> Result<()> {
     } else {
         Ok(())
     }
+}
+
+pub async fn is_group_or_die(chat: &Chat) -> Result<()> {
+    let lang = get_chat_lang(chat.get_id()).await?;
+    match chat.get_tg_type() {
+        "private" => {
+            TG.client()
+                .build_send_message(chat.get_id(), &rlformat!(lang, "baddm"))
+                .build()
+                .await?
+        }
+        "group" => {
+            TG.client()
+                .build_send_message(chat.get_id(), &rlformat!(lang, "notsupergroup"))
+                .build()
+                .await?
+        }
+        _ => return Ok(()),
+    };
+    Err(anyhow!("chat is not dm"))
 }
 
 pub async fn self_admin_or_die(chat: &Chat) -> Result<()> {

@@ -7,8 +7,6 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        // Replace the sample below with your own migration scripts
-
         manager
             .create_table(
                 Table::create()
@@ -55,13 +53,4 @@ impl MigrationTrait for Migration {
             .drop_table(Table::drop().table(actions::Entity).to_owned())
             .await
     }
-}
-
-/// Learn more at https://docs.rs/sea-query#iden
-#[derive(Iden)]
-enum Post {
-    Table,
-    Id,
-    Title,
-    Text,
 }

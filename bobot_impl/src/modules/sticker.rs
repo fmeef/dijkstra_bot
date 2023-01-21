@@ -9,7 +9,8 @@ use crate::persist::Result;
 use crate::statics::{DB, REDIS, TG};
 use crate::tg::admin_helpers::is_dm;
 use crate::tg::admin_helpers::is_dm_or_die;
-use crate::tg::command::{parse_cmd, Arg};
+use crate::tg::command::parse_cmd;
+use crate::tg::command::TextArg;
 use crate::tg::dialog::ConversationState;
 use crate::tg::dialog::{drop_converstaion, Conversation};
 use crate::tg::dialog::{get_conversation, replace_conversation};
@@ -321,16 +322,14 @@ pub async fn handle_update(update: &UpdateExt) -> BotResult<()> {
 }
 
 async fn handle_command<'a>(message: &'a Message) -> Result<()> {
-    if let Some(text) = message.get_text() {
-        if let Some((cmd, args)) = parse_cmd(text) {
-            info!("command {}", cmd);
-            match cmd {
-                "upload" => upload(message).await,
-                "list" => list_stickers(message).await,
-                "delete" => delete_sticker(message, args).await,
-                _ => Ok(()),
-            }?;
-        }
+    if let Some((cmd, args, _)) = parse_cmd(message) {
+        info!("command {}", cmd);
+        match cmd {
+            "upload" => upload(message).await,
+            "list" => list_stickers(message).await,
+            "delete" => delete_sticker(message, args.args).await,
+            _ => Ok(()),
+        }?;
     };
 
     Ok(())
@@ -342,9 +341,9 @@ async fn upload(message: &Message) -> Result<()> {
     Ok(())
 }
 
-async fn delete_sticker<'a>(message: &'a Message, args: VecDeque<Arg<'a>>) -> Result<()> {
+async fn delete_sticker<'a>(message: &'a Message, args: VecDeque<TextArg<'a>>) -> Result<()> {
     drop_converstaion(message).await?;
-    if let Some(Arg::Arg(uuid)) = args.front() {
+    if let Some(TextArg::Arg(uuid)) = args.front() {
         log::info!("uuid {}", uuid);
         let uuid = Uuid::from_str(uuid)?;
         entities::stickers::Entity::delete_many()

@@ -1,5 +1,6 @@
 use std::collections::VecDeque;
 
+use botapi::gen_types::{Message, MessageEntity, User};
 use lazy_static::lazy_static;
 
 use regex::Regex;
@@ -12,26 +13,92 @@ lazy_static! {
     static ref QUOTE: Regex = Regex::new(r#"".*""#).unwrap();
 }
 
-pub enum Arg<'a> {
+pub struct TextArgs<'a> {
+    pub text: &'a str,
+    pub args: VecDeque<TextArg<'a>>,
+}
+
+pub enum TextArg<'a> {
     Arg(&'a str),
-    Command(&'a str),
     Quote(&'a str),
 }
 
-pub fn parse_cmd<'a>(cmd: &'a str) -> Option<(&'a str, VecDeque<Arg<'a>>)> {
-    if let Some(head) = COMMOND_HEAD.find(cmd) {
-        Some((
-            &head.as_str()[1..head.end()],
-            ARGS.find_iter(&cmd[head.end()..])
+pub enum EntityArg<'a> {
+    Command(&'a str),
+    Quote(&'a str),
+    Hashtag(&'a str),
+    Mention(&'a str),
+    TextMention(&'a User),
+    TextLink(&'a str),
+    Url(&'a str),
+}
+
+fn get_arg_type<'a>(message: &'a Message, entity: &'a MessageEntity) -> Option<EntityArg<'a>> {
+    if let Some(text) = message.get_text() {
+        let start = entity.get_offset() as usize;
+        let end = start + entity.get_length() as usize;
+        let text = &text[start..end];
+        match entity.get_tg_type() {
+            "hashtag" => Some(EntityArg::Hashtag(text)),
+            "mention" => Some(EntityArg::Mention(&text[1..])), //do not include @ in mention
+            "url" => Some(EntityArg::Url(text)),
+            "text_mention" => entity.get_user().map(|u| EntityArg::TextMention(u)),
+            "text_link" => entity.get_url().map(|u| EntityArg::TextLink(u)),
+            _ => None,
+        }
+    } else {
+        None
+    }
+}
+
+pub fn parse_cmd<'a>(
+    message: &'a Message,
+) -> Option<(&'a str, TextArgs<'a>, VecDeque<EntityArg<'a>>)> {
+    if let Some(cmd) = message.get_text() {
+        let mut out = VecDeque::<EntityArg<'a>>::new();
+        if let Some(head) = COMMOND_HEAD.find(cmd) {
+            let mut entities = if let Some(entities) = message.get_entities() {
+                let mut entities = entities
+                    .iter()
+                    .filter(|p| match p.get_tg_type() {
+                        "hashtag" => true,
+                        "mention" => true,
+                        "url" => true,
+                        "text_mention" => true,
+                        "text_link" => true,
+                        _ => false,
+                    })
+                    .collect::<Vec<&MessageEntity>>();
+                entities.sort_by(|o, n| n.get_offset().cmp(&o.get_offset()));
+                entities
+            } else {
+                vec![]
+            };
+            let tail = &cmd[head.end()..];
+
+            let args = entities.iter().filter_map(|v| get_arg_type(message, v));
+
+            let raw_args = ARGS
+                .find_iter(tail)
                 .map(|v| {
                     if QUOTE.is_match(v.as_str()) {
-                        Arg::Quote(v.as_str())
+                        TextArg::Quote(v.as_str())
                     } else {
-                        Arg::Arg(v.as_str())
+                        TextArg::Arg(v.as_str())
                     }
                 })
-                .collect(),
-        ))
+                .collect();
+            Some((
+                &head.as_str()[1..head.end()],
+                TextArgs {
+                    text: cmd,
+                    args: raw_args,
+                },
+                args.collect(),
+            ))
+        } else {
+            None
+        }
     } else {
         None
     }
