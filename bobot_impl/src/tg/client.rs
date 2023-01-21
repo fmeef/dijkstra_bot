@@ -18,7 +18,10 @@ use crate::{
     metadata::Metadata,
     modules,
     tg::command::{parse_cmd, TextArg},
-    util::callback::{SingleCallback, SingleCb},
+    util::{
+        callback::{SingleCallback, SingleCb},
+        string::should_ignore_chat,
+    },
 };
 use crate::{
     statics::{CONFIG, TG},
@@ -90,38 +93,40 @@ async fn show_help<'a>(
     message: &Message,
     helps: Arc<MetadataCollection>,
 ) -> Result<bool> {
-    let lang = get_chat_lang(message.get_chat().get_id()).await?;
-    let cnf = rlformat!(lang, "commandnotfound");
-    if let Some(TextArg::Arg(cmd)) = args.front() {
-        let cmd = helps.helps.get(*cmd).map(|v| v.as_str()).unwrap_or(&cnf);
-        let mut builder = MarkupBuilder::new();
-        let (cmd, entities) = builder
-            .strikethrough("@everyone")
-            .text(format!(" {}", cmd))
-            .build();
-        TG.client()
-            .build_send_message(message.get_chat().get_id(), &cmd)
-            .entities(&entities)
-            .reply_to_message_id(message.get_message_id())
-            .build()
-            .await?;
-    } else {
-        let me = get_me().await?;
-        TG.client()
-            .build_send_message(
-                message.get_chat().get_id(),
-                &rlformat!(lang, "welcome", me.get_first_name()),
-            )
-            .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
-                helps
-                    .get_conversation(&message)
-                    .await?
-                    .get_current_markup()
-                    .await?,
-            ))
-            .reply_to_message_id(message.get_message_id())
-            .build()
-            .await?;
+    if !should_ignore_chat(message.get_chat().get_id()).await? {
+        let lang = get_chat_lang(message.get_chat().get_id()).await?;
+        let cnf = rlformat!(lang, "commandnotfound");
+        if let Some(TextArg::Arg(cmd)) = args.front() {
+            let cmd = helps.helps.get(*cmd).map(|v| v.as_str()).unwrap_or(&cnf);
+            let mut builder = MarkupBuilder::new();
+            let (cmd, entities) = builder
+                .strikethrough("@everyone")
+                .text(format!(" {}", cmd))
+                .build();
+            TG.client()
+                .build_send_message(message.get_chat().get_id(), &cmd)
+                .entities(&entities)
+                .reply_to_message_id(message.get_message_id())
+                .build()
+                .await?;
+        } else {
+            let me = get_me().await?;
+            TG.client()
+                .build_send_message(
+                    message.get_chat().get_id(),
+                    &rlformat!(lang, "welcome", me.get_first_name()),
+                )
+                .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
+                    helps
+                        .get_conversation(&message)
+                        .await?
+                        .get_current_markup()
+                        .await?,
+                ))
+                .reply_to_message_id(message.get_message_id())
+                .build()
+                .await?;
+        }
     }
 
     Ok(true)

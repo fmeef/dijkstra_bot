@@ -9,7 +9,7 @@ use crate::{
     metadata::metadata,
     statics::TG,
     tg::{command::parse_cmd, markdown::MarkupBuilder},
-    util::string::Lang,
+    util::string::{should_ignore_chat, Lang, Speak},
 };
 
 metadata!("Piracy detection",
@@ -28,22 +28,18 @@ async fn handle_murkdown(message: &Message) -> BotResult<bool> {
         if let Some(text) = message.get_text() {
             match MarkupBuilder::from_murkdown(text) {
                 Ok(md) => {
-                    let (msg, entities) = md.build();
-                    TG.client()
-                        .build_send_message(message.get_chat().get_id(), msg)
-                        .entities(entities)
-                        .build()
-                        .await?;
+                    if !should_ignore_chat(message.get_chat().get_id()).await? {
+                        let (msg, entities) = md.build();
+                        TG.client()
+                            .build_send_message(message.get_chat().get_id(), msg)
+                            .entities(entities)
+                            .build()
+                            .await?;
+                    }
                 }
 
                 Err(err) => {
-                    TG.client()
-                        .build_send_message(
-                            message.get_chat().get_id(),
-                            &rlformat!(Lang::En, "test", err),
-                        )
-                        .build()
-                        .await?;
+                    message.speak(rlformat!(Lang::En, "test", err)).await?;
                 }
             }
         }
@@ -67,6 +63,9 @@ async fn handle_markdown(message: &Message) -> BotResult<bool> {
 
 #[allow(dead_code)]
 async fn handle_command(message: &Message) -> BotResult<()> {
+    if should_ignore_chat(message.get_chat().get_id()).await? {
+        return Ok(());
+    }
     if let Some((command, _, _)) = parse_cmd(message) {
         log::info!("piracy command {}", command);
         match command {

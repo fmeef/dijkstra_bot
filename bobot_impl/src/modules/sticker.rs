@@ -15,6 +15,7 @@ use crate::tg::dialog::{drop_converstaion, Conversation};
 use crate::tg::dialog::{get_conversation, replace_conversation};
 use crate::tg::user::GetUser;
 use crate::util::error::BotError;
+use crate::util::string::Speak;
 use ::redis::AsyncCommands;
 use ::sea_orm::entity::prelude::*;
 use ::sea_orm::{ActiveModelTrait, IntoActiveModel, QuerySelect, Set};
@@ -345,11 +346,8 @@ async fn delete_sticker<'a>(message: &'a Message, args: VecDeque<TextArg<'a>>) -
             .filter(entities::stickers::Column::Uuid.eq(uuid))
             .exec(DB.deref().deref())
             .await?;
-        TG.client()
-            .build_send_message(message.get_chat().get_id(), "Successfully deleted sticker")
-            .reply_to_message_id(message.get_message_id())
-            .build()
-            .await?;
+
+        message.reply("Successfully deleted sticker").await?;
         Ok(())
     } else {
         Err(anyhow!(BotError::new("invalid command args")))
@@ -372,21 +370,13 @@ async fn list_stickers(message: &Message) -> Result<()> {
                 s
             });
 
-        TG.client()
-            .build_send_message(message.get_chat().get_id(), &stickers)
-            .reply_to_message_id(message.get_message_id())
-            .build()
-            .await?;
+        message.reply(stickers).await?;
     }
     Ok(())
 }
 
 async fn conv_start(conversation: Conversation, message: &Message) -> Result<()> {
-    TG.client()
-        .build_send_message(message.get_chat().get_id(), "Send a sticker to upload")
-        .reply_to_message_id(message.get_message_id())
-        .build()
-        .await?;
+    message.reply("Send a sticker to upload").await?;
     conversation.transition(TRANSITION_UPLOAD).await?;
     Ok(())
 }
@@ -402,11 +392,8 @@ async fn conv_upload(conversation: Conversation, message: &Message) -> Result<()
             })
             .await?;
         let text = conversation.transition(TRANSITION_NAME).await?;
-        TG.client()
-            .build_send_message(message.get_chat().get_id(), &text.to_owned())
-            .reply_to_message_id(message.get_message_id())
-            .build()
-            .await?;
+
+        message.reply(text).await?;
         Ok(())
     } else {
         Err(anyhow!(BotError::new("Send a sticker")))
@@ -417,11 +404,7 @@ async fn conv_name(conversation: Conversation, message: &Message) -> Result<()> 
     let key = scope_key_by_chatuser(&KEY_TYPE_STICKER_NAME, &message)?;
     REDIS.sq(|p| p.set(&key, message.get_text())).await?;
     let text = conversation.transition(TRANSITION_TAG).await?;
-    TG.client()
-        .build_send_message(message.get_chat().get_id(), &text.to_owned())
-        .reply_to_message_id(message.get_message_id())
-        .build()
-        .await?;
+    message.reply(text).await?;
     Ok(())
 }
 
@@ -464,11 +447,7 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
                 .exec(DB.deref().deref())
                 .await?;
 
-            TG.client()
-                .build_send_message(message.get_chat().get_id(), &text.to_owned())
-                .reply_to_message_id(message.get_message_id())
-                .build()
-                .await?;
+            message.reply(text).await?;
             Ok(())
         } else {
             let tag = RedisStr::new(&ModelRedis {
@@ -485,11 +464,7 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
                 .await?;
 
             let text = conversation.transition(TRANSITION_MORETAG).await?;
-            TG.client()
-                .build_send_message(message.get_chat().get_id(), &text.to_owned())
-                .reply_to_message_id(message.get_message_id())
-                .build()
-                .await?;
+            message.reply(text).await?;
             Ok(())
         }
     } else {

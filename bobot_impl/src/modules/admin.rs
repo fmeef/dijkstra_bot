@@ -8,12 +8,12 @@ use sea_orm_migration::MigrationTrait;
 use crate::{
     metadata::metadata,
     statics::TG,
-    tg::admin_helpers::mute_user_message,
+    tg::admin_helpers::change_permissions_message,
     tg::{
         admin_helpers::{is_group_or_die, self_admin_or_die, GetCachedAdmins, IsAdmin},
         command::parse_cmd,
     },
-    util::string::get_chat_lang,
+    util::string::{get_chat_lang, Speak},
 };
 
 metadata!("Admin",
@@ -34,32 +34,19 @@ async fn handle_command(message: &Message) -> BotResult<()> {
         match command {
             "admincache" => {
                 message.get_chat().refresh_cached_admins().await?;
-                TG.client()
-                    .build_send_message(message.get_chat().get_id(), &rlformat!(lang, "refreshac"))
-                    .build()
-                    .await?;
+                message.speak(rlformat!(lang, "refreshac")).await?;
             }
             "countadmins" => {
                 let admins = message.get_chat().get_cached_admins().await?;
-                TG.client()
-                    .build_send_message(
-                        message.get_chat().get_id(),
-                        &rlformat!(lang, "foundadmins", admins.len()),
-                    )
-                    .build()
+                message
+                    .speak(rlformat!(lang, "foundadmins", admins.len()))
                     .await?;
             }
             "kickme" => {
                 is_group_or_die(message.get_chat()).await?;
                 self_admin_or_die(message.get_chat()).await?;
                 if message.get_from().is_admin(message.get_chat()).await? {
-                    TG.client()
-                        .build_send_message(
-                            message.get_chat().get_id(),
-                            &rlformat!(lang, "kickadmin"),
-                        )
-                        .build()
-                        .await?;
+                    message.speak(rlformat!(lang, "kickadmin")).await?;
                 } else {
                     if let Some(from) = message.get_from() {
                         TG.client()
@@ -74,7 +61,7 @@ async fn handle_command(message: &Message) -> BotResult<()> {
                 }
             }
             "mute" => {
-                mute_user_message(
+                change_permissions_message(
                     message,
                     &entities,
                     &ChatPermissionsBuilder::new()
@@ -85,14 +72,10 @@ async fn handle_command(message: &Message) -> BotResult<()> {
                         .build(),
                 )
                 .await?;
-
-                TG.client()
-                    .build_send_message(message.get_chat().get_id(), &rlformat!(lang, "muteuser"))
-                    .build()
-                    .await?;
+                message.speak(rlformat!(lang, "muteuser")).await?;
             }
             "unmute" => {
-                mute_user_message(
+                change_permissions_message(
                     message,
                     &entities,
                     &ChatPermissionsBuilder::new()
@@ -103,11 +86,7 @@ async fn handle_command(message: &Message) -> BotResult<()> {
                         .build(),
                 )
                 .await?;
-
-                TG.client()
-                    .build_send_message(message.get_chat().get_id(), &rlformat!(lang, "unmuteuser"))
-                    .build()
-                    .await?;
+                message.speak(rlformat!(lang, "unmuteuser")).await?;
             }
             _ => (),
         };

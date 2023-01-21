@@ -1,6 +1,6 @@
 use crate::statics::TG;
 use crate::tg::user::{GetChat, RecordChat};
-use crate::util::string::{set_chat_lang, Lang};
+use crate::util::string::{set_chat_lang, should_ignore_chat, Lang, Speak};
 use crate::{
     metadata::metadata,
     tg::{
@@ -41,17 +41,11 @@ async fn handle_terminal_state(current: Uuid, conv: Conversation, chat: i64) -> 
         let lang = Lang::from_code(&state.content);
         match lang {
             Lang::Invalid => {
-                TG.client()
-                    .build_send_message(chat.get_id(), &rlformat!(lang, "invalidlang"))
-                    .build()
-                    .await?;
+                chat.speak(rlformat!(lang, "invalidlang")).await?;
             }
             l => {
                 set_chat_lang(&chat, l).await?;
-                TG.client()
-                    .build_send_message(chat.get_id(), &rlformat!(l, "setlang"))
-                    .build()
-                    .await?;
+                chat.speak(rlformat!(l, "setlang")).await?;
             }
         }
     }
@@ -98,6 +92,9 @@ async fn get_lang_conversation(message: &Message) -> Result<Conversation> {
 }
 
 async fn handle_command(message: &Message) -> BotResult<()> {
+    if should_ignore_chat(message.get_chat().get_id()).await? {
+        return Ok(());
+    }
     if let Some((command, _, _)) = parse_cmd(message) {
         log::info!("language command {}", command);
         match command {

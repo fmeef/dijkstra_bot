@@ -6,7 +6,7 @@ use crate::{
         redis::{default_cache_query, CachedQueryTrait, RedisStr},
     },
     statics::{DB, REDIS, TG},
-    util::string::get_chat_lang,
+    util::string::{get_chat_lang, Speak},
 };
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
@@ -35,21 +35,19 @@ fn get_action_key(user: i64, chat: i64) -> String {
     format!("act:{}:{}", user, chat)
 }
 
-pub async fn mute_user(chat: &Chat, user: &User, permissions: &ChatPermissions) -> Result<()> {
+pub async fn change_permissions(
+    chat: &Chat,
+    user: &User,
+    permissions: &ChatPermissions,
+) -> Result<()> {
     let me = get_me().await?;
     let lang = get_chat_lang(chat.get_id()).await?;
     if user.is_admin(chat).await? {
-        TG.client()
-            .build_send_message(chat.get_id(), &rlformat!(lang, "muteadmin"))
-            .build()
-            .await?;
+        chat.speak(rlformat!(lang, "muteadmin")).await?;
         Err(anyhow!("mute admin"))
     } else {
         if user.get_id() == me.get_id() {
-            TG.client()
-                .build_send_message(chat.get_id(), "I am not going to mute myself")
-                .build()
-                .await?;
+            chat.speak(rlformat!(lang, "mutemyself")).await?;
             Err(anyhow!("mute myself"))
         } else {
             TG.client()
@@ -61,7 +59,7 @@ pub async fn mute_user(chat: &Chat, user: &User, permissions: &ChatPermissions) 
     }
 }
 
-pub async fn mute_user_message<'a>(
+pub async fn change_permissions_message<'a>(
     message: &Message,
     entities: &VecDeque<EntityArg<'a>>,
     permissions: &ChatPermissions,
@@ -76,34 +74,22 @@ pub async fn mute_user_message<'a>(
         .map(|m| m.get_from())
         .flatten()
     {
-        mute_user(message.get_chat(), user, permissions).await?;
+        change_permissions(message.get_chat(), user, permissions).await?;
     } else {
         match entities.front() {
             Some(EntityArg::Mention(name)) => {
                 if let Some(user) = get_user_username(name).await? {
-                    mute_user(message.get_chat(), &user, permissions).await?;
+                    change_permissions(message.get_chat(), &user, permissions).await?;
                 } else {
-                    TG.client()
-                        .build_send_message(
-                            message.get_chat().get_id(),
-                            &rlformat!(lang, "usernotfound"),
-                        )
-                        .build()
-                        .await?;
+                    message.speak(rlformat!(lang, "usernotfound")).await?;
                     return Err(anyhow!("user not found"));
                 }
             }
             Some(EntityArg::TextMention(user)) => {
-                mute_user(message.get_chat(), &user, permissions).await?;
+                change_permissions(message.get_chat(), &user, permissions).await?;
             }
             _ => {
-                TG.client()
-                    .build_send_message(
-                        message.get_chat().get_id(),
-                        &rlformat!(lang, "specifyuser"),
-                    )
-                    .build()
-                    .await?;
+                message.speak(rlformat!(lang, "specifyuser")).await?;
 
                 return Err(anyhow!("usernotspecified"));
             }
@@ -159,10 +145,7 @@ pub async fn update_actions(actions: actions::Model) -> Result<()> {
 pub async fn is_dm_or_die(chat: &Chat) -> Result<()> {
     let lang = get_chat_lang(chat.get_id()).await?;
     if !is_dm(chat) {
-        TG.client()
-            .build_send_message(chat.get_id(), &rlformat!(lang, "notdm"))
-            .build()
-            .await?;
+        chat.speak(rlformat!(lang, "notdm")).await?;
         Err(anyhow!("chat is not dm"))
     } else {
         Ok(())
@@ -172,18 +155,8 @@ pub async fn is_dm_or_die(chat: &Chat) -> Result<()> {
 pub async fn is_group_or_die(chat: &Chat) -> Result<()> {
     let lang = get_chat_lang(chat.get_id()).await?;
     match chat.get_tg_type() {
-        "private" => {
-            TG.client()
-                .build_send_message(chat.get_id(), &rlformat!(lang, "baddm"))
-                .build()
-                .await?
-        }
-        "group" => {
-            TG.client()
-                .build_send_message(chat.get_id(), &rlformat!(lang, "notsupergroup"))
-                .build()
-                .await?
-        }
+        "private" => chat.speak(rlformat!(lang, "baddm")).await?,
+        "group" => chat.speak(rlformat!(lang, "notsupergroup")).await?,
         _ => return Ok(()),
     };
     Err(anyhow!("chat is not dm"))
@@ -192,10 +165,9 @@ pub async fn is_group_or_die(chat: &Chat) -> Result<()> {
 pub async fn self_admin_or_die(chat: &Chat) -> Result<()> {
     if !is_self_admin(chat).await? {
         let lang = get_chat_lang(chat.get_id()).await?;
-        TG.client()
-            .build_send_message(chat.get_id(), &rlformat!(lang, "needtobeadmin"))
-            .build()
-            .await?;
+
+        chat.speak(rlformat!(lang, "needtobeadmin")).await?;
+
         Err(anyhow!("not admin"))
     } else {
         Ok(())
@@ -236,10 +208,7 @@ impl IsAdmin for User {
                 self.get_username()
                     .unwrap_or(self.get_id().to_string().as_str())
             );
-            TG.client()
-                .build_send_message(chat.get_id(), &msg)
-                .build()
-                .await?;
+            chat.speak(msg).await?;
             Err(anyhow!("user is not admin"))
         }
     }
@@ -267,10 +236,7 @@ impl IsAdmin for Option<&User> {
                     user.get_username()
                         .unwrap_or(user.get_id().to_string().as_str())
                 );
-                TG.client()
-                    .build_send_message(chat.get_id(), &msg)
-                    .build()
-                    .await?;
+                chat.speak(msg).await?;
                 Err(anyhow!("user is not admin"))
             }
         } else {
@@ -299,10 +265,8 @@ impl IsAdmin for i64 {
             } else {
                 rlformat!(lang, "lackingadminrights", self)
             };
-            TG.client()
-                .build_send_message(chat.get_id(), &msg)
-                .build()
-                .await?;
+
+            chat.speak(msg).await?;
             Err(anyhow!("user is not admin"))
         }
     }
