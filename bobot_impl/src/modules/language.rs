@@ -1,5 +1,6 @@
 use crate::statics::TG;
 use crate::tg::user::{GetChat, RecordChat};
+use crate::util::error::BotError;
 use crate::util::string::{set_chat_lang, should_ignore_chat, Lang, Speak};
 use crate::{
     metadata::metadata,
@@ -7,14 +8,11 @@ use crate::{
         command::parse_cmd,
         dialog::{Conversation, ConversationState},
     },
+    util::error::Result,
     util::string::{get_chat_lang, get_langs},
 };
-use anyhow::{anyhow, Result};
 
-use botapi::{
-    bot::BotResult,
-    gen_types::{Message, UpdateExt},
-};
+use botapi::gen_types::{Message, UpdateExt};
 use macros::{inline_lang, rlformat};
 use sea_orm_migration::MigrationTrait;
 use uuid::Uuid;
@@ -32,11 +30,11 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![]
 }
 
-async fn handle_terminal_state(current: Uuid, conv: Conversation, chat: i64) -> BotResult<()> {
+async fn handle_terminal_state(current: Uuid, conv: Conversation, chat: i64) -> Result<()> {
     let chat = chat
         .get_chat()
         .await?
-        .ok_or_else(|| anyhow!("missing chat"))?;
+        .ok_or_else(|| BotError::speak("Chat not found", chat))?;
     if let Some(state) = conv.get_state(&current) {
         let lang = Lang::from_code(&state.content);
         match lang {
@@ -58,10 +56,9 @@ async fn get_lang_conversation(message: &Message) -> Result<Conversation> {
         "setlang".to_owned(),
         rlformat!(current, "currentlang"),
         message.get_chat().get_id(),
-        message
-            .get_from()
-            .map(|u| u.get_id())
-            .ok_or_else(|| anyhow!("not user"))?,
+        message.get_from().map(|u| u.get_id()).ok_or_else(|| {
+            BotError::speak("user is not a user... what", message.get_chat().get_id())
+        })?,
         "button",
     )?;
 
@@ -76,11 +73,7 @@ async fn get_lang_conversation(message: &Message) -> Result<Conversation> {
         if uuid != start {
             tokio::spawn(async move {
                 if let Err(err) = handle_terminal_state(uuid, conv, id).await {
-                    if let Some(error) = err.get_response() {
-                        if let Some(error_code) = error.error_code {
-                            crate::statics::count_error_code(error_code);
-                        }
-                    }
+                    err.record_stats();
                 }
             });
         }
@@ -91,7 +84,7 @@ async fn get_lang_conversation(message: &Message) -> Result<Conversation> {
     Ok(state)
 }
 
-async fn handle_command(message: &Message) -> BotResult<()> {
+async fn handle_command(message: &Message) -> Result<()> {
     if should_ignore_chat(message.get_chat().get_id()).await? {
         return Ok(());
     }
@@ -118,7 +111,7 @@ async fn handle_command(message: &Message) -> BotResult<()> {
 }
 
 #[allow(dead_code)]
-pub async fn handle_update(update: &UpdateExt) -> BotResult<()> {
+pub async fn handle_update(update: &UpdateExt) -> Result<()> {
     match update {
         UpdateExt::Message(ref message) => handle_command(message).await?,
         _ => (),

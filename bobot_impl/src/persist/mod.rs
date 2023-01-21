@@ -1,5 +1,3 @@
-pub(crate) type Result<T> = anyhow::Result<T>;
-
 pub mod admin;
 pub mod core;
 pub mod migrate;

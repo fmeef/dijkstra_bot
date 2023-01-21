@@ -1,13 +1,13 @@
 use botapi::gen_types::{MessageEntity, MessageEntityBuilder, User};
 use markdown::{Block, ListItem, Span};
 
+use crate::util::error::Result;
 use lazy_static::lazy_static;
 use pomelo::pomelo;
 use regex::Regex;
 use std::fmt::Display;
 use std::{iter::Peekable, str::Chars};
 use thiserror::Error;
-
 pub struct MarkupBuilder {
     entities: Vec<MessageEntity>,
     offset: i64,
@@ -278,7 +278,7 @@ impl MarkupBuilder {
         s
     }
 
-    pub fn from_murkdown<T: AsRef<str>>(text: T) -> anyhow::Result<Self> {
+    pub fn from_murkdown<T: AsRef<str>>(text: T) -> Result<Self> {
         let text = text.as_ref();
         let mut s = Self::new();
         let mut parser = Parser::new();

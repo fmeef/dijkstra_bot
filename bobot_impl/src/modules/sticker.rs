@@ -4,7 +4,6 @@ use std::str::FromStr;
 use self::entities::tags::ModelRedis;
 use crate::metadata::metadata;
 use crate::persist::redis as r;
-use crate::persist::Result;
 use crate::statics::{DB, REDIS, TG};
 use crate::tg::admin_helpers::is_dm;
 use crate::tg::admin_helpers::is_dm_or_die;
@@ -20,9 +19,8 @@ use ::redis::AsyncCommands;
 use ::sea_orm::entity::prelude::*;
 use ::sea_orm::{ActiveModelTrait, IntoActiveModel, QuerySelect, Set};
 use ::sea_orm_migration::prelude::*;
-use anyhow::anyhow;
 
-use botapi::bot::BotResult;
+use crate::util::error::Result;
 use botapi::gen_types::{
     InlineQuery, InlineQueryResult, InlineQueryResultCachedSticker, Message, UpdateExt,
 };
@@ -61,7 +59,7 @@ fn upload_sticker_conversation(message: &Message) -> Result<Conversation> {
         message
             .get_from()
             .as_ref()
-            .ok_or_else(|| BotError::new("message has no sender"))?
+            .ok_or_else(|| BotError::conversation_err("message has no sender"))?
             .get_id(),
     )?;
     let start_state = conversation.get_start()?.state_id;
@@ -294,7 +292,7 @@ async fn handle_message(message: &Message) -> Result<()> {
     Ok(())
 }
 
-pub async fn handle_update(update: &UpdateExt) -> BotResult<()> {
+pub async fn handle_update(update: &UpdateExt) -> Result<()> {
     let (res, _) = match update {
         UpdateExt::Message(ref message) => {
             let r = handle_message(message).await;
@@ -350,7 +348,7 @@ async fn delete_sticker<'a>(message: &'a Message, args: VecDeque<TextArg<'a>>) -
         message.reply("Successfully deleted sticker").await?;
         Ok(())
     } else {
-        Err(anyhow!(BotError::new("invalid command args")))
+        Err(BotError::conversation_err("invalid command args"))
     }
 }
 
@@ -396,7 +394,7 @@ async fn conv_upload(conversation: Conversation, message: &Message) -> Result<()
         message.reply(text).await?;
         Ok(())
     } else {
-        Err(anyhow!(BotError::new("Send a sticker")))
+        Err(BotError::conversation_err("Send a sticker"))
     }
 }
 
@@ -417,7 +415,9 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
 
     let sticker_id: String = REDIS.sq(|p| p.get(&key)).await?;
     let sticker_id = sticker_id;
-    let text = message.get_text().ok_or_else(|| BotError::new("no text"))?;
+    let text = message
+        .get_text()
+        .ok_or_else(|| BotError::conversation_err("no text"))?;
     info!("moretags stickerid: {}", sticker_id);
     if let Some(user) = message.get_from() {
         if text == "/done" {
@@ -470,7 +470,7 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
             Ok(())
         }
     } else {
-        Err(anyhow!(BotError::new("not a user")))
+        Err(BotError::conversation_err("not a user"))
     }
 }
 

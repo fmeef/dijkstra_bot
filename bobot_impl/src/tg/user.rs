@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use crate::persist::redis::RedisStr;
 use crate::statics::{CONFIG, REDIS, TG};
-use anyhow::Result;
+use crate::util::error::Result;
 use async_trait::async_trait;
 use botapi::gen_types::{Chat, UpdateExt, User};
 use redis::AsyncCommands;

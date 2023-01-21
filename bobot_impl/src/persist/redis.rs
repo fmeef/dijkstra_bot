@@ -1,9 +1,7 @@
-use super::Result;
 use crate::util::{
     callback::{CacheCallback, CacheMissCallback},
-    error::BotError,
+    error::{BotError, Result},
 };
-use anyhow::anyhow;
 use chrono::Duration;
 
 use std::{marker::PhantomData, ops::DerefMut};
@@ -180,7 +178,7 @@ where
 
 pub fn error_mapper(err: RedisError) -> BotError {
     match err.kind() {
-        _ => BotError::new("some redis error"),
+        _ => BotError::conversation_err("some redis error"),
     }
 }
 
@@ -253,7 +251,7 @@ pub fn scope_key(key: &str, message: &Message, prefix: &str) -> Result<String> {
     let user_id = message
         .get_from()
         .as_ref()
-        .ok_or_else(|| BotError::new("message without sender"))?
+        .ok_or_else(|| BotError::conversation_err("message without sender"))?
         .get_id();
     let chat_id = message.get_chat().get_id();
     let res = format!("{}:{}:{}:{}", prefix, chat_id, user_id, key);
@@ -306,7 +304,7 @@ impl RedisPool {
             obj.try_for_each(|v| {
                 let v = RedisStr::new(&v)?;
                 p.lpush(key, v);
-                Ok::<(), anyhow::Error>(())
+                Ok::<(), BotError>(())
             })?;
             Ok(p)
         })
@@ -323,7 +321,7 @@ impl RedisPool {
         conn.lrange::<&str, Vec<Vec<u8>>>(key, 0, -1)
             .await?
             .into_iter()
-            .map(|v| rmp_serde::from_slice(&v.as_slice()).map_err(|e| anyhow!(e)))
+            .map(|v| rmp_serde::from_slice(&v.as_slice()).map_err(|e| e.into()))
             .collect()
     }
 
@@ -371,7 +369,7 @@ impl RedisPool {
     pub async fn query<'a, T, R, Fut>(&'a self, func: T) -> Result<R>
     where
         T: FnOnce(PooledConnection<'a, RedisConnectionManager>) -> Fut + Send,
-        Fut: Future<Output = anyhow::Result<R>> + Send,
+        Fut: Future<Output = Result<R>> + Send,
         R: Send,
     {
         Ok(func(self.pool.get().await?).await?)
@@ -382,7 +380,7 @@ impl RedisPool {
     pub async fn query_spawn<T, R, Fut>(&self, func: T) -> JoinHandle<Result<R>>
     where
         T: for<'b> FnOnce(PooledConnection<'b, RedisConnectionManager>) -> Fut + Send + 'static,
-        Fut: Future<Output = anyhow::Result<R>> + Send,
+        Fut: Future<Output = Result<R>> + Send,
         R: Send + 'static,
     {
         let r = self.clone();

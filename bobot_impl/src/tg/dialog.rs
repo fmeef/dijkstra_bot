@@ -1,5 +1,5 @@
+use crate::util::error::Result;
 use ::redis::AsyncCommands;
-use anyhow::anyhow;
 use botapi::gen_types::{
     CallbackQuery, Chat, InlineKeyboardButtonBuilder, InlineKeyboardMarkup, Message,
 };
@@ -17,7 +17,6 @@ use crate::tg::button::OnPush;
 use crate::util::error::BotError;
 use log::info;
 
-use crate::persist::Result;
 use std::sync::Arc;
 
 use super::button::InlineKeyboardBuilder;
@@ -50,7 +49,7 @@ fn get_conversation_key_message_prefix(message: &Message, prefix: &str) -> Resul
         info!("conversation key: {}", res);
         Ok(res)
     } else {
-        Err(anyhow!(BotError::new("message does not have sender")))
+        Err(BotError::conversation_err("message does not have sender"))
     }
 }
 
@@ -155,7 +154,7 @@ impl ConversationState {
         if let Some(start) = self.states.get(&self.start) {
             Ok(start)
         } else {
-            Err(anyhow!(BotError::new("corrupt graph")))
+            Err(BotError::conversation_err("corrupt graph"))
         }
     }
 
@@ -208,7 +207,7 @@ impl Conversation {
         if let Some(start) = self.0.states.get(&self.0.start) {
             Ok(start)
         } else {
-            Err(anyhow!(BotError::new("corrupt graph")))
+            Err(BotError::conversation_err("corrupt graph"))
         }
     }
 
@@ -228,10 +227,10 @@ impl Conversation {
             if let Some(next) = self.0.states.get(&next.end_state) {
                 Ok(next)
             } else {
-                Err(BotError::new("invalid choice"))
+                Err(BotError::conversation_err("invalid choice"))
             }
         } else {
-            Err(BotError::new("invalid choice current"))
+            Err(BotError::conversation_err("invalid choice current"))
         }?;
         self.write_key(current.state_id).await?;
         if let Some(cb) = self.0.state_callback.as_ref() {
@@ -259,7 +258,7 @@ impl Conversation {
         if let Some(current) = self.0.states.get(&current) {
             Ok(current)
         } else {
-            Err(anyhow!(BotError::new("corrupt graph")))
+            Err(BotError::conversation_err("corrupt graph"))
         }
     }
 

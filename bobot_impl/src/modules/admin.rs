@@ -1,7 +1,4 @@
-use botapi::{
-    bot::BotResult,
-    gen_types::{ChatPermissionsBuilder, Message, UpdateExt},
-};
+use botapi::gen_types::{ChatPermissionsBuilder, Message, UpdateExt};
 use macros::rlformat;
 use sea_orm_migration::MigrationTrait;
 
@@ -13,6 +10,7 @@ use crate::{
         admin_helpers::{is_group_or_die, self_admin_or_die, GetCachedAdmins, IsAdmin},
         command::parse_cmd,
     },
+    util::error::Result,
     util::string::{get_chat_lang, Speak},
 };
 
@@ -26,7 +24,7 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![]
 }
 
-async fn handle_command(message: &Message) -> BotResult<()> {
+async fn handle_command(message: &Message) -> Result<()> {
     if let Some((command, _, entities)) = parse_cmd(message) {
         log::info!("admin command {}", command);
 
@@ -95,7 +93,7 @@ async fn handle_command(message: &Message) -> BotResult<()> {
 }
 
 #[allow(dead_code)]
-pub async fn handle_update(update: &UpdateExt) -> BotResult<()> {
+pub async fn handle_update(update: &UpdateExt) -> Result<()> {
     match update {
         UpdateExt::Message(ref message) => handle_command(message).await?,
         _ => (),

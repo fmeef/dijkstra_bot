@@ -1,3 +1,4 @@
+use crate::util::error::Result;
 /**
  * NOTE: async closures are not stable, so defining closure types returning future
  * (and supporting both type erasure and sized-ness for storing in collections)
@@ -8,9 +9,6 @@
  */
 use futures::{future::BoxFuture, Future, FutureExt};
 use serde::{de::DeserializeOwned, Serialize};
-
-use crate::persist::Result;
-
 pub type BotDbFuture<'a, T> = BoxFuture<'a, T>;
 
 // type erasure on the future

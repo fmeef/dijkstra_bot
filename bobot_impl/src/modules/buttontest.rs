@@ -1,16 +1,13 @@
-use botapi::{
-    bot::BotResult,
-    gen_types::{Message, UpdateExt},
-};
-use macros::rlformat;
-use sea_orm_migration::MigrationTrait;
-
+use crate::util::error::Result;
 use crate::{
     metadata::metadata,
     statics::TG,
     tg::{command::parse_cmd, markdown::MarkupBuilder},
     util::string::{should_ignore_chat, Lang, Speak},
 };
+use botapi::gen_types::{Message, UpdateExt};
+use macros::rlformat;
+use sea_orm_migration::MigrationTrait;
 
 metadata!("Piracy detection",
     { command = "report", help = "Report a pirate for termination" },
@@ -23,7 +20,7 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![]
 }
 
-async fn handle_murkdown(message: &Message) -> BotResult<bool> {
+async fn handle_murkdown(message: &Message) -> Result<bool> {
     if let Some(message) = message.get_reply_to_message() {
         if let Some(text) = message.get_text() {
             match MarkupBuilder::from_murkdown(text) {
@@ -46,7 +43,7 @@ async fn handle_murkdown(message: &Message) -> BotResult<bool> {
     }
     Ok(false)
 }
-async fn handle_markdown(message: &Message) -> BotResult<bool> {
+async fn handle_markdown(message: &Message) -> Result<bool> {
     if let Some(message) = message.get_reply_to_message() {
         if let Some(text) = message.get_text() {
             let md = MarkupBuilder::from_markdown(text);
@@ -62,7 +59,7 @@ async fn handle_markdown(message: &Message) -> BotResult<bool> {
 }
 
 #[allow(dead_code)]
-async fn handle_command(message: &Message) -> BotResult<()> {
+async fn handle_command(message: &Message) -> Result<()> {
     if should_ignore_chat(message.get_chat().get_id()).await? {
         return Ok(());
     }
@@ -79,7 +76,7 @@ async fn handle_command(message: &Message) -> BotResult<()> {
 }
 
 #[allow(dead_code)]
-pub async fn handle_update(update: &UpdateExt) -> BotResult<()> {
+pub async fn handle_update(update: &UpdateExt) -> Result<()> {
     match update {
         UpdateExt::Message(ref message) => handle_command(message).await?,
         _ => (),

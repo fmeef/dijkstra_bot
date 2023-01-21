@@ -9,9 +9,9 @@ use crate::{
         redis::{default_cache_query, CachedQueryTrait, RedisStr},
     },
     statics::{DB, REDIS, TG},
+    util::error::{BotError, Result},
     util::string::{get_chat_lang, Speak},
 };
-use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use botapi::gen_types::{Chat, ChatMember, ChatPermissions, Message, User};
 use chrono::Duration;
@@ -46,12 +46,14 @@ pub async fn change_permissions(
     let me = get_me().await?;
     let lang = get_chat_lang(chat.get_id()).await?;
     if user.is_admin(chat).await? {
-        chat.speak(rlformat!(lang, "muteadmin")).await?;
-        Err(anyhow!("mute admin"))
+        Err(BotError::speak(rlformat!(lang, "muteadmin"), chat.get_id()))
     } else {
         if user.get_id() == me.get_id() {
             chat.speak(rlformat!(lang, "mutemyself")).await?;
-            Err(anyhow!("mute myself"))
+            Err(BotError::speak(
+                rlformat!(lang, "mutemyself"),
+                chat.get_id(),
+            ))
         } else {
             TG.client()
                 .build_restrict_chat_member(chat.get_id(), user.get_id(), permissions)
@@ -84,17 +86,20 @@ pub async fn change_permissions_message<'a>(
                 if let Some(user) = get_user_username(name).await? {
                     change_permissions(&message.get_chat(), &user, permissions).await?;
                 } else {
-                    message.speak(rlformat!(lang, "usernotfound")).await?;
-                    return Err(anyhow!("user not found"));
+                    return Err(BotError::speak(
+                        rlformat!(lang, "usernotfound"),
+                        message.get_chat().get_id(),
+                    ));
                 }
             }
             Some(EntityArg::TextMention(user)) => {
                 change_permissions(&message.get_chat(), &user, permissions).await?;
             }
             _ => {
-                message.speak(rlformat!(lang, "specifyuser")).await?;
-
-                return Err(anyhow!("usernotspecified"));
+                return Err(BotError::speak(
+                    rlformat!(lang, "specifyuser"),
+                    message.get_chat().get_id(),
+                ));
             }
         };
     }
@@ -148,8 +153,7 @@ pub async fn update_actions(actions: actions::Model) -> Result<()> {
 pub async fn is_dm_or_die(chat: &Chat) -> Result<()> {
     let lang = get_chat_lang(chat.get_id()).await?;
     if !is_dm(chat) {
-        chat.speak(rlformat!(lang, "notdm")).await?;
-        Err(anyhow!("chat is not dm"))
+        Err(BotError::speak(rlformat!(lang, "notdm"), chat.get_id()))
     } else {
         Ok(())
     }
@@ -158,20 +162,22 @@ pub async fn is_dm_or_die(chat: &Chat) -> Result<()> {
 pub async fn is_group_or_die(chat: &Chat) -> Result<()> {
     let lang = get_chat_lang(chat.get_id()).await?;
     match chat.get_tg_type().as_ref() {
-        "private" => chat.speak(rlformat!(lang, "baddm")).await?,
-        "group" => chat.speak(rlformat!(lang, "notsupergroup")).await?,
-        _ => return Ok(()),
-    };
-    Err(anyhow!("chat is not dm"))
+        "private" => Err(BotError::speak(rlformat!(lang, "baddm"), chat.get_id())),
+        "group" => Err(BotError::speak(
+            rlformat!(lang, "notsupergroup"),
+            chat.get_id(),
+        )),
+        _ => Ok(()),
+    }
 }
 
 pub async fn self_admin_or_die(chat: &Chat) -> Result<()> {
     if !is_self_admin(chat).await? {
         let lang = get_chat_lang(chat.get_id()).await?;
-
-        chat.speak(rlformat!(lang, "needtobeadmin")).await?;
-
-        Err(anyhow!("not admin"))
+        Err(BotError::speak(
+            rlformat!(lang, "needtobeadmin"),
+            chat.get_id(),
+        ))
     } else {
         Ok(())
     }
@@ -211,8 +217,7 @@ impl IsAdmin for User {
                 self.get_username_ref()
                     .unwrap_or(self.get_id().to_string().as_str())
             );
-            chat.speak(msg).await?;
-            Err(anyhow!("user is not admin"))
+            Err(BotError::speak(msg, chat.get_id()))
         }
     }
 }
@@ -239,11 +244,10 @@ impl<'a> IsAdmin for Option<Cow<'a, User>> {
                     user.get_username_ref()
                         .unwrap_or(user.get_id().to_string().as_str())
                 );
-                chat.speak(msg).await?;
-                Err(anyhow!("user is not admin"))
+                Err(BotError::speak(msg, chat.get_id()))
             }
         } else {
-            Err(anyhow!("invalid user"))
+            Err(BotError::Generic("fail".to_owned()))
         }
     }
 }
@@ -269,8 +273,7 @@ impl IsAdmin for i64 {
                 rlformat!(lang, "lackingadminrights", self)
             };
 
-            chat.speak(msg).await?;
-            Err(anyhow!("user is not admin"))
+            Err(BotError::speak(msg, chat.get_id()))
         }
     }
 }
@@ -286,7 +289,7 @@ impl GetCachedAdmins for Chat {
                 .map(|(k, v)| (k, v.get::<ChatMember>()))
                 .try_fold(HashMap::new(), |mut acc, (k, v)| {
                     acc.insert(k, v?);
-                    Ok::<_, anyhow::Error>(acc)
+                    Ok::<_, BotError>(acc)
                 })?;
             Ok(admins)
         } else {
@@ -323,7 +326,7 @@ impl GetCachedAdmins for Chat {
             .try_pipe(|q| {
                 admins.try_for_each(|(id, cm)| {
                     q.hset(&key, id, RedisStr::new(&cm)?);
-                    Ok::<(), anyhow::Error>(())
+                    Ok::<(), BotError>(())
                 })?;
                 Ok(q.expire(&key, Duration::hours(48).num_seconds() as usize))
             })

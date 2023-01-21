@@ -91,11 +91,10 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
             #(
                 if let Err(err) = #updates::handle_update(&update).await {
                     log::error!("handle_update {} error: {}", #updates::METADATA.name, err);
-                    if let Some(err) = err.get_response() {
-                        if let Some(error_code) = err.error_code {
-                           log::error!("handle_update {} registering error code: {}", #updates::METADATA.name, error_code as f64);
-                            crate::statics::count_error_code(error_code);
-                        }
+                    err.record_stats();
+                    if let Err(err) = err.get_message().await {
+                        log::error!("failed to send error message: {}, what the FLOOP", err);
+                        err.record_stats();
                     }
                 }
             )*

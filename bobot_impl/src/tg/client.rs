@@ -1,7 +1,7 @@
 use std::collections::{HashMap, VecDeque};
 
 use botapi::{
-    bot::Bot,
+    bot::{ApiError, Bot},
     ext::{BotUrl, LongPoller, Webhook},
     gen_types::{CallbackQuery, InlineKeyboardButton, Message, UpdateExt},
 };
@@ -20,14 +20,15 @@ use crate::{
     tg::command::{parse_cmd, TextArg},
     util::{
         callback::{SingleCallback, SingleCb},
+        error::BotError,
         string::should_ignore_chat,
     },
 };
 use crate::{
     statics::{CONFIG, TG},
+    util::error::Result,
     util::string::get_chat_lang,
 };
-use anyhow::{anyhow, Result};
 use futures::{Future, StreamExt};
 use std::sync::Arc;
 
@@ -62,10 +63,9 @@ impl MetadataCollection {
             "help".to_owned(),
             rlformat!(lang, "welcome", me.get_first_name()),
             message.get_chat().get_id(),
-            message
-                .get_from()
-                .map(|u| u.get_id())
-                .ok_or_else(|| anyhow!("not user"))?,
+            message.get_from().map(|u| u.get_id()).ok_or_else(|| {
+                BotError::speak("User does not exist", message.get_chat().get_id())
+            })?,
             "button",
         )?;
 
@@ -176,7 +176,7 @@ impl TgClient {
         }
     }
 
-    async fn handle_update(&self, update: Result<UpdateExt>) {
+    async fn handle_update(&self, update: std::result::Result<UpdateExt, ApiError>) {
         let modules = Arc::clone(&self.modules);
         let callbacks = Arc::clone(&self.button_events);
         tokio::spawn(async move {

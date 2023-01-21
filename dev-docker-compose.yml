@@ -9,11 +9,11 @@ services:
     environment:
       - DATABASE_URL=postgresql://bobot:changeme@db-dev/bobot    
     volumes:
-      - ./:/bobot:Z
       - dev-cargo-cache:/usr/local/cargo/registry
       - build-volume:/bobot/target
       - migration-volume:/bobot/migration/target
       - impl-volume:/bobot/bobot_impl/target
+      - ./:/bobot:Z
     depends_on:
       - redis-dev
       - prometheus-dev

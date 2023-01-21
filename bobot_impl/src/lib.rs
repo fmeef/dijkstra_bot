@@ -1,11 +1,9 @@
-use anyhow::Result;
-
 use prometheus::default_registry;
 use prometheus_hyper::Server;
 use sea_orm::ConnectionTrait;
 use statics::{get_executor, CONFIG};
 use tokio::sync::Notify;
-
+use util::error::Result;
 pub mod metadata;
 pub mod modules;
 pub mod persist;
