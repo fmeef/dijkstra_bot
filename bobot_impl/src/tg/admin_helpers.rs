@@ -45,8 +45,9 @@ pub async fn ban_user_message(message: &Message) -> Result<()> {
 pub async fn get_actions(chat: &Chat, user: &User) -> Result<Option<actions::Model>> {
     let chat = chat.get_id();
     let user = user.get_id();
-    default_cache_query(
-        move |_, _| async move {
+    let key = get_action_key(user, chat);
+    let res = default_cache_query(
+        move |_, _, _| async move {
             let res = actions::Entity::find_by_id((user, chat))
                 .one(DB.deref())
                 .await?;
@@ -54,8 +55,9 @@ pub async fn get_actions(chat: &Chat, user: &User) -> Result<Option<actions::Mod
         },
         Duration::hours(1),
     )
-    .query(get_action_key(user, chat), &())
-    .await
+    .query(&DB.deref(), &REDIS.deref(), &key, &())
+    .await?;
+    Ok(res)
 }
 
 pub async fn update_actions(actions: actions::Model) -> Result<()> {
