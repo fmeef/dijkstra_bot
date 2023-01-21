@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::{borrow::Cow, collections::VecDeque};
 
 use botapi::gen_types::{Message, MessageEntity, User};
 use lazy_static::lazy_static;
@@ -34,16 +34,16 @@ pub enum EntityArg<'a> {
 }
 
 fn get_arg_type<'a>(message: &'a Message, entity: &'a MessageEntity) -> Option<EntityArg<'a>> {
-    if let Some(text) = message.get_text() {
+    if let Some(text) = message.get_text_ref() {
         let start = entity.get_offset() as usize;
         let end = start + entity.get_length() as usize;
         let text = &text[start..end];
-        match entity.get_tg_type() {
+        match entity.get_tg_type_ref() {
             "hashtag" => Some(EntityArg::Hashtag(text)),
             "mention" => Some(EntityArg::Mention(&text[1..])), //do not include @ in mention
             "url" => Some(EntityArg::Url(text)),
-            "text_mention" => entity.get_user().map(|u| EntityArg::TextMention(u)),
-            "text_link" => entity.get_url().map(|u| EntityArg::TextLink(u)),
+            "text_mention" => entity.get_user_ref().map(|u| EntityArg::TextMention(&u)),
+            "text_link" => entity.get_url_ref().map(|u| EntityArg::TextLink(&u)),
             _ => None,
         }
     } else {
@@ -54,12 +54,12 @@ fn get_arg_type<'a>(message: &'a Message, entity: &'a MessageEntity) -> Option<E
 pub fn parse_cmd<'a>(
     message: &'a Message,
 ) -> Option<(&'a str, TextArgs<'a>, VecDeque<EntityArg<'a>>)> {
-    if let Some(cmd) = message.get_text() {
-        if let Some(head) = COMMOND_HEAD.find(cmd) {
-            let entities = if let Some(entities) = message.get_entities() {
+    if let Some(Cow::Borrowed(cmd)) = message.get_text() {
+        if let Some(head) = COMMOND_HEAD.find(&cmd) {
+            let entities = if let Some(Cow::Borrowed(entities)) = message.get_entities() {
                 let mut entities = entities
                     .iter()
-                    .filter(|p| match p.get_tg_type() {
+                    .filter(|p| match p.get_tg_type().as_ref() {
                         "hashtag" => true,
                         "mention" => true,
                         "url" => true,
@@ -90,7 +90,7 @@ pub fn parse_cmd<'a>(
             Some((
                 &head.as_str()[1..head.end()],
                 TextArgs {
-                    text: cmd,
+                    text: &cmd,
                     args: raw_args,
                 },
                 args.collect(),

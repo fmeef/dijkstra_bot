@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use crate::persist::redis::RedisStr;
 use crate::statics::{CONFIG, REDIS, TG};
 use anyhow::Result;
@@ -38,7 +40,7 @@ pub async fn record_cache_user(user: &User) -> Result<()> {
     let key = get_user_cache_key(user.get_id());
     let st = RedisStr::new(user)?;
     if let Some(username) = user.get_username() {
-        let uname = get_username_cache_key(username);
+        let uname = get_username_cache_key(&username);
         REDIS
             .pipe(|p| {
                 p.set(&key, st)
@@ -66,7 +68,7 @@ pub async fn record_cache_chat(chat: &Chat) -> Result<()> {
 
 pub async fn record_cache_update(update: &UpdateExt) -> Result<()> {
     if let Some(user) = update.get_user() {
-        record_cache_user(user).await?;
+        record_cache_user(&user).await?;
     }
     if let UpdateExt::Message(m) = update {
         if let Some(m) = m.get_reply_to_message() {
@@ -139,7 +141,7 @@ pub trait GetChat {
 
 #[async_trait]
 pub trait RecordUser {
-    fn get_user<'a>(&'a self) -> Option<&'a User>;
+    fn get_user<'a>(&'a self) -> Option<Cow<'a, User>>;
     async fn record_user(&self) -> Result<()>;
 }
 
@@ -152,7 +154,7 @@ impl From<&User> for crate::persist::core::users::Model {
     fn from(user: &User) -> Self {
         Self {
             user_id: user.get_id(),
-            username: user.get_username().map(|v| v.to_owned()),
+            username: user.get_username().map(|v| v.into_owned()),
         }
     }
 }
@@ -180,8 +182,8 @@ impl GetChat for i64 {
 
 #[async_trait]
 impl RecordUser for User {
-    fn get_user<'a>(&'a self) -> Option<&'a User> {
-        Some(&self)
+    fn get_user<'a>(&'a self) -> Option<Cow<'a, User>> {
+        Some(Cow::Borrowed(self))
     }
 
     async fn record_user(&self) -> Result<()> {
@@ -191,7 +193,7 @@ impl RecordUser for User {
 
 #[async_trait]
 impl RecordUser for UpdateExt {
-    fn get_user<'a>(&'a self) -> Option<&'a User> {
+    fn get_user<'a>(&'a self) -> Option<Cow<'a, User>> {
         match self {
             UpdateExt::Message(ref message) => message.get_from(),
             UpdateExt::EditedMessage(ref message) => message.get_from(),

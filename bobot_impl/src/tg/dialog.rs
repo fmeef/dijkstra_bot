@@ -282,7 +282,7 @@ impl Conversation {
                 .await?;
 
             TG.client()
-                .build_answer_callback_query(callback.get_id())
+                .build_answer_callback_query(&callback.get_id())
                 .build()
                 .await?;
         }
@@ -379,10 +379,7 @@ where
     Ok(conversation)
 }
 
-pub async fn get_or_create_conversation<F>(
-    message: &Message,
-    create: F,
-) -> Result<Conversation>
+pub async fn get_or_create_conversation<F>(message: &Message, create: F) -> Result<Conversation>
 where
     F: FnOnce(&Message) -> Result<Conversation>,
 {

@@ -280,7 +280,7 @@ async fn handle_inline(query: &InlineQuery) -> Result<()> {
         })
         .collect::<Vec<InlineQueryResult>>();
     TG.client
-        .build_answer_inline_query(query.get_id(), &stickers)
+        .build_answer_inline_query(&query.get_id(), &stickers)
         .is_personal(true)
         .build()
         .await?;
@@ -332,7 +332,7 @@ async fn handle_command<'a>(message: &'a Message) -> Result<()> {
 }
 
 async fn upload(message: &Message) -> Result<()> {
-    is_dm_or_die(message.get_chat()).await?;
+    is_dm_or_die(&message.get_chat()).await?;
     replace_conversation(message, |message| upload_sticker_conversation(message)).await?;
     Ok(())
 }
@@ -387,7 +387,7 @@ async fn conv_upload(conversation: Conversation, message: &Message) -> Result<()
         let taglist = scope_key_by_chatuser(&KEY_TYPE_TAG, &message)?;
         REDIS
             .pipe(|p| {
-                p.set(&key, sticker.get_file_id());
+                p.set(&key, sticker.get_file_id().into_owned());
                 p.del(&taglist)
             })
             .await?;
@@ -402,7 +402,9 @@ async fn conv_upload(conversation: Conversation, message: &Message) -> Result<()
 
 async fn conv_name(conversation: Conversation, message: &Message) -> Result<()> {
     let key = scope_key_by_chatuser(&KEY_TYPE_STICKER_NAME, &message)?;
-    REDIS.sq(|p| p.set(&key, message.get_text())).await?;
+    REDIS
+        .sq(|p| p.set(&key, message.get_text().map(|v| v.into_owned())))
+        .await?;
     let text = conversation.transition(TRANSITION_TAG).await?;
     message.reply(text).await?;
     Ok(())
@@ -473,7 +475,7 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
 }
 
 async fn handle_conversation(message: &Message) -> Result<()> {
-    if !is_dm(message.get_chat()) {
+    if !is_dm(&message.get_chat()) {
         return Ok(());
     }
     if let Some(conversation) = get_conversation(&message).await? {

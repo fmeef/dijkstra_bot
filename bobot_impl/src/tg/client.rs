@@ -153,7 +153,7 @@ impl TgClient {
         if let Some(data) = button.get_callback_data() {
             log::info!("registering button callback with data {}", data);
             self.button_events
-                .insert(data.to_owned(), SingleCb::new(func));
+                .insert(data.into_owned(), SingleCb::new(func));
         }
     }
     pub fn connect<T>(token: T) -> Self
@@ -183,7 +183,7 @@ impl TgClient {
             match update {
                 Ok(UpdateExt::CallbackQuery(callbackquery)) => {
                     if let Some(data) = callbackquery.get_data() {
-                        if let Some(cb) = callbacks.remove(data) {
+                        if let Some(cb) = callbacks.remove(data.as_ref()) {
                             cb.1.cb(callbackquery).await;
                         }
                     }

@@ -1,4 +1,7 @@
-use std::collections::{HashMap, VecDeque};
+use std::{
+    borrow::Cow,
+    collections::{HashMap, VecDeque},
+};
 
 use crate::{
     persist::{
@@ -64,29 +67,29 @@ pub async fn change_permissions_message<'a>(
     entities: &VecDeque<EntityArg<'a>>,
     permissions: &ChatPermissions,
 ) -> Result<()> {
-    is_group_or_die(message.get_chat()).await?;
-    self_admin_or_die(message.get_chat()).await?;
-    message.get_from().admin_or_die(message.get_chat()).await?;
+    is_group_or_die(&message.get_chat()).await?;
+    self_admin_or_die(&message.get_chat()).await?;
+    message.get_from().admin_or_die(&message.get_chat()).await?;
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
 
     if let Some(user) = message
         .get_reply_to_message()
-        .map(|m| m.get_from())
+        .map(|v| v.get_from().map(|v| v.into_owned())) //TODO: fix this
         .flatten()
     {
-        change_permissions(message.get_chat(), user, permissions).await?;
+        change_permissions(&message.get_chat(), &user, permissions).await?;
     } else {
         match entities.front() {
             Some(EntityArg::Mention(name)) => {
                 if let Some(user) = get_user_username(name).await? {
-                    change_permissions(message.get_chat(), &user, permissions).await?;
+                    change_permissions(&message.get_chat(), &user, permissions).await?;
                 } else {
                     message.speak(rlformat!(lang, "usernotfound")).await?;
                     return Err(anyhow!("user not found"));
                 }
             }
             Some(EntityArg::TextMention(user)) => {
-                change_permissions(message.get_chat(), &user, permissions).await?;
+                change_permissions(&message.get_chat(), &user, permissions).await?;
             }
             _ => {
                 message.speak(rlformat!(lang, "specifyuser")).await?;
@@ -154,7 +157,7 @@ pub async fn is_dm_or_die(chat: &Chat) -> Result<()> {
 
 pub async fn is_group_or_die(chat: &Chat) -> Result<()> {
     let lang = get_chat_lang(chat.get_id()).await?;
-    match chat.get_tg_type() {
+    match chat.get_tg_type().as_ref() {
         "private" => chat.speak(rlformat!(lang, "baddm")).await?,
         "group" => chat.speak(rlformat!(lang, "notsupergroup")).await?,
         _ => return Ok(()),
@@ -205,7 +208,7 @@ impl IsAdmin for User {
             let msg = rlformat!(
                 lang,
                 "lackingadminrights",
-                self.get_username()
+                self.get_username_ref()
                     .unwrap_or(self.get_id().to_string().as_str())
             );
             chat.speak(msg).await?;
@@ -215,7 +218,7 @@ impl IsAdmin for User {
 }
 
 #[async_trait]
-impl IsAdmin for Option<&User> {
+impl<'a> IsAdmin for Option<Cow<'a, User>> {
     async fn is_admin(&self, chat: &Chat) -> Result<bool> {
         if let Some(user) = self {
             Ok(chat.is_user_admin(user.get_id()).await?.is_some())
@@ -233,7 +236,7 @@ impl IsAdmin for Option<&User> {
                 let msg = rlformat!(
                     lang,
                     "lackingadminrights",
-                    user.get_username()
+                    user.get_username_ref()
                         .unwrap_or(user.get_id().to_string().as_str())
                 );
                 chat.speak(msg).await?;
@@ -260,7 +263,7 @@ impl IsAdmin for i64 {
                 rlformat!(
                     lang,
                     "lackingadminrights",
-                    user.get_username().unwrap_or(self.to_string().as_str())
+                    user.get_username_ref().unwrap_or(self.to_string().as_str())
                 )
             } else {
                 rlformat!(lang, "lackingadminrights", self)

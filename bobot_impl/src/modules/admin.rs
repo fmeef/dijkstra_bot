@@ -43,9 +43,9 @@ async fn handle_command(message: &Message) -> BotResult<()> {
                     .await?;
             }
             "kickme" => {
-                is_group_or_die(message.get_chat()).await?;
-                self_admin_or_die(message.get_chat()).await?;
-                if message.get_from().is_admin(message.get_chat()).await? {
+                is_group_or_die(&message.get_chat()).await?;
+                self_admin_or_die(&message.get_chat()).await?;
+                if message.get_from().is_admin(&message.get_chat()).await? {
                     message.speak(rlformat!(lang, "kickadmin")).await?;
                 } else {
                     if let Some(from) = message.get_from() {

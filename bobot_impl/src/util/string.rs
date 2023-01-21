@@ -135,7 +135,7 @@ pub async fn set_chat_lang(chat: &Chat, lang: Lang) -> Result<()> {
         chat_id: chat.get_id(),
         last_activity: ChronoDateTimeWithTimeZone::default(),
         language: lang,
-        chat_type: chat.get_tg_type().to_owned(),
+        chat_type: chat.get_tg_type().into_owned(),
         warn_limit: None,
     };
     let key = get_lang_key(chat.get_id());
