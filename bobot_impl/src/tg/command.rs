@@ -55,9 +55,8 @@ pub fn parse_cmd<'a>(
     message: &'a Message,
 ) -> Option<(&'a str, TextArgs<'a>, VecDeque<EntityArg<'a>>)> {
     if let Some(cmd) = message.get_text() {
-        let mut out = VecDeque::<EntityArg<'a>>::new();
         if let Some(head) = COMMOND_HEAD.find(cmd) {
-            let mut entities = if let Some(entities) = message.get_entities() {
+            let entities = if let Some(entities) = message.get_entities() {
                 let mut entities = entities
                     .iter()
                     .filter(|p| match p.get_tg_type() {

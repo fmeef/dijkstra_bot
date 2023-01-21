@@ -6,8 +6,7 @@ use botapi::gen_types::Chat;
 use chrono::Duration;
 use lazy_static::__Deref;
 use macros::get_langs;
-use sea_orm::DatabaseConnection;
-use serde::{de::DeserializeOwned, Serialize};
+
 get_langs!();
 
 pub use langs::*;
@@ -16,13 +15,10 @@ use sea_orm::sea_query::OnConflict;
 use sea_orm::{prelude::ChronoDateTimeWithTimeZone, EntityTrait, IntoActiveModel};
 
 use crate::persist::core::dialogs;
-/*
-fn get_query<'r, T, P>() -> Box<dyn CachedQueryTrait<'r, T, P>>
-where
-    T: Serialize + DeserializeOwned + Send + Sync + 'r,
-    P: Send + Sync + 'r,
-{
-    let res = default_cache_query(
+
+#[allow(dead_code)]
+fn get_query<'r>() -> impl CachedQueryTrait<'r, Lang, i64> {
+    default_cache_query(
         |_, chat| async move {
             let chat: &i64 = chat;
             Ok(dialogs::Entity::find_by_id(*chat)
@@ -32,10 +28,8 @@ where
                 .unwrap_or_else(|| Lang::En))
         },
         Duration::hours(12),
-    );
-    Box::new(res)
+    )
 }
-*/
 
 fn get_lang_key(chat: i64) -> String {
     format!("lang:{}", chat)

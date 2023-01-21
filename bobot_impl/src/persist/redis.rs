@@ -14,7 +14,7 @@ use bb8_redis::RedisConnectionManager;
 use async_trait::async_trait;
 use futures::Future;
 
-use crate::statics::{DB, REDIS};
+use crate::statics::REDIS;
 use ::redis::{
     AsyncCommands, ErrorKind, FromRedisValue, Pipeline, RedisError, RedisFuture, ToRedisArgs,
 };
@@ -51,7 +51,7 @@ where
     Ok(val)
 }
 
-async fn redis_query<'a, R, P>(key: &'a str, _: &'a P) -> Result<Option<R>>
+pub async fn redis_query<'a, R, P>(key: &'a str, _: &'a P) -> Result<Option<R>>
 where
     R: DeserializeOwned + Sync + Send + 'a,
     P: Send + Sync + 'a,
@@ -70,7 +70,7 @@ where
     Ok(res)
 }
 
-async fn redis_miss<'a, V>(key: &'a str, val: V, expire: Duration) -> Result<V>
+pub async fn redis_miss<'a, V>(key: &'a str, val: V, expire: Duration) -> Result<V>
 where
     V: Serialize + 'a,
 {
