@@ -1,16 +1,21 @@
 use std::collections::HashMap;
 
 use crate::{
-    persist::redis::RedisStr,
-    statics::{REDIS, TG},
+    persist::{
+        admin::actions,
+        redis::{default_cache_query, CachedQueryTrait, RedisStr},
+    },
+    statics::{DB, REDIS, TG},
     util::string::get_chat_lang,
 };
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use botapi::gen_types::{Chat, ChatMember, User};
 use chrono::Duration;
+use lazy_static::__Deref;
 use macros::rlformat;
 use redis::AsyncCommands;
+use sea_orm::{sea_query::OnConflict, EntityTrait, IntoActiveModel};
 
 use super::user::GetUser;
 
@@ -23,6 +28,52 @@ pub async fn is_self_admin(chat: &Chat) -> Result<bool> {
 
 pub fn is_dm(chat: &Chat) -> bool {
     chat.get_tg_type() == "private"
+}
+
+fn get_action_key(user: i64, chat: i64) -> String {
+    format!("act:{}:{}", user, chat)
+}
+
+async fn get_actions(chat: &Chat, user: &User) -> Result<Option<actions::Model>> {
+    let chat = chat.get_id();
+    let user = user.get_id();
+    default_cache_query(
+        move |_, _| async move {
+            let res = actions::Entity::find_by_id((user, chat))
+                .one(DB.deref())
+                .await?;
+            Ok(res)
+        },
+        Duration::hours(1),
+    )
+    .query(get_action_key(user, chat), &())
+    .await
+}
+
+async fn update_actions(actions: actions::Model) -> Result<()> {
+    let r = RedisStr::new(&actions)?;
+    let key = get_action_key(actions.user_id, actions.chat_id);
+    REDIS
+        .pipe(|p| {
+            p.set(&key, r)
+                .expire(&key, Duration::hours(1).num_seconds() as usize)
+        })
+        .await?;
+
+    actions::Entity::insert(actions.into_active_model())
+        .on_conflict(
+            OnConflict::columns([actions::Column::UserId, actions::Column::ChatId])
+                .update_columns([
+                    actions::Column::Warns,
+                    actions::Column::IsBanned,
+                    actions::Column::IsMuted,
+                    actions::Column::Action,
+                ])
+                .to_owned(),
+        )
+        .exec(DB.deref().deref())
+        .await?;
+    Ok(())
 }
 
 pub async fn is_dm_or_die(chat: &Chat) -> Result<()> {
