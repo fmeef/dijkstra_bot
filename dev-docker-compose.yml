@@ -13,7 +13,7 @@ services:
       - build-volume:/bobot/target
       - migration-volume:/bobot/migration/target
       - impl-volume:/bobot/bobot_impl/target
-      - ./:/bobot:Z
+      - ./:/bobot:z
     depends_on:
       - redis-dev
       - prometheus-dev

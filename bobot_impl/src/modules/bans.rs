@@ -17,7 +17,8 @@ use std::collections::VecDeque;
 metadata!("Bans",
     { command = "admincache", help = "Refresh the cached list of admins" },
     { command = "kickme", help = "Send a free course on termux hacking"},
-    { command = "mute", help = "Mute a user"}
+    { command = "mute", help = "Mute a user"},
+    { command = "unmute", help = "Unmute a user"}
 );
 
 pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
@@ -74,6 +75,7 @@ async fn kickme(message: &Message) -> Result<()> {
                 .build_unban_chat_member(message.get_chat().get_id(), from.get_id())
                 .build()
                 .await?;
+            message.speak(rlformat!(lang, "kickme")).await?;
         }
     }
 

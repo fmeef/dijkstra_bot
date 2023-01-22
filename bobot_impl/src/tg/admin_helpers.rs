@@ -336,17 +336,25 @@ impl GetCachedAdmins for Chat {
             .map(|cm| (cm.get_user().get_id(), cm))
             .collect::<HashMap<i64, ChatMember>>();
         let mut admins = admins.into_iter().map(|cm| (cm.get_user().get_id(), cm));
-        let key = get_chat_admin_cache_key(self.get_id());
+        let lockkey = format!("aclock:{}", self.get_id());
+        if !REDIS.sq(|q| q.exists(&lockkey)).await? {
+            let key = get_chat_admin_cache_key(self.get_id());
 
-        REDIS
-            .try_pipe(|q| {
-                admins.try_for_each(|(id, cm)| {
-                    q.hset(&key, id, RedisStr::new(&cm)?);
-                    Ok::<(), BotError>(())
-                })?;
-                Ok(q.expire(&key, Duration::hours(48).num_seconds() as usize))
-            })
-            .await?;
-        Ok(res)
+            REDIS
+                .try_pipe(|q| {
+                    q.set(&lockkey, true);
+                    q.expire(&lockkey, Duration::minutes(10).num_seconds() as usize);
+                    admins.try_for_each(|(id, cm)| {
+                        q.hset(&key, id, RedisStr::new(&cm)?);
+                        Ok::<(), BotError>(())
+                    })?;
+                    Ok(q.expire(&key, Duration::hours(48).num_seconds() as usize))
+                })
+                .await?;
+            Ok(res)
+        } else {
+            let lang = get_chat_lang(self.get_id()).await?;
+            Err(BotError::speak(rlformat!(lang, "cachewait"), self.get_id()))
+        }
     }
 }
