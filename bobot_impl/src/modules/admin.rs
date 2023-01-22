@@ -62,7 +62,7 @@ async fn handle_command(message: &Message) -> Result<()> {
                 change_permissions_message(
                     message,
                     &entities,
-                    &ChatPermissionsBuilder::new()
+                    ChatPermissionsBuilder::new()
                         .set_can_send_messages(false)
                         .set_can_send_media_messages(false)
                         .set_can_send_polls(false)
@@ -76,7 +76,7 @@ async fn handle_command(message: &Message) -> Result<()> {
                 change_permissions_message(
                     message,
                     &entities,
-                    &ChatPermissionsBuilder::new()
+                    ChatPermissionsBuilder::new()
                         .set_can_send_messages(true)
                         .set_can_send_media_messages(true)
                         .set_can_send_polls(true)

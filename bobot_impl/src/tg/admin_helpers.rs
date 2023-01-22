@@ -15,6 +15,7 @@ use crate::{
 use async_trait::async_trait;
 use botapi::gen_types::{Chat, ChatMember, ChatPermissions, Message, User};
 use chrono::Duration;
+use futures::{future::BoxFuture, FutureExt};
 use lazy_static::__Deref;
 use macros::rlformat;
 use redis::AsyncCommands;
@@ -64,11 +65,14 @@ pub async fn change_permissions(
     }
 }
 
-pub async fn change_permissions_message<'a>(
-    message: &Message,
+pub async fn action_message<'a, F>(
+    message: &'a Message,
     entities: &VecDeque<EntityArg<'a>>,
-    permissions: &ChatPermissions,
-) -> Result<()> {
+    action: F,
+) -> Result<()>
+where
+    for<'b> F: FnOnce(&'b Chat, &'b User) -> BoxFuture<'b, Result<()>>,
+{
     is_group_or_die(&message.get_chat()).await?;
     self_admin_or_die(&message.get_chat()).await?;
     message.get_from().admin_or_die(&message.get_chat()).await?;
@@ -79,12 +83,12 @@ pub async fn change_permissions_message<'a>(
         .map(|v| v.get_from().map(|v| v.into_owned())) //TODO: fix this
         .flatten()
     {
-        change_permissions(&message.get_chat(), &user, permissions).await?;
+        action(&message.get_chat_ref(), &user).await?;
     } else {
         match entities.front() {
             Some(EntityArg::Mention(name)) => {
                 if let Some(user) = get_user_username(name).await? {
-                    change_permissions(&message.get_chat(), &user, permissions).await?;
+                    action(message.get_chat_ref(), &user).await?;
                 } else {
                     return Err(BotError::speak(
                         rlformat!(lang, "usernotfound"),
@@ -93,7 +97,7 @@ pub async fn change_permissions_message<'a>(
                 }
             }
             Some(EntityArg::TextMention(user)) => {
-                change_permissions(&message.get_chat(), &user, permissions).await?;
+                action(message.get_chat_ref(), user).await?;
             }
             _ => {
                 return Err(BotError::speak(
@@ -103,6 +107,18 @@ pub async fn change_permissions_message<'a>(
             }
         };
     }
+    Ok(())
+}
+
+pub async fn change_permissions_message<'a>(
+    message: &Message,
+    entities: &VecDeque<EntityArg<'a>>,
+    permissions: ChatPermissions,
+) -> Result<()> {
+    action_message(message, entities, |chat, user| {
+        async move { change_permissions(chat, user, &permissions).await }.boxed()
+    })
+    .await?;
     Ok(())
 }
 
