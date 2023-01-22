@@ -17,7 +17,6 @@ use macros::rlformat;
 use sea_orm_migration::MigrationTrait;
 
 metadata!("Bans",
-    { command = "admincache", help = "Refresh the cached list of admins" },
     { command = "kickme", help = "Send a free course on termux hacking"},
     { command = "mute", help = "Mute a user"},
     { command = "unmute", help = "Unmute a user"},
@@ -43,22 +42,6 @@ async fn mute<'a>(message: &Message, entities: &Entities<'a>) -> Result<()> {
     )
     .await?;
     message.speak(rlformat!(lang, "muteuser")).await?;
-    Ok(())
-}
-
-async fn admincache(message: &Message) -> Result<()> {
-    let lang = get_chat_lang(message.get_chat().get_id()).await?;
-    message.get_chat().refresh_cached_admins().await?;
-    message.speak(rlformat!(lang, "refreshac")).await?;
-    Ok(())
-}
-
-async fn countadmins(message: &Message) -> Result<()> {
-    let lang = get_chat_lang(message.get_chat().get_id()).await?;
-    let admins = message.get_chat().get_cached_admins().await?;
-    message
-        .speak(rlformat!(lang, "foundadmins", admins.len()))
-        .await?;
     Ok(())
 }
 
@@ -179,8 +162,6 @@ async fn handle_command(message: &Message) -> Result<()> {
         log::info!("admin command {}", command);
 
         match command {
-            "admincache" => admincache(message).await,
-            "countadmins" => countadmins(message).await,
             "kickme" => kickme(message).await,
             "mute" => mute(message, &entities).await,
             "unmute" => unmute(message, &entities).await,
@@ -192,7 +173,6 @@ async fn handle_command(message: &Message) -> Result<()> {
     Ok(())
 }
 
-#[allow(dead_code)]
 pub async fn handle_update(update: &UpdateExt) -> Result<()> {
     match update {
         UpdateExt::Message(ref message) => handle_command(message).await?,
