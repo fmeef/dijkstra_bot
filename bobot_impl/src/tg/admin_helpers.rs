@@ -40,11 +40,12 @@ fn get_action_key(user: i64, chat: i64) -> String {
 }
 
 pub async fn change_permissions(
-    chat: &Chat,
+    message: &Message,
     user: &User,
     permissions: &ChatPermissions,
 ) -> Result<()> {
     let me = get_me().await?;
+    let chat = message.get_chat_ref();
     let lang = get_chat_lang(chat.get_id()).await?;
     if user.is_admin(chat).await? {
         Err(BotError::speak(rlformat!(lang, "muteadmin"), chat.get_id()))
@@ -71,7 +72,7 @@ pub async fn action_message<'a, F>(
     action: F,
 ) -> Result<()>
 where
-    for<'b> F: FnOnce(&'b Chat, &'b User) -> BoxFuture<'b, Result<()>>,
+    for<'b> F: FnOnce(&'b Message, &'b User) -> BoxFuture<'b, Result<()>>,
 {
     is_group_or_die(&message.get_chat()).await?;
     self_admin_or_die(&message.get_chat()).await?;
@@ -83,12 +84,12 @@ where
         .map(|v| v.get_from())
         .flatten()
     {
-        action(&message.get_chat_ref(), &user).await?;
+        action(&message, &user).await?;
     } else {
         match entities.front() {
             Some(EntityArg::Mention(name)) => {
                 if let Some(user) = get_user_username(name).await? {
-                    action(message.get_chat_ref(), &user).await?;
+                    action(message, &user).await?;
                 } else {
                     return Err(BotError::speak(
                         rlformat!(lang, "usernotfound"),
@@ -97,7 +98,7 @@ where
                 }
             }
             Some(EntityArg::TextMention(user)) => {
-                action(message.get_chat_ref(), user).await?;
+                action(message, user).await?;
             }
             _ => {
                 return Err(BotError::speak(
@@ -115,8 +116,8 @@ pub async fn change_permissions_message<'a>(
     entities: &VecDeque<EntityArg<'a>>,
     permissions: ChatPermissions,
 ) -> Result<()> {
-    action_message(message, entities, |chat, user| {
-        async move { change_permissions(chat, user, &permissions).await }.boxed()
+    action_message(message, entities, |message, user| {
+        async move { change_permissions(message, user, &permissions).await }.boxed()
     })
     .await?;
     Ok(())
