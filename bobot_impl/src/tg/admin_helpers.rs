@@ -215,6 +215,8 @@ pub trait GetCachedAdmins {
     async fn get_cached_admins(&self) -> Result<HashMap<i64, ChatMember>>;
     async fn refresh_cached_admins(&self) -> Result<HashMap<i64, ChatMember>>;
     async fn is_user_admin(&self, user: i64) -> Result<Option<ChatMember>>;
+    async fn promote(&self, user: i64) -> Result<()>;
+    async fn demote(&self, user: i64) -> Result<()>;
 }
 
 #[async_trait]
@@ -322,6 +324,54 @@ impl GetCachedAdmins for Chat {
         } else {
             Ok(None)
         }
+    }
+
+    async fn promote(&self, user: i64) -> Result<()> {
+        TG.client()
+            .build_promote_chat_member(self.get_id(), user)
+            .can_manage_chat(true)
+            .can_restrict_members(true)
+            .can_post_messages(true)
+            .can_edit_messages(true)
+            .can_manage_video_chats(true)
+            .can_change_info(true)
+            .can_invite_users(true)
+            .can_pin_messages(true)
+            .can_delete_messages(true)
+            .can_promote_members(true)
+            .build()
+            .await?;
+
+        let mamber = TG
+            .client()
+            .build_get_chat_member(self.get_id(), user)
+            .build()
+            .await?;
+
+        let key = get_chat_admin_cache_key(self.get_id());
+        let cm = RedisStr::new(&mamber)?;
+        REDIS.sq(|q| q.hset(&key, user, cm)).await?;
+        Ok(())
+    }
+
+    async fn demote(&self, user: i64) -> Result<()> {
+        TG.client()
+            .build_promote_chat_member(self.get_id(), user)
+            .can_manage_chat(false)
+            .can_restrict_members(false)
+            .can_post_messages(false)
+            .can_edit_messages(false)
+            .can_manage_video_chats(false)
+            .can_change_info(false)
+            .can_invite_users(false)
+            .can_pin_messages(false)
+            .can_delete_messages(false)
+            .can_promote_members(false)
+            .build()
+            .await?;
+        let key = get_chat_admin_cache_key(self.get_id());
+        REDIS.sq(|q| q.hdel(&key, user)).await?;
+        Ok(())
     }
 
     async fn refresh_cached_admins(&self) -> Result<HashMap<i64, ChatMember>> {
