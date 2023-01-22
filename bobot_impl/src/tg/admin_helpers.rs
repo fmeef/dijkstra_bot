@@ -79,8 +79,8 @@ where
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
 
     if let Some(user) = message
-        .get_reply_to_message()
-        .map(|v| v.get_from().map(|v| v.into_owned())) //TODO: fix this
+        .get_reply_to_message_ref()
+        .map(|v| v.get_from())
         .flatten()
     {
         action(&message.get_chat_ref(), &user).await?;

@@ -9,7 +9,7 @@ use botapi::gen_types::{Message, UpdateExt};
 use macros::rlformat;
 use sea_orm_migration::MigrationTrait;
 
-metadata!("Piracy detection",
+metadata!("Antipiracy",
     { command = "report", help = "Report a pirate for termination" },
     { command = "crash", help = "Intentionally trigger a floodwait for debugging"},
     { command = "markdown", help = "Reply to a message to parse as markdown"},
