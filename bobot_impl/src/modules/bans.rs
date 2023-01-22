@@ -4,7 +4,7 @@ use crate::{
     tg::admin_helpers::change_permissions_message,
     tg::{
         admin_helpers::{is_group_or_die, self_admin_or_die, GetCachedAdmins, IsAdmin},
-        command::{parse_cmd, EntityArg},
+        command::{parse_cmd, Entities},
     },
     util::error::Result,
     util::string::{get_chat_lang, Speak},
@@ -12,7 +12,6 @@ use crate::{
 use botapi::gen_types::{ChatPermissionsBuilder, Message, UpdateExt};
 use macros::rlformat;
 use sea_orm_migration::MigrationTrait;
-use std::collections::VecDeque;
 
 metadata!("Bans",
     { command = "admincache", help = "Refresh the cached list of admins" },
@@ -25,7 +24,7 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![]
 }
 
-async fn mute<'a>(message: &Message, entities: &VecDeque<EntityArg<'a>>) -> Result<()> {
+async fn mute<'a>(message: &Message, entities: &Entities<'a>) -> Result<()> {
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
     change_permissions_message(
         message,
@@ -82,7 +81,7 @@ async fn kickme(message: &Message) -> Result<()> {
     Ok(())
 }
 
-async fn unmute<'a>(message: &'a Message, entities: &VecDeque<EntityArg<'a>>) -> Result<()> {
+async fn unmute<'a>(message: &'a Message, entities: &Entities<'a>) -> Result<()> {
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
 
     change_permissions_message(

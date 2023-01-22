@@ -13,9 +13,12 @@ lazy_static! {
     static ref QUOTE: Regex = Regex::new(r#"".*""#).unwrap();
 }
 
+pub type Entities<'a> = VecDeque<EntityArg<'a>>;
+pub type Args<'a> = VecDeque<TextArg<'a>>;
+
 pub struct TextArgs<'a> {
     pub text: &'a str,
-    pub args: VecDeque<TextArg<'a>>,
+    pub args: Args<'a>,
 }
 
 pub enum TextArg<'a> {
@@ -51,9 +54,7 @@ fn get_arg_type<'a>(message: &'a Message, entity: &'a MessageEntity) -> Option<E
     }
 }
 
-pub fn parse_cmd<'a>(
-    message: &'a Message,
-) -> Option<(&'a str, TextArgs<'a>, VecDeque<EntityArg<'a>>)> {
+pub fn parse_cmd<'a>(message: &'a Message) -> Option<(&'a str, TextArgs<'a>, Entities<'a>)> {
     if let Some(Cow::Borrowed(cmd)) = message.get_text() {
         if let Some(head) = COMMOND_HEAD.find(&cmd) {
             let entities = if let Some(Cow::Borrowed(entities)) = message.get_entities() {

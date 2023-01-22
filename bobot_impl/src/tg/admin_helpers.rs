@@ -22,7 +22,7 @@ use redis::AsyncCommands;
 use sea_orm::{sea_query::OnConflict, EntityTrait, IntoActiveModel};
 
 use super::{
-    command::EntityArg,
+    command::{Entities, EntityArg},
     user::{get_me, get_user_username, GetUser},
 };
 
@@ -67,7 +67,7 @@ pub async fn change_permissions(
 
 pub async fn action_message<'a, F>(
     message: &'a Message,
-    entities: &VecDeque<EntityArg<'a>>,
+    entities: &Entities<'a>,
     action: F,
 ) -> Result<()>
 where
