@@ -91,7 +91,7 @@ pub fn parse_cmd<'a>(message: &'a Message) -> Option<(&'a str, TextArgs<'a>, Ent
             Some((
                 &head.as_str()[1..head.end()],
                 TextArgs {
-                    text: &cmd,
+                    text: &tail,
                     args: raw_args,
                 },
                 args.collect(),

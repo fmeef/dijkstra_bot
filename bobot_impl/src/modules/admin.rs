@@ -18,7 +18,9 @@ use sea_orm_migration::MigrationTrait;
 
 metadata!("Admin",
     { command = "admincache", help = "Refresh the cached list of admins" },
-    { command = "admins", help = "Get a list of admins" }
+    { command = "admins", help = "Get a list of admins" },
+    { command = "promote", help = "Promote a user to admin"},
+    { command = "demote", help = "Demote a user" }
 );
 
 pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {

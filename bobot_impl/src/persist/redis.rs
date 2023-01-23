@@ -1,8 +1,12 @@
-use crate::util::{
-    callback::{CacheCallback, CacheMissCallback},
-    error::{BotError, Result},
+use crate::{
+    statics::CONFIG,
+    util::{
+        callback::{CacheCallback, CacheMissCallback},
+        error::{BotError, Result},
+    },
 };
 use chrono::Duration;
+use sea_orm::{ActiveModelTrait, IntoActiveModel};
 
 use std::{marker::PhantomData, ops::DerefMut};
 
@@ -107,7 +111,7 @@ where
     R: DeserializeOwned,
     P: Send + Sync + 'r,
 {
-    async fn query(&self, key: &'r str, param: &'r P) -> Result<R>;
+    async fn query(self, key: &'r str, param: &'r P) -> Result<R>;
 }
 
 pub fn default_cached_query_vec<'r, T, S, P>(sql_query: S) -> impl CachedQueryTrait<'r, Vec<T>, P>
@@ -166,7 +170,7 @@ where
     S: CacheCallback<'r, T, P> + Send + Sync,
     M: CacheMissCallback<'r, T> + Send + Sync,
 {
-    async fn query(&self, key: &'r str, param: &'r P) -> Result<T> {
+    async fn query(self, key: &'r str, param: &'r P) -> Result<T> {
         if let Some(val) = self.redis_query.cb(key, param).await? {
             Ok(val)
         } else {
@@ -395,6 +399,37 @@ impl RedisPool {
     pub async fn conn<'a>(&'a self) -> Result<PooledConnection<'a, RedisConnectionManager>> {
         let res = self.pool.get().await?;
         Ok(res)
+    }
+}
+
+#[async_trait]
+pub trait RedisCache<V>
+where
+    Self: Sized + Send,
+{
+    async fn cache_duration<K: AsRef<str> + Send>(self, key: K, expire: Duration) -> Result<V>;
+    async fn cache<K: AsRef<str> + Send>(self, key: K) -> Result<V>;
+}
+
+#[async_trait]
+impl<T, V> RedisCache<V> for T
+where
+    T: Sized + Serialize + IntoActiveModel<V> + Send,
+    V: ActiveModelTrait + Send,
+    Self: Sized + Send,
+{
+    async fn cache_duration<K: AsRef<str> + Send>(self, key: K, expire: Duration) -> Result<V> {
+        let st = RedisStr::new(&self)?;
+        let r = key.as_ref();
+        REDIS
+            .pipe(|q| q.set(r, st).expire(r, expire.num_seconds() as usize))
+            .await?;
+        Ok(self.into_active_model())
+    }
+
+    async fn cache<K: AsRef<str> + Send>(self, key: K) -> Result<V> {
+        self.cache_duration(key, Duration::seconds(CONFIG.cache_timeout as i64))
+            .await
     }
 }
 
