@@ -2,6 +2,7 @@ use crate::metadata::metadata;
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache};
 use crate::statics::{DB, TG};
 use crate::tg::command::{parse_cmd, TextArg, TextArgs};
+use crate::tg::markdown::MarkupBuilder;
 use crate::util::string::{should_ignore_chat, Speak};
 use ::sea_orm_migration::prelude::*;
 use chrono::Duration;
@@ -249,9 +250,16 @@ async fn print_note(message: &Message, note: entities::notes::Model) -> Result<(
                 .await
         }
         MediaType::Text => {
+            let text = note.text.unwrap_or_else(|| "".to_owned());
+            let (text, entities) = if let Ok(md) = MarkupBuilder::from_murkdown(&text) {
+                md.build_owned()
+            } else {
+                (text, Vec::new())
+            };
             TG.client()
-                .build_send_message(chat, &note.text.unwrap_or_else(|| "".to_owned()))
+                .build_send_message(chat, &text)
                 .reply_to_message_id(message.get_message_id())
+                .entities(&entities)
                 .build()
                 .await
         }
