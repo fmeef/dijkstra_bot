@@ -54,6 +54,16 @@ fn get_arg_type<'a>(message: &'a Message, entity: &'a MessageEntity) -> Option<E
     }
 }
 
+pub fn single_arg<'a>(s: &'a str) -> Option<(TextArg<'a>, usize, usize)> {
+    ARGS.find(s).map(|v| {
+        if QUOTE.is_match(v.as_str()) {
+            (TextArg::Quote(v.as_str()), v.start(), v.end())
+        } else {
+            (TextArg::Arg(v.as_str()), v.start(), v.end())
+        }
+    })
+}
+
 pub fn parse_cmd<'a>(message: &'a Message) -> Option<(&'a str, TextArgs<'a>, Entities<'a>)> {
     if let Some(Cow::Borrowed(cmd)) = message.get_text() {
         if let Some(head) = COMMOND_HEAD.find(&cmd) {
@@ -74,7 +84,7 @@ pub fn parse_cmd<'a>(message: &'a Message) -> Option<(&'a str, TextArgs<'a>, Ent
             } else {
                 vec![]
             };
-            let tail = &cmd[head.end()..];
+            let tail = &cmd[head.end()..].trim_start();
 
             let args = entities.iter().filter_map(|v| get_arg_type(message, v));
 

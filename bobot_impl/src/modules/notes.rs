@@ -1,7 +1,7 @@
 use crate::metadata::metadata;
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache};
 use crate::statics::{DB, TG};
-use crate::tg::command::{parse_cmd, TextArg, TextArgs};
+use crate::tg::command::{parse_cmd, single_arg, TextArg, TextArgs};
 use crate::tg::markdown::MarkupBuilder;
 use crate::util::string::{should_ignore_chat, Speak};
 use ::sea_orm_migration::prelude::*;
@@ -141,11 +141,12 @@ fn get_media_type<'a>(
 }
 
 fn get_content<'a>(message: &'a Message, textargs: &'a TextArgs<'a>) -> Result<InputType<'a>> {
-    if let Some(TextArg::Arg(name)) = textargs.args.front() {
+    if let Some((TextArg::Arg(name), _, end)) = single_arg(textargs.text) {
+        log::info!("get:{}", textargs.text);
         let res = if let Some(reply) = message.get_reply_to_message_ref() {
             InputType::Reply(name, reply.get_text_ref(), reply)
         } else {
-            let tail = &textargs.text[name.len()..];
+            let tail = &textargs.text[end..];
             InputType::Command(name, Some(tail), message)
         };
         Ok(res)
@@ -270,6 +271,7 @@ async fn print_note(message: &Message, note: entities::notes::Model) -> Result<(
 async fn get<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
     if let Some(TextArg::Arg(name)) = args.args.front() {
         let key = format!("note:{}:{}", message.get_chat().get_id(), name);
+        log::info!("get key: {}", key);
         let chat = message.get_chat().get_id();
         let name = (*name).to_owned();
         let note = default_cache_query(
@@ -300,7 +302,8 @@ async fn get<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
 
 async fn save<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
     let model = get_model(message, args)?;
-    let key = format!("note:{}{}", message.get_chat().get_id(), model.name);
+    let key = format!("note:{}:{}", message.get_chat().get_id(), model.name);
+    log::info!("save key: {}", key);
     let name = model.name.clone();
     entities::notes::Entity::insert(model.cache(key).await?)
         .on_conflict(
