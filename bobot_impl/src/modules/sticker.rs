@@ -7,7 +7,7 @@ use crate::persist::redis as r;
 use crate::statics::{DB, REDIS, TG};
 use crate::tg::admin_helpers::is_dm;
 use crate::tg::admin_helpers::is_dm_or_die;
-use crate::tg::command::parse_cmd;
+use crate::tg::command::Command;
 use crate::tg::command::TextArg;
 use crate::tg::dialog::ConversationState;
 use crate::tg::dialog::{drop_converstaion, Conversation};
@@ -286,16 +286,16 @@ async fn handle_inline(query: &InlineQuery) -> Result<()> {
     Ok(())
 }
 
-async fn handle_message(message: &Message) -> Result<()> {
-    handle_command(message).await?;
+async fn handle_message<'a>(message: &Message, cmd: Option<&Command<'a>>) -> Result<()> {
+    handle_command(message, cmd).await?;
     handle_conversation(message).await?;
     Ok(())
 }
 
-pub async fn handle_update(update: &UpdateExt) -> Result<()> {
+pub async fn handle_update<'a>(update: &UpdateExt, cmd: Option<&Command<'a>>) -> Result<()> {
     let (res, _) = match update {
         UpdateExt::Message(ref message) => {
-            let r = handle_message(message).await;
+            let r = handle_message(message, cmd).await;
             let id = message.get_chat().get_id();
             (r, Some(id))
         }
@@ -315,13 +315,12 @@ pub async fn handle_update(update: &UpdateExt) -> Result<()> {
     }
 }
 
-async fn handle_command<'a>(message: &'a Message) -> Result<()> {
-    if let Some((cmd, args, _)) = parse_cmd(message) {
-        info!("command {}", cmd);
+async fn handle_command<'a>(message: &'a Message, cmd: Option<&Command<'a>>) -> Result<()> {
+    if let Some(&Command { cmd, ref args, .. }) = cmd {
         match cmd {
             "upload" => upload(message).await,
             "list" => list_stickers(message).await,
-            "delete" => delete_sticker(message, args.args).await,
+            "delete" => delete_sticker(message, &args.args).await,
             _ => Ok(()),
         }?;
     };
@@ -335,7 +334,7 @@ async fn upload(message: &Message) -> Result<()> {
     Ok(())
 }
 
-async fn delete_sticker<'a>(message: &'a Message, args: VecDeque<TextArg<'a>>) -> Result<()> {
+async fn delete_sticker<'a>(message: &'a Message, args: &VecDeque<TextArg<'a>>) -> Result<()> {
     drop_converstaion(message).await?;
     if let Some(TextArg::Arg(uuid)) = args.front() {
         log::info!("uuid {}", uuid);

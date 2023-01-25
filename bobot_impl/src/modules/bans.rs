@@ -4,7 +4,7 @@ use crate::{
     tg::admin_helpers::change_permissions_message,
     tg::{
         admin_helpers::{action_message, is_group_or_die, self_admin_or_die, IsAdmin},
-        command::{parse_cmd, Entities},
+        command::{Command, Entities},
     },
     util::error::Result,
     util::string::{get_chat_lang, Speak},
@@ -155,11 +155,14 @@ async fn unmute<'a>(message: &'a Message, entities: &Entities<'a>) -> Result<()>
     Ok(())
 }
 
-async fn handle_command(message: &Message) -> Result<()> {
-    if let Some((command, _, entities)) = parse_cmd(message) {
-        log::info!("admin command {}", command);
+async fn handle_command<'a>(message: &Message, cmd: Option<&Command<'a>>) -> Result<()> {
+    if let Some(&Command {
+        cmd, ref entities, ..
+    }) = cmd
+    {
+        log::info!("admin command {}", cmd);
 
-        match command {
+        match cmd {
             "kickme" => kickme(message).await,
             "mute" => mute(message, &entities).await,
             "unmute" => unmute(message, &entities).await,
@@ -171,9 +174,9 @@ async fn handle_command(message: &Message) -> Result<()> {
     Ok(())
 }
 
-pub async fn handle_update(update: &UpdateExt) -> Result<()> {
+pub async fn handle_update<'a>(update: &UpdateExt, cmd: Option<&Command<'a>>) -> Result<()> {
     match update {
-        UpdateExt::Message(ref message) => handle_command(message).await?,
+        UpdateExt::Message(ref message) => handle_command(message, cmd).await?,
         _ => (),
     };
     Ok(())

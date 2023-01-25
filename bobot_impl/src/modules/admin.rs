@@ -4,7 +4,7 @@ use crate::{
         admin_helpers::{
             action_message, is_group_or_die, self_admin_or_die, GetCachedAdmins, IsAdmin,
         },
-        command::{parse_cmd, Entities},
+        command::{Command, Entities},
     },
     util::error::Result,
     util::string::{get_chat_lang, Speak},
@@ -93,18 +93,19 @@ async fn admincache(message: &Message) -> Result<()> {
     message.speak(rlformat!(lang, "refreshac")).await?;
     Ok(())
 }
-pub async fn handle_update(update: &UpdateExt) -> Result<()> {
+pub async fn handle_update<'a>(update: &UpdateExt, cmd: Option<&Command<'a>>) -> Result<()> {
     match update {
-        UpdateExt::Message(ref message) => handle_command(message).await?,
+        UpdateExt::Message(ref message) => handle_command(message, cmd).await?,
         _ => (),
     };
     Ok(())
 }
-async fn handle_command(message: &Message) -> Result<()> {
-    if let Some((command, _, entities)) = parse_cmd(message) {
-        log::info!("admin command {}", command);
-
-        match command {
+async fn handle_command<'a>(message: &Message, cmd: Option<&Command<'a>>) -> Result<()> {
+    if let Some(&Command {
+        cmd, ref entities, ..
+    }) = cmd
+    {
+        match cmd {
             "admincache" => admincache(message).await,
             "admins" => listadmins(message).await,
             "promote" => promote(message, &entities).await,

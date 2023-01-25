@@ -1,13 +1,11 @@
 use crate::statics::TG;
+use crate::tg::command::Command;
 use crate::tg::user::{GetChat, RecordChat};
 use crate::util::error::BotError;
 use crate::util::string::{set_chat_lang, should_ignore_chat, Lang, Speak};
 use crate::{
     metadata::metadata,
-    tg::{
-        command::parse_cmd,
-        dialog::{Conversation, ConversationState},
-    },
+    tg::dialog::{Conversation, ConversationState},
     util::error::Result,
     util::string::{get_chat_lang, get_langs},
 };
@@ -84,13 +82,12 @@ async fn get_lang_conversation(message: &Message) -> Result<Conversation> {
     Ok(state)
 }
 
-async fn handle_command(message: &Message) -> Result<()> {
+async fn handle_command<'a>(message: &Message, cmd: Option<&'a Command<'a>>) -> Result<()> {
     if should_ignore_chat(message.get_chat().get_id()).await? {
         return Ok(());
     }
-    if let Some((command, _, _)) = parse_cmd(message) {
-        log::info!("language command {}", command);
-        match command {
+    if let Some(&Command { cmd, .. }) = cmd {
+        match cmd {
             "setlang" => {
                 let conv = get_lang_conversation(message).await?;
                 TG.client()
@@ -111,9 +108,9 @@ async fn handle_command(message: &Message) -> Result<()> {
 }
 
 #[allow(dead_code)]
-pub async fn handle_update(update: &UpdateExt) -> Result<()> {
+pub async fn handle_update<'a>(update: &UpdateExt, cmd: Option<&'a Command<'a>>) -> Result<()> {
     match update {
-        UpdateExt::Message(ref message) => handle_command(message).await?,
+        UpdateExt::Message(ref message) => handle_command(message, cmd).await?,
         _ => (),
     };
     Ok(())

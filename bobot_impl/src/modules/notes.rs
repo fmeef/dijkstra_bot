@@ -1,7 +1,7 @@
 use crate::metadata::metadata;
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache};
 use crate::statics::{DB, TG};
-use crate::tg::command::{parse_cmd, single_arg, TextArg, TextArgs};
+use crate::tg::command::{single_arg, Command, TextArg, TextArgs};
 use crate::tg::markdown::MarkupBuilder;
 use crate::util::string::{should_ignore_chat, Speak};
 use ::sea_orm_migration::prelude::*;
@@ -192,11 +192,11 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![Box::new(Migration)]
 }
 
-async fn handle_command(message: &Message) -> Result<()> {
-    if let Some((command, args, _)) = parse_cmd(message) {
-        log::info!("admin command {}", command);
+async fn handle_command<'a>(message: &Message, cmd: Option<&Command<'a>>) -> Result<()> {
+    if let Some(&Command { cmd, ref args, .. }) = cmd {
+        log::info!("admin command {}", cmd);
 
-        match command {
+        match cmd {
             "save" => save(message, &args).await,
             "get" => get(message, &args).await,
             _ => Ok(()),
@@ -322,9 +322,9 @@ async fn save<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
     Ok(())
 }
 
-pub async fn handle_update(update: &UpdateExt) -> Result<()> {
+pub async fn handle_update<'a>(update: &UpdateExt, cmd: Option<&Command<'a>>) -> Result<()> {
     match update {
-        UpdateExt::Message(ref message) => handle_command(message).await?,
+        UpdateExt::Message(ref message) => handle_command(message, cmd).await?,
         _ => (),
     };
     Ok(())

@@ -1,8 +1,9 @@
+use crate::tg::command::Command;
 use crate::util::error::Result;
 use crate::{
     metadata::metadata,
     statics::TG,
-    tg::{command::parse_cmd, markdown::MarkupBuilder},
+    tg::markdown::MarkupBuilder,
     util::string::{should_ignore_chat, Lang, Speak},
 };
 use botapi::gen_types::{Message, UpdateExt};
@@ -59,13 +60,13 @@ async fn handle_markdown(message: &Message) -> Result<bool> {
 }
 
 #[allow(dead_code)]
-async fn handle_command(message: &Message) -> Result<()> {
+async fn handle_command<'a>(message: &Message, cmd: Option<&'a Command<'a>>) -> Result<()> {
     if should_ignore_chat(message.get_chat().get_id()).await? {
         return Ok(());
     }
-    if let Some((command, _, _)) = parse_cmd(message) {
-        log::info!("piracy command {}", command);
-        match command {
+    if let Some(&Command { cmd, .. }) = cmd {
+        log::info!("piracy command {}", cmd);
+        match cmd {
             "crash" => TG.client().close().await?,
             "markdown" => handle_markdown(message).await?,
             "murkdown" => handle_murkdown(message).await?,
@@ -76,9 +77,9 @@ async fn handle_command(message: &Message) -> Result<()> {
 }
 
 #[allow(dead_code)]
-pub async fn handle_update(update: &UpdateExt) -> Result<()> {
+pub async fn handle_update<'a>(update: &UpdateExt, cmd: Option<&'a Command<'a>>) -> Result<()> {
     match update {
-        UpdateExt::Message(ref message) => handle_command(message).await?,
+        UpdateExt::Message(ref message) => handle_command(message, cmd).await?,
         _ => (),
     };
     Ok(())

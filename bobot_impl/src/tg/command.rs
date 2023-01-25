@@ -64,6 +64,20 @@ pub fn single_arg<'a>(s: &'a str) -> Option<(TextArg<'a>, usize, usize)> {
     })
 }
 
+pub struct Command<'a> {
+    pub cmd: &'a str,
+    pub args: TextArgs<'a>,
+    pub entities: Entities<'a>,
+}
+
+pub fn parse_cmd_struct<'a>(message: &'a Message) -> Option<Command<'a>> {
+    parse_cmd(message).map(|(cmd, args, entities)| Command {
+        cmd,
+        args,
+        entities,
+    })
+}
+
 pub fn parse_cmd<'a>(message: &'a Message) -> Option<(&'a str, TextArgs<'a>, Entities<'a>)> {
     if let Some(Cow::Borrowed(cmd)) = message.get_text() {
         if let Some(head) = COMMOND_HEAD.find(&cmd) {
