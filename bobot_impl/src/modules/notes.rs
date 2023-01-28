@@ -13,7 +13,7 @@ use sea_orm::EntityTrait;
 use crate::util::error::{BotError, Result};
 use botapi::gen_types::{FileData, Message, UpdateExt};
 
-use self::entities::notes::MediaType;
+use crate::persist::core::media::*;
 
 metadata!("Notes",
     { command = "save", help = "Saves a note" },
@@ -73,21 +73,9 @@ pub mod entities {
         }
     }
     pub mod notes {
+        use crate::persist::core::media::*;
         use sea_orm::entity::prelude::*;
         use serde::{Deserialize, Serialize};
-
-        #[derive(EnumIter, DeriveActiveEnum, Serialize, Deserialize, Clone, PartialEq, Debug)]
-        #[sea_orm(rs_type = "i32", db_type = "Integer")]
-        pub enum MediaType {
-            #[sea_orm(num_value = 1)]
-            Sticker,
-            #[sea_orm(num_value = 2)]
-            Photo,
-            #[sea_orm(num_value = 3)]
-            Document,
-            #[sea_orm(num_value = 4)]
-            Text,
-        }
         #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
         #[sea_orm(table_name = "notes")]
         pub struct Model {
@@ -118,26 +106,6 @@ pub mod entities {
 enum InputType<'a> {
     Reply(&'a str, Option<&'a str>, &'a Message),
     Command(&'a str, Option<&'a str>, &'a Message),
-}
-
-fn get_media_type<'a>(
-    message: &'a Message,
-) -> Result<(Option<String>, entities::notes::MediaType)> {
-    if let Some(photo) = message
-        .get_photo()
-        .map(|p| p.first().map(|v| v.to_owned()))
-        .flatten()
-    {
-        Ok((Some(photo.get_file_id().into_owned()), MediaType::Photo))
-    } else if let Some(sticker) = message.get_sticker().map(|s| s.get_file_id().into_owned()) {
-        Ok((Some(sticker), MediaType::Sticker))
-    } else if let Some(document) = message.get_document().map(|d| d.get_file_id().into_owned()) {
-        Ok((Some(document), MediaType::Document))
-    } else if let Some(_) = message.get_text() {
-        Ok((None, MediaType::Text))
-    } else {
-        Err(BotError::speak("invalid", message.get_chat().get_id()))
-    }
 }
 
 fn get_content<'a>(message: &'a Message, textargs: &'a TextArgs<'a>) -> Result<InputType<'a>> {
@@ -240,6 +208,19 @@ async fn print_note(message: &Message, note: entities::notes::Model) -> Result<(
         MediaType::Document => {
             TG.client()
                 .build_send_document(
+                    chat,
+                    FileData::String(
+                        note.media_id
+                            .ok_or_else(|| BotError::speak("invalid file id", chat))?,
+                    ),
+                )
+                .reply_to_message_id(message.get_message_id())
+                .build()
+                .await
+        }
+        MediaType::Video => {
+            TG.client()
+                .build_send_video(
                     chat,
                     FileData::String(
                         note.media_id
