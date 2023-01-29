@@ -1,4 +1,6 @@
 use crate::persist::core::media::get_media_type;
+use crate::persist::core::media::send_media_reply;
+use crate::persist::redis::default_cache_query;
 use crate::persist::redis::CachedQuery;
 use crate::persist::redis::CachedQueryTrait;
 use crate::persist::redis::RedisCache;
@@ -14,21 +16,23 @@ use crate::util::error::Result;
 use crate::util::string::Speak;
 use crate::{metadata::metadata, util::string::should_ignore_chat};
 use botapi::gen_types::{Message, UpdateExt};
+use chrono::Duration;
 use entities::{filters, triggers};
 use lazy_static::__Deref;
 use lazy_static::lazy_static;
 
+use filters::Entity as FiltersEntity;
 use pomelo::pomelo;
 use redis::AsyncCommands;
 use regex::Regex;
 use sea_orm::entity::ActiveValue;
 use sea_orm::sea_query::OnConflict;
 use sea_orm::ColumnTrait;
-use sea_orm::QueryFilter;
-use sea_orm::QuerySelect;
-
 use sea_orm::EntityTrait;
 use sea_orm::IntoActiveModel;
+use sea_orm::QueryFilter;
+use sea_orm::QuerySelect;
+use triggers::Entity as TriggersEntity;
 
 use sea_orm_migration::{MigrationName, MigrationTrait};
 metadata!("Filters",
@@ -309,7 +313,7 @@ pub mod entities {
             #[sea_orm(has_many = "super::triggers::Entity")]
             Triggers,
         }
-        impl Related<super::filters::Entity> for Entity {
+        impl Related<super::triggers::Entity> for Entity {
             fn to() -> RelationDef {
                 Relation::Triggers.def()
             }
@@ -331,54 +335,62 @@ fn get_filter_hash_key(message: &Message) -> String {
     format!("fcache:{}", message.get_chat().get_id())
 }
 
-async fn update_model_cache(message: &Message, trigger: &str) -> Result<Option<filters::Model>> {
-    let res = CachedQuery::new(
+async fn get_filter(message: &Message, id: i64) -> Result<Option<filters::Model>> {
+    default_cache_query(
         |_, _| async move {
-            let res = triggers::Entity::find()
-                .filter(triggers::Column::Trigger.eq(trigger))
-                .find_also_related(filters::Entity)
+            let res = filters::Entity::find()
+                .filter(filters::Column::Id.eq(id))
                 .one(DB.deref().deref())
                 .await?;
-            Ok(res.map(|(_, filter)| filter).flatten())
+            Ok(res)
         },
-        |key, _| async move {
-            let hash_key = get_filter_hash_key(message);
-            let id: Option<i64> = REDIS.sq(|q| q.hget(&hash_key, key)).await?;
-            let res = if let Some(id) = id {
-                let key = get_filter_key(message, id);
-                let res: Option<RedisStr> = REDIS.sq(|q| q.get(&key)).await?;
-                if let Some(res) = res {
-                    Some(res.get::<filters::Model>()?)
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-
-            Ok(Some(res))
-        },
-        |trigger, model: Option<filters::Model>| async move {
-            if let Some(filter) = model.as_ref() {
-                let key = get_filter_key(message, filter.id);
-                let filter_st = RedisStr::new(&filter)?;
-                let hash_key = get_filter_hash_key(message);
-                REDIS
-                    .pipe(|p| {
-                        p.set(&key, filter_st)
-                            .expire(&key, CONFIG.cache_timeout)
-                            .hset(&hash_key, trigger, filter.id)
-                            .expire(&hash_key, CONFIG.cache_timeout)
-                    })
-                    .await?;
-            }
-            Ok(model)
-        },
+        Duration::seconds(CONFIG.cache_timeout as i64),
     )
-    .query(trigger, &())
-    .await?;
+    .query(&get_filter_key(message, id), &())
+    .await
+}
 
-    Ok(res)
+async fn search_cache(message: &Message, text: &str) -> Result<Option<filters::Model>> {
+    update_cache_from_db(message).await?;
+    let hash_key = get_filter_hash_key(message);
+    REDIS
+        .query(|mut q| async move {
+            let mut iter: redis::AsyncIter<(String, i64)> = q.hscan(&hash_key).await?;
+            while let Some((key, item)) = iter.next_item().await {
+                if text.contains(&key) {
+                    return get_filter(message, item).await;
+                }
+            }
+            Ok(None)
+        })
+        .await
+}
+
+async fn update_cache_from_db(message: &Message) -> Result<()> {
+    let hash_key = get_filter_hash_key(message);
+    if !REDIS.sq(|q| q.exists(&hash_key)).await? {
+        let res = filters::Entity::find()
+            .filter(filters::Column::Chat.eq(message.get_chat().get_id()))
+            .find_with_related(triggers::Entity)
+            .all(DB.deref().deref())
+            .await?;
+
+        REDIS
+            .try_pipe(|p| {
+                for (filter, triggers) in res.iter() {
+                    let key = get_filter_key(message, filter.id);
+                    let filter_st = RedisStr::new(&filter)?;
+                    p.set(&key, filter_st).expire(&key, CONFIG.cache_timeout);
+                    for trigger in triggers.iter() {
+                        p.hset(&hash_key, trigger.trigger.to_owned(), filter.id)
+                            .expire(&hash_key, CONFIG.cache_timeout);
+                    }
+                }
+                Ok(p)
+            })
+            .await?;
+    }
+    Ok(())
 }
 
 async fn insert_filter(
@@ -427,6 +439,15 @@ async fn insert_filter(
     .exec(DB.deref().deref())
     .await?;
     let id = model.id.clone();
+    let hash_key = get_filter_hash_key(message);
+    REDIS
+        .pipe(|p| {
+            for trigger in triggers.iter() {
+                p.hset(&hash_key, *trigger, id);
+            }
+            p
+        })
+        .await?;
     model.cache(get_filter_key(message, id)).await?;
     Ok(())
 }
@@ -476,6 +497,13 @@ async fn handle_command<'a>(message: &Message, command: Option<&'a Command<'a>>)
     if should_ignore_chat(message.get_chat().get_id()).await? {
         return Ok(());
     }
+
+    if let Some(text) = message.get_text() {
+        if let Some(res) = search_cache(message, &text).await? {
+            send_media_reply(message, res.media_type, res.text, res.media_id).await?;
+        }
+    }
+
     if let Some(&Command { cmd, ref args, .. }) = command {
         match cmd {
             "filter" => command_filter(message, &args).await?,
