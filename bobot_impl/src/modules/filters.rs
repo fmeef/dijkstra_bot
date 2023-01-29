@@ -559,6 +559,8 @@ async fn handle_command<'a>(message: &Message, command: Option<&'a Command<'a>>)
             "stop" => delete_trigger(message, args.text).await?,
             _ => handle_trigger(message).await?,
         };
+    } else {
+        handle_trigger(message).await?;
     }
     Ok(())
 }
