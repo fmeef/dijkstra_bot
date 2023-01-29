@@ -55,6 +55,7 @@ pomelo! {
     %type Str &'e str;
     %type footer &'e str;
     %type words String;
+    %type ign TextArg<'e>;
     %type header Header<'e>;
 
     input    ::= header(A) {
@@ -64,14 +65,14 @@ pomelo! {
             footer: None
         }
     }
-    input    ::= header(A) words(W) {
+    input    ::= header(A) Whitespace(_) words(W) {
         FilterCommond {
             header: A,
             body: Some(W),
             footer: None
         }
     }
-    input    ::= header(A) words(W) footer(F) {
+    input    ::= header(A) Whitespace(_) words(W) Whitespace(_) footer(F) {
         FilterCommond {
             header: A,
             body: Some(W),
@@ -83,11 +84,16 @@ pomelo! {
     header   ::= word(S) { Header::Arg(S) }
     word     ::= quote(A) { A }
     word     ::= Str(A) { TextArg::Arg(A) }
+    ign      ::= word(W) { W }
+    ign      ::= word(W) Whitespace(_) { W }
+    ign      ::= Whitespace(_) word(W) { W }
+    ign      ::= Whitespace(_) word(W) Whitespace(_) { W }
     words    ::= Whitespace(S) { S.to_owned() }
     words    ::= word(W) { match W {
         TextArg::Arg(arg) => arg.to_owned(),
         TextArg::Quote(quote) => quote.to_owned()
     } }
+
     words    ::= words(mut L) Whitespace(S) word(W) {
         let w = match W {
             TextArg::Arg(arg) => arg.to_owned(),
@@ -109,8 +115,8 @@ pomelo! {
     }
     quote    ::= Quote Str(A) Quote { TextArg::Quote(A) }
     multi    ::= LParen list(A) RParen {A }
-    list     ::= word(A) { vec![A] }
-    list     ::= list(mut L) Comma word(A) { L.push(A); L }
+    list     ::= ign(A) { vec![A] }
+    list     ::= list(mut L) Comma ign(A) { L.push(A); L }
 
 }
 
@@ -199,7 +205,6 @@ pub mod entities {
                         .col(
                             ColumnDef::new(triggers::Column::FilterId)
                                 .big_integer()
-                                .unique_key()
                                 .not_null(),
                         )
                         .primary_key(
@@ -416,8 +421,8 @@ mod test {
     use super::{parser::Parser, Lexer};
 
     #[test]
-    fn parse_cmd() {
-        let cmd = "(2, 4, thing) words many {tag}";
+    fn parse_cmd2() {
+        let cmd = "(fme, fmoo, cry) menhera";
         let lexer = Lexer(cmd);
         let mut parser = Parser::new();
         for token in lexer.all_tokens() {
