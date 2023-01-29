@@ -16,7 +16,7 @@ use sea_orm_migration::MigrationTrait;
 use uuid::Uuid;
 
 metadata! {
-    "Language and localization",
+    "Language",
     { command = "setlang", help = "Set languge" }
 }
 
