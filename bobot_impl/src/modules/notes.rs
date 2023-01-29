@@ -174,78 +174,7 @@ async fn handle_command<'a>(message: &Message, cmd: Option<&Command<'a>>) -> Res
 }
 
 async fn print_note(message: &Message, note: entities::notes::Model) -> Result<()> {
-    let chat = message.get_chat().get_id();
-    if should_ignore_chat(chat).await? {
-        return Ok(());
-    }
-    match note.media_type {
-        MediaType::Sticker => {
-            TG.client()
-                .build_send_sticker(
-                    chat,
-                    FileData::String(
-                        note.media_id
-                            .ok_or_else(|| BotError::speak("invalid file id", chat))?,
-                    ),
-                )
-                .reply_to_message_id(message.get_message_id())
-                .build()
-                .await
-        }
-        MediaType::Photo => {
-            TG.client()
-                .build_send_photo(
-                    chat,
-                    FileData::String(
-                        note.media_id
-                            .ok_or_else(|| BotError::speak("invalid file id", chat))?,
-                    ),
-                )
-                .reply_to_message_id(message.get_message_id())
-                .build()
-                .await
-        }
-        MediaType::Document => {
-            TG.client()
-                .build_send_document(
-                    chat,
-                    FileData::String(
-                        note.media_id
-                            .ok_or_else(|| BotError::speak("invalid file id", chat))?,
-                    ),
-                )
-                .reply_to_message_id(message.get_message_id())
-                .build()
-                .await
-        }
-        MediaType::Video => {
-            TG.client()
-                .build_send_video(
-                    chat,
-                    FileData::String(
-                        note.media_id
-                            .ok_or_else(|| BotError::speak("invalid file id", chat))?,
-                    ),
-                )
-                .reply_to_message_id(message.get_message_id())
-                .build()
-                .await
-        }
-        MediaType::Text => {
-            let text = note.text.unwrap_or_else(|| "".to_owned());
-            let (text, entities) = if let Ok(md) = MarkupBuilder::from_murkdown(&text) {
-                md.build_owned()
-            } else {
-                (text, Vec::new())
-            };
-            TG.client()
-                .build_send_message(chat, &text)
-                .reply_to_message_id(message.get_message_id())
-                .entities(&entities)
-                .build()
-                .await
-        }
-    }?;
+    send_media_reply(message, note.media_type, note.text, note.media_id).await?;
     Ok(())
 }
 

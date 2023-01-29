@@ -1,3 +1,5 @@
+use crate::persist::core::media::get_media_type;
+use crate::statics::DB;
 use crate::tg::command::Command;
 use crate::tg::command::TextArg;
 use crate::tg::command::TextArgs;
@@ -6,10 +8,18 @@ use crate::util::error::Result;
 use crate::util::string::Speak;
 use crate::{metadata::metadata, util::string::should_ignore_chat};
 use botapi::gen_types::{Message, UpdateExt};
+use entities::{filters, triggers};
+use lazy_static::__Deref;
 use lazy_static::lazy_static;
 use macros::rlformat;
 use pomelo::pomelo;
 use regex::Regex;
+use sea_orm::entity::ActiveValue;
+use sea_orm::sea_query::OnConflict;
+use sea_orm::ColumnTrait;
+use sea_orm::EntityTrait;
+use sea_orm::IntoActiveModel;
+use sea_orm::QueryFilter;
 use sea_orm_migration::{MigrationName, MigrationTrait};
 metadata!("Filters",
     { command = "filter", help = "<trigger> <reply>: Trigger a reply when soemone says something" },
@@ -101,12 +111,13 @@ pomelo! {
     multi    ::= LParen list(A) RParen {A }
     list     ::= word(A) { vec![A] }
     list     ::= list(mut L) Comma word(A) { L.push(A); L }
+
 }
 
 use parser::{Parser, Token};
 
 lazy_static! {
-    static ref TOKENS: Regex = Regex::new(r#"([\{\}\(\),(\s+)]|[^\{\}\(\),(\s+)]+)"#).unwrap();
+    static ref TOKENS: Regex = Regex::new(r#"([\{\}\(\),"(\s+)]|[^\{\}\(\),"(\s+)]+)"#).unwrap();
 }
 
 struct Lexer<'a>(&'a str);
@@ -119,6 +130,7 @@ impl<'a> Lexer<'a> {
             "{" => Token::LBrace,
             "}" => Token::Rbrace,
             "," => Token::Comma,
+            "\"" => Token::Quote,
             s if t.as_str().trim().is_empty() => Token::Whitespace(s),
             s => Token::Str(s),
         })
@@ -166,8 +178,14 @@ pub mod entities {
                         .primary_key(
                             IndexCreateStatement::new()
                                 .col(filters::Column::Id)
-                                .col(filters::Column::Chat)
                                 .primary(),
+                        )
+                        .index(
+                            IndexCreateStatement::new()
+                                .col(filters::Column::Chat)
+                                .col(filters::Column::Text)
+                                .col(filters::Column::MediaId)
+                                .unique(),
                         )
                         .to_owned(),
                 )
@@ -231,7 +249,7 @@ pub mod entities {
         pub struct Model {
             #[sea_orm(primary_key, column_type = "Text")]
             pub trigger: String,
-            #[sea_orm(primay_key)]
+            #[sea_orm(primay_key, unique)]
             pub filter_id: i64,
         }
 
@@ -262,7 +280,7 @@ pub mod entities {
         #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
         #[sea_orm(table_name = "filters")]
         pub struct Model {
-            #[sea_orm(primary_key, autoincrement = true)]
+            #[sea_orm(primary_key, unique, autoincrement = true)]
             pub id: i64,
             pub chat: i64,
             #[sea_orm(column_type = "Text")]
@@ -290,6 +308,56 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![Box::new(Migration)]
 }
 
+async fn insert_filter(
+    message: &Message,
+    triggers: &[&str],
+    response: Option<String>,
+) -> Result<()> {
+    let (id, media_type) = get_media_type(message)?;
+    let model = filters::ActiveModel {
+        id: ActiveValue::NotSet,
+        chat: ActiveValue::Set(message.get_chat().get_id()),
+        text: ActiveValue::Set(response),
+        media_id: ActiveValue::Set(id),
+        media_type: ActiveValue::Set(media_type),
+    };
+
+    let model_id = filters::Entity::insert(model)
+        .on_conflict(
+            OnConflict::columns([
+                filters::Column::Text,
+                filters::Column::Chat,
+                filters::Column::MediaId,
+            ])
+            .do_nothing()
+            .to_owned(),
+        )
+        .exec_with_returning(DB.deref().deref())
+        .await?
+        .id;
+
+    triggers::Entity::insert_many(
+        triggers
+            .iter()
+            .map(|v| {
+                triggers::Model {
+                    trigger: (*v).to_owned(),
+                    filter_id: model_id,
+                }
+                .into_active_model()
+            })
+            .collect::<Vec<triggers::ActiveModel>>(),
+    )
+    .on_conflict(
+        OnConflict::columns([triggers::Column::Trigger, triggers::Column::FilterId])
+            .update_columns([triggers::Column::Trigger, triggers::Column::FilterId])
+            .to_owned(),
+    )
+    .exec(DB.deref().deref())
+    .await?;
+    Ok(())
+}
+
 async fn command_filter<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
     let lexer = Lexer(args.text);
     let mut parser = Parser::new();
@@ -303,13 +371,21 @@ async fn command_filter<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()
         .end_of_input()
         .map_err(|e| BotError::speak(e.to_string(), message.get_chat().get_id()))?;
 
-    message
-        .get_chat()
-        .speak(format!(
-            "Parsed filter {}",
-            cmd.body.unwrap_or("".to_owned())
-        ))
-        .await?;
+    let filters = match cmd.header {
+        Header::List(st) => st,
+        Header::Arg(st) => vec![st],
+    };
+
+    let filters = filters
+        .iter()
+        .map(|ta| match ta {
+            TextArg::Arg(s) => *s,
+            TextArg::Quote(s) => *s,
+        })
+        .collect::<Vec<&str>>();
+
+    insert_filter(message, filters.as_slice(), cmd.body).await?;
+    message.get_chat().speak(format!("Parsed filter")).await?;
     Ok(())
 }
 
@@ -337,14 +413,17 @@ pub async fn handle_update<'a>(update: &UpdateExt, cmd: Option<&'a Command<'a>>)
 }
 
 mod test {
-    use super::Lexer;
+    use super::{parser::Parser, Lexer};
 
     #[test]
     fn parse_cmd() {
-        let cmd = "test test2 {tag}";
+        let cmd = "(2, 4, thing) words many {tag}";
         let lexer = Lexer(cmd);
+        let mut parser = Parser::new();
         for token in lexer.all_tokens() {
             println!("token {:?}", token);
+            parser.parse(token).unwrap();
         }
+        parser.end_of_input().unwrap();
     }
 }

@@ -1,5 +1,12 @@
-use crate::util::error::{BotError, Result};
-use botapi::gen_types::Message;
+use crate::{
+    statics::TG,
+    tg::markdown::MarkupBuilder,
+    util::{
+        error::{BotError, Result},
+        string::should_ignore_chat,
+    },
+};
+use botapi::gen_types::{FileData, Message};
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 #[derive(EnumIter, DeriveActiveEnum, Serialize, Deserialize, Clone, PartialEq, Debug)]
@@ -35,4 +42,81 @@ pub fn get_media_type<'a>(message: &'a Message) -> Result<(Option<String>, Media
     } else {
         Err(BotError::speak("invalid", message.get_chat().get_id()))
     }
+}
+
+pub async fn send_media_reply(
+    message: &Message,
+    media_type: MediaType,
+    text: Option<String>,
+    media_id: Option<String>,
+) -> Result<()> {
+    let chat = message.get_chat().get_id();
+    if should_ignore_chat(chat).await? {
+        return Ok(());
+    }
+    match media_type {
+        MediaType::Sticker => {
+            TG.client()
+                .build_send_sticker(
+                    chat,
+                    FileData::String(
+                        media_id.ok_or_else(|| BotError::speak("invalid media", chat))?,
+                    ),
+                )
+                .reply_to_message_id(message.get_message_id())
+                .build()
+                .await
+        }
+        MediaType::Photo => {
+            TG.client()
+                .build_send_photo(
+                    chat,
+                    FileData::String(
+                        media_id.ok_or_else(|| BotError::speak("invalid media", chat))?,
+                    ),
+                )
+                .reply_to_message_id(message.get_message_id())
+                .build()
+                .await
+        }
+        MediaType::Document => {
+            TG.client()
+                .build_send_document(
+                    chat,
+                    FileData::String(
+                        media_id.ok_or_else(|| BotError::speak("invalid media", chat))?,
+                    ),
+                )
+                .reply_to_message_id(message.get_message_id())
+                .build()
+                .await
+        }
+        MediaType::Video => {
+            TG.client()
+                .build_send_video(
+                    chat,
+                    FileData::String(
+                        media_id.ok_or_else(|| BotError::speak("invalid media", chat))?,
+                    ),
+                )
+                .reply_to_message_id(message.get_message_id())
+                .build()
+                .await
+        }
+        MediaType::Text => {
+            let text = text.ok_or_else(|| BotError::speak("invalid text", chat))?;
+            let (text, entities) = if let Ok(md) = MarkupBuilder::from_murkdown(&text) {
+                md.build_owned()
+            } else {
+                (text, Vec::new())
+            };
+            TG.client()
+                .build_send_message(chat, &text)
+                .reply_to_message_id(message.get_message_id())
+                .entities(&entities)
+                .build()
+                .await
+        }
+    }?;
+    Ok(())
 }
