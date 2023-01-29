@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::persist::core::media::get_media_type;
 use crate::persist::core::media::send_media_reply;
 use crate::persist::redis::default_cache_query;
@@ -17,6 +19,7 @@ use crate::{metadata::metadata, util::string::should_ignore_chat};
 use botapi::gen_types::{Message, UpdateExt};
 use chrono::Duration;
 use entities::{filters, triggers};
+use itertools::Itertools;
 use lazy_static::__Deref;
 use lazy_static::lazy_static;
 
@@ -547,6 +550,23 @@ async fn handle_trigger(message: &Message) -> Result<()> {
     Ok(())
 }
 
+async fn list_triggers(message: &Message) -> Result<()> {
+    let hash_key = get_filter_hash_key(message);
+    update_cache_from_db(message).await?;
+    let res: Option<HashMap<String, i64>> = REDIS.sq(|q| q.hgetall(&hash_key)).await?;
+    if let Some(map) = res {
+        let vals = map
+            .into_iter()
+            .map(|(key, _)| format!("\t- {}", key))
+            .collect_vec()
+            .join("\n");
+        message.reply(format!("Found filters:\n{}", vals)).await?;
+    } else {
+        message.reply("No filters found!").await?;
+    }
+    Ok(())
+}
+
 #[allow(dead_code)]
 async fn handle_command<'a>(message: &Message, command: Option<&'a Command<'a>>) -> Result<()> {
     if should_ignore_chat(message.get_chat().get_id()).await? {
@@ -557,6 +577,7 @@ async fn handle_command<'a>(message: &Message, command: Option<&'a Command<'a>>)
         match cmd {
             "filter" => command_filter(message, &args).await?,
             "stop" => delete_trigger(message, args.text).await?,
+            "filters" => list_triggers(message).await?,
             _ => handle_trigger(message).await?,
         };
     } else {

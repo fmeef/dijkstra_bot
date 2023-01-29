@@ -1,3 +1,3 @@
-target/**
+/**/target/**
 config/config.toml
 bobot_impl/src/modules/mod.rs
