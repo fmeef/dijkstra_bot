@@ -332,6 +332,55 @@ fn get_filter_hash_key(message: &Message) -> String {
     format!("fcache:{}", message.get_chat().get_id())
 }
 
+async fn delete_trigger(message: &Message, trigger: &str) -> Result<()> {
+    let hash_key = get_filter_hash_key(message);
+    let key: Option<i64> = REDIS
+        .query(|mut q| async move {
+            let id: Option<i64> = q.hdel(&hash_key, trigger).await?;
+            if let Some(id) = id {
+                let key = get_filter_key(message, id);
+                q.del(&key).await?;
+                Ok(Some(id))
+            } else {
+                Ok(None)
+            }
+        })
+        .await?;
+    if let Some(id) = key {
+        triggers::Entity::delete_many()
+            .filter(
+                triggers::Column::FilterId
+                    .eq(id)
+                    .and(triggers::Column::Trigger.eq(trigger)),
+            )
+            .exec(DB.deref().deref())
+            .await?;
+    } else {
+        let filters = triggers::Entity::find()
+            .find_with_related(filters::Entity)
+            .filter(
+                filters::Column::Chat
+                    .eq(message.get_chat().get_id())
+                    .and(triggers::Column::Trigger.eq(trigger)),
+            )
+            .all(DB.deref().deref())
+            .await?;
+
+        for (f, _) in filters {
+            triggers::Entity::delete_many()
+                .filter(
+                    triggers::Column::Trigger
+                        .eq(f.trigger)
+                        .and(triggers::Column::FilterId.eq(f.filter_id)),
+                )
+                .exec(DB.deref().deref())
+                .await?;
+        }
+    }
+    message.speak("Filter stopped").await?;
+    Ok(())
+}
+
 async fn get_filter(message: &Message, id: i64) -> Result<Option<filters::Model>> {
     default_cache_query(
         |_, _| async move {
@@ -489,22 +538,26 @@ async fn command_filter<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()
     Ok(())
 }
 
+async fn handle_trigger(message: &Message) -> Result<()> {
+    if let Some(text) = message.get_text() {
+        if let Some(res) = search_cache(message, &text).await? {
+            send_media_reply(message, res.media_type, res.text, res.media_id).await?;
+        }
+    }
+    Ok(())
+}
+
 #[allow(dead_code)]
 async fn handle_command<'a>(message: &Message, command: Option<&'a Command<'a>>) -> Result<()> {
     if should_ignore_chat(message.get_chat().get_id()).await? {
         return Ok(());
     }
 
-    if let Some(text) = message.get_text() {
-        if let Some(res) = search_cache(message, &text).await? {
-            send_media_reply(message, res.media_type, res.text, res.media_id).await?;
-        }
-    }
-
     if let Some(&Command { cmd, ref args, .. }) = command {
         match cmd {
             "filter" => command_filter(message, &args).await?,
-            _ => (),
+            "stop" => delete_trigger(message, args.text).await?,
+            _ => handle_trigger(message).await?,
         };
     }
     Ok(())
