@@ -1,7 +1,6 @@
 use crate::persist::core::media::get_media_type;
 use crate::persist::core::media::send_media_reply;
 use crate::persist::redis::default_cache_query;
-use crate::persist::redis::CachedQuery;
 use crate::persist::redis::CachedQueryTrait;
 use crate::persist::redis::RedisCache;
 use crate::persist::redis::RedisStr;
@@ -21,7 +20,6 @@ use entities::{filters, triggers};
 use lazy_static::__Deref;
 use lazy_static::lazy_static;
 
-use filters::Entity as FiltersEntity;
 use pomelo::pomelo;
 use redis::AsyncCommands;
 use regex::Regex;
@@ -31,8 +29,6 @@ use sea_orm::ColumnTrait;
 use sea_orm::EntityTrait;
 use sea_orm::IntoActiveModel;
 use sea_orm::QueryFilter;
-use sea_orm::QuerySelect;
-use triggers::Entity as TriggersEntity;
 
 use sea_orm_migration::{MigrationName, MigrationTrait};
 metadata!("Filters",
@@ -49,6 +45,7 @@ pub enum Header<'a> {
 pub struct FilterCommond<'a> {
     header: Header<'a>,
     body: Option<String>,
+    #[allow(dead_code)]
     footer: Option<&'a str>,
 }
 
@@ -522,8 +519,9 @@ pub async fn handle_update<'a>(update: &UpdateExt, cmd: Option<&'a Command<'a>>)
     Ok(())
 }
 
+#[allow(unused)]
 mod test {
-    use super::{parser::Parser, Lexer};
+    use super::*;
 
     #[test]
     fn parse_cmd2() {

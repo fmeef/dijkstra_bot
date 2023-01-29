@@ -1,9 +1,9 @@
 use crate::metadata::metadata;
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache};
-use crate::statics::{DB, TG};
+use crate::statics::DB;
 use crate::tg::command::{single_arg, Command, TextArg, TextArgs};
-use crate::tg::markdown::MarkupBuilder;
-use crate::util::string::{should_ignore_chat, Speak};
+
+use crate::util::string::Speak;
 use ::sea_orm_migration::prelude::*;
 use chrono::Duration;
 
@@ -11,7 +11,7 @@ use lazy_static::__Deref;
 use sea_orm::EntityTrait;
 
 use crate::util::error::{BotError, Result};
-use botapi::gen_types::{FileData, Message, UpdateExt};
+use botapi::gen_types::{Message, UpdateExt};
 
 use crate::persist::core::media::*;
 
