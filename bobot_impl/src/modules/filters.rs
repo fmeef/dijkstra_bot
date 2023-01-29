@@ -1,5 +1,11 @@
 use crate::persist::core::media::get_media_type;
+use crate::persist::redis::CachedQuery;
+use crate::persist::redis::CachedQueryTrait;
+use crate::persist::redis::RedisCache;
+use crate::persist::redis::RedisStr;
+use crate::statics::CONFIG;
 use crate::statics::DB;
+use crate::statics::REDIS;
 use crate::tg::command::Command;
 use crate::tg::command::TextArg;
 use crate::tg::command::TextArgs;
@@ -11,15 +17,19 @@ use botapi::gen_types::{Message, UpdateExt};
 use entities::{filters, triggers};
 use lazy_static::__Deref;
 use lazy_static::lazy_static;
-use macros::rlformat;
+
 use pomelo::pomelo;
+use redis::AsyncCommands;
 use regex::Regex;
 use sea_orm::entity::ActiveValue;
 use sea_orm::sea_query::OnConflict;
 use sea_orm::ColumnTrait;
+use sea_orm::QueryFilter;
+use sea_orm::QuerySelect;
+
 use sea_orm::EntityTrait;
 use sea_orm::IntoActiveModel;
-use sea_orm::QueryFilter;
+
 use sea_orm_migration::{MigrationName, MigrationTrait};
 metadata!("Filters",
     { command = "filter", help = "<trigger> <reply>: Trigger a reply when soemone says something" },
@@ -313,6 +323,64 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![Box::new(Migration)]
 }
 
+fn get_filter_key(message: &Message, id: i64) -> String {
+    format!("filter:{}:{}", message.get_chat().get_id(), id)
+}
+
+fn get_filter_hash_key(message: &Message) -> String {
+    format!("fcache:{}", message.get_chat().get_id())
+}
+
+async fn update_model_cache(message: &Message, trigger: &str) -> Result<Option<filters::Model>> {
+    let res = CachedQuery::new(
+        |_, _| async move {
+            let res = triggers::Entity::find()
+                .filter(triggers::Column::Trigger.eq(trigger))
+                .find_also_related(filters::Entity)
+                .one(DB.deref().deref())
+                .await?;
+            Ok(res.map(|(_, filter)| filter).flatten())
+        },
+        |key, _| async move {
+            let hash_key = get_filter_hash_key(message);
+            let id: Option<i64> = REDIS.sq(|q| q.hget(&hash_key, key)).await?;
+            let res = if let Some(id) = id {
+                let key = get_filter_key(message, id);
+                let res: Option<RedisStr> = REDIS.sq(|q| q.get(&key)).await?;
+                if let Some(res) = res {
+                    Some(res.get::<filters::Model>()?)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            Ok(Some(res))
+        },
+        |trigger, model: Option<filters::Model>| async move {
+            if let Some(filter) = model.as_ref() {
+                let key = get_filter_key(message, filter.id);
+                let filter_st = RedisStr::new(&filter)?;
+                let hash_key = get_filter_hash_key(message);
+                REDIS
+                    .pipe(|p| {
+                        p.set(&key, filter_st)
+                            .expire(&key, CONFIG.cache_timeout)
+                            .hset(&hash_key, trigger, filter.id)
+                            .expire(&hash_key, CONFIG.cache_timeout)
+                    })
+                    .await?;
+            }
+            Ok(model)
+        },
+    )
+    .query(trigger, &())
+    .await?;
+
+    Ok(res)
+}
+
 async fn insert_filter(
     message: &Message,
     triggers: &[&str],
@@ -327,7 +395,7 @@ async fn insert_filter(
         media_type: ActiveValue::Set(media_type),
     };
 
-    let model_id = filters::Entity::insert(model)
+    let model = filters::Entity::insert(model)
         .on_conflict(
             OnConflict::columns([
                 filters::Column::Text,
@@ -338,16 +406,14 @@ async fn insert_filter(
             .to_owned(),
         )
         .exec_with_returning(DB.deref().deref())
-        .await?
-        .id;
-
+        .await?;
     triggers::Entity::insert_many(
         triggers
             .iter()
             .map(|v| {
                 triggers::Model {
                     trigger: (*v).to_owned(),
-                    filter_id: model_id,
+                    filter_id: model.id,
                 }
                 .into_active_model()
             })
@@ -360,6 +426,8 @@ async fn insert_filter(
     )
     .exec(DB.deref().deref())
     .await?;
+    let id = model.id.clone();
+    model.cache(get_filter_key(message, id)).await?;
     Ok(())
 }
 
@@ -389,7 +457,16 @@ async fn command_filter<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()
         })
         .collect::<Vec<&str>>();
 
-    insert_filter(message, filters.as_slice(), cmd.body).await?;
+    if let Some(message) = message.get_reply_to_message_ref() {
+        insert_filter(
+            message,
+            filters.as_slice(),
+            message.get_text().map(|v| v.into_owned()),
+        )
+        .await?;
+    } else {
+        insert_filter(message, filters.as_slice(), cmd.body).await?;
+    }
     message.get_chat().speak(format!("Parsed filter")).await?;
     Ok(())
 }
