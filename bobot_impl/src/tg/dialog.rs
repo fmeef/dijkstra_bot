@@ -267,11 +267,12 @@ impl Conversation {
         trans: Uuid,
         content: String,
         callback: &CallbackQuery,
+        row_limit: usize,
     ) -> Result<()> {
         if let Some(message) = callback.get_message() {
             self.write_key(trans).await?;
 
-            let n = self.get_current_markup().await?;
+            let n = self.get_current_markup(row_limit).await?;
             TG.client()
                 .build_edit_message_text(&content)
                 .message_id(message.get_message_id())
@@ -288,7 +289,10 @@ impl Conversation {
         Ok(())
     }
 
-    pub fn get_current_markup(&self) -> BoxFuture<'static, Result<InlineKeyboardMarkup>> {
+    pub fn get_current_markup(
+        &self,
+        row_limit: usize,
+    ) -> BoxFuture<'static, Result<InlineKeyboardMarkup>> {
         let me = self.clone();
         async move {
             let state = me.get_current().await?;
@@ -305,8 +309,9 @@ impl Conversation {
                             let content = newstate.content.to_owned();
                             let me = me.clone();
                             b.on_push(move |callback| async move {
-                                if let Err(err) =
-                                    me.edit_button_transition(trans, content, &callback).await
+                                if let Err(err) = me
+                                    .edit_button_transition(trans, content, &callback, row_limit)
+                                    .await
                                 {
                                     log::error!("failed to transition: {}", err);
                                 }
@@ -315,7 +320,11 @@ impl Conversation {
                         b
                     })
                     .fold(InlineKeyboardBuilder::default(), |builder, st| {
-                        builder.button(st)
+                        if builder.row_len() < row_limit {
+                            builder.button(st)
+                        } else {
+                            builder.newline().button(st)
+                        }
                     })
                     .build();
             Ok(markup)

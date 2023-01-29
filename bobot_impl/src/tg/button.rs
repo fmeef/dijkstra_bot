@@ -30,6 +30,10 @@ impl InlineKeyboardBuilder {
         }
     }
 
+    pub fn row_len(&self) -> usize {
+        self.0.last().map(|v| v.len()).unwrap_or(0)
+    }
+
     pub fn command_button(self, caption: String, command: String) -> Self {
         let b = InlineKeyboardButtonBuilder::new(caption)
             .set_switch_inline_query_current_chat(command)

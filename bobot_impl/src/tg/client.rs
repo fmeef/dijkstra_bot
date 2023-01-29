@@ -120,7 +120,7 @@ async fn show_help<'a>(
                     helps
                         .get_conversation(&message)
                         .await?
-                        .get_current_markup()
+                        .get_current_markup(3)
                         .await?,
                 ))
                 .reply_to_message_id(message.get_message_id())

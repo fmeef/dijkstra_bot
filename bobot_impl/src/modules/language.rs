@@ -96,7 +96,7 @@ async fn handle_command<'a>(message: &Message, cmd: Option<&'a Command<'a>>) -> 
                         &conv.get_current().await?.content,
                     )
                     .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
-                        conv.get_current_markup().await?,
+                        conv.get_current_markup(3).await?,
                     ))
                     .build()
                     .await?;
