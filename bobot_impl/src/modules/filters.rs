@@ -108,23 +108,17 @@ pomelo! {
         TextArg::Quote(quote) => quote.to_owned()
     } }
 
-    words    ::= words(mut L) Whitespace(S) word(W) {
+    words    ::= words(mut L) word(W) {
         let w = match W {
-            TextArg::Arg(arg) => arg.to_owned(),
-            TextArg::Quote(quote) => quote.to_owned()
+            TextArg::Arg(arg) => arg,
+            TextArg::Quote(quote) => quote
         };
-        let r = format!("{}{}", w, S);
-        L.push_str(&r);
+          L.push_str(&w);
         L
     }
 
-   words    ::= words(mut L) word(W)  Whitespace(S) {
-        let w = match W {
-            TextArg::Arg(arg) => arg.to_owned(),
-            TextArg::Quote(quote) => quote.to_owned()
-        };
-        let r = format!("{}{}", w, S);
-        L.push_str(&r);
+   words    ::= words(mut L)  Whitespace(S) {
+        L.push_str(&S);
         L
     }
     quote    ::= Quote Str(A) Quote { TextArg::Quote(A) }
