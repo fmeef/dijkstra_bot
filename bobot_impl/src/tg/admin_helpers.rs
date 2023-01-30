@@ -6,7 +6,7 @@ use std::{
 use crate::{
     persist::{
         admin::actions,
-        redis::{default_cache_query, CachedQueryTrait, RedisStr},
+        redis::{default_cache_query, CachedQueryTrait, RedisCache, RedisStr},
     },
     statics::{DB, REDIS, TG},
     util::error::{BotError, Result},
@@ -19,7 +19,9 @@ use futures::{future::BoxFuture, FutureExt};
 use lazy_static::__Deref;
 use macros::rlformat;
 use redis::AsyncCommands;
-use sea_orm::{sea_query::OnConflict, EntityTrait, IntoActiveModel};
+use sea_orm::{
+    sea_query::OnConflict, ActiveValue::NotSet, ActiveValue::Set, EntityTrait, IntoActiveModel,
+};
 
 use super::{
     command::{Entities, EntityArg},
@@ -61,6 +63,7 @@ pub async fn change_permissions(
                 .build_restrict_chat_member(chat.get_id(), user.get_id(), permissions)
                 .build()
                 .await?;
+            update_actions_permissions(message, permissions).await?;
             Ok(())
         }
     }
@@ -141,24 +144,100 @@ pub async fn get_actions(chat: &Chat, user: &User) -> Result<Option<actions::Mod
     Ok(res)
 }
 
-pub async fn update_actions(actions: actions::Model) -> Result<()> {
-    let r = RedisStr::new(&actions)?;
-    let key = get_action_key(actions.user_id, actions.chat_id);
-    REDIS
-        .pipe(|p| {
-            p.set(&key, r)
-                .expire(&key, Duration::hours(1).num_seconds() as usize)
-        })
-        .await?;
+pub async fn update_actions_ban(message: &Message, banned: bool) -> Result<()> {
+    if let Some(user) = message.get_from() {
+        let key = get_action_key(user.get_id(), message.get_chat().get_id());
 
-    actions::Entity::insert(actions.into_active_model())
+        let active = actions::ActiveModel {
+            user_id: Set(user.get_id()),
+            chat_id: Set(message.get_chat().get_id()),
+            warns: NotSet,
+            is_banned: Set(banned),
+            can_send_messages: NotSet,
+            can_send_media: NotSet,
+            can_send_poll: NotSet,
+            can_send_other: NotSet,
+            action: NotSet,
+        };
+
+        let res = actions::Entity::insert(active)
+            .on_conflict(
+                OnConflict::columns([actions::Column::UserId, actions::Column::ChatId])
+                    .update_columns([actions::Column::IsBanned])
+                    .to_owned(),
+            )
+            .exec_with_returning(DB.deref().deref())
+            .await?;
+
+        res.cache(key).await?;
+    }
+    Ok(())
+}
+
+pub async fn update_actions_permissions(
+    message: &Message,
+    permissions: &ChatPermissions,
+) -> Result<()> {
+    if let Some(user) = message.get_from() {
+        let key = get_action_key(user.get_id(), message.get_chat().get_id());
+
+        let active = actions::ActiveModel {
+            user_id: Set(user.get_id()),
+            chat_id: Set(message.get_chat().get_id()),
+            warns: NotSet,
+            is_banned: NotSet,
+            can_send_messages: permissions
+                .get_can_send_messages()
+                .map(|v| Set(v))
+                .unwrap_or(NotSet),
+            can_send_media: permissions
+                .get_can_send_media_messages()
+                .map(|v| Set(v))
+                .unwrap_or(NotSet),
+            can_send_poll: permissions
+                .get_can_send_polls()
+                .map(|v| Set(v))
+                .unwrap_or(NotSet),
+            can_send_other: permissions
+                .get_can_send_other_messages()
+                .map(|v| Set(v))
+                .unwrap_or(NotSet),
+            action: NotSet,
+        };
+
+        let res = actions::Entity::insert(active)
+            .on_conflict(
+                OnConflict::columns([actions::Column::UserId, actions::Column::ChatId])
+                    .update_columns([
+                        actions::Column::CanSendMessages,
+                        actions::Column::CanSendMedia,
+                        actions::Column::CanSendPoll,
+                        actions::Column::CanSendOther,
+                    ])
+                    .to_owned(),
+            )
+            .exec_with_returning(DB.deref().deref())
+            .await?;
+
+        res.cache(key).await?;
+    }
+    Ok(())
+}
+
+pub async fn update_actions(actions: actions::Model) -> Result<()> {
+    let key = get_action_key(actions.user_id, actions.chat_id);
+
+    actions::Entity::insert(actions.cache(key).await?.into_active_model())
         .on_conflict(
             OnConflict::columns([actions::Column::UserId, actions::Column::ChatId])
                 .update_columns([
                     actions::Column::Warns,
                     actions::Column::IsBanned,
-                    actions::Column::IsMuted,
+                    actions::Column::CanSendMessages,
                     actions::Column::Action,
+                    actions::Column::CanSendMedia,
+                    actions::Column::CanSendPoll,
+                    actions::Column::CanSendOther,
                 ])
                 .to_owned(),
         )

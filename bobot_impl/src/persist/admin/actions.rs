@@ -13,18 +13,24 @@ pub enum ActionType {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, DeriveEntityModel)]
-#[sea_orm(table_name = "users")]
+#[sea_orm(table_name = "actions")]
 pub struct Model {
     #[sea_orm(primary_key)]
     pub user_id: i64,
     #[sea_orm(primary_key)]
     pub chat_id: i64,
     #[sea_orm(default = 0)]
-    pub warns: u32,
+    pub warns: i32,
     #[sea_orm(default = false)]
     pub is_banned: bool,
-    #[sea_orm(default = false)]
-    pub is_muted: bool,
+    #[sea_orm(default = true)]
+    pub can_send_messages: bool,
+    #[sea_orm(default = true)]
+    pub can_send_media: bool,
+    #[sea_orm(default = true)]
+    pub can_send_poll: bool,
+    #[sea_orm(default = true)]
+    pub can_send_other: bool,
     pub action: Option<ActionType>,
 }
 

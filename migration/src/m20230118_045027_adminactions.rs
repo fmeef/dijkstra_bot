@@ -15,14 +15,12 @@ impl MigrationTrait for Migration {
                     .col(
                         ColumnDef::new(actions::Column::UserId)
                             .big_integer()
-                            .not_null()
-                            .primary_key(),
+                            .not_null(),
                     )
                     .col(
                         ColumnDef::new(actions::Column::ChatId)
                             .big_integer()
-                            .not_null()
-                            .primary_key(),
+                            .not_null(),
                     )
                     .col(
                         ColumnDef::new(actions::Column::Warns)
@@ -37,12 +35,36 @@ impl MigrationTrait for Migration {
                             .default(false),
                     )
                     .col(
-                        ColumnDef::new(actions::Column::IsMuted)
+                        ColumnDef::new(actions::Column::CanSendMessages)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
+                    .col(
+                        ColumnDef::new(actions::Column::CanSendMedia)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
+                    .col(
+                        ColumnDef::new(actions::Column::CanSendPoll)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
+                    .col(
+                        ColumnDef::new(actions::Column::CanSendOther)
                             .boolean()
                             .not_null()
                             .default(false),
                     )
                     .col(ColumnDef::new(actions::Column::Action).integer())
+                    .primary_key(
+                        IndexCreateStatement::new()
+                            .col(actions::Column::UserId)
+                            .col(actions::Column::ChatId)
+                            .primary(),
+                    )
                     .to_owned(),
             )
             .await

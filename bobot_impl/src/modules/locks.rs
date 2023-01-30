@@ -1,22 +1,19 @@
 use self::entities::locks;
-use crate::persist::redis::{
-    default_cache_query, default_cached_query_vec, CachedQueryTrait, RedisCache,
-};
+use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache};
 use crate::statics::{CONFIG, DB, REDIS};
-use crate::tg::admin_helpers::{change_permissions, self_admin_or_die, IsAdmin};
+use crate::tg::admin_helpers::{self_admin_or_die, IsAdmin};
 use crate::tg::command::{Command, TextArg};
 use crate::util::error::{BotError, Result};
 use crate::{
     metadata::metadata,
     statics::TG,
-    tg::markdown::MarkupBuilder,
-    util::string::{should_ignore_chat, Lang, Speak},
+    util::string::{should_ignore_chat, Speak},
 };
-use botapi::gen_types::{ChatPermissions, ChatPermissionsBuilder, Message, UpdateExt, User};
+use botapi::gen_types::{ChatPermissionsBuilder, Message, UpdateExt, User};
 use chrono::Duration;
-use entities::locks::{LockAction, LockType, LockTypeIter};
+use entities::locks::{LockAction, LockType};
 use lazy_static::__Deref;
-use macros::rlformat;
+
 use redis::AsyncCommands;
 use sea_orm::prelude::*;
 use sea_orm::sea_query::OnConflict;
