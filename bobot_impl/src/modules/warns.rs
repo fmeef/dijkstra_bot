@@ -1,4 +1,5 @@
 use crate::persist::admin::actions;
+use crate::tg::user::Username;
 use crate::{
     metadata::metadata,
     tg::admin_helpers::*,
@@ -66,10 +67,7 @@ pub async fn warn<'a>(
                 }?;
             }
 
-            let name = user
-                .get_username()
-                .unwrap_or_else(|| std::borrow::Cow::Owned(user.get_id().to_string()));
-
+            let name = user.name_humanreadable();
             if let Some(reason) = reason {
                 message
                     .reply(format!(

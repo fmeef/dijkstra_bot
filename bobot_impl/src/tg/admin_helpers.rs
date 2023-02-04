@@ -31,7 +31,7 @@ use sea_orm::{
 use super::{
     command::{ArgSlice, Entities, EntityArg, TextArgs},
     dialog::upsert_dialog,
-    user::{get_me, get_user_username, GetUser},
+    user::{get_me, get_user_username, GetUser, Username},
 };
 
 pub trait ChatUser {
@@ -268,9 +268,8 @@ pub async fn ban(message: &Message, user: &User) -> Result<()> {
             .build_ban_chat_sender_chat(message.get_chat().get_id(), senderchat.get_id())
             .build()
             .await?;
-        let name = senderchat
-            .get_username()
-            .unwrap_or_else(|| std::borrow::Cow::Owned(senderchat.get_id().to_string()));
+        let name = senderchat.name_humanreadable();
+
         message.speak(rlformat!(lang, "banchat", name)).await?;
     } else {
         TG.client()
@@ -278,9 +277,7 @@ pub async fn ban(message: &Message, user: &User) -> Result<()> {
             .build()
             .await?;
 
-        let name = user
-            .get_username()
-            .unwrap_or_else(|| std::borrow::Cow::Owned(user.get_id().to_string()));
+        let name = user.name_humanreadable();
         message.speak(rlformat!(lang, "banned", name)).await?;
     }
     Ok(())
@@ -427,9 +424,7 @@ pub async fn handle_pending_action(update: &UpdateExt) -> Result<()> {
             if action.pending {
                 let lang = get_chat_lang(chat.get_id()).await?;
 
-                let name = user
-                    .get_username()
-                    .unwrap_or_else(|| std::borrow::Cow::Owned(user.get_id().to_string()));
+                let name = user.name_humanreadable();
                 if action.is_banned {
                     TG.client()
                         .build_ban_chat_member(chat.get_id(), user.get_id())

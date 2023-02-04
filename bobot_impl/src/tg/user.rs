@@ -129,6 +129,10 @@ pub async fn get_chat(chat: i64) -> Result<Option<Chat>> {
     }
 }
 
+pub trait Username {
+    fn name_humanreadable<'a>(&'a self) -> Cow<'a, str>;
+}
+
 #[async_trait]
 pub trait RecordChat {
     async fn record_chat(&self) -> Result<()>;
@@ -148,6 +152,20 @@ pub trait RecordUser {
 #[async_trait]
 pub trait GetUser {
     async fn get_cached_user(&self) -> Result<Option<User>>;
+}
+
+impl Username for User {
+    fn name_humanreadable<'a>(&'a self) -> Cow<'a, str> {
+        self.get_username()
+            .unwrap_or_else(|| std::borrow::Cow::Owned(self.get_id().to_string()))
+    }
+}
+
+impl Username for Chat {
+    fn name_humanreadable<'a>(&'a self) -> Cow<'a, str> {
+        self.get_username()
+            .unwrap_or_else(|| std::borrow::Cow::Owned(self.get_id().to_string()))
+    }
 }
 
 impl From<&User> for crate::persist::core::users::Model {
