@@ -21,9 +21,23 @@ pub struct TextArgs<'a> {
     pub args: Args<'a>,
 }
 
+pub struct ArgSlice<'a> {
+    pub text: &'a str,
+    pub args: &'a [TextArg<'a>],
+}
+
 pub enum TextArg<'a> {
     Arg(&'a str),
     Quote(&'a str),
+}
+
+impl<'a> TextArg<'a> {
+    fn get_text(&self) -> &'a str {
+        match self {
+            TextArg::Arg(s) => s,
+            TextArg::Quote(q) => q,
+        }
+    }
 }
 
 pub enum EntityArg<'a> {
@@ -34,6 +48,26 @@ pub enum EntityArg<'a> {
     TextMention(&'a User),
     TextLink(&'a str),
     Url(&'a str),
+}
+
+impl<'a> TextArgs<'a> {
+    pub fn as_slice(&'a self) -> ArgSlice<'a> {
+        ArgSlice {
+            text: self.text,
+            args: self.args.as_slice(),
+        }
+    }
+    pub fn pop_slice(&'a self) -> Option<ArgSlice<'a>> {
+        if let Some(arg) = self.args.first() {
+            let res = ArgSlice {
+                text: &self.text[arg.get_text().len()..],
+                args: &self.args.as_slice()[1..],
+            };
+            Some(res)
+        } else {
+            None
+        }
+    }
 }
 
 fn get_arg_type<'a>(message: &'a Message, entity: &'a MessageEntity) -> Option<EntityArg<'a>> {

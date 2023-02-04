@@ -1,12 +1,8 @@
-use crate::persist::admin::actions;
 use crate::{
     metadata::metadata,
     statics::TG,
     tg::admin_helpers::*,
-    tg::{
-        command::{Command, Entities, TextArgs},
-        dialog::dialog_or_default,
-    },
+    tg::command::{Command, Entities},
     util::error::Result,
     util::string::{get_chat_lang, Speak},
 };
@@ -78,82 +74,6 @@ pub async fn unmute_cmd<'a>(message: &'a Message, entities: &Entities<'a>) -> Re
     Ok(())
 }
 
-pub async fn warn<'a>(
-    message: &Message,
-    entities: &Entities<'a>,
-    args: &TextArgs<'a>,
-) -> Result<()> {
-    is_group_or_die(&message.get_chat()).await?;
-    self_admin_or_die(&message.get_chat()).await?;
-    message.get_from().admin_or_die(&message.get_chat()).await?; //TODO: handle granular permissions
-
-    let lang = get_chat_lang(message.get_chat().get_id()).await?;
-
-    action_message(message, entities, Some(args), |message, user, args| {
-        async move {
-            let reason = args.map(|a| match a[0] {
-                crate::tg::command::TextArg::Arg(a) => a.to_owned(),
-                crate::tg::command::TextArg::Quote(q) => q.to_owned(),
-            });
-
-            let count = warn_user(message, user, reason.clone()).await?;
-            // let action = get_action(message.get_chat_ref(), user).await?.map(|a| a.is_banned);
-
-            let dialog = dialog_or_default(message.get_chat_ref()).await?;
-            if count >= dialog.warn_limit {
-                match dialog.action_type {
-                    actions::ActionType::Mute => mute(message, user).await,
-                    actions::ActionType::Ban => ban(message, user).await,
-                    actions::ActionType::Shame => message.speak("shaming not implemented").await,
-                }?;
-            }
-
-            let name = user
-                .get_username()
-                .unwrap_or_else(|| std::borrow::Cow::Owned(user.get_id().to_string()));
-
-            if let Some(reason) = reason {
-                message
-                    .reply(format!(
-                        "Yowzers! Warned user {} for {}, total warns: {}",
-                        name, reason, count
-                    ))
-                    .await?;
-            } else {
-                message
-                    .reply(format!(
-                        "Yowzers! Warned user {}, total warns: {}",
-                        name, count
-                    ))
-                    .await?;
-            }
-            Ok(())
-        }
-        .boxed()
-    })
-    .await?;
-    Ok(())
-}
-
-pub async fn warns<'a>(message: &Message, entities: &Entities<'a>) -> Result<()> {
-    is_group_or_die(&message.get_chat()).await?;
-    self_admin_or_die(&message.get_chat()).await?;
-
-    let lang = get_chat_lang(message.get_chat().get_id()).await?;
-
-    action_message(message, entities, None, |message, user, _| {
-        async move {
-            let count = get_warns_count(message, user).await?;
-
-            message.reply(format!("Warns: {}", count)).await?;
-            Ok(())
-        }
-        .boxed()
-    })
-    .await?;
-    Ok(())
-}
-
 async fn kickme(message: &Message) -> Result<()> {
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
 
@@ -193,8 +113,6 @@ async fn handle_command<'a>(message: &Message, cmd: Option<&Command<'a>>) -> Res
             "unmute" => unmute_cmd(message, &entities).await,
             "ban" => ban_cmd(message, &entities).await,
             "unban" => unban_cmd(message, &entities).await,
-            "warn" => warn(message, &entities, args).await,
-            "warns" => warns(message, &entities).await,
             _ => Ok(()),
         }?;
     }

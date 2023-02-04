@@ -10,7 +10,6 @@ use crate::{
         redis::{default_cache_query, CachedQuery, CachedQueryTrait, RedisCache, RedisStr},
     },
     statics::{CONFIG, DB, REDIS, TG},
-    tg::command::TextArg,
     util::error::{BotError, Result},
     util::string::{get_chat_lang, Speak},
 };
@@ -30,7 +29,7 @@ use sea_orm::{
 };
 
 use super::{
-    command::{Entities, EntityArg, TextArgs},
+    command::{ArgSlice, Entities, EntityArg, TextArgs},
     dialog::upsert_dialog,
     user::{get_me, get_user_username, GetUser},
 };
@@ -92,8 +91,7 @@ pub async fn action_message<'a, F>(
     action: F,
 ) -> Result<()>
 where
-    for<'b> F:
-        FnOnce(&'b Message, &'b User, Option<&'b [TextArg<'a>]>) -> BoxFuture<'b, Result<()>>,
+    for<'b> F: FnOnce(&'b Message, &'b User, Option<ArgSlice<'b>>) -> BoxFuture<'b, Result<()>>,
 {
     is_group_or_die(&message.get_chat()).await?;
     self_admin_or_die(&message.get_chat()).await?;
@@ -105,12 +103,12 @@ where
         .map(|v| v.get_from())
         .flatten()
     {
-        action(&message, &user, args.map(|a| a.args.as_slice())).await?;
+        action(&message, &user, args.map(|a| a.as_slice())).await?;
     } else {
         match entities.front() {
             Some(EntityArg::Mention(name)) => {
                 if let Some(user) = get_user_username(name).await? {
-                    action(message, &user, args.map(|a| &a.args.as_slice()[1..])).await?;
+                    action(message, &user, args.map(|a| a.pop_slice()).flatten()).await?;
                 } else {
                     return Err(BotError::speak(
                         rlformat!(lang, "usernotfound"),
@@ -119,7 +117,7 @@ where
                 }
             }
             Some(EntityArg::TextMention(user)) => {
-                action(message, user, args.map(|a| &a.args.as_slice()[1..])).await?;
+                action(message, user, args.map(|a| a.pop_slice()).flatten()).await?;
             }
             _ => {
                 return Err(BotError::speak(
@@ -207,6 +205,20 @@ pub async fn get_warns_count(message: &Message, user: &User) -> Result<i32> {
         .await?;
         Ok(r as i32)
     }
+}
+
+pub async fn clear_warns(chat: &Chat, user: &User) -> Result<()> {
+    let key = get_warns_key(user.get_id(), chat.get_id());
+    REDIS.sq(|q| q.del(&key)).await?;
+    warns::Entity::delete_many()
+        .filter(
+            warns::Column::ChatId
+                .eq(chat.get_id())
+                .and(warns::Column::UserId.eq(user.get_id())),
+        )
+        .exec(DB.deref().deref())
+        .await?;
+    Ok(())
 }
 
 pub async fn unmute(message: &Message, user: &User) -> Result<()> {
