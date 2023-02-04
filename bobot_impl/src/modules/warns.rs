@@ -1,5 +1,6 @@
 use crate::persist::admin::actions;
 use crate::tg::user::Username;
+use crate::util::error::BotError;
 use crate::{
     metadata::metadata,
     tg::admin_helpers::*,
@@ -53,7 +54,15 @@ pub async fn warn<'a>(
 
     action_message(message, entities, Some(args), |message, user, args| {
         async move {
-            let reason = args.map(|a| a.text);
+            if user.is_admin(message.get_chat_ref()).await? {
+                return Err(BotError::speak(
+                    "I am not going to warn an admin!",
+                    message.get_chat().get_id(),
+                ));
+            }
+            let reason = args
+                .map(|a| if a.args.len() > 0 { Some(a.text) } else { None })
+                .flatten();
 
             let count = warn_user(message, user, reason.map(|v| v.to_owned())).await?;
             // let action = get_action(message.get_chat_ref(), user).await?.map(|a| a.is_banned);

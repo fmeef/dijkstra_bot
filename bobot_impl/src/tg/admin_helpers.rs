@@ -95,7 +95,6 @@ where
 {
     is_group_or_die(&message.get_chat()).await?;
     self_admin_or_die(&message.get_chat()).await?;
-    message.get_from().admin_or_die(&message.get_chat()).await?;
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
 
     if let Some(user) = message
@@ -135,6 +134,7 @@ pub async fn change_permissions_message<'a>(
     entities: &VecDeque<EntityArg<'a>>,
     permissions: ChatPermissions,
 ) -> Result<()> {
+    message.get_from().admin_or_die(&message.get_chat()).await?;
     action_message(message, entities, None, |message, user, _| {
         async move { change_permissions(message, user, &permissions).await }.boxed()
     })

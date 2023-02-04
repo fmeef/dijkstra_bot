@@ -2,7 +2,10 @@ use crate::{
     metadata::metadata,
     statics::TG,
     tg::admin_helpers::*,
-    tg::command::{Command, Entities},
+    tg::{
+        command::{Command, Entities},
+        user::Username,
+    },
     util::error::Result,
     util::string::{get_chat_lang, Speak},
 };
@@ -29,7 +32,15 @@ pub async fn unban_cmd<'a>(message: &'a Message, entities: &Entities<'a>) -> Res
     self_admin_or_die(&message.get_chat()).await?;
     message.get_from().admin_or_die(&message.get_chat()).await?;
     action_message(message, entities, None, |message, user, _| {
-        async move { unban(message, user).await }.boxed()
+        async move {
+            unban(message, user).await?;
+
+            message
+                .speak(&rlformat!(lang, "unbanned", user.name_humanreadable()))
+                .await?;
+            Ok(())
+        }
+        .boxed()
     })
     .await?;
     Ok(())
@@ -38,9 +49,14 @@ pub async fn unban_cmd<'a>(message: &'a Message, entities: &Entities<'a>) -> Res
 pub async fn ban_cmd<'a>(message: &'a Message, entities: &Entities<'a>) -> Result<()> {
     is_group_or_die(&message.get_chat()).await?;
     self_admin_or_die(&message.get_chat()).await?;
+
     message.get_from().admin_or_die(&message.get_chat()).await?;
     action_message(message, entities, None, |message, user, _| {
-        async move { ban(message, user).await }.boxed()
+        async move {
+            ban(message, user).await?;
+            Ok(())
+        }
+        .boxed()
     })
     .await?;
     Ok(())

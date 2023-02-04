@@ -131,7 +131,7 @@ pomelo! {
 use parser::{Parser, Token};
 
 lazy_static! {
-    static ref TOKENS: Regex = Regex::new(r#"([\{\}\(\),"(\s+)]|[^\{\}\(\),"(\s+)]+)"#).unwrap();
+    static ref TOKENS: Regex = Regex::new(r#"((\s+)|[\{\}\(\),"]|[^\{\}\(\),"]+)"#).unwrap();
 }
 
 struct Lexer<'a>(&'a str);
@@ -595,7 +595,7 @@ mod test {
 
     #[test]
     fn parse_cmd2() {
-        let cmd = "(fme, fmoo, cry) menhera";
+        let cmd = "(fme, fmoo,  cry) menhera";
         let lexer = Lexer(cmd);
         let mut parser = Parser::new();
         for token in lexer.all_tokens() {
