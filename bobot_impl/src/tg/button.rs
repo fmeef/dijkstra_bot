@@ -3,7 +3,9 @@ use botapi::gen_types::{
 };
 use futures::Future;
 
-use crate::statics::TG;
+use super::user::get_me;
+use crate::util::error::Result;
+use crate::{statics::TG, util::error::BotError};
 
 const MAX_BUTTONS: usize = 8;
 
@@ -13,6 +15,17 @@ impl Default for InlineKeyboardBuilder {
     fn default() -> Self {
         Self(vec![vec![]])
     }
+}
+
+pub async fn get_url<T: AsRef<str>>(param: T) -> Result<String> {
+    let me = get_me().await?;
+    let url = format!(
+        "https://t.me/{}?start={}",
+        me.get_username_ref()
+            .ok_or_else(|| BotError::Generic("help I don't have a username".to_owned()))?,
+        param.as_ref()
+    );
+    Ok(url)
 }
 
 #[allow(dead_code)]

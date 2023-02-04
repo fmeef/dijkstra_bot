@@ -3,13 +3,17 @@ use std::collections::{HashMap, VecDeque};
 use botapi::{
     bot::{ApiError, Bot},
     ext::{BotUrl, LongPoller, Webhook},
-    gen_types::{CallbackQuery, InlineKeyboardButton, Message, UpdateExt},
+    gen_types::{
+        CallbackQuery, InlineKeyboardButton, InlineKeyboardButtonBuilder,
+        InlineKeyboardMarkupBuilder, Message, UpdateExt,
+    },
 };
 use dashmap::DashMap;
 use macros::rlformat;
 
 use super::{
-    admin_helpers::handle_pending_action,
+    admin_helpers::{handle_pending_action, is_dm},
+    button::{get_url, InlineKeyboardBuilder},
     dialog::{Conversation, ConversationState},
     markdown::MarkupBuilder,
     user::get_me,
@@ -22,7 +26,7 @@ use crate::{
     util::{
         callback::{SingleCallback, SingleCb},
         error::BotError,
-        string::should_ignore_chat,
+        string::{should_ignore_chat, Speak},
     },
 };
 use crate::{
@@ -96,21 +100,7 @@ async fn show_help<'a>(
 ) -> Result<bool> {
     if !should_ignore_chat(message.get_chat().get_id()).await? {
         let lang = get_chat_lang(message.get_chat().get_id()).await?;
-        let cnf = rlformat!(lang, "commandnotfound");
         if let Some(TextArg::Arg(cmd)) = args.first() {
-            let cmd = helps.helps.get(*cmd).map(|v| v.as_str()).unwrap_or(&cnf);
-            let mut builder = MarkupBuilder::new();
-            let (cmd, entities) = builder
-                .strikethrough("@everyone")
-                .text(format!(" {}", cmd))
-                .build();
-            TG.client()
-                .build_send_message(message.get_chat().get_id(), &cmd)
-                .entities(&entities)
-                .reply_to_message_id(message.get_message_id())
-                .build()
-                .await?;
-        } else {
             let me = get_me().await?;
             TG.client()
                 .build_send_message(
@@ -127,6 +117,21 @@ async fn show_help<'a>(
                 .reply_to_message_id(message.get_message_id())
                 .build()
                 .await?;
+        } else {
+            let url = get_url("help").await?;
+            TG.client()
+                .build_send_message(message.get_chat().get_id(), &rlformat!(lang, "dmhelp"))
+                .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
+                    InlineKeyboardBuilder::default()
+                        .button(
+                            InlineKeyboardButtonBuilder::new("Inbix!".to_owned())
+                                .set_url(url)
+                                .build(),
+                        )
+                        .build(),
+                ))
+                .build()
+                .await?;
         }
     }
 
@@ -138,6 +143,14 @@ async fn handle_help(update: &UpdateExt, helps: Arc<MetadataCollection>) -> Resu
         if let Some((cmd, args, _)) = parse_cmd(message) {
             return match cmd {
                 "help" => show_help(args.args, message, helps).await,
+                "start" => {
+                    if let Some("help") = args.args.first().map(|a| a.get_text()) {
+                        show_help(args.args, message, helps).await?;
+                    } else {
+                        message.reply("Hi there start weeenie").await?;
+                    }
+                    Ok(true)
+                }
                 _ => Ok(false),
             };
         }

@@ -32,7 +32,7 @@ pub enum TextArg<'a> {
 }
 
 impl<'a> TextArg<'a> {
-    fn get_text(&self) -> &'a str {
+    pub fn get_text(&self) -> &'a str {
         match self {
             TextArg::Arg(s) => s,
             TextArg::Quote(q) => q,
