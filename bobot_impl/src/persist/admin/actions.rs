@@ -19,8 +19,8 @@ pub struct Model {
     pub user_id: i64,
     #[sea_orm(primary_key)]
     pub chat_id: i64,
-    #[sea_orm(default = 0)]
-    pub warns: i32,
+    #[sea_orm(default = true)]
+    pub pending: bool,
     #[sea_orm(default = false)]
     pub is_banned: bool,
     #[sea_orm(default = true)]

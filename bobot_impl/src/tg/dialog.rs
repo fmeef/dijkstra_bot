@@ -3,16 +3,20 @@ use ::redis::AsyncCommands;
 use botapi::gen_types::{
     CallbackQuery, Chat, InlineKeyboardButtonBuilder, InlineKeyboardMarkup, Message,
 };
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use futures::future::BoxFuture;
 use futures::FutureExt;
+use lazy_static::__Deref;
+use sea_orm::sea_query::OnConflict;
+use sea_orm::{EntityTrait, QuerySelect};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::str::FromStr;
 use uuid::Uuid;
 
-use crate::persist::redis::RedisStr;
-use crate::statics::{REDIS, TG};
+use crate::persist::core::dialogs;
+use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache, RedisStr};
+use crate::statics::{CONFIG, DB, REDIS, TG};
 use crate::tg::button::OnPush;
 use crate::util::error::BotError;
 use log::info;
@@ -35,6 +39,58 @@ pub fn get_conversation_key(chat: i64, user: i64) -> String {
 #[inline(always)]
 pub fn get_state_key(chat: i64, user: i64) -> String {
     get_conversation_key_prefix(chat, user, "convstate")
+}
+
+#[inline(always)]
+pub fn get_dialog_key(chat: i64) -> String {
+    format!("dia:{}", chat)
+}
+
+pub async fn get_dialog(chat: &Chat) -> Result<Option<dialogs::Model>> {
+    let chat_id = chat.get_id();
+    let key = get_dialog_key(chat.get_id());
+    let res = default_cache_query(
+        |_, _| async move {
+            let res = dialogs::Entity::find_by_id(chat_id)
+                .one(DB.deref().deref())
+                .await?;
+            Ok(res)
+        },
+        Duration::seconds(CONFIG.cache_timeout as i64),
+    )
+    .query(&key, &())
+    .await?;
+    Ok(res)
+}
+
+pub async fn upsert_dialog(model: dialogs::Model) -> Result<()> {
+    let key = get_dialog_key(model.chat_id);
+    dialogs::Entity::insert(model.cache(key).await?)
+        .on_conflict(
+            OnConflict::column(dialogs::Column::ChatId)
+                .update_column(dialogs::Column::WarnLimit)
+                .to_owned(),
+        )
+        .exec(DB.deref().deref())
+        .await?;
+    Ok(())
+}
+
+pub async fn dialog_or_default(chat: &Chat) -> Result<dialogs::Model> {
+    let key = get_dialog_key(chat.get_id());
+    let model = if let Some(model) = get_dialog(chat).await? {
+        model
+    } else {
+        dialogs::Entity::insert(dialogs::Model::from_chat(chat).cache(key).await?)
+            .on_conflict(
+                OnConflict::column(dialogs::Column::ChatId)
+                    .update_column(dialogs::Column::WarnLimit)
+                    .to_owned(),
+            )
+            .exec_with_returning(DB.deref().deref())
+            .await?
+    };
+    Ok(model)
 }
 
 #[inline(always)]

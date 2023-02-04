@@ -14,7 +14,7 @@ pub use langs::*;
 
 use redis::AsyncCommands;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{prelude::ChronoDateTimeWithTimeZone, EntityTrait, IntoActiveModel};
+use sea_orm::{EntityTrait, IntoActiveModel};
 
 use crate::persist::core::dialogs;
 
@@ -131,13 +131,7 @@ pub async fn get_chat_lang(chat: i64) -> Result<Lang> {
 
 pub async fn set_chat_lang(chat: &Chat, lang: Lang) -> Result<()> {
     let r = RedisStr::new(&lang)?;
-    let c = dialogs::Model {
-        chat_id: chat.get_id(),
-        last_activity: ChronoDateTimeWithTimeZone::default(),
-        language: lang,
-        chat_type: chat.get_tg_type().into_owned(),
-        warn_limit: None,
-    };
+    let c = dialogs::Model::from_chat(chat);
     let key = get_lang_key(chat.get_id());
     REDIS
         .pipe(|p| {

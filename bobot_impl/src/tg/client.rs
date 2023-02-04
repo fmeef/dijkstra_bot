@@ -9,6 +9,7 @@ use dashmap::DashMap;
 use macros::rlformat;
 
 use super::{
+    admin_helpers::handle_pending_action,
     dialog::{Conversation, ConversationState},
     markdown::MarkupBuilder,
     user::get_me,
@@ -89,14 +90,14 @@ pub struct TgClient {
 }
 
 async fn show_help<'a>(
-    args: VecDeque<TextArg<'a>>,
+    args: Vec<TextArg<'a>>,
     message: &Message,
     helps: Arc<MetadataCollection>,
 ) -> Result<bool> {
     if !should_ignore_chat(message.get_chat().get_id()).await? {
         let lang = get_chat_lang(message.get_chat().get_id()).await?;
         let cnf = rlformat!(lang, "commandnotfound");
-        if let Some(TextArg::Arg(cmd)) = args.front() {
+        if let Some(TextArg::Arg(cmd)) = args.first() {
             let cmd = helps.helps.get(*cmd).map(|v| v.as_str()).unwrap_or(&cnf);
             let mut builder = MarkupBuilder::new();
             let (cmd, entities) = builder
@@ -189,6 +190,9 @@ impl TgClient {
                     }
                 }
                 Ok(update) => {
+                    if let Err(err) = handle_pending_action(&update).await {
+                        log::error!("failed to handle pending action");
+                    }
                     if let Err(err) = update.record_user().await {
                         log::error!("failed to record_user: {}", err);
                     }

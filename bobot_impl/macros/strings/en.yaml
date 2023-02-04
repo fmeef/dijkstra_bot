@@ -28,3 +28,4 @@ banchat: "Banned anonymous channel {}, they won't be able to speak but are still
 unbanchat: "Unbanned anonymous channel {}"
 promote: "Promated user {}"
 demote: "Demoted user {}"
+restrict: "Restricted user {}"

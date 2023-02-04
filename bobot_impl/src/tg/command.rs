@@ -14,7 +14,7 @@ lazy_static! {
 }
 
 pub type Entities<'a> = VecDeque<EntityArg<'a>>;
-pub type Args<'a> = VecDeque<TextArg<'a>>;
+pub type Args<'a> = Vec<TextArg<'a>>;
 
 pub struct TextArgs<'a> {
     pub text: &'a str,

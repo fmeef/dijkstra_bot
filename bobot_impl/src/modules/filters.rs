@@ -417,9 +417,9 @@ async fn update_cache_from_db(message: &Message) -> Result<()> {
             .find_with_related(triggers::Entity)
             .all(DB.deref().deref())
             .await?;
-
         REDIS
             .try_pipe(|p| {
+                p.hset(&hash_key, "empty", 0);
                 for (filter, triggers) in res.iter() {
                     let key = get_filter_key(message, filter.id);
                     let filter_st = RedisStr::new(&filter)?;

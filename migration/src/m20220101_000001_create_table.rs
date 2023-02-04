@@ -167,11 +167,6 @@ impl MigrationTrait for Migration {
                             .big_integer()
                             .primary_key(),
                     )
-                    .col(
-                        ColumnDef::new(dialogs::Column::LastActivity)
-                            .date_time()
-                            .not_null(),
-                    )
                     .to_owned(),
             )
             .await?;

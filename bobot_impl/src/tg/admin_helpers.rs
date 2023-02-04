@@ -5,28 +5,40 @@ use std::{
 
 use crate::{
     persist::{
-        admin::actions,
-        redis::{default_cache_query, CachedQueryTrait, RedisCache, RedisStr},
+        admin::{actions, warns},
+        core::dialogs,
+        redis::{default_cache_query, CachedQuery, CachedQueryTrait, RedisCache, RedisStr},
     },
-    statics::{DB, REDIS, TG},
+    statics::{CONFIG, DB, REDIS, TG},
+    tg::command::TextArg,
     util::error::{BotError, Result},
     util::string::{get_chat_lang, Speak},
 };
 use async_trait::async_trait;
-use botapi::gen_types::{Chat, ChatMember, ChatPermissions, Message, User};
+use botapi::gen_types::{
+    Chat, ChatMember, ChatPermissions, ChatPermissionsBuilder, Message, UpdateExt, User,
+};
 use chrono::Duration;
 use futures::{future::BoxFuture, FutureExt};
 use lazy_static::__Deref;
 use macros::rlformat;
 use redis::AsyncCommands;
+
 use sea_orm::{
-    sea_query::OnConflict, ActiveValue::NotSet, ActiveValue::Set, EntityTrait, IntoActiveModel,
+    sea_query::OnConflict, ActiveValue::NotSet, ActiveValue::Set, ColumnTrait, EntityTrait,
+    IntoActiveModel, PaginatorTrait, QueryFilter,
 };
 
 use super::{
-    command::{Entities, EntityArg},
+    command::{Entities, EntityArg, TextArgs},
+    dialog::upsert_dialog,
     user::{get_me, get_user_username, GetUser},
 };
+
+pub trait ChatUser {
+    fn chatuser<'a>(&'a self) -> (&'a Chat, &'a User);
+    fn chatuser_cow<'a>(&'a self) -> (Cow<'a, Chat>, Cow<'a, User>);
+}
 
 pub async fn is_self_admin(chat: &Chat) -> Result<bool> {
     let me = get_me().await?;
@@ -39,6 +51,10 @@ pub fn is_dm(chat: &Chat) -> bool {
 
 fn get_action_key(user: i64, chat: i64) -> String {
     format!("act:{}:{}", user, chat)
+}
+
+fn get_warns_key(user: i64, chat: i64) -> String {
+    format!("warns:{}:{}", user, chat)
 }
 
 pub async fn change_permissions(
@@ -72,10 +88,12 @@ pub async fn change_permissions(
 pub async fn action_message<'a, F>(
     message: &'a Message,
     entities: &Entities<'a>,
+    args: Option<&'a TextArgs<'a>>,
     action: F,
 ) -> Result<()>
 where
-    for<'b> F: FnOnce(&'b Message, &'b User) -> BoxFuture<'b, Result<()>>,
+    for<'b> F:
+        FnOnce(&'b Message, &'b User, Option<&'b [TextArg<'a>]>) -> BoxFuture<'b, Result<()>>,
 {
     is_group_or_die(&message.get_chat()).await?;
     self_admin_or_die(&message.get_chat()).await?;
@@ -87,12 +105,12 @@ where
         .map(|v| v.get_from())
         .flatten()
     {
-        action(&message, &user).await?;
+        action(&message, &user, args.map(|a| a.args.as_slice())).await?;
     } else {
         match entities.front() {
             Some(EntityArg::Mention(name)) => {
                 if let Some(user) = get_user_username(name).await? {
-                    action(message, &user).await?;
+                    action(message, &user, args.map(|a| &a.args.as_slice()[1..])).await?;
                 } else {
                     return Err(BotError::speak(
                         rlformat!(lang, "usernotfound"),
@@ -101,7 +119,7 @@ where
                 }
             }
             Some(EntityArg::TextMention(user)) => {
-                action(message, user).await?;
+                action(message, user, args.map(|a| &a.args.as_slice()[1..])).await?;
             }
             _ => {
                 return Err(BotError::speak(
@@ -119,14 +137,29 @@ pub async fn change_permissions_message<'a>(
     entities: &VecDeque<EntityArg<'a>>,
     permissions: ChatPermissions,
 ) -> Result<()> {
-    action_message(message, entities, |message, user| {
+    action_message(message, entities, None, |message, user, _| {
         async move { change_permissions(message, user, &permissions).await }.boxed()
     })
     .await?;
     Ok(())
 }
 
-pub async fn get_actions(chat: &Chat, user: &User) -> Result<Option<actions::Model>> {
+pub async fn set_warn_limit(chat: &Chat, limit: i32) -> Result<()> {
+    let chat_id = chat.get_id();
+
+    let model = dialogs::Model {
+        chat_id,
+        language: crate::util::string::Lang::En,
+        chat_type: chat.get_tg_type().into_owned(),
+        warn_limit: limit,
+        action_type: actions::ActionType::Mute,
+    };
+
+    upsert_dialog(model).await?;
+    Ok(())
+}
+
+pub async fn get_action(chat: &Chat, user: &User) -> Result<Option<actions::Model>> {
     let chat = chat.get_id();
     let user = user.get_id();
     let key = get_action_key(user, chat);
@@ -144,33 +177,182 @@ pub async fn get_actions(chat: &Chat, user: &User) -> Result<Option<actions::Mod
     Ok(res)
 }
 
-pub async fn update_actions_ban(message: &Message, banned: bool) -> Result<()> {
-    if let Some(user) = message.get_from() {
-        let key = get_action_key(user.get_id(), message.get_chat().get_id());
+pub async fn get_warns_count(message: &Message, user: &User) -> Result<i32> {
+    let user_id = user.get_id();
+    let chat_id = message.get_chat().get_id();
+    let key = get_warns_key(user.get_id(), message.get_chat().get_id());
+    let v: Option<i32> = REDIS.sq(|q| q.llen(&key)).await?;
+    if let Some(v) = v {
+        Ok(v)
+    } else {
+        let r = CachedQuery::new(
+            |_, _| async move {
+                let count = warns::Entity::find()
+                    .filter(
+                        warns::Column::UserId
+                            .eq(user_id)
+                            .and(warns::Column::ChatId.eq(chat_id)),
+                    )
+                    .count(DB.deref().deref())
+                    .await?;
+                Ok(count)
+            },
+            |key, _| async move {
+                let count: Option<u64> = REDIS.sq(|q| q.llen(&key)).await?;
+                Ok(count)
+            },
+            |_, v| async move { Ok(v) },
+        )
+        .query(&key, &())
+        .await?;
+        Ok(r as i32)
+    }
+}
 
-        let active = actions::ActiveModel {
-            user_id: Set(user.get_id()),
-            chat_id: Set(message.get_chat().get_id()),
-            warns: NotSet,
-            is_banned: Set(banned),
-            can_send_messages: NotSet,
-            can_send_media: NotSet,
-            can_send_poll: NotSet,
-            can_send_other: NotSet,
-            action: NotSet,
-        };
+pub async fn unmute(message: &Message, user: &User) -> Result<()> {
+    let permissions = ChatPermissionsBuilder::new()
+        .set_can_send_messages(true)
+        .set_can_send_media_messages(true)
+        .set_can_send_polls(true)
+        .set_can_send_other_messages(true)
+        .build();
 
-        let res = actions::Entity::insert(active)
-            .on_conflict(
-                OnConflict::columns([actions::Column::UserId, actions::Column::ChatId])
-                    .update_columns([actions::Column::IsBanned])
-                    .to_owned(),
-            )
-            .exec_with_returning(DB.deref().deref())
+    update_actions_permissions(message, &permissions).await?;
+    change_permissions(message, user, &permissions).await?;
+    Ok(())
+}
+
+pub async fn mute(message: &Message, user: &User) -> Result<()> {
+    let permissions = ChatPermissionsBuilder::new()
+        .set_can_send_messages(false)
+        .set_can_send_media_messages(false)
+        .set_can_send_polls(true)
+        .set_can_send_other_messages(false)
+        .build();
+
+    update_actions_permissions(message, &permissions).await?;
+    change_permissions(message, user, &permissions).await?;
+    Ok(())
+}
+
+pub async fn unban(message: &Message, user: &User) -> Result<()> {
+    if let Some(senderchat) = message.get_sender_chat() {
+        TG.client()
+            .build_unban_chat_sender_chat(message.get_chat().get_id(), senderchat.get_id())
+            .build()
+            .await?;
+    } else {
+        TG.client()
+            .build_unban_chat_member(message.get_chat().get_id(), user.get_id())
+            .build()
+            .await?;
+    }
+    Ok(())
+}
+pub async fn ban(message: &Message, user: &User) -> Result<()> {
+    let lang = get_chat_lang(message.get_chat().get_id()).await?;
+    if let Some(senderchat) = message.get_sender_chat() {
+        TG.client()
+            .build_ban_chat_sender_chat(message.get_chat().get_id(), senderchat.get_id())
+            .build()
+            .await?;
+        let name = senderchat
+            .get_username()
+            .unwrap_or_else(|| std::borrow::Cow::Owned(senderchat.get_id().to_string()));
+        message.speak(rlformat!(lang, "banchat", name)).await?;
+    } else {
+        TG.client()
+            .build_ban_chat_member(message.get_chat().get_id(), user.get_id())
+            .build()
             .await?;
 
-        res.cache(key).await?;
+        let name = user
+            .get_username()
+            .unwrap_or_else(|| std::borrow::Cow::Owned(user.get_id().to_string()));
+        message.speak(rlformat!(lang, "banned", name)).await?;
     }
+    Ok(())
+}
+
+pub async fn warn_user(message: &Message, user: &User, reason: Option<String>) -> Result<i32> {
+    let user_id = user.get_id();
+    let chat_id = message.get_chat().get_id();
+    let model = warns::ActiveModel {
+        id: NotSet,
+        user_id: Set(user_id),
+        chat_id: Set(chat_id),
+        reason: Set(reason),
+    };
+    let model = warns::Entity::insert(model)
+        .exec_with_returning(DB.deref().deref())
+        .await?;
+    let model = RedisStr::new(&model)?;
+    let key = get_warns_key(user_id, chat_id);
+    let (_, _, count): ((), (), usize) = REDIS
+        .pipe(|p| {
+            p.lpush(&key, model)
+                .expire(&key, CONFIG.cache_timeout)
+                .llen(&key)
+        })
+        .await?;
+
+    Ok(count as i32)
+}
+
+pub async fn update_actions_ban(chat: &Chat, user: &User, banned: bool) -> Result<()> {
+    let key = get_action_key(user.get_id(), chat.get_id());
+
+    let active = actions::ActiveModel {
+        user_id: Set(user.get_id()),
+        chat_id: Set(chat.get_id()),
+        pending: Set(true),
+        is_banned: Set(banned),
+        can_send_messages: NotSet,
+        can_send_media: NotSet,
+        can_send_poll: NotSet,
+        can_send_other: NotSet,
+        action: NotSet,
+    };
+
+    let res = actions::Entity::insert(active)
+        .on_conflict(
+            OnConflict::columns([actions::Column::UserId, actions::Column::ChatId])
+                .update_columns([actions::Column::IsBanned])
+                .to_owned(),
+        )
+        .exec_with_returning(DB.deref().deref())
+        .await?;
+
+    res.cache(key).await?;
+    Ok(())
+}
+
+pub async fn update_actions_pending(chat: &Chat, user: &User, pending: bool) -> Result<()> {
+    let key = get_action_key(user.get_id(), chat.get_id());
+
+    let active = actions::ActiveModel {
+        user_id: Set(user.get_id()),
+        chat_id: Set(chat.get_id()),
+        pending: Set(pending),
+        is_banned: NotSet,
+        can_send_messages: NotSet,
+        can_send_media: NotSet,
+        can_send_poll: NotSet,
+        can_send_other: NotSet,
+        action: NotSet,
+    };
+
+    let res = actions::Entity::insert(active)
+        .on_conflict(
+            OnConflict::columns([actions::Column::UserId, actions::Column::ChatId])
+                .update_columns([actions::Column::IsBanned])
+                .to_owned(),
+        )
+        .exec_with_returning(DB.deref().deref())
+        .await?;
+
+    res.cache(key).await?;
+
     Ok(())
 }
 
@@ -184,7 +366,7 @@ pub async fn update_actions_permissions(
         let active = actions::ActiveModel {
             user_id: Set(user.get_id()),
             chat_id: Set(message.get_chat().get_id()),
-            warns: NotSet,
+            pending: Set(true),
             is_banned: NotSet,
             can_send_messages: permissions
                 .get_can_send_messages()
@@ -224,6 +406,46 @@ pub async fn update_actions_permissions(
     Ok(())
 }
 
+pub async fn handle_pending_action(update: &UpdateExt) -> Result<()> {
+    if let (Some(chat), Some(user)) = (update.get_chat(), update.get_user()) {
+        if !is_self_admin(&chat).await? {
+            return Ok(());
+        }
+        if let Some(action) = get_action(&chat, &user).await? {
+            if action.pending {
+                let lang = get_chat_lang(chat.get_id()).await?;
+
+                let name = user
+                    .get_username()
+                    .unwrap_or_else(|| std::borrow::Cow::Owned(user.get_id().to_string()));
+                if action.is_banned {
+                    TG.client()
+                        .build_ban_chat_member(chat.get_id(), user.get_id())
+                        .build()
+                        .await?;
+
+                    chat.speak(rlformat!(lang, "banned", name)).await?;
+                } else {
+                    let permissions = ChatPermissionsBuilder::new()
+                        .set_can_send_messages(action.can_send_messages)
+                        .set_can_send_polls(action.can_send_poll)
+                        .set_can_send_other_messages(action.can_send_other)
+                        .set_can_send_media_messages(action.can_send_media)
+                        .build();
+                    TG.client()
+                        .build_restrict_chat_member(chat.get_id(), user.get_id(), &permissions)
+                        .build()
+                        .await?;
+                    chat.speak(rlformat!(lang, "restrict", name)).await?;
+                }
+
+                update_actions_pending(&chat, &user, false).await?;
+            }
+        }
+    }
+    Ok(())
+}
+
 pub async fn update_actions(actions: actions::Model) -> Result<()> {
     let key = get_action_key(actions.user_id, actions.chat_id);
 
@@ -231,7 +453,6 @@ pub async fn update_actions(actions: actions::Model) -> Result<()> {
         .on_conflict(
             OnConflict::columns([actions::Column::UserId, actions::Column::ChatId])
                 .update_columns([
-                    actions::Column::Warns,
                     actions::Column::IsBanned,
                     actions::Column::CanSendMessages,
                     actions::Column::Action,
@@ -401,7 +622,7 @@ impl GetCachedAdmins for Chat {
         if let Some(user) = admin {
             Ok(Some(user.get::<ChatMember>()?))
         } else {
-            Ok(None)
+            Ok(self.refresh_cached_admins().await?.remove(&self.get_id()))
         }
     }
 

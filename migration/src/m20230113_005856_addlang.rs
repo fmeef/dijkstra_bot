@@ -24,7 +24,16 @@ impl MigrationTrait for Migration {
                         .default(bobot_impl::util::string::Lang::En)
                         .not_null(),
                     )
-                    .add_column(ColumnDef::new(dialogs::Column::WarnLimit).integer())
+                    .add_column(
+                        ColumnDef::new(dialogs::Column::WarnLimit)
+                            .integer()
+                            .not_null(),
+                    )
+                    .add_column(
+                        ColumnDef::new(dialogs::Column::ActionType)
+                            .integer()
+                            .not_null(),
+                    )
                     .to_owned(),
             )
             .await
@@ -38,6 +47,7 @@ impl MigrationTrait for Migration {
                     .drop_column(dialogs::Column::Language)
                     .drop_column(dialogs::Column::ChatType)
                     .drop_column(dialogs::Column::WarnLimit)
+                    .drop_column(dialogs::Column::ActionType)
                     .to_owned(),
             )
             .await

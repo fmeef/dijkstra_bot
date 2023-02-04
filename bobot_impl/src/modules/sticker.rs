@@ -1,4 +1,3 @@
-use std::collections::VecDeque;
 use std::str::FromStr;
 
 use self::entities::tags::ModelRedis;
@@ -334,9 +333,9 @@ async fn upload(message: &Message) -> Result<()> {
     Ok(())
 }
 
-async fn delete_sticker<'a>(message: &'a Message, args: &VecDeque<TextArg<'a>>) -> Result<()> {
+async fn delete_sticker<'a>(message: &'a Message, args: &Vec<TextArg<'a>>) -> Result<()> {
     drop_converstaion(message).await?;
-    if let Some(TextArg::Arg(uuid)) = args.front() {
+    if let Some(TextArg::Arg(uuid)) = args.first() {
         log::info!("uuid {}", uuid);
         let uuid = Uuid::from_str(uuid)?;
         entities::stickers::Entity::delete_many()

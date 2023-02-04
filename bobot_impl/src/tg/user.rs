@@ -67,7 +67,7 @@ pub async fn record_cache_chat(chat: &Chat) -> Result<()> {
 }
 
 pub async fn record_cache_update(update: &UpdateExt) -> Result<()> {
-    if let Some(user) = update.get_user() {
+    if let Some(user) = RecordUser::get_user(update) {
         record_cache_user(&user).await?;
     }
     if let UpdateExt::Message(m) = update {
@@ -194,7 +194,23 @@ impl RecordUser for User {
 #[async_trait]
 impl RecordUser for UpdateExt {
     fn get_user<'a>(&'a self) -> Option<Cow<'a, User>> {
-        UpdateExt::get_user(self)
+        match self {
+            UpdateExt::Message(ref message) => message.get_from(),
+            UpdateExt::EditedMessage(ref message) => message.get_from(),
+            UpdateExt::EditedChannelPost(ref message) => message.get_from(),
+            UpdateExt::ChannelPost(ref message) => message.get_from(),
+            UpdateExt::InlineQuery(ref inlinequery) => Some(inlinequery.get_from()),
+            UpdateExt::ChosenInlineResult(ref ch) => Some(ch.get_from()),
+            UpdateExt::CallbackQuery(ref cb) => Some(cb.get_from()),
+            UpdateExt::ShippingQuery(ref sb) => Some(sb.get_from()),
+            UpdateExt::PreCheckoutQuery(ref pcb) => Some(pcb.get_from()),
+            UpdateExt::Poll(_) => None,
+            UpdateExt::PollAnswer(ref pollanswer) => Some(pollanswer.get_user()),
+            UpdateExt::MyChatMember(ref upd) => Some(upd.get_from()),
+            UpdateExt::ChatJoinRequest(ref req) => Some(req.get_from()),
+            UpdateExt::ChatMember(ref member) => Some(member.get_from()),
+            UpdateExt::Invalid => None,
+        }
     }
 
     async fn record_user(&self) -> Result<()> {

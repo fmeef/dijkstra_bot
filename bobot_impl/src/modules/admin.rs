@@ -1,16 +1,13 @@
 use crate::{
     metadata::metadata,
     tg::{
-        admin_helpers::{
-            action_message, is_group_or_die, self_admin_or_die, GetCachedAdmins, IsAdmin,
-        },
+        admin_helpers::*,
         command::{Command, Entities},
     },
     util::error::Result,
     util::string::{get_chat_lang, Speak},
 };
 use botapi::gen_types::{Message, UpdateExt};
-
 use futures::FutureExt;
 use itertools::Itertools;
 use macros::rlformat;
@@ -22,7 +19,6 @@ metadata!("Admin",
     { command = "promote", help = "Promote a user to admin"},
     { command = "demote", help = "Demote a user" }
 );
-
 pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![]
 }
@@ -33,7 +29,7 @@ async fn promote<'a>(message: &Message, entities: &Entities<'a>) -> Result<()> {
     message.get_from().admin_or_die(&message.get_chat()).await?; //TODO: handle granular permissions
 
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
-    action_message(message, entities, |message, user| {
+    action_message(message, entities, None, |message, user, _| {
         async move {
             message.get_chat().promote(user.get_id()).await?;
             let name = user
@@ -54,7 +50,7 @@ async fn demote<'a>(message: &Message, entities: &Entities<'a>) -> Result<()> {
     message.get_from().admin_or_die(&message.get_chat()).await?; //TODO: handle granular permissions
 
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
-    action_message(message, entities, |message, user| {
+    action_message(message, entities, None, |message, user, _| {
         async move {
             message.get_chat().demote(user.get_id()).await?;
             let name = user
@@ -102,7 +98,9 @@ pub async fn handle_update<'a>(update: &UpdateExt, cmd: Option<&Command<'a>>) ->
 }
 async fn handle_command<'a>(message: &Message, cmd: Option<&Command<'a>>) -> Result<()> {
     if let Some(&Command {
-        cmd, ref entities, ..
+        cmd,
+        ref entities,
+        ref args,
     }) = cmd
     {
         match cmd {

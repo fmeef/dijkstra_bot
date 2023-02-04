@@ -108,21 +108,29 @@ enum InputType<'a> {
     Command(&'a str, Option<&'a str>, &'a Message),
 }
 
-fn get_content<'a>(message: &'a Message, textargs: &'a TextArgs<'a>) -> Result<InputType<'a>> {
-    if let Some((TextArg::Arg(name), _, end)) = single_arg(textargs.text) {
-        log::info!("get:{}", textargs.text);
-        let res = if let Some(reply) = message.get_reply_to_message_ref() {
-            InputType::Reply(name, reply.get_text_ref(), reply)
-        } else {
-            let tail = &textargs.text[end..];
-            InputType::Command(name, Some(tail), message)
-        };
-        Ok(res)
+fn get_input_type<'a>(
+    message: &'a Message,
+    textargs: &'a TextArgs<'a>,
+    name: &'a str,
+    end: usize,
+) -> InputType<'a> {
+    log::info!("get:{}", textargs.text);
+    if let Some(reply) = message.get_reply_to_message_ref() {
+        InputType::Reply(name, reply.get_text_ref(), reply)
     } else {
-        Err(BotError::speak(
+        let tail = &textargs.text[end..];
+        InputType::Command(name, Some(tail), message)
+    }
+}
+
+fn get_content<'a>(message: &'a Message, textargs: &'a TextArgs<'a>) -> Result<InputType<'a>> {
+    match single_arg(textargs.text) {
+        Some((TextArg::Arg(name), _, end)) => Ok(get_input_type(message, textargs, name, end)),
+        Some((TextArg::Quote(name), _, end)) => Ok(get_input_type(message, textargs, name, end)),
+        _ => Err(BotError::speak(
             "Invalid argument, need to specify name",
             message.get_chat().get_id(),
-        ))
+        )),
     }
 }
 
@@ -179,7 +187,12 @@ async fn print_note(message: &Message, note: entities::notes::Model) -> Result<(
 }
 
 async fn get<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
-    if let Some(TextArg::Arg(name)) = args.args.front() {
+    let name = match args.args.first() {
+        Some(TextArg::Arg(name)) => Some(name),
+        Some(TextArg::Quote(name)) => Some(name),
+        _ => None,
+    };
+    if let Some(name) = name {
         let key = format!("note:{}:{}", message.get_chat().get_id(), name);
         log::info!("get key: {}", key);
         let chat = message.get_chat().get_id();

@@ -218,7 +218,7 @@ async fn set_lock_action(
 
 fn locktype_from_args<'a>(cmd: &Option<&'a Command<'a>>) -> Option<LockType> {
     if let Some(&Command { ref args, .. }) = cmd {
-        match args.args.front() {
+        match args.args.first() {
             Some(TextArg::Arg("premium")) => Some(LockType::Premium),
             _ => None,
         }
