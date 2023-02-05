@@ -318,6 +318,7 @@ fn get_filter_hash_key(message: &Message) -> String {
 }
 
 async fn delete_trigger(message: &Message, trigger: &str) -> Result<()> {
+    let trigger = &trigger.to_lowercase();
     let hash_key = get_filter_hash_key(message);
     let key: Option<i64> = REDIS
         .query(|mut q| async move {
@@ -336,7 +337,7 @@ async fn delete_trigger(message: &Message, trigger: &str) -> Result<()> {
             .filter(
                 triggers::Column::FilterId
                     .eq(id)
-                    .and(triggers::Column::Trigger.eq(trigger)),
+                    .and(triggers::Column::Trigger.eq(trigger.as_str())),
             )
             .exec(DB.deref().deref())
             .await?;
@@ -346,7 +347,7 @@ async fn delete_trigger(message: &Message, trigger: &str) -> Result<()> {
             .filter(
                 filters::Column::Chat
                     .eq(message.get_chat().get_id())
-                    .and(triggers::Column::Trigger.eq(trigger)),
+                    .and(triggers::Column::Trigger.eq(trigger.as_str())),
             )
             .all(DB.deref().deref())
             .await?;
@@ -388,7 +389,7 @@ async fn search_cache(message: &Message, text: &str) -> Result<Option<filters::M
         .query(|mut q| async move {
             let mut iter: redis::AsyncIter<(String, i64)> = q.hscan(&hash_key).await?;
             while let Some((key, item)) = iter.next_item().await {
-                if text.contains(&key) {
+                if text.to_lowercase().contains(&key) {
                     return get_filter(message, item).await;
                 }
             }
@@ -450,6 +451,10 @@ async fn insert_filter(
         )
         .exec_with_returning(DB.deref().deref())
         .await?;
+    let triggers = triggers
+        .iter()
+        .map(|v| v.to_lowercase())
+        .collect::<Vec<String>>();
     triggers::Entity::insert_many(
         triggers
             .iter()
@@ -473,8 +478,8 @@ async fn insert_filter(
     let hash_key = get_filter_hash_key(message);
     REDIS
         .pipe(|p| {
-            for trigger in triggers.iter() {
-                p.hset(&hash_key, *trigger, id);
+            for trigger in triggers {
+                p.hset(&hash_key, trigger, id);
             }
             p
         })
