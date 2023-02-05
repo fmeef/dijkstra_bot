@@ -388,7 +388,6 @@ async fn search_cache(message: &Message, text: &str) -> Result<Option<filters::M
         .query(|mut q| async move {
             let mut iter: redis::AsyncIter<(String, i64)> = q.hscan(&hash_key).await?;
             while let Some((key, item)) = iter.next_item().await {
-                log::info!("filter {}", key);
                 if text.contains(&key) {
                     return get_filter(message, item).await;
                 }

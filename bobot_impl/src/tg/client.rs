@@ -20,7 +20,7 @@ use super::{
 use crate::{
     metadata::Metadata,
     modules,
-    tg::command::{parse_cmd, TextArg},
+    tg::command::parse_cmd,
     util::{
         callback::{SingleCallback, SingleCb},
         error::BotError,
@@ -91,11 +91,7 @@ pub struct TgClient {
     pub button_events: Arc<DashMap<String, SingleCb<CallbackQuery, ()>>>,
 }
 
-async fn show_help<'a>(
-    args: Vec<TextArg<'a>>,
-    message: &Message,
-    helps: Arc<MetadataCollection>,
-) -> Result<bool> {
+async fn show_help<'a>(message: &Message, helps: Arc<MetadataCollection>) -> Result<bool> {
     if !should_ignore_chat(message.get_chat().get_id()).await? {
         let lang = get_chat_lang(message.get_chat().get_id()).await?;
         if is_dm(message.get_chat_ref()) {
@@ -140,10 +136,10 @@ async fn handle_help(update: &UpdateExt, helps: Arc<MetadataCollection>) -> Resu
     if let UpdateExt::Message(ref message) = update {
         if let Some((cmd, args, _)) = parse_cmd(message) {
             return match cmd {
-                "help" => show_help(args.args, message, helps).await,
+                "help" => show_help(message, helps).await,
                 "start" => {
                     if let Some("help") = args.args.first().map(|a| a.get_text()) {
-                        show_help(args.args, message, helps).await?;
+                        show_help(message, helps).await?;
                     } else {
                         message.reply("Hi there start weeenie").await?;
                     }
