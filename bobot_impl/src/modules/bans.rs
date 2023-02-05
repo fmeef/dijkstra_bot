@@ -116,9 +116,7 @@ async fn kickme(message: &Message) -> Result<()> {
 
 async fn handle_command<'a>(message: &Message, cmd: Option<&Command<'a>>) -> Result<()> {
     if let Some(&Command {
-        cmd,
-        ref entities,
-        ref args,
+        cmd, ref entities, ..
     }) = cmd
     {
         log::info!("admin command {}", cmd);

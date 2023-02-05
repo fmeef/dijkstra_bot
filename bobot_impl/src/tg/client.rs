@@ -1,21 +1,19 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 
 use botapi::{
     bot::{ApiError, Bot},
     ext::{BotUrl, LongPoller, Webhook},
     gen_types::{
-        CallbackQuery, InlineKeyboardButton, InlineKeyboardButtonBuilder,
-        InlineKeyboardMarkupBuilder, Message, UpdateExt,
+        CallbackQuery, InlineKeyboardButton, InlineKeyboardButtonBuilder, Message, UpdateExt,
     },
 };
 use dashmap::DashMap;
 use macros::rlformat;
 
 use super::{
-    admin_helpers::{handle_pending_action, is_dm},
+    admin_helpers::handle_pending_action,
     button::{get_url, InlineKeyboardBuilder},
     dialog::{Conversation, ConversationState},
-    markdown::MarkupBuilder,
     user::get_me,
     user::RecordUser,
 };
@@ -100,7 +98,7 @@ async fn show_help<'a>(
 ) -> Result<bool> {
     if !should_ignore_chat(message.get_chat().get_id()).await? {
         let lang = get_chat_lang(message.get_chat().get_id()).await?;
-        if let Some(TextArg::Arg(cmd)) = args.first() {
+        if let Some(TextArg::Arg(_)) = args.first() {
             let me = get_me().await?;
             TG.client()
                 .build_send_message(
@@ -204,10 +202,12 @@ impl TgClient {
                 }
                 Ok(update) => {
                     if let Err(err) = handle_pending_action(&update).await {
-                        log::error!("failed to handle pending action");
+                        log::error!("failed to handle pending action: {}", err);
+                        err.record_stats();
                     }
                     if let Err(err) = update.record_user().await {
                         log::error!("failed to record_user: {}", err);
+                        err.record_stats();
                     }
 
                     match handle_help(&update, modules).await {

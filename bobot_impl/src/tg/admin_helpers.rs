@@ -19,7 +19,7 @@ use botapi::gen_types::{
 };
 use chrono::Duration;
 use futures::{future::BoxFuture, FutureExt};
-use itertools::Itertools;
+
 use lazy_static::__Deref;
 use macros::rlformat;
 use redis::AsyncCommands;

@@ -98,9 +98,7 @@ pub async fn handle_update<'a>(update: &UpdateExt, cmd: Option<&Command<'a>>) ->
 }
 async fn handle_command<'a>(message: &Message, cmd: Option<&Command<'a>>) -> Result<()> {
     if let Some(&Command {
-        cmd,
-        ref entities,
-        ref args,
+        cmd, ref entities, ..
     }) = cmd
     {
         match cmd {

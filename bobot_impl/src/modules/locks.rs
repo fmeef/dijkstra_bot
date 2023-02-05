@@ -192,6 +192,7 @@ async fn set_lock(message: &Message, locktype: LockType, user: &User) -> Result<
     Ok(())
 }
 
+#[allow(dead_code)]
 async fn set_lock_action(
     message: &Message,
     locktype: LockType,

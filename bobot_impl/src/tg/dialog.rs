@@ -8,7 +8,8 @@ use futures::future::BoxFuture;
 use futures::FutureExt;
 use lazy_static::__Deref;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::{EntityTrait, QuerySelect};
+use sea_orm::EntityTrait;
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::str::FromStr;

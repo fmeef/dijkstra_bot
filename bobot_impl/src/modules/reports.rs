@@ -1,5 +1,3 @@
-use crate::persist::admin::actions;
-
 use crate::statics::TG;
 use crate::tg::user::Username;
 use crate::util::error::BotError;
@@ -7,14 +5,11 @@ use crate::util::string::should_ignore_chat;
 use crate::{
     metadata::metadata,
     tg::admin_helpers::*,
-    tg::{
-        command::{Command, Entities, TextArgs},
-        dialog::dialog_or_default,
-    },
+    tg::command::{Command, Entities},
     util::error::Result,
-    util::string::{get_chat_lang, Speak},
+    util::string::get_chat_lang,
 };
-use botapi::gen_types::{Message, MessageEntity, MessageEntityBuilder, UpdateExt, User};
+use botapi::gen_types::{Message, MessageEntity, MessageEntityBuilder, UpdateExt};
 
 use futures::FutureExt;
 use macros::rlformat;
