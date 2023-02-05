@@ -102,11 +102,7 @@ pomelo! {
     ign      ::= word(W) Whitespace(_) { W }
     ign      ::= Whitespace(_) word(W) { W }
     ign      ::= Whitespace(_) word(W) Whitespace(_) { W }
-    words    ::= Whitespace(S) { S.to_owned() }
-    words    ::= word(W) { match W {
-        TextArg::Arg(arg) => arg.to_owned(),
-        TextArg::Quote(quote) => quote.to_owned()
-    } }
+    words    ::= word(W) { W.get_text().to_owned() }
 
     words    ::= words(mut L) word(W) {
         let w = match W {
@@ -131,7 +127,7 @@ pomelo! {
 use parser::{Parser, Token};
 
 lazy_static! {
-    static ref TOKENS: Regex = Regex::new(r#"((\s+)|[\{\}\(\),"]|[^\{\}\(\),"]+)"#).unwrap();
+    static ref TOKENS: Regex = Regex::new(r#"((\s+)|[\{\}\(\),"]|[^\{\}\(\),"\s]+)"#).unwrap();
 }
 
 struct Lexer<'a>(&'a str);
@@ -400,6 +396,7 @@ async fn search_cache(message: &Message, text: &str) -> Result<Option<filters::M
         .query(|mut q| async move {
             let mut iter: redis::AsyncIter<(String, i64)> = q.hscan(&hash_key).await?;
             while let Some((key, item)) = iter.next_item().await {
+                log::info!("filter {}", key);
                 if text.contains(&key) {
                     return get_filter(message, item).await;
                 }
@@ -603,5 +600,22 @@ mod test {
             parser.parse(token).unwrap();
         }
         parser.end_of_input().unwrap();
+    }
+
+    #[test]
+    fn parse_whitespace() {
+        let cmd = "fmef menhera";
+        let lexer = Lexer(cmd);
+        let mut parser = Parser::new();
+        for token in lexer.all_tokens() {
+            println!("token {:?}", token);
+            parser.parse(token).unwrap();
+        }
+        let out = parser.end_of_input().unwrap();
+        if let Header::Arg(h) = out.header {
+            assert_eq!(h.get_text(), "fmef");
+        } else {
+            assert!(false);
+        }
     }
 }
