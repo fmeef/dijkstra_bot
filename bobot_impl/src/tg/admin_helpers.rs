@@ -265,8 +265,13 @@ pub async fn clear_warns(chat: &Chat, user: &User) -> Result<()> {
 pub async fn unmute(message: &Message, user: &User) -> Result<()> {
     let permissions = ChatPermissionsBuilder::new()
         .set_can_send_messages(true)
-        .set_can_send_media_messages(true)
+        .set_can_send_audios(true)
+        .set_can_send_documents(true)
+        .set_can_send_photos(true)
+        .set_can_send_videos(true)
+        .set_can_send_video_notes(true)
         .set_can_send_polls(true)
+        .set_can_send_voice_notes(true)
         .set_can_send_other_messages(true)
         .build();
 
@@ -278,8 +283,13 @@ pub async fn unmute(message: &Message, user: &User) -> Result<()> {
 pub async fn mute(message: &Message, user: &User) -> Result<()> {
     let permissions = ChatPermissionsBuilder::new()
         .set_can_send_messages(false)
-        .set_can_send_media_messages(false)
-        .set_can_send_polls(true)
+        .set_can_send_audios(false)
+        .set_can_send_documents(false)
+        .set_can_send_photos(false)
+        .set_can_send_videos(false)
+        .set_can_send_video_notes(false)
+        .set_can_send_polls(false)
+        .set_can_send_voice_notes(false)
         .set_can_send_other_messages(false)
         .build();
 
@@ -358,7 +368,12 @@ pub async fn update_actions_ban(chat: &Chat, user: &User, banned: bool) -> Resul
         pending: Set(true),
         is_banned: Set(banned),
         can_send_messages: NotSet,
-        can_send_media: NotSet,
+        can_send_audio: NotSet,
+        can_send_video: NotSet,
+        can_send_photo: NotSet,
+        can_send_document: NotSet,
+        can_send_voice_note: NotSet,
+        can_send_video_note: NotSet,
         can_send_poll: NotSet,
         can_send_other: NotSet,
         action: NotSet,
@@ -386,7 +401,12 @@ pub async fn update_actions_pending(chat: &Chat, user: &User, pending: bool) -> 
         pending: Set(pending),
         is_banned: NotSet,
         can_send_messages: NotSet,
-        can_send_media: NotSet,
+        can_send_audio: NotSet,
+        can_send_video: NotSet,
+        can_send_photo: NotSet,
+        can_send_document: NotSet,
+        can_send_voice_note: NotSet,
+        can_send_video_note: NotSet,
         can_send_poll: NotSet,
         can_send_other: NotSet,
         action: NotSet,
@@ -422,8 +442,30 @@ pub async fn update_actions_permissions(
                 .get_can_send_messages()
                 .map(|v| Set(v))
                 .unwrap_or(NotSet),
-            can_send_media: permissions
-                .get_can_send_media_messages()
+            can_send_audio: permissions
+                .get_can_send_audios()
+                .map(|v| Set(v))
+                .unwrap_or(NotSet),
+
+            can_send_document: permissions
+                .get_can_send_documents()
+                .map(|v| Set(v))
+                .unwrap_or(NotSet),
+            can_send_photo: permissions
+                .get_can_send_photos()
+                .map(|v| Set(v))
+                .unwrap_or(NotSet),
+
+            can_send_video: permissions
+                .get_can_send_videos()
+                .map(|v| Set(v))
+                .unwrap_or(NotSet),
+            can_send_voice_note: permissions
+                .get_can_send_voice_notes()
+                .map(|v| Set(v))
+                .unwrap_or(NotSet),
+            can_send_video_note: permissions
+                .get_can_send_video_notes()
                 .map(|v| Set(v))
                 .unwrap_or(NotSet),
             can_send_poll: permissions
@@ -442,7 +484,12 @@ pub async fn update_actions_permissions(
                 OnConflict::columns([actions::Column::UserId, actions::Column::ChatId])
                     .update_columns([
                         actions::Column::CanSendMessages,
-                        actions::Column::CanSendMedia,
+                        actions::Column::CanSendAudio,
+                        actions::Column::CanSendVideo,
+                        actions::Column::CanSendDocument,
+                        actions::Column::CanSendPhoto,
+                        actions::Column::CanSendVoiceNote,
+                        actions::Column::CanSendVideoNote,
                         actions::Column::CanSendPoll,
                         actions::Column::CanSendOther,
                     ])
@@ -478,7 +525,12 @@ pub async fn handle_pending_action(update: &UpdateExt) -> Result<()> {
                         .set_can_send_messages(action.can_send_messages)
                         .set_can_send_polls(action.can_send_poll)
                         .set_can_send_other_messages(action.can_send_other)
-                        .set_can_send_media_messages(action.can_send_media)
+                        .set_can_send_audios(action.can_send_audio)
+                        .set_can_send_documents(action.can_send_document)
+                        .set_can_send_photos(action.can_send_photo)
+                        .set_can_send_videos(action.can_send_video)
+                        .set_can_send_video_notes(action.can_send_video_note)
+                        .set_can_send_voice_notes(action.can_send_voice_note)
                         .build();
                     TG.client()
                         .build_restrict_chat_member(chat.get_id(), user.get_id(), &permissions)
@@ -504,7 +556,12 @@ pub async fn update_actions(actions: actions::Model) -> Result<()> {
                     actions::Column::IsBanned,
                     actions::Column::CanSendMessages,
                     actions::Column::Action,
-                    actions::Column::CanSendMedia,
+                    actions::Column::CanSendAudio,
+                    actions::Column::CanSendVideo,
+                    actions::Column::CanSendDocument,
+                    actions::Column::CanSendPhoto,
+                    actions::Column::CanSendVoiceNote,
+                    actions::Column::CanSendVideoNote,
                     actions::Column::CanSendPoll,
                     actions::Column::CanSendOther,
                 ])

@@ -69,7 +69,37 @@ impl MigrationTrait for Migration {
                             .default(false),
                     )
                     .col(
-                        ColumnDef::new(actions::Column::CanSendMedia)
+                        ColumnDef::new(actions::Column::CanSendAudio)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
+                    .col(
+                        ColumnDef::new(actions::Column::CanSendVideo)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
+                    .col(
+                        ColumnDef::new(actions::Column::CanSendPhoto)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
+                    .col(
+                        ColumnDef::new(actions::Column::CanSendDocument)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
+                    .col(
+                        ColumnDef::new(actions::Column::CanSendVoiceNote)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
+                    .col(
+                        ColumnDef::new(actions::Column::CanSendVideoNote)
                             .boolean()
                             .not_null()
                             .default(false),

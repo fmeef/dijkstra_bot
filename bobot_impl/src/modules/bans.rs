@@ -66,8 +66,13 @@ pub async fn mute_cmd<'a>(message: &Message, entities: &Entities<'a>) -> Result<
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
     let permissions = ChatPermissionsBuilder::new()
         .set_can_send_messages(false)
-        .set_can_send_media_messages(false)
+        .set_can_send_audios(false)
+        .set_can_send_documents(false)
+        .set_can_send_photos(false)
+        .set_can_send_videos(false)
+        .set_can_send_video_notes(false)
         .set_can_send_polls(false)
+        .set_can_send_voice_notes(false)
         .set_can_send_other_messages(false)
         .build();
     update_actions_permissions(message, &permissions).await?;
@@ -78,12 +83,19 @@ pub async fn mute_cmd<'a>(message: &Message, entities: &Entities<'a>) -> Result<
 
 pub async fn unmute_cmd<'a>(message: &'a Message, entities: &Entities<'a>) -> Result<()> {
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
+
     let permissions = ChatPermissionsBuilder::new()
         .set_can_send_messages(true)
-        .set_can_send_media_messages(true)
+        .set_can_send_audios(true)
+        .set_can_send_documents(true)
+        .set_can_send_photos(true)
+        .set_can_send_videos(true)
+        .set_can_send_video_notes(true)
         .set_can_send_polls(true)
+        .set_can_send_voice_notes(true)
         .set_can_send_other_messages(true)
         .build();
+
     update_actions_permissions(message, &permissions).await?;
     change_permissions_message(message, &entities, permissions).await?;
     message.speak(rlformat!(lang, "unmuteuser")).await?;

@@ -1,7 +1,7 @@
 use self::entities::locks;
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache};
 use crate::statics::{CONFIG, DB, REDIS};
-use crate::tg::admin_helpers::{self_admin_or_die, IsAdmin};
+use crate::tg::admin_helpers::{change_permissions, self_admin_or_die, IsAdmin};
 use crate::tg::command::{Command, TextArg};
 use crate::util::error::{BotError, Result};
 use crate::{
@@ -295,19 +295,18 @@ async fn handle_action(message: &Message, lockaction: LockAction) -> Result<()> 
         }
         match lockaction {
             LockAction::Mute => {
-                TG.client()
-                    .build_restrict_chat_member(
-                        message.get_chat().get_id(),
-                        user.get_id(),
-                        &ChatPermissionsBuilder::new()
-                            .set_can_send_messages(false)
-                            .set_can_send_media_messages(false)
-                            .set_can_send_polls(false)
-                            .set_can_send_other_messages(false)
-                            .build(),
-                    )
-                    .build()
-                    .await?;
+                let permissions = ChatPermissionsBuilder::new()
+                    .set_can_send_messages(false)
+                    .set_can_send_audios(false)
+                    .set_can_send_documents(false)
+                    .set_can_send_photos(false)
+                    .set_can_send_videos(false)
+                    .set_can_send_video_notes(false)
+                    .set_can_send_polls(false)
+                    .set_can_send_voice_notes(false)
+                    .set_can_send_other_messages(false)
+                    .build();
+                change_permissions(message, &user, &permissions).await?;
                 message.reply("Muted premium user").await?;
             }
             LockAction::Warn => {

@@ -26,7 +26,17 @@ pub struct Model {
     #[sea_orm(default = true)]
     pub can_send_messages: bool,
     #[sea_orm(default = true)]
-    pub can_send_media: bool,
+    pub can_send_audio: bool,
+    #[sea_orm(default = true)]
+    pub can_send_video: bool,
+    #[sea_orm(default = true)]
+    pub can_send_photo: bool,
+    #[sea_orm(default = true)]
+    pub can_send_document: bool,
+    #[sea_orm(default = true)]
+    pub can_send_voice_note: bool,
+    #[sea_orm(default = true)]
+    pub can_send_video_note: bool,
     #[sea_orm(default = true)]
     pub can_send_poll: bool,
     #[sea_orm(default = true)]
