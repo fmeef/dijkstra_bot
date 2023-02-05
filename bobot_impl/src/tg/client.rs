@@ -11,7 +11,7 @@ use dashmap::DashMap;
 use macros::rlformat;
 
 use super::{
-    admin_helpers::handle_pending_action,
+    admin_helpers::{handle_pending_action, is_dm},
     button::{get_url, InlineKeyboardBuilder},
     dialog::{Conversation, ConversationState},
     user::get_me,
@@ -98,7 +98,7 @@ async fn show_help<'a>(
 ) -> Result<bool> {
     if !should_ignore_chat(message.get_chat().get_id()).await? {
         let lang = get_chat_lang(message.get_chat().get_id()).await?;
-        if let Some(TextArg::Arg(_)) = args.first() {
+        if is_dm(message.get_chat_ref()) {
             let me = get_me().await?;
             TG.client()
                 .build_send_message(
