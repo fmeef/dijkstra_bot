@@ -23,10 +23,7 @@ RUN adduser \
 
 WORKDIR /bobot
 
-RUN --mount=type=cache,target=/bobot/target \
---mount=type=cache,target=/usr/local/rustup \
---mount=type=cache,target=/usr/local/cargo/registry \
-if  [ "$TARGETPLATFORM" = "linux/amd64" ]; then ARCHITECTURE=x86_64; \
+RUN if  [ "$TARGETPLATFORM" = "linux/amd64" ]; then ARCHITECTURE=x86_64; \
 elif [ "$TARGETPLATFORM" = "linux/arm/v7" ]; then ARCHITECTURE=arm; \
 elif [ "$TARGETPLATFORM" = "linux/arm64" ]; then ARCHITECTURE=aarch64; \
 else ARCHITECTURE=x86_64; fi && \
@@ -36,10 +33,7 @@ rustup target add $ARCHITECTURE-unknown-linux-musl
 FROM base AS builder
 COPY ./ .
 ENV CC=musl-gcc
-RUN --mount=type=cache,target=/bobot/target \
---mount=type=cache,target=/usr/local/rustup \
---mount=type=cache,target=/usr/local/cargo/registry \
-if  [ "$TARGETPLATFORM" = "linux/amd64" ]; then ARCHITECTURE=x86_64; \
+RUN if  [ "$TARGETPLATFORM" = "linux/amd64" ]; then ARCHITECTURE=x86_64; \
 elif [ "$TARGETPLATFORM" = "linux/arm/v7" ]; then ARCHITECTURE=arm; \
 elif [ "$TARGETPLATFORM" = "linux/arm64" ]; then ARCHITECTURE=aarch64; \
 else ARCHITECTURE=x86_64; fi && \
@@ -77,21 +71,12 @@ ENTRYPOINT [ "/bobot/bobot", "--config", "/config/config.toml"]
 
 
 FROM base AS dev
-RUN --mount=type=cache,target=/bobot/target \
---mount=type=cache,target=/usr/local/rustup \
---mount=type=cache,target=/usr/local/cargo/registry \
-rustup default stable && rustup component add rustfmt && \
+RUN rustup default stable && rustup component add rustfmt && \
  cargo install sea-orm-cli
-RUN --mount=type=cache,target=/bobot/target \
---mount=type=cache,target=/usr/local/rustup \
---mount=type=cache,target=/usr/local/cargo/registry \
-  git clone --depth 1 https://github.com/rust-lang/rust-analyzer.git /opt/rust-analyzer && \
+RUN git clone --depth 1 https://github.com/rust-lang/rust-analyzer.git /opt/rust-analyzer && \
     cd /opt/rust-analyzer && \
    cargo xtask install --server && cargo clean
-RUN --mount=type=cache,target=/bobot/target \
---mount=type=cache,target=/usr/local/rustup \
---mount=type=cache,target=/usr/local/cargo/registry \
- git clone https://github.com/helix-editor/helix /opt/helix && \
+RUN git clone https://github.com/helix-editor/helix /opt/helix && \
     cd /opt/helix && rustup override set nightly && \
     cargo install --path helix-term && cargo clean
 
