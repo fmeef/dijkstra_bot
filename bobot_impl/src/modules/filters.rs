@@ -10,7 +10,7 @@ use crate::statics::CONFIG;
 use crate::statics::DB;
 use crate::statics::REDIS;
 use crate::tg::command::Command;
-use crate::tg::command::TextArg;
+
 use crate::tg::command::TextArgs;
 use crate::util::error::BotError;
 use crate::util::error::Result;
@@ -40,13 +40,13 @@ metadata!("Filters",
     { command = "stop", help = "Stop a filter" }
 );
 
-pub enum Header<'a> {
-    List(Vec<TextArg<'a>>),
-    Arg(TextArg<'a>),
+pub enum Header {
+    List(Vec<String>),
+    Arg(String),
 }
 
 pub struct FilterCommond<'a> {
-    header: Header<'a>,
+    header: Header,
     body: Option<String>,
     #[allow(dead_code)]
     footer: Option<&'a str>,
@@ -61,7 +61,7 @@ pomelo! {
     %parser pub struct Parser<'e>{};
     %type input FilterCommond<'e>;
     %token #[derive(Debug)] pub enum Token<'e>{};
-    %type quote TextArg<'e>;
+    %type quote String;
     %type word TextArg<'e>;
     %type Whitespace &'e str;
     %type multi Vec<TextArg<'e>>;
@@ -70,7 +70,7 @@ pomelo! {
     %type footer &'e str;
     %type words String;
     %type ign TextArg<'e>;
-    %type header Header<'e>;
+    %type header Header;
 
     input    ::= header(A) {
         FilterCommond {
@@ -94,30 +94,22 @@ pomelo! {
         }
     }
     footer   ::= LBrace Str(A) Rbrace { A }
-    header   ::= multi(V)  { Header::List(V) }
-    header   ::= word(S) { Header::Arg(S) }
-    word     ::= quote(A) { A }
+    header   ::= multi(V)  { Header::List(V.into_iter().map(|v| v.get_text().to_owned()).collect()) }
+    header   ::= word(S) { Header::Arg(S.get_text().to_owned()) }
+    header   ::= quote(S) { Header::Arg(S) }
     word     ::= Str(A) { TextArg::Arg(A) }
     ign      ::= word(W) { W }
     ign      ::= word(W) Whitespace(_) { W }
     ign      ::= Whitespace(_) word(W) { W }
     ign      ::= Whitespace(_) word(W) Whitespace(_) { W }
     words    ::= word(W) { W.get_text().to_owned() }
-
-    words    ::= words(mut L) word(W) {
-        let w = match W {
-            TextArg::Arg(arg) => arg,
-            TextArg::Quote(quote) => quote
-        };
-          L.push_str(&w);
-        L
-    }
-
-   words    ::= words(mut L)  Whitespace(S) {
+    words    ::= words(mut L) Whitespace(S) word(W) {
         L.push_str(&S);
+        L.push_str(W.get_text());
         L
     }
-    quote    ::= Quote Str(A) Quote { TextArg::Quote(A) }
+
+    quote    ::= Quote words(A) Quote { A }
     multi    ::= LParen list(A) RParen {A }
     list     ::= ign(A) { vec![A] }
     list     ::= list(mut L) Comma ign(A) { L.push(A); L }
@@ -510,13 +502,7 @@ async fn command_filter<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()
         Header::Arg(st) => vec![st],
     };
 
-    let filters = filters
-        .iter()
-        .map(|ta| match ta {
-            TextArg::Arg(s) => *s,
-            TextArg::Quote(s) => *s,
-        })
-        .collect::<Vec<&str>>();
+    let filters = filters.iter().map(|v| v.as_str()).collect::<Vec<&str>>();
 
     if let Some(message) = message.get_reply_to_message_ref() {
         insert_filter(
@@ -613,7 +599,24 @@ mod test {
         }
         let out = parser.end_of_input().unwrap();
         if let Header::Arg(h) = out.header {
-            assert_eq!(h.get_text(), "fmef");
+            assert_eq!(h.as_str(), "fmef");
+        } else {
+            assert!(false);
+        }
+    }
+
+    #[test]
+    fn parse_quote() {
+        let cmd = "\"thing manuy\" menhera";
+        let lexer = Lexer(cmd);
+        let mut parser = Parser::new();
+        for token in lexer.all_tokens() {
+            println!("token {:?}", token);
+            parser.parse(token).unwrap();
+        }
+        let out = parser.end_of_input().unwrap();
+        if let Header::Arg(h) = out.header {
+            assert_eq!(h.as_str(), "thing manuy");
         } else {
             assert!(false);
         }
