@@ -43,7 +43,7 @@ if  [ "$TARGETPLATFORM" = "linux/amd64" ]; then ARCHITECTURE=x86_64; \
 elif [ "$TARGETPLATFORM" = "linux/arm/v7" ]; then ARCHITECTURE=arm; \
 elif [ "$TARGETPLATFORM" = "linux/arm64" ]; then ARCHITECTURE=aarch64; \
 else ARCHITECTURE=x86_64; fi && \
-cargo install --target aarch64-unknown-linux-musl --no-default-features \
+cargo install --target $ARCHITECTURE-unknown-linux-musl --no-default-features \
  --features runtime-async-std-rustls --features cli --features codegen \
  --features async-std  sea-orm-cli && \
 cargo install --target  $ARCHITECTURE-unknown-linux-musl --path .
