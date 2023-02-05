@@ -67,10 +67,19 @@ async fn handle_command<'a>(message: &Message, cmd: Option<&'a Command<'a>>) -> 
     if let Some(&Command { cmd, .. }) = cmd {
         log::info!("piracy command {}", cmd);
         match cmd {
-            "crash" => TG.client().close().await?,
-            "markdown" => handle_markdown(message).await?,
-            "murkdown" => handle_murkdown(message).await?,
-            _ => false,
+            //            "crash" => TG.client().close().await?,
+            "crash" => {
+                message
+                    .reply("Eh eh ehhh... You didn't say the magic word!")
+                    .await?;
+            }
+            "markdown" => {
+                handle_markdown(message).await?;
+            }
+            "murkdown" => {
+                handle_murkdown(message).await?;
+            }
+            _ => (),
         };
     }
     Ok(())
