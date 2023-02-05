@@ -27,17 +27,37 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
 }
 
 async fn warn_ban(message: &Message, user: &User, count: i32) -> Result<()> {
+    let lang = get_chat_lang(message.get_chat().get_id()).await?;
     ban(message, user).await?;
+    message
+        .reply(&rlformat!(
+            lang,
+            "warnban",
+            count,
+            user.name_humanreadable()
+        ))
+        .await?;
     Ok(())
 }
 
 async fn warn_mute(message: &Message, user: &User, count: i32) -> Result<()> {
+    let lang = get_chat_lang(message.get_chat().get_id()).await?;
     mute(message, user).await?;
+    message
+        .reply(&rlformat!(
+            lang,
+            "warnmute",
+            count,
+            user.name_humanreadable()
+        ))
+        .await?;
+
     Ok(())
 }
 
-async fn warn_shame(message: &Message, user: &User, count: i32) -> Result<()> {
+async fn warn_shame(message: &Message, _user: &User, _count: i32) -> Result<()> {
     message.speak("shaming not implemented").await?;
+
     Ok(())
 }
 
@@ -56,7 +76,7 @@ pub async fn warn<'a>(
         async move {
             if user.is_admin(message.get_chat_ref()).await? {
                 return Err(BotError::speak(
-                    "I am not going to warn an admin!",
+                    &rlformat!(lang, "warnadmin"),
                     message.get_chat().get_id(),
                 ));
             }
@@ -108,9 +128,20 @@ pub async fn warns<'a>(message: &Message, entities: &Entities<'a>) -> Result<()>
 
     action_message(message, entities, None, |message, user, _| {
         async move {
-            let count = get_warns_count(message, user).await?;
-
-            message.reply(format!("Warns: {}", count)).await?;
+            let warns = get_warns(message, user).await?;
+            let list = warns
+                .into_iter()
+                .map(|w| {
+                    format!(
+                        "Reason: {}",
+                        w.reason.unwrap_or_else(|| rlformat!(lang, "noreason"))
+                    )
+                })
+                .collect::<Vec<String>>()
+                .join("\n");
+            message
+                .reply(rlformat!(lang, "warns", user.name_humanreadable(), list))
+                .await?;
             Ok(())
         }
         .boxed()

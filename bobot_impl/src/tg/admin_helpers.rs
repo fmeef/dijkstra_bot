@@ -19,6 +19,7 @@ use botapi::gen_types::{
 };
 use chrono::Duration;
 use futures::{future::BoxFuture, FutureExt};
+use itertools::Itertools;
 use lazy_static::__Deref;
 use macros::rlformat;
 use redis::AsyncCommands;
@@ -173,6 +174,46 @@ pub async fn get_action(chat: &Chat, user: &User) -> Result<Option<actions::Mode
     .query(&key, &())
     .await?;
     Ok(res)
+}
+
+pub async fn get_warns(message: &Message, user: &User) -> Result<Vec<warns::Model>> {
+    let user_id = user.get_id();
+    let chat_id = message.get_chat().get_id();
+    let key = get_warns_key(user.get_id(), message.get_chat().get_id());
+    let v: Option<Vec<RedisStr>> = REDIS.sq(|q| q.lrange(&key, 0, -1)).await?;
+    if let Some(v) = v {
+        Ok(v.into_iter()
+            .filter_map(|v| v.get::<warns::Model>().ok())
+            .collect())
+    } else {
+        let r = CachedQuery::new(
+            |_, _| async move {
+                let count = warns::Entity::find()
+                    .filter(
+                        warns::Column::UserId
+                            .eq(user_id)
+                            .and(warns::Column::ChatId.eq(chat_id)),
+                    )
+                    .all(DB.deref().deref())
+                    .await?;
+                Ok(count)
+            },
+            |key, _| async move {
+                let count: Vec<RedisStr> = REDIS.sq(|q| q.lrange(&key, 0, -1)).await?;
+
+                Ok(Some(
+                    count
+                        .into_iter()
+                        .filter_map(|v| v.get::<warns::Model>().ok())
+                        .collect(),
+                ))
+            },
+            |_, v| async move { Ok(v) },
+        )
+        .query(&key, &())
+        .await?;
+        Ok(r)
+    }
 }
 
 pub async fn get_warns_count(message: &Message, user: &User) -> Result<i32> {
