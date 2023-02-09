@@ -351,7 +351,7 @@ pub async fn warn_user(message: &Message, user: &User, reason: Option<String>) -
     let (_, _, count): ((), (), usize) = REDIS
         .pipe(|p| {
             p.lpush(&key, model)
-                .expire(&key, CONFIG.cache_timeout)
+                .expire(&key, CONFIG.timing.cache_timeout)
                 .llen(&key)
         })
         .await?;

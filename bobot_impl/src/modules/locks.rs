@@ -4,11 +4,7 @@ use crate::statics::{CONFIG, DB, REDIS};
 use crate::tg::admin_helpers::{change_permissions, self_admin_or_die, IsAdmin};
 use crate::tg::command::{Command, TextArg};
 use crate::util::error::{BotError, Result};
-use crate::{
-    metadata::metadata,
-    statics::TG,
-    util::string::{should_ignore_chat, Speak},
-};
+use crate::{metadata::metadata, statics::TG, util::string::Speak};
 use botapi::gen_types::{ChatPermissionsBuilder, Message, UpdateExt, User};
 use chrono::Duration;
 use entities::locks::{LockAction, LockType};
@@ -156,7 +152,7 @@ async fn get_lock(message: &Message, locktype: LockType) -> Result<Option<locks:
                 .await?;
             Ok(res)
         },
-        Duration::seconds(CONFIG.cache_timeout as i64),
+        Duration::seconds(CONFIG.timing.cache_timeout as i64),
     )
     .query(&key, &())
     .await
@@ -325,9 +321,6 @@ async fn handle_action(message: &Message, lockaction: LockAction) -> Result<()> 
 }
 
 async fn handle_command<'a>(message: &Message, command: Option<&'a Command<'a>>) -> Result<()> {
-    if should_ignore_chat(message.get_chat().get_id()).await? {
-        return Ok(());
-    }
     if is_premium(message) {
         if let Some(lock) = get_lock(message, LockType::Premium).await? {
             handle_action(message, lock.lock_action).await?;

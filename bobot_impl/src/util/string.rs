@@ -1,5 +1,7 @@
+use std::ops::DerefMut;
+
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisStr};
-use crate::statics::{DB, REDIS, TG};
+use crate::statics::{CONFIG, DB, REDIS, TG};
 use crate::util::error::Result;
 
 use async_trait::async_trait;
@@ -12,7 +14,7 @@ get_langs!();
 
 pub use langs::*;
 
-use redis::AsyncCommands;
+use redis::Script;
 use sea_orm::sea_query::OnConflict;
 use sea_orm::{EntityTrait, IntoActiveModel};
 
@@ -34,9 +36,34 @@ fn get_query<'r>() -> impl CachedQueryTrait<'r, Lang, i64> {
 }
 
 pub async fn should_ignore_chat(chat: i64) -> Result<bool> {
-    let key = format!("ign:{}", chat);
-    let ignore = REDIS.sq(|q| q.exists(&key)).await?;
-    Ok(ignore)
+    let counterkey = format!("ignc:{}", chat);
+
+    let count: usize = REDIS
+        .query(|mut q| async move {
+            let count: usize = Script::new(
+                r#"
+                    local current
+                    current = redis.call("incr",KEYS[1])
+                    if current == 1 then
+                        redis.call("expire",KEYS[1],ARGV[1])
+                    end
+
+                    if current == tonumber(ARGV[2]) then
+                        redis.call("expire", KEYS[1], ARGV[3])
+                    end
+                    return current
+                "#,
+            )
+            .key(&counterkey)
+            .arg(CONFIG.timing.antifloodwait_time)
+            .arg(CONFIG.timing.antifloodwait_count)
+            .arg(CONFIG.timing.ignore_chat_time)
+            .invoke_async(q.deref_mut())
+            .await?;
+            Ok(count)
+        })
+        .await?;
+    Ok(count >= CONFIG.timing.antifloodwait_count)
 }
 
 pub async fn ignore_chat(chat: i64, time: &Duration) -> Result<()> {

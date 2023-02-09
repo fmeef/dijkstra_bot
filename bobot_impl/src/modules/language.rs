@@ -83,13 +83,14 @@ async fn get_lang_conversation(message: &Message) -> Result<Conversation> {
 }
 
 async fn handle_command<'a>(message: &Message, cmd: Option<&'a Command<'a>>) -> Result<()> {
-    if should_ignore_chat(message.get_chat().get_id()).await? {
-        return Ok(());
-    }
     if let Some(&Command { cmd, .. }) = cmd {
         match cmd {
             "setlang" => {
                 let conv = get_lang_conversation(message).await?;
+
+                if should_ignore_chat(message.get_chat().get_id()).await? {
+                    return Ok(());
+                }
                 TG.client()
                     .build_send_message(
                         message.get_chat().get_id(),

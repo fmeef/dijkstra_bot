@@ -44,14 +44,14 @@ pub async fn record_cache_user(user: &User) -> Result<()> {
         REDIS
             .pipe(|p| {
                 p.set(&key, st)
-                    .expire(&key, CONFIG.cache_timeout)
+                    .expire(&key, CONFIG.timing.cache_timeout)
                     .set(&uname, user.get_id())
-                    .expire(&uname, CONFIG.cache_timeout)
+                    .expire(&uname, CONFIG.timing.cache_timeout)
             })
             .await?;
     } else {
         REDIS
-            .pipe(|p| p.set(&key, st).expire(&key, CONFIG.cache_timeout))
+            .pipe(|p| p.set(&key, st).expire(&key, CONFIG.timing.cache_timeout))
             .await?;
     }
     Ok(())
@@ -61,7 +61,7 @@ pub async fn record_cache_chat(chat: &Chat) -> Result<()> {
     let key = get_chat_cache_key(chat.get_id());
     let st = RedisStr::new(chat)?;
     REDIS
-        .pipe(|p| p.set(&key, st).expire(&key, CONFIG.cache_timeout))
+        .pipe(|p| p.set(&key, st).expire(&key, CONFIG.timing.cache_timeout))
         .await?;
     Ok(())
 }

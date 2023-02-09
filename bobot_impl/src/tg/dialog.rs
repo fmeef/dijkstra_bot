@@ -57,7 +57,7 @@ pub async fn get_dialog(chat: &Chat) -> Result<Option<dialogs::Model>> {
                 .await?;
             Ok(res)
         },
-        Duration::seconds(CONFIG.cache_timeout as i64),
+        Duration::seconds(CONFIG.timing.cache_timeout as i64),
     )
     .query(&key, &())
     .await?;

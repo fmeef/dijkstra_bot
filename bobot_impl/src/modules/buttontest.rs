@@ -27,7 +27,11 @@ async fn handle_murkdown(message: &Message) -> Result<bool> {
             match MarkupBuilder::from_murkdown(text) {
                 Ok(md) => {
                     if !should_ignore_chat(message.get_chat().get_id()).await? {
+                        if should_ignore_chat(message.get_chat().get_id()).await? {
+                            return Ok(false);
+                        }
                         let (msg, entities) = md.build();
+
                         TG.client()
                             .build_send_message(message.get_chat().get_id(), msg)
                             .entities(entities)
@@ -61,9 +65,6 @@ async fn handle_markdown(message: &Message) -> Result<bool> {
 
 #[allow(dead_code)]
 async fn handle_command<'a>(message: &Message, cmd: Option<&'a Command<'a>>) -> Result<()> {
-    if should_ignore_chat(message.get_chat().get_id()).await? {
-        return Ok(());
-    }
     if let Some(&Command { cmd, .. }) = cmd {
         log::info!("piracy command {}", cmd);
         match cmd {

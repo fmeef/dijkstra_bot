@@ -12,10 +12,12 @@ use crate::statics::REDIS;
 use crate::tg::command::Command;
 
 use crate::tg::command::TextArgs;
+
 use crate::util::error::BotError;
 use crate::util::error::Result;
+
+use crate::metadata::metadata;
 use crate::util::string::Speak;
-use crate::{metadata::metadata, util::string::should_ignore_chat};
 use botapi::gen_types::{Message, UpdateExt};
 use chrono::Duration;
 use entities::{filters, triggers};
@@ -376,7 +378,7 @@ async fn get_filter(message: &Message, id: i64) -> Result<Option<filters::Model>
                 .await?;
             Ok(res)
         },
-        Duration::seconds(CONFIG.cache_timeout as i64),
+        Duration::seconds(CONFIG.timing.cache_timeout as i64),
     )
     .query(&get_filter_key(message, id), &())
     .await
@@ -412,10 +414,11 @@ async fn update_cache_from_db(message: &Message) -> Result<()> {
                 for (filter, triggers) in res.iter() {
                     let key = get_filter_key(message, filter.id);
                     let filter_st = RedisStr::new(&filter)?;
-                    p.set(&key, filter_st).expire(&key, CONFIG.cache_timeout);
+                    p.set(&key, filter_st)
+                        .expire(&key, CONFIG.timing.cache_timeout);
                     for trigger in triggers.iter() {
                         p.hset(&hash_key, trigger.trigger.to_owned(), filter.id)
-                            .expire(&hash_key, CONFIG.cache_timeout);
+                            .expire(&hash_key, CONFIG.timing.cache_timeout);
                     }
                 }
                 Ok(p)
@@ -550,10 +553,6 @@ async fn list_triggers(message: &Message) -> Result<()> {
 
 #[allow(dead_code)]
 async fn handle_command<'a>(message: &Message, command: Option<&'a Command<'a>>) -> Result<()> {
-    if should_ignore_chat(message.get_chat().get_id()).await? {
-        return Ok(());
-    }
-
     if let Some(&Command { cmd, ref args, .. }) = command {
         match cmd {
             "filter" => command_filter(message, &args).await?,

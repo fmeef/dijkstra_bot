@@ -39,16 +39,35 @@ pub struct Persistence {
 
 #[derive(Serialize, Deserialize)]
 pub struct Config {
-    pub cache_timeout: usize,
     pub bot_token: String,
     pub persistence: Persistence,
     pub webhook: WebhookConfig,
     pub logging: LogConfig,
+    pub timing: Timing,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Timing {
+    pub cache_timeout: usize,
+    pub antifloodwait_count: usize,
+    pub antifloodwait_time: usize,
+    pub ignore_chat_time: usize,
 }
 
 impl LogConfig {
     pub fn get_log_level(&self) -> LevelFilter {
         self.log_level.0
+    }
+}
+
+impl Default for Timing {
+    fn default() -> Self {
+        Self {
+            cache_timeout: Duration::hours(48).num_seconds() as usize,
+            antifloodwait_count: 80,
+            antifloodwait_time: 150,
+            ignore_chat_time: Duration::minutes(10).num_seconds() as usize,
+        }
     }
 }
 
@@ -83,11 +102,11 @@ impl Default for WebhookConfig {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            cache_timeout: Duration::hours(48).num_seconds() as usize,
             bot_token: "changeme".to_owned(),
             persistence: Persistence::default(),
             logging: LogConfig::default(),
             webhook: WebhookConfig::default(),
+            timing: Timing::default(),
         }
     }
 }

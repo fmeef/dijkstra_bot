@@ -428,7 +428,7 @@ where
     }
 
     async fn cache<K: AsRef<str> + Send>(self, key: K) -> Result<V> {
-        self.cache_duration(key, Duration::seconds(CONFIG.cache_timeout as i64))
+        self.cache_duration(key, Duration::seconds(CONFIG.timing.cache_timeout as i64))
             .await
     }
 }
