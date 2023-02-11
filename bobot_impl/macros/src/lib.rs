@@ -79,6 +79,13 @@ struct LangLocaleInput {
     format: Punctuated<Expr, Token![,]>,
 }
 
+struct ChatLocaleInput {
+    lang: Expr,
+    chat: Expr,
+    st: LitStr,
+    format: Punctuated<Expr, Token![,]>,
+}
+
 impl Parse for LangLocaleInput {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let lang: Expr = input.parse()?;
@@ -90,6 +97,26 @@ impl Parse for LangLocaleInput {
         }
         Ok(Self {
             lang,
+            st,
+            format: input.parse_terminated(Expr::parse)?,
+        })
+    }
+}
+
+impl Parse for ChatLocaleInput {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let lang: Expr = input.parse()?;
+        let _: Token![,] = input.parse()?;
+        let chat: Expr = input.parse()?;
+        let _: Token![,] = input.parse()?;
+        let st: LitStr = input.parse()?;
+        let lookahead = input.lookahead1();
+        if lookahead.peek(Token![,]) {
+            let _: Token![,] = input.parse()?;
+        }
+        Ok(Self {
+            lang,
+            chat,
             st,
             format: input.parse_terminated(Expr::parse)?,
         })
@@ -241,6 +268,48 @@ pub fn rformat(tokens: TokenStream) -> TokenStream {
     let idents = input.format.iter();
     let res = quote! {
         format!(#format, #( #idents ),*)
+    };
+    TokenStream::from(res)
+}
+
+#[proc_macro]
+pub fn rmformat(tokens: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(tokens as ChatLocaleInput);
+    let key = input.st;
+    let language = input.lang;
+    let chat = input.chat;
+    let locale = LOCALE.read().unwrap();
+    let format = locale
+        .langs
+        .get("en")
+        .expect("invalid language")
+        .strings
+        .get(&key.value())
+        .expect("invalid resource");
+
+    let arms = STRINGS_DIR
+        .files()
+        .map(|f| f.path().file_stem())
+        .map(|thing| thing.unwrap().to_str().unwrap().to_case(Case::UpperCamel))
+        .map(|v| format_ident!("{}", v))
+        .map(|v| {
+            let idents = input.format.iter();
+            quote! {
+                #v => {
+                    let fmt = format!(#format, #( #idents ),*);
+                    crate::statics::TG/.client()
+                        .build_send_message(
+                            #chat,
+                            &fmt
+                        )
+             }
+            }
+        });
+    let res = quote! {
+        match #language {
+            #( #arms )*,
+            Invalid => "invalid".to_owned()
+        }
     };
     TokenStream::from(res)
 }
