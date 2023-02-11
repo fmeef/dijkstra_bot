@@ -75,9 +75,11 @@ RUN rustup default stable && rustup component add rustfmt && \
  cargo install sea-orm-cli
 RUN git clone --depth 1 https://github.com/rust-lang/rust-analyzer.git /opt/rust-analyzer && \
     cd /opt/rust-analyzer && \
+   rustup override set nightly && \
    cargo xtask install --server && cargo clean
 RUN git clone https://github.com/helix-editor/helix /opt/helix && \
     cd /opt/helix && rustup override set nightly && \
+    git checkout 22.12 && \
     cargo install --path helix-term && cargo clean
 
 RUN apt update && apt install -y postgresql-client redis
@@ -90,3 +92,5 @@ RUN mkdir -p /home/bobot/.config/helix && ln -sf /opt/helix/runtime /home/bobot/
 VOLUME /bobot
 WORKDIR /bobot
 RUN rustup default stable
+ENV COLORTERM=truecolor
+ENV TERM xterm-256color
