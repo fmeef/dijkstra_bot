@@ -302,7 +302,7 @@ async fn handle_action(message: &Message, lockaction: LockAction) -> Result<()> 
                     .set_can_send_voice_notes(false)
                     .set_can_send_other_messages(false)
                     .build();
-                change_permissions(message, &user, &permissions).await?;
+                change_permissions(message, &user, &permissions, None).await?;
                 message.reply("Muted premium user").await?;
             }
             LockAction::Warn => {

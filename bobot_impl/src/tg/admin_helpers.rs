@@ -17,7 +17,7 @@ use async_trait::async_trait;
 use botapi::gen_types::{
     Chat, ChatMember, ChatPermissions, ChatPermissionsBuilder, Message, UpdateExt, User,
 };
-use chrono::Duration;
+use chrono::{DateTime, Duration, Utc};
 use futures::{future::BoxFuture, FutureExt};
 
 use lazy_static::__Deref;
@@ -61,6 +61,7 @@ pub async fn change_permissions(
     message: &Message,
     user: &User,
     permissions: &ChatPermissions,
+    time: Option<Duration>,
 ) -> Result<()> {
     let me = get_me().await?;
     let chat = message.get_chat_ref();
@@ -79,7 +80,8 @@ pub async fn change_permissions(
                 .build_restrict_chat_member(chat.get_id(), user.get_id(), permissions)
                 .build()
                 .await?;
-            update_actions_permissions(message, permissions).await?;
+            let time = time.map(|t| Utc::now().checked_add_signed(t)).flatten();
+            update_actions_permissions(message, permissions, time).await?;
             Ok(())
         }
     }
@@ -134,10 +136,11 @@ pub async fn change_permissions_message<'a>(
     message: &Message,
     entities: &VecDeque<EntityArg<'a>>,
     permissions: ChatPermissions,
+    duration: Option<Duration>,
 ) -> Result<()> {
     message.get_from().admin_or_die(&message.get_chat()).await?;
     action_message(message, entities, None, |message, user, _| {
-        async move { change_permissions(message, user, &permissions).await }.boxed()
+        async move { change_permissions(message, user, &permissions, duration).await }.boxed()
     })
     .await?;
     Ok(())
@@ -164,8 +167,14 @@ pub async fn get_action(chat: &Chat, user: &User) -> Result<Option<actions::Mode
     let key = get_action_key(user, chat);
     let res = default_cache_query(
         move |_, _| async move {
+            let time = Utc::now();
             let res = actions::Entity::find_by_id((user, chat))
+                .filter(actions::Column::Expires.lt(time))
                 .one(DB.deref())
+                .await?;
+            actions::Entity::delete_many()
+                .filter(actions::Column::Expires.gte(time))
+                .exec(DB.deref())
                 .await?;
             Ok(res)
         },
@@ -275,12 +284,12 @@ pub async fn unmute(message: &Message, user: &User) -> Result<()> {
         .set_can_send_other_messages(true)
         .build();
 
-    update_actions_permissions(message, &permissions).await?;
-    change_permissions(message, user, &permissions).await?;
+    update_actions_permissions(message, &permissions, None).await?;
+    change_permissions(message, user, &permissions, None).await?;
     Ok(())
 }
 
-pub async fn mute(message: &Message, user: &User) -> Result<()> {
+pub async fn mute(message: &Message, user: &User, duration: Option<Duration>) -> Result<()> {
     let permissions = ChatPermissionsBuilder::new()
         .set_can_send_messages(false)
         .set_can_send_audios(false)
@@ -292,9 +301,9 @@ pub async fn mute(message: &Message, user: &User) -> Result<()> {
         .set_can_send_voice_notes(false)
         .set_can_send_other_messages(false)
         .build();
-
-    update_actions_permissions(message, &permissions).await?;
-    change_permissions(message, user, &permissions).await?;
+    let time = duration.map(|t| Utc::now().checked_add_signed(t)).flatten();
+    update_actions_permissions(message, &permissions, time).await?;
+    change_permissions(message, user, &permissions, duration).await?;
     Ok(())
 }
 
@@ -359,7 +368,12 @@ pub async fn warn_user(message: &Message, user: &User, reason: Option<String>) -
     Ok(count as i32)
 }
 
-pub async fn update_actions_ban(chat: &Chat, user: &User, banned: bool) -> Result<()> {
+pub async fn update_actions_ban(
+    chat: &Chat,
+    user: &User,
+    banned: bool,
+    expires: Option<DateTime<Utc>>,
+) -> Result<()> {
     let key = get_action_key(user.get_id(), chat.get_id());
 
     let active = actions::ActiveModel {
@@ -377,12 +391,13 @@ pub async fn update_actions_ban(chat: &Chat, user: &User, banned: bool) -> Resul
         can_send_poll: NotSet,
         can_send_other: NotSet,
         action: NotSet,
+        expires: Set(expires),
     };
 
     let res = actions::Entity::insert(active)
         .on_conflict(
             OnConflict::columns([actions::Column::UserId, actions::Column::ChatId])
-                .update_columns([actions::Column::IsBanned])
+                .update_columns([actions::Column::IsBanned, actions::Column::Expires])
                 .to_owned(),
         )
         .exec_with_returning(DB.deref().deref())
@@ -410,6 +425,7 @@ pub async fn update_actions_pending(chat: &Chat, user: &User, pending: bool) -> 
         can_send_poll: NotSet,
         can_send_other: NotSet,
         action: NotSet,
+        expires: NotSet,
     };
 
     let res = actions::Entity::insert(active)
@@ -429,6 +445,7 @@ pub async fn update_actions_pending(chat: &Chat, user: &User, pending: bool) -> 
 pub async fn update_actions_permissions(
     message: &Message,
     permissions: &ChatPermissions,
+    expires: Option<DateTime<Utc>>,
 ) -> Result<()> {
     if let Some(user) = message.get_from() {
         let key = get_action_key(user.get_id(), message.get_chat().get_id());
@@ -477,6 +494,7 @@ pub async fn update_actions_permissions(
                 .map(|v| Set(v))
                 .unwrap_or(NotSet),
             action: NotSet,
+            expires: Set(expires),
         };
 
         let res = actions::Entity::insert(active)
@@ -492,6 +510,7 @@ pub async fn update_actions_permissions(
                         actions::Column::CanSendVideoNote,
                         actions::Column::CanSendPoll,
                         actions::Column::CanSendOther,
+                        actions::Column::Expires,
                     ])
                     .to_owned(),
             )

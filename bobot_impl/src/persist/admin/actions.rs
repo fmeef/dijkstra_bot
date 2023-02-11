@@ -1,3 +1,4 @@
+use chrono::Utc;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -42,6 +43,7 @@ pub struct Model {
     #[sea_orm(default = true)]
     pub can_send_other: bool,
     pub action: Option<ActionType>,
+    pub expires: Option<chrono::DateTime<Utc>>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

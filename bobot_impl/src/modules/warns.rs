@@ -42,7 +42,7 @@ async fn warn_ban(message: &Message, user: &User, count: i32) -> Result<()> {
 
 async fn warn_mute(message: &Message, user: &User, count: i32) -> Result<()> {
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
-    mute(message, user).await?;
+    mute(message, user, None).await?;
     message
         .reply(&rlformat!(
             lang,

@@ -75,8 +75,8 @@ pub async fn mute_cmd<'a>(message: &Message, entities: &Entities<'a>) -> Result<
         .set_can_send_voice_notes(false)
         .set_can_send_other_messages(false)
         .build();
-    update_actions_permissions(message, &permissions).await?;
-    change_permissions_message(message, &entities, permissions).await?;
+    update_actions_permissions(message, &permissions, None).await?;
+    change_permissions_message(message, &entities, permissions, None).await?;
     message.speak(rlformat!(lang, "muteuser")).await?;
     Ok(())
 }
@@ -96,8 +96,8 @@ pub async fn unmute_cmd<'a>(message: &'a Message, entities: &Entities<'a>) -> Re
         .set_can_send_other_messages(true)
         .build();
 
-    update_actions_permissions(message, &permissions).await?;
-    change_permissions_message(message, &entities, permissions).await?;
+    update_actions_permissions(message, &permissions, None).await?;
+    change_permissions_message(message, &entities, permissions, None).await?;
     message.speak(rlformat!(lang, "unmuteuser")).await?;
     Ok(())
 }
