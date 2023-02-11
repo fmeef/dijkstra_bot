@@ -8,7 +8,7 @@ use botapi::{
     },
 };
 use dashmap::DashMap;
-use macros::rlformat;
+use macros::{rlformat, rmformat};
 
 use super::{
     admin_helpers::{handle_pending_action, is_dm},
@@ -113,8 +113,7 @@ async fn show_help<'a>(message: &Message, helps: Arc<MetadataCollection>) -> Res
                 .await?;
         } else {
             let url = get_url("help").await?;
-            TG.client()
-                .build_send_message(message.get_chat().get_id(), &rlformat!(lang, "dmhelp"))
+            rmformat!(lang, message.get_chat().get_id(), "dmhelp")
                 .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
                     InlineKeyboardBuilder::default()
                         .button(

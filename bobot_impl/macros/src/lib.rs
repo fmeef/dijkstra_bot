@@ -4,14 +4,14 @@ use convert_case::{Case, Casing};
 use include_dir::{include_dir, Dir};
 use lazy_static::lazy_static;
 use proc_macro::TokenStream;
-use quote::{format_ident, quote};
+use quote::{format_ident, quote, ToTokens};
 use serde::Deserialize;
 use syn::{
     braced,
     parse::{Parse, ParseStream},
     parse_macro_input,
     punctuated::Punctuated,
-    token::Brace,
+    token::{Brace, Comma},
     Expr, LitStr, Token,
 };
 
@@ -278,6 +278,19 @@ pub fn rmformat(tokens: TokenStream) -> TokenStream {
     let key = input.st;
     let language = input.lang;
     let chat = input.chat;
+    let args = input.format;
+    let m = get_match(language, key, args);
+
+    let res = quote! {
+        {
+            crate::statics::TG.client()
+                .build_send_message(#chat, &#m)
+        }
+    };
+    TokenStream::from(res)
+}
+
+fn get_match(language: Expr, key: LitStr, args: Punctuated<Expr, Comma>) -> impl ToTokens {
     let locale = LOCALE.read().unwrap();
     let format = locale
         .langs
@@ -293,25 +306,17 @@ pub fn rmformat(tokens: TokenStream) -> TokenStream {
         .map(|thing| thing.unwrap().to_str().unwrap().to_case(Case::UpperCamel))
         .map(|v| format_ident!("{}", v))
         .map(|v| {
-            let idents = input.format.iter();
+            let idents = args.iter();
             quote! {
-                #v => {
-                    let fmt = format!(#format, #( #idents ),*);
-                    crate::statics::TG/.client()
-                        .build_send_message(
-                            #chat,
-                            &fmt
-                        )
-             }
+                #v => format!(#format, #( #idents ),*)
             }
         });
-    let res = quote! {
+    quote! {
         match #language {
             #( #arms )*,
             Invalid => "invalid".to_owned()
         }
-    };
-    TokenStream::from(res)
+    }
 }
 
 #[proc_macro]
@@ -319,31 +324,7 @@ pub fn rlformat(tokens: TokenStream) -> TokenStream {
     let input = parse_macro_input!(tokens as LangLocaleInput);
     let key = input.st;
     let language = input.lang;
-    let locale = LOCALE.read().unwrap();
-    let format = locale
-        .langs
-        .get("en")
-        .expect("invalid language")
-        .strings
-        .get(&key.value())
-        .expect("invalid resource");
-
-    let arms = STRINGS_DIR
-        .files()
-        .map(|f| f.path().file_stem())
-        .map(|thing| thing.unwrap().to_str().unwrap().to_case(Case::UpperCamel))
-        .map(|v| format_ident!("{}", v))
-        .map(|v| {
-            let idents = input.format.iter();
-            quote! {
-                #v => format!(#format, #( #idents ),*)
-            }
-        });
-    let res = quote! {
-        match #language {
-            #( #arms )*,
-            Invalid => "invalid".to_owned()
-        }
-    };
-    TokenStream::from(res)
+    let args = input.format;
+    let m = get_match(language, key, args);
+    TokenStream::from(quote! { #m })
 }
