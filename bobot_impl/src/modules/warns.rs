@@ -85,7 +85,13 @@ pub async fn warn<'a>(
             }
 
             let reason = args
-                .map(|a| if a.args.len() > 0 { Some(a.text) } else { None })
+                .map(|a| {
+                    if a.args.len() > 0 {
+                        Some(a.text.trim())
+                    } else {
+                        None
+                    }
+                })
                 .flatten();
 
             let dialog = dialog_or_default(message.get_chat_ref()).await?;
