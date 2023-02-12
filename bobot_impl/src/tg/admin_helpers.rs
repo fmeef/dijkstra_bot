@@ -25,8 +25,8 @@ use macros::rlformat;
 use redis::AsyncCommands;
 
 use sea_orm::{
-    sea_query::OnConflict, ActiveValue::NotSet, ActiveValue::Set, ColumnTrait, EntityTrait,
-    IntoActiveModel, PaginatorTrait, QueryFilter,
+    sea_query::OnConflict, ActiveValue::NotSet, ActiveValue::Set, ColumnTrait, DbErr, EntityTrait,
+    IntoActiveModel, ModelTrait, PaginatorTrait, QueryFilter, TransactionTrait,
 };
 
 use super::{
@@ -58,13 +58,12 @@ fn get_warns_key(user: i64, chat: i64) -> String {
 }
 
 pub async fn change_permissions(
-    message: &Message,
+    chat: &Chat,
     user: &User,
     permissions: &ChatPermissions,
     time: Option<Duration>,
 ) -> Result<()> {
     let me = get_me().await?;
-    let chat = message.get_chat_ref();
     let lang = get_chat_lang(chat.get_id()).await?;
     if user.is_admin(chat).await? {
         Err(BotError::speak(rlformat!(lang, "muteadmin"), chat.get_id()))
@@ -76,12 +75,20 @@ pub async fn change_permissions(
                 chat.get_id(),
             ))
         } else {
-            TG.client()
-                .build_restrict_chat_member(chat.get_id(), user.get_id(), permissions)
-                .build()
-                .await?;
+            if let Some(time) = time.map(|t| Utc::now().checked_add_signed(t)).flatten() {
+                TG.client()
+                    .build_restrict_chat_member(chat.get_id(), user.get_id(), permissions)
+                    .until_date(time.timestamp())
+                    .build()
+                    .await?;
+            } else {
+                TG.client()
+                    .build_restrict_chat_member(chat.get_id(), user.get_id(), permissions)
+                    .build()
+                    .await?;
+            }
             let time = time.map(|t| Utc::now().checked_add_signed(t)).flatten();
-            update_actions_permissions(message, permissions, time).await?;
+            update_actions_permissions(user, chat, permissions, time).await?;
             Ok(())
         }
     }
@@ -132,15 +139,46 @@ where
     Ok(())
 }
 
+pub fn parse_duration<'a>(args: Option<ArgSlice<'a>>, chat: i64) -> Result<Option<Duration>> {
+    if let Some(args) = args {
+        if let Some(thing) = args.args.first() {
+            let head = &thing.get_text()[0..thing.get_text().len() - 1];
+            let tail = &thing.get_text()[thing.get_text().len() - 1..];
+            log::info!("head {} tail {}", head, tail);
+            let head = match str::parse::<i64>(head) {
+                Err(_) => return Err(BotError::speak("Enter a number", chat)),
+                Ok(res) => res,
+            };
+            let res = match tail {
+                "m" => Duration::minutes(head),
+                _ => return Err(BotError::speak("Invalid time spec", chat)),
+            };
+
+            Ok(Some(res))
+        } else {
+            Ok(None)
+        }
+    } else {
+        Ok(None)
+    }
+}
+
 pub async fn change_permissions_message<'a>(
     message: &Message,
     entities: &VecDeque<EntityArg<'a>>,
     permissions: ChatPermissions,
-    duration: Option<Duration>,
+    args: &'a TextArgs<'a>,
 ) -> Result<()> {
     message.get_from().admin_or_die(&message.get_chat()).await?;
-    action_message(message, entities, None, |message, user, _| {
-        async move { change_permissions(message, user, &permissions, duration).await }.boxed()
+    action_message(message, entities, Some(args), |message, user, args| {
+        async move {
+            let duration = parse_duration(args, message.get_chat().get_id())?;
+            change_permissions(message.get_chat_ref(), user, &permissions, duration).await?;
+
+            update_actions_permissions(user, message.get_chat_ref(), &permissions, None).await?;
+            Ok(())
+        }
+        .boxed()
     })
     .await?;
     Ok(())
@@ -161,6 +199,36 @@ pub async fn set_warn_limit(chat: &Chat, limit: i32) -> Result<()> {
     Ok(())
 }
 
+pub async fn get_expired_action(chat: &Chat, user: &User) -> Result<Option<actions::Model>> {
+    let chat = chat.get_id();
+    let user = user.get_id();
+    let key = get_action_key(user, chat);
+    let res = default_cache_query(
+        move |_, _| async move {
+            let res = DB
+                .transaction::<_, Option<actions::Model>, DbErr>(|trans| {
+                    async move {
+                        let time = Utc::now();
+                        let res = actions::Entity::find_by_id((user, chat))
+                            .filter(actions::Column::Expires.gte(time))
+                            .one(trans)
+                            .await?;
+                        if let Some(res) = res.clone() {
+                            res.delete(trans).await?;
+                        }
+                        Ok(res)
+                    }
+                    .boxed()
+                })
+                .await?;
+            Ok(res)
+        },
+        Duration::hours(1),
+    )
+    .query(&key, &())
+    .await?;
+    Ok(res)
+}
 pub async fn get_action(chat: &Chat, user: &User) -> Result<Option<actions::Model>> {
     let chat = chat.get_id();
     let user = user.get_id();
@@ -171,10 +239,6 @@ pub async fn get_action(chat: &Chat, user: &User) -> Result<Option<actions::Mode
             let res = actions::Entity::find_by_id((user, chat))
                 .filter(actions::Column::Expires.lt(time))
                 .one(DB.deref())
-                .await?;
-            actions::Entity::delete_many()
-                .filter(actions::Column::Expires.gte(time))
-                .exec(DB.deref())
                 .await?;
             Ok(res)
         },
@@ -271,7 +335,7 @@ pub async fn clear_warns(chat: &Chat, user: &User) -> Result<()> {
     Ok(())
 }
 
-pub async fn unmute(message: &Message, user: &User) -> Result<()> {
+pub async fn unmute(chat: &Chat, user: &User) -> Result<()> {
     let permissions = ChatPermissionsBuilder::new()
         .set_can_send_messages(true)
         .set_can_send_audios(true)
@@ -284,12 +348,12 @@ pub async fn unmute(message: &Message, user: &User) -> Result<()> {
         .set_can_send_other_messages(true)
         .build();
 
-    update_actions_permissions(message, &permissions, None).await?;
-    change_permissions(message, user, &permissions, None).await?;
+    update_actions_permissions(user, chat, &permissions, None).await?;
+    change_permissions(chat, user, &permissions, None).await?;
     Ok(())
 }
 
-pub async fn mute(message: &Message, user: &User, duration: Option<Duration>) -> Result<()> {
+pub async fn mute(chat: &Chat, user: &User, duration: Option<Duration>) -> Result<()> {
     let permissions = ChatPermissionsBuilder::new()
         .set_can_send_messages(false)
         .set_can_send_audios(false)
@@ -302,8 +366,8 @@ pub async fn mute(message: &Message, user: &User, duration: Option<Duration>) ->
         .set_can_send_other_messages(false)
         .build();
     let time = duration.map(|t| Utc::now().checked_add_signed(t)).flatten();
-    update_actions_permissions(message, &permissions, time).await?;
-    change_permissions(message, user, &permissions, duration).await?;
+    update_actions_permissions(user, chat, &permissions, time).await?;
+    change_permissions(chat, user, &permissions, duration).await?;
     Ok(())
 }
 
@@ -443,82 +507,82 @@ pub async fn update_actions_pending(chat: &Chat, user: &User, pending: bool) -> 
 }
 
 pub async fn update_actions_permissions(
-    message: &Message,
+    user: &User,
+    chat: &Chat,
     permissions: &ChatPermissions,
     expires: Option<DateTime<Utc>>,
 ) -> Result<()> {
-    if let Some(user) = message.get_from() {
-        let key = get_action_key(user.get_id(), message.get_chat().get_id());
+    let key = get_action_key(user.get_id(), chat.get_id());
 
-        let active = actions::ActiveModel {
-            user_id: Set(user.get_id()),
-            chat_id: Set(message.get_chat().get_id()),
-            pending: Set(true),
-            is_banned: NotSet,
-            can_send_messages: permissions
-                .get_can_send_messages()
-                .map(|v| Set(v))
-                .unwrap_or(NotSet),
-            can_send_audio: permissions
-                .get_can_send_audios()
-                .map(|v| Set(v))
-                .unwrap_or(NotSet),
+    let active = actions::ActiveModel {
+        user_id: Set(user.get_id()),
+        chat_id: Set(chat.get_id()),
+        pending: Set(true),
+        is_banned: NotSet,
+        can_send_messages: permissions
+            .get_can_send_messages()
+            .map(|v| Set(v))
+            .unwrap_or(NotSet),
+        can_send_audio: permissions
+            .get_can_send_audios()
+            .map(|v| Set(v))
+            .unwrap_or(NotSet),
 
-            can_send_document: permissions
-                .get_can_send_documents()
-                .map(|v| Set(v))
-                .unwrap_or(NotSet),
-            can_send_photo: permissions
-                .get_can_send_photos()
-                .map(|v| Set(v))
-                .unwrap_or(NotSet),
+        can_send_document: permissions
+            .get_can_send_documents()
+            .map(|v| Set(v))
+            .unwrap_or(NotSet),
+        can_send_photo: permissions
+            .get_can_send_photos()
+            .map(|v| Set(v))
+            .unwrap_or(NotSet),
 
-            can_send_video: permissions
-                .get_can_send_videos()
-                .map(|v| Set(v))
-                .unwrap_or(NotSet),
-            can_send_voice_note: permissions
-                .get_can_send_voice_notes()
-                .map(|v| Set(v))
-                .unwrap_or(NotSet),
-            can_send_video_note: permissions
-                .get_can_send_video_notes()
-                .map(|v| Set(v))
-                .unwrap_or(NotSet),
-            can_send_poll: permissions
-                .get_can_send_polls()
-                .map(|v| Set(v))
-                .unwrap_or(NotSet),
-            can_send_other: permissions
-                .get_can_send_other_messages()
-                .map(|v| Set(v))
-                .unwrap_or(NotSet),
-            action: NotSet,
-            expires: Set(expires),
-        };
+        can_send_video: permissions
+            .get_can_send_videos()
+            .map(|v| Set(v))
+            .unwrap_or(NotSet),
+        can_send_voice_note: permissions
+            .get_can_send_voice_notes()
+            .map(|v| Set(v))
+            .unwrap_or(NotSet),
+        can_send_video_note: permissions
+            .get_can_send_video_notes()
+            .map(|v| Set(v))
+            .unwrap_or(NotSet),
+        can_send_poll: permissions
+            .get_can_send_polls()
+            .map(|v| Set(v))
+            .unwrap_or(NotSet),
+        can_send_other: permissions
+            .get_can_send_other_messages()
+            .map(|v| Set(v))
+            .unwrap_or(NotSet),
+        action: NotSet,
+        expires: Set(expires),
+    };
 
-        let res = actions::Entity::insert(active)
-            .on_conflict(
-                OnConflict::columns([actions::Column::UserId, actions::Column::ChatId])
-                    .update_columns([
-                        actions::Column::CanSendMessages,
-                        actions::Column::CanSendAudio,
-                        actions::Column::CanSendVideo,
-                        actions::Column::CanSendDocument,
-                        actions::Column::CanSendPhoto,
-                        actions::Column::CanSendVoiceNote,
-                        actions::Column::CanSendVideoNote,
-                        actions::Column::CanSendPoll,
-                        actions::Column::CanSendOther,
-                        actions::Column::Expires,
-                    ])
-                    .to_owned(),
-            )
-            .exec_with_returning(DB.deref().deref())
-            .await?;
+    let res = actions::Entity::insert(active)
+        .on_conflict(
+            OnConflict::columns([actions::Column::UserId, actions::Column::ChatId])
+                .update_columns([
+                    actions::Column::CanSendMessages,
+                    actions::Column::CanSendAudio,
+                    actions::Column::CanSendVideo,
+                    actions::Column::CanSendDocument,
+                    actions::Column::CanSendPhoto,
+                    actions::Column::CanSendVoiceNote,
+                    actions::Column::CanSendVideoNote,
+                    actions::Column::CanSendPoll,
+                    actions::Column::CanSendOther,
+                    actions::Column::Expires,
+                ])
+                .to_owned(),
+        )
+        .exec_with_returning(DB.deref().deref())
+        .await?;
 
-        res.cache(key).await?;
-    }
+    res.cache(key).await?;
+
     Ok(())
 }
 
@@ -526,6 +590,16 @@ pub async fn handle_pending_action(update: &UpdateExt) -> Result<()> {
     if let (Some(chat), Some(user)) = (update.get_chat(), update.get_user()) {
         if !is_self_admin(&chat).await? {
             return Ok(());
+        }
+        if let Some(action) = get_expired_action(&chat, &user).await? {
+            if action.is_banned {
+                TG.client()
+                    .build_unban_chat_member(chat.get_id(), user.get_id())
+                    .build()
+                    .await?;
+            }
+
+            unmute(&chat, &user).await?;
         }
         if let Some(action) = get_action(&chat, &user).await? {
             if action.pending {

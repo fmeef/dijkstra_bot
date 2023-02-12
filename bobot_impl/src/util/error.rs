@@ -1,4 +1,5 @@
 use botapi::bot::ApiError;
+use sea_orm::{DbErr, TransactionError};
 use thiserror::Error;
 use tokio::task::JoinError;
 
@@ -42,6 +43,8 @@ pub enum BotError {
     Uuid(#[from] uuid::Error),
     #[error("Hyper error: {0}")]
     Hyper(#[from] hyper::Error),
+    #[error("Transaction error {0}")]
+    TransactionErr(#[from] TransactionError<DbErr>),
     #[error("Generic error {0}")]
     Generic(String),
 }

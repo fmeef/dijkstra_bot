@@ -3,7 +3,7 @@ use crate::{
     statics::TG,
     tg::admin_helpers::*,
     tg::{
-        command::{Command, Entities},
+        command::{Command, Entities, TextArgs},
         user::Username,
     },
     util::error::Result,
@@ -62,7 +62,11 @@ pub async fn ban_cmd<'a>(message: &'a Message, entities: &Entities<'a>) -> Resul
     Ok(())
 }
 
-pub async fn mute_cmd<'a>(message: &Message, entities: &Entities<'a>) -> Result<()> {
+pub async fn mute_cmd<'a>(
+    message: &Message,
+    entities: &Entities<'a>,
+    args: &TextArgs<'a>,
+) -> Result<()> {
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
     let permissions = ChatPermissionsBuilder::new()
         .set_can_send_messages(false)
@@ -75,13 +79,17 @@ pub async fn mute_cmd<'a>(message: &Message, entities: &Entities<'a>) -> Result<
         .set_can_send_voice_notes(false)
         .set_can_send_other_messages(false)
         .build();
-    update_actions_permissions(message, &permissions, None).await?;
-    change_permissions_message(message, &entities, permissions, None).await?;
+    change_permissions_message(message, &entities, permissions, args).await?;
     message.speak(rlformat!(lang, "muteuser")).await?;
+
     Ok(())
 }
 
-pub async fn unmute_cmd<'a>(message: &'a Message, entities: &Entities<'a>) -> Result<()> {
+pub async fn unmute_cmd<'a>(
+    message: &'a Message,
+    entities: &Entities<'a>,
+    args: &'a TextArgs<'a>,
+) -> Result<()> {
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
 
     let permissions = ChatPermissionsBuilder::new()
@@ -96,9 +104,9 @@ pub async fn unmute_cmd<'a>(message: &'a Message, entities: &Entities<'a>) -> Re
         .set_can_send_other_messages(true)
         .build();
 
-    update_actions_permissions(message, &permissions, None).await?;
-    change_permissions_message(message, &entities, permissions, None).await?;
+    change_permissions_message(message, &entities, permissions, args).await?;
     message.speak(rlformat!(lang, "unmuteuser")).await?;
+
     Ok(())
 }
 
@@ -128,15 +136,17 @@ async fn kickme(message: &Message) -> Result<()> {
 
 async fn handle_command<'a>(message: &Message, cmd: Option<&Command<'a>>) -> Result<()> {
     if let Some(&Command {
-        cmd, ref entities, ..
+        cmd,
+        ref entities,
+        ref args,
     }) = cmd
     {
         log::info!("admin command {}", cmd);
 
         match cmd {
             "kickme" => kickme(message).await,
-            "mute" => mute_cmd(message, &entities).await,
-            "unmute" => unmute_cmd(message, &entities).await,
+            "mute" => mute_cmd(message, &entities, args).await,
+            "unmute" => unmute_cmd(message, &entities, args).await,
             "ban" => ban_cmd(message, &entities).await,
             "unban" => unban_cmd(message, &entities).await,
             _ => Ok(()),

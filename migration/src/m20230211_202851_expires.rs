@@ -11,7 +11,11 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(actions::Entity)
-                    .add_column(ColumnDef::new(actions::Column::Expires).date_time().null())
+                    .add_column(
+                        ColumnDef::new(actions::Column::Expires)
+                            .timestamp_with_time_zone()
+                            .null(),
+                    )
                     .to_owned(),
             )
             .await?;
