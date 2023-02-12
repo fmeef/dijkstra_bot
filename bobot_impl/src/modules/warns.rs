@@ -203,6 +203,10 @@ async fn set_time<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
 }
 
 async fn cmd_warn_mode<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
+    message
+        .get_from()
+        .admin_or_die(message.get_chat_ref())
+        .await?;
     set_warn_mode(message.get_chat_ref(), args.text).await?;
     message
         .reply(format!("Set warn mode {}", args.text))

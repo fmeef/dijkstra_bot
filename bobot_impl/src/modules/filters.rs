@@ -39,7 +39,8 @@ use sea_orm_migration::{MigrationName, MigrationTrait};
 metadata!("Filters",
     { command = "filter", help = "<trigger> <reply>: Trigger a reply when soemone says something" },
     { command = "filters", help = "List all filters" },
-    { command = "stop", help = "Stop a filter" }
+    { command = "stop", help = "Stop a filter" },
+    { command = "stopall", help = "Stop all filters" }
 );
 
 pub enum Header {
