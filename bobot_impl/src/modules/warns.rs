@@ -28,7 +28,7 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
 
 async fn warn_ban(message: &Message, user: &User, count: i32) -> Result<()> {
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
-    ban(message, user).await?;
+    ban(message, user, None).await?;
     message
         .reply(&rlformat!(
             lang,

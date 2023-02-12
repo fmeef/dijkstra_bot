@@ -46,14 +46,19 @@ pub async fn unban_cmd<'a>(message: &'a Message, entities: &Entities<'a>) -> Res
     Ok(())
 }
 
-pub async fn ban_cmd<'a>(message: &'a Message, entities: &Entities<'a>) -> Result<()> {
+pub async fn ban_cmd<'a>(
+    message: &'a Message,
+    entities: &Entities<'a>,
+    args: &'a TextArgs<'a>,
+) -> Result<()> {
     is_group_or_die(&message.get_chat()).await?;
     self_admin_or_die(&message.get_chat()).await?;
 
     message.get_from().admin_or_die(&message.get_chat()).await?;
-    action_message(message, entities, None, |message, user, _| {
+    action_message(message, entities, Some(args), |message, user, args| {
         async move {
-            ban(message, user).await?;
+            let duration = parse_duration(args, message.get_chat().get_id())?;
+            ban(message, user, duration).await?;
             Ok(())
         }
         .boxed()
@@ -147,7 +152,7 @@ async fn handle_command<'a>(message: &Message, cmd: Option<&Command<'a>>) -> Res
             "kickme" => kickme(message).await,
             "mute" => mute_cmd(message, &entities, args).await,
             "unmute" => unmute_cmd(message, &entities, args).await,
-            "ban" => ban_cmd(message, &entities).await,
+            "ban" => ban_cmd(message, &entities, args).await,
             "unban" => unban_cmd(message, &entities).await,
             _ => Ok(()),
         }?;
