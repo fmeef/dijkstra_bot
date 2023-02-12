@@ -9,6 +9,7 @@ use crate::persist::redis::RedisStr;
 use crate::statics::CONFIG;
 use crate::statics::DB;
 use crate::statics::REDIS;
+use crate::tg::admin_helpers::IsAdmin;
 use crate::tg::command::Command;
 
 use crate::tg::command::TextArgs;
@@ -321,6 +322,10 @@ fn get_filter_hash_key(message: &Message) -> String {
 }
 
 async fn delete_trigger(message: &Message, trigger: &str) -> Result<()> {
+    message
+        .get_from()
+        .admin_or_die(message.get_chat_ref())
+        .await?;
     let trigger = &trigger.to_lowercase();
     let hash_key = get_filter_hash_key(message);
     let key: Option<i64> = REDIS
@@ -493,6 +498,10 @@ async fn insert_filter(
 }
 
 async fn command_filter<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
+    message
+        .get_from()
+        .admin_or_die(message.get_chat_ref())
+        .await?;
     let lexer = Lexer(args.text);
     let mut parser = Parser::new();
     for token in lexer.all_tokens() {
@@ -552,6 +561,23 @@ async fn list_triggers(message: &Message) -> Result<()> {
     Ok(())
 }
 
+async fn stopall(message: &Message) -> Result<()> {
+    message
+        .get_from()
+        .admin_or_die(message.get_chat_ref())
+        .await?;
+
+    filters::Entity::delete_many()
+        .filter(filters::Column::Chat.eq(message.get_chat().get_id()))
+        .exec(DB.deref())
+        .await?;
+
+    let key = get_filter_hash_key(message);
+    REDIS.sq(|q| q.del(&key)).await?;
+    message.reply("Stopped all filters").await?;
+    Ok(())
+}
+
 #[allow(dead_code)]
 async fn handle_command<'a>(message: &Message, command: Option<&'a Command<'a>>) -> Result<()> {
     if let Some(&Command { cmd, ref args, .. }) = command {
@@ -559,6 +585,7 @@ async fn handle_command<'a>(message: &Message, command: Option<&'a Command<'a>>)
             "filter" => command_filter(message, &args).await?,
             "stop" => delete_trigger(message, args.text).await?,
             "filters" => list_triggers(message).await?,
+            "stopall" => stopall(message).await?,
             _ => handle_trigger(message).await?,
         };
     } else {
