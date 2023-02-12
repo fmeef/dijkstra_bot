@@ -22,7 +22,8 @@ metadata!("Warns",
     { command = "warn", help = "Warns a user"},
     { command = "warns", help = "Get warn count of a user"},
     { command = "clearwarns", help = "Delete all warns for a user"},
-    { command = "warntime", help = "Sets time before warns expire. Usage: /warntime 6m for 6 minutes"}
+    { command = "warntime", help = "Sets time before warns expire. Usage: /warntime 6m for 6 minutes"},
+    { command = "warnmode", help = "Set the action when max warns are reached. Can be 'mute', 'ban' or 'shame'"}
 );
 
 pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
@@ -201,6 +202,14 @@ async fn set_time<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
     Ok(())
 }
 
+async fn cmd_warn_mode<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
+    set_warn_mode(message.get_chat_ref(), args.text).await?;
+    message
+        .reply(format!("Set warn mode {}", args.text))
+        .await?;
+    Ok(())
+}
+
 async fn handle_command<'a>(message: &Message, cmd: Option<&Command<'a>>) -> Result<()> {
     if let Some(&Command {
         cmd,
@@ -215,6 +224,7 @@ async fn handle_command<'a>(message: &Message, cmd: Option<&Command<'a>>) -> Res
             "warns" => warns(message, &entities).await,
             "clearwarns" => clear(message, &entities).await,
             "warntime" => set_time(message, args).await,
+            "warnmode" => cmd_warn_mode(message, args).await,
             _ => Ok(()),
         }?;
     }

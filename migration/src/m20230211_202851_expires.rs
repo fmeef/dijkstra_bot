@@ -1,5 +1,8 @@
 use bobot_impl::persist::{
-    admin::{actions, warns},
+    admin::{
+        actions::{self, ActionType},
+        warns,
+    },
     core::dialogs,
 };
 use sea_orm_migration::prelude::*;
@@ -45,6 +48,18 @@ impl MigrationTrait for Migration {
                             .big_integer()
                             .null(),
                     )
+                    .modify_column(
+                        ColumnDef::new(dialogs::Column::WarnLimit)
+                            .integer()
+                            .not_null()
+                            .default(3),
+                    )
+                    .modify_column(
+                        ColumnDef::new(dialogs::Column::ActionType)
+                            .integer()
+                            .not_null()
+                            .default(ActionType::Mute),
+                    )
                     .to_owned(),
             )
             .await?;
@@ -75,6 +90,16 @@ impl MigrationTrait for Migration {
                 Table::alter()
                     .table(dialogs::Entity)
                     .drop_column(dialogs::Column::WarnTime)
+                    .modify_column(
+                        ColumnDef::new(dialogs::Column::WarnLimit)
+                            .integer()
+                            .not_null(),
+                    )
+                    .modify_column(
+                        ColumnDef::new(dialogs::Column::ActionType)
+                            .integer()
+                            .not_null(),
+                    )
                     .to_owned(),
             )
             .await?;

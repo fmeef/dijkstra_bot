@@ -5,7 +5,10 @@ use std::{
 
 use crate::{
     persist::{
-        admin::{actions, warns},
+        admin::{
+            actions::{self, ActionType},
+            warns,
+        },
         core::dialogs,
         redis::{default_cache_query, CachedQuery, CachedQueryTrait, RedisCache, RedisStr},
     },
@@ -31,7 +34,7 @@ use sea_orm::{
 
 use super::{
     command::{ArgSlice, Entities, EntityArg, TextArgs},
-    dialog::{get_dialog_key, upsert_dialog},
+    dialog::get_dialog_key,
     user::{get_me, get_user_username, GetUser, Username},
 };
 
@@ -195,40 +198,84 @@ pub async fn change_permissions_message<'a>(
 pub async fn set_warn_time(chat: &Chat, time: i64) -> Result<()> {
     let chat_id = chat.get_id();
 
-    let model = dialogs::Model {
-        chat_id,
-        language: crate::util::string::Lang::En,
-        chat_type: chat.get_tg_type().into_owned(),
-        warn_limit: 3,
-        action_type: actions::ActionType::Mute,
-        warn_time: Some(time),
+    let model = dialogs::ActiveModel {
+        chat_id: Set(chat_id),
+        language: NotSet,
+        chat_type: Set(chat.get_tg_type().into_owned()),
+        warn_limit: NotSet,
+        action_type: NotSet,
+        warn_time: Set(Some(time)),
     };
 
-    let key = get_dialog_key(model.chat_id);
-    dialogs::Entity::insert(model.cache(key).await?)
+    let key = get_dialog_key(chat_id);
+    let model = dialogs::Entity::insert(model)
         .on_conflict(
             OnConflict::column(dialogs::Column::ChatId)
                 .update_column(dialogs::Column::WarnTime)
                 .to_owned(),
         )
-        .exec(DB.deref().deref())
+        .exec_with_returning(DB.deref().deref())
         .await?;
+
+    model.cache(key).await?;
     Ok(())
 }
 
 pub async fn set_warn_limit(chat: &Chat, limit: i32) -> Result<()> {
     let chat_id = chat.get_id();
 
-    let model = dialogs::Model {
-        chat_id,
-        language: crate::util::string::Lang::En,
-        chat_type: chat.get_tg_type().into_owned(),
-        warn_limit: limit,
-        action_type: actions::ActionType::Mute,
-        warn_time: None,
+    let model = dialogs::ActiveModel {
+        chat_id: Set(chat_id),
+        language: NotSet,
+        chat_type: Set(chat.get_tg_type().into_owned()),
+        warn_limit: Set(limit),
+        action_type: NotSet,
+        warn_time: NotSet,
     };
 
-    upsert_dialog(model).await?;
+    let key = get_dialog_key(chat_id);
+    let model = dialogs::Entity::insert(model)
+        .on_conflict(
+            OnConflict::column(dialogs::Column::ChatId)
+                .update_column(dialogs::Column::WarnLimit)
+                .to_owned(),
+        )
+        .exec_with_returning(DB.deref().deref())
+        .await?;
+
+    model.cache(key).await?;
+    Ok(())
+}
+
+pub async fn set_warn_mode(chat: &Chat, mode: &str) -> Result<()> {
+    let chat_id = chat.get_id();
+    let mode = match mode {
+        "mute" => Ok(ActionType::Mute),
+        "ban" => Ok(ActionType::Ban),
+        "shame" => Ok(ActionType::Shame),
+        _ => Err(BotError::speak(format!("Invalid mode {}", mode), chat_id)),
+    }?;
+
+    let model = dialogs::ActiveModel {
+        chat_id: Set(chat_id),
+        language: NotSet,
+        chat_type: Set(chat.get_tg_type().into_owned()),
+        warn_limit: NotSet,
+        action_type: Set(mode),
+        warn_time: NotSet,
+    };
+
+    let key = get_dialog_key(chat_id);
+    let model = dialogs::Entity::insert(model)
+        .on_conflict(
+            OnConflict::column(dialogs::Column::ChatId)
+                .update_column(dialogs::Column::ActionType)
+                .to_owned(),
+        )
+        .exec_with_returning(DB.deref().deref())
+        .await?;
+
+    model.cache(key).await?;
     Ok(())
 }
 
