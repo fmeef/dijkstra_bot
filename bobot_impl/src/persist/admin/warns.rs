@@ -1,3 +1,4 @@
+use chrono::Utc;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -8,6 +9,7 @@ pub struct Model {
     pub id: i64,
     pub user_id: i64,
     pub chat_id: i64,
+    pub expires: Option<chrono::DateTime<Utc>>,
     pub reason: Option<String>,
 }
 

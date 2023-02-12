@@ -13,6 +13,7 @@ pub struct Model {
     pub language: crate::util::string::Lang,
     pub chat_type: String,
     pub warn_limit: i32,
+    pub warn_time: Option<i64>,
     pub action_type: ActionType,
 }
 
@@ -33,6 +34,7 @@ impl Model {
             chat_type: chat.get_tg_type().into_owned(),
             warn_limit: 3,
             action_type: ActionType::Mute,
+            warn_time: None,
         }
     }
 }

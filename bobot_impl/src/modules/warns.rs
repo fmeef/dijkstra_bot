@@ -12,14 +12,17 @@ use crate::{
     util::string::{get_chat_lang, Speak},
 };
 use botapi::gen_types::{Message, UpdateExt, User};
+use chrono::Duration;
 use futures::FutureExt;
+use humantime::format_duration;
 use macros::rlformat;
 use sea_orm_migration::MigrationTrait;
 
 metadata!("Warns",
     { command = "warn", help = "Warns a user"},
     { command = "warns", help = "Get warn count of a user"},
-    { command = "clearwarns", help = "Delete all warns for a user"}
+    { command = "clearwarns", help = "Delete all warns for a user"},
+    { command = "warntime", help = "Sets time before warns expire. Usage: /warntime 6m for 6 minutes"}
 );
 
 pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
@@ -80,14 +83,15 @@ pub async fn warn<'a>(
                     message.get_chat().get_id(),
                 ));
             }
+
             let reason = args
                 .map(|a| if a.args.len() > 0 { Some(a.text) } else { None })
                 .flatten();
 
-            let count = warn_user(message, user, reason.map(|v| v.to_owned())).await?;
-            // let action = get_action(message.get_chat_ref(), user).await?.map(|a| a.is_banned);
-
             let dialog = dialog_or_default(message.get_chat_ref()).await?;
+            let time = dialog.warn_time.map(|t| Duration::seconds(t));
+            let count = warn_user(message, user, reason.map(|v| v.to_owned()), &time).await?;
+
             if count >= dialog.warn_limit {
                 match dialog.action_type {
                     actions::ActionType::Mute => warn_mute(message, user, count).await,
@@ -176,6 +180,21 @@ pub async fn clear<'a>(message: &Message, entities: &Entities<'a>) -> Result<()>
     Ok(())
 }
 
+async fn set_time<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
+    message
+        .get_from()
+        .admin_or_die(message.get_chat_ref())
+        .await?;
+    if let Some(time) = parse_duration(&Some(args.as_slice()), message.get_chat().get_id())? {
+        set_warn_time(message.get_chat_ref(), time.num_seconds()).await?;
+        let time = format_duration(time.to_std()?);
+        message.reply(format!("Set warn time to {}", time)).await?;
+    } else {
+        message.reply("Specify a time").await?;
+    }
+    Ok(())
+}
+
 async fn handle_command<'a>(message: &Message, cmd: Option<&Command<'a>>) -> Result<()> {
     if let Some(&Command {
         cmd,
@@ -189,6 +208,7 @@ async fn handle_command<'a>(message: &Message, cmd: Option<&Command<'a>>) -> Res
             "warn" => warn(message, &entities, args).await,
             "warns" => warns(message, &entities).await,
             "clearwarns" => clear(message, &entities).await,
+            "warntime" => set_time(message, args).await,
             _ => Ok(()),
         }?;
     }

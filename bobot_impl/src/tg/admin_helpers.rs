@@ -31,7 +31,7 @@ use sea_orm::{
 
 use super::{
     command::{ArgSlice, Entities, EntityArg, TextArgs},
-    dialog::upsert_dialog,
+    dialog::{get_dialog_key, upsert_dialog},
     user::{get_me, get_user_username, GetUser, Username},
 };
 
@@ -139,7 +139,7 @@ where
     Ok(())
 }
 
-pub fn parse_duration<'a>(args: Option<ArgSlice<'a>>, chat: i64) -> Result<Option<Duration>> {
+pub fn parse_duration<'a>(args: &Option<ArgSlice<'a>>, chat: i64) -> Result<Option<Duration>> {
     if let Some(args) = args {
         if let Some(thing) = args.args.first() {
             let head = &thing.get_text()[0..thing.get_text().len() - 1];
@@ -180,7 +180,7 @@ pub async fn change_permissions_message<'a>(
     message.get_from().admin_or_die(&message.get_chat()).await?;
     action_message(message, entities, Some(args), |message, user, args| {
         async move {
-            let duration = parse_duration(args, message.get_chat().get_id())?;
+            let duration = parse_duration(&args, message.get_chat().get_id())?;
             change_permissions(message.get_chat_ref(), user, &permissions, duration).await?;
 
             update_actions_permissions(user, message.get_chat_ref(), &permissions, None).await?;
@@ -189,6 +189,30 @@ pub async fn change_permissions_message<'a>(
         .boxed()
     })
     .await?;
+    Ok(())
+}
+
+pub async fn set_warn_time(chat: &Chat, time: i64) -> Result<()> {
+    let chat_id = chat.get_id();
+
+    let model = dialogs::Model {
+        chat_id,
+        language: crate::util::string::Lang::En,
+        chat_type: chat.get_tg_type().into_owned(),
+        warn_limit: 3,
+        action_type: actions::ActionType::Mute,
+        warn_time: Some(time),
+    };
+
+    let key = get_dialog_key(model.chat_id);
+    dialogs::Entity::insert(model.cache(key).await?)
+        .on_conflict(
+            OnConflict::column(dialogs::Column::ChatId)
+                .update_column(dialogs::Column::WarnTime)
+                .to_owned(),
+        )
+        .exec(DB.deref().deref())
+        .await?;
     Ok(())
 }
 
@@ -201,6 +225,7 @@ pub async fn set_warn_limit(chat: &Chat, limit: i32) -> Result<()> {
         chat_type: chat.get_tg_type().into_owned(),
         warn_limit: limit,
         action_type: actions::ActionType::Mute,
+        warn_time: None,
     };
 
     upsert_dialog(model).await?;
@@ -261,47 +286,55 @@ pub async fn get_warns(message: &Message, user: &User) -> Result<Vec<warns::Mode
     let user_id = user.get_id();
     let chat_id = message.get_chat().get_id();
     let key = get_warns_key(user.get_id(), message.get_chat().get_id());
-    let v: Option<Vec<RedisStr>> = REDIS.sq(|q| q.lrange(&key, 0, -1)).await?;
-    if let Some(v) = v {
-        Ok(v.into_iter()
-            .filter_map(|v| v.get::<warns::Model>().ok())
-            .collect())
-    } else {
-        let r = CachedQuery::new(
-            |_, _| async move {
-                let count = warns::Entity::find()
-                    .filter(
-                        warns::Column::UserId
-                            .eq(user_id)
-                            .and(warns::Column::ChatId.eq(chat_id)),
-                    )
-                    .all(DB.deref().deref())
-                    .await?;
-                Ok(count)
-            },
-            |key, _| async move {
-                let count: Vec<RedisStr> = REDIS.sq(|q| q.lrange(&key, 0, -1)).await?;
-
+    let r = CachedQuery::new(
+        |_, _| async move {
+            let count = warns::Entity::find()
+                .filter(
+                    warns::Column::UserId
+                        .eq(user_id)
+                        .and(warns::Column::ChatId.eq(chat_id)),
+                )
+                .all(DB.deref().deref())
+                .await?;
+            Ok(count)
+        },
+        |key, _| async move {
+            let count: Vec<RedisStr> = REDIS.sq(|q| q.smembers(&key)).await?;
+            if count.len() > 0 {
+                log::info!("miss! {}", count.len());
                 Ok(Some(
                     count
                         .into_iter()
                         .filter_map(|v| v.get::<warns::Model>().ok())
                         .collect(),
                 ))
-            },
-            |_, v| async move { Ok(v) },
-        )
-        .query(&key, &())
-        .await?;
-        Ok(r)
-    }
+            } else {
+                Ok(None)
+            }
+        },
+        |key, warns| async move {
+            REDIS
+                .try_pipe(|q| {
+                    for v in &warns {
+                        let ins = RedisStr::new(&v)?;
+                        q.sadd(key, ins);
+                    }
+                    Ok(q.expire(key, CONFIG.timing.cache_timeout as usize))
+                })
+                .await?;
+            Ok(warns)
+        },
+    )
+    .query(&key, &())
+    .await?;
+    Ok(r)
 }
 
 pub async fn get_warns_count(message: &Message, user: &User) -> Result<i32> {
     let user_id = user.get_id();
     let chat_id = message.get_chat().get_id();
     let key = get_warns_key(user.get_id(), message.get_chat().get_id());
-    let v: Option<i32> = REDIS.sq(|q| q.llen(&key)).await?;
+    let v: Option<i32> = REDIS.sq(|q| q.scard(&key)).await?;
     if let Some(v) = v {
         Ok(v)
     } else {
@@ -423,14 +456,21 @@ pub async fn ban(message: &Message, user: &User, duration: Option<Duration>) -> 
     Ok(())
 }
 
-pub async fn warn_user(message: &Message, user: &User, reason: Option<String>) -> Result<i32> {
+pub async fn warn_user(
+    message: &Message,
+    user: &User,
+    reason: Option<String>,
+    duration: &Option<Duration>,
+) -> Result<i32> {
     let user_id = user.get_id();
     let chat_id = message.get_chat().get_id();
+    let duration = duration.map(|v| Utc::now().checked_add_signed(v)).flatten();
     let model = warns::ActiveModel {
         id: NotSet,
         user_id: Set(user_id),
         chat_id: Set(chat_id),
         reason: Set(reason),
+        expires: Set(duration),
     };
     let model = warns::Entity::insert(model)
         .exec_with_returning(DB.deref().deref())
@@ -439,9 +479,9 @@ pub async fn warn_user(message: &Message, user: &User, reason: Option<String>) -
     let key = get_warns_key(user_id, chat_id);
     let (_, _, count): ((), (), usize) = REDIS
         .pipe(|p| {
-            p.lpush(&key, model)
+            p.sadd(&key, model)
                 .expire(&key, CONFIG.timing.cache_timeout)
-                .llen(&key)
+                .scard(&key)
         })
         .await?;
 

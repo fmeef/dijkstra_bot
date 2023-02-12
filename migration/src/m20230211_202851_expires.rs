@@ -1,4 +1,7 @@
-use bobot_impl::persist::admin::actions;
+use bobot_impl::persist::{
+    admin::{actions, warns},
+    core::dialogs,
+};
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -19,6 +22,32 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await?;
+
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(warns::Entity)
+                    .add_column(
+                        ColumnDef::new(warns::Column::Expires)
+                            .timestamp_with_time_zone()
+                            .null(),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(dialogs::Entity)
+                    .add_column(
+                        ColumnDef::new(dialogs::Column::WarnTime)
+                            .big_integer()
+                            .null(),
+                    )
+                    .to_owned(),
+            )
+            .await?;
         Ok(())
     }
 
@@ -28,6 +57,24 @@ impl MigrationTrait for Migration {
                 Table::alter()
                     .table(actions::Entity)
                     .drop_column(actions::Column::Expires)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(warns::Entity)
+                    .drop_column(warns::Column::Expires)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(dialogs::Entity)
+                    .drop_column(dialogs::Column::WarnTime)
                     .to_owned(),
             )
             .await?;

@@ -1,4 +1,5 @@
 use botapi::bot::ApiError;
+use chrono::OutOfRangeError;
 use sea_orm::{DbErr, TransactionError};
 use thiserror::Error;
 use tokio::task::JoinError;
@@ -45,6 +46,8 @@ pub enum BotError {
     Hyper(#[from] hyper::Error),
     #[error("Transaction error {0}")]
     TransactionErr(#[from] TransactionError<DbErr>),
+    #[error("Time out of range {0}")]
+    TimeOutOfRange(#[from] OutOfRangeError),
     #[error("Generic error {0}")]
     Generic(String),
 }

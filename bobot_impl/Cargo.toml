@@ -43,6 +43,7 @@ itertools = "0.10.5"
 macros = { path = "macros" }
 hyper = "0.14.24"
 strum = "0.24.1"
+humantime = "2.1.0"
 
 
 [build-dependencies]

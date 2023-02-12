@@ -57,7 +57,7 @@ pub async fn ban_cmd<'a>(
     message.get_from().admin_or_die(&message.get_chat()).await?;
     action_message(message, entities, Some(args), |message, user, args| {
         async move {
-            let duration = parse_duration(args, message.get_chat().get_id())?;
+            let duration = parse_duration(&args, message.get_chat().get_id())?;
             ban(message, user, duration).await?;
             Ok(())
         }
