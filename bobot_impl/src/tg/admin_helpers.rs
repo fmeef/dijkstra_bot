@@ -327,7 +327,22 @@ pub async fn get_warns(message: &Message, user: &User) -> Result<Vec<warns::Mode
     )
     .query(&key, &())
     .await?;
-    Ok(r)
+    let mut res = Vec::<warns::Model>::new();
+    for warn in r {
+        if let Some(expire) = &warn.expires {
+            if Utc::now().timestamp() > expire.timestamp() {
+                log::info!("warn expired!");
+                let args = RedisStr::new(&warn)?;
+                REDIS.sq(|q| q.srem(&key, &args)).await?;
+                warn.delete(DB.deref()).await?;
+            } else {
+                res.push(warn);
+            }
+        } else {
+            res.push(warn);
+        }
+    }
+    Ok(res)
 }
 
 pub async fn get_warns_count(message: &Message, user: &User) -> Result<i32> {
