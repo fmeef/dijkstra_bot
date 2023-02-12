@@ -151,7 +151,15 @@ pub fn parse_duration<'a>(args: Option<ArgSlice<'a>>, chat: i64) -> Result<Optio
             };
             let res = match tail {
                 "m" => Duration::minutes(head),
+                "h" => Duration::hours(head),
+                "d" => Duration::days(head),
                 _ => return Err(BotError::speak("Invalid time spec", chat)),
+            };
+
+            let res = if res.num_seconds() < 30 {
+                Duration::seconds(30)
+            } else {
+                res
             };
 
             Ok(Some(res))
