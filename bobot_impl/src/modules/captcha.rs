@@ -703,7 +703,8 @@ async fn handle_user_action(message: &Message) -> Result<()> {
     if let Some(config) = get_captcha_config(message).await? {
         if let Some(mambers) = message.get_new_chat_members() {
             check_mambers(message, &config, mambers.iter()).await?;
-        } else if let Some(user) = message.get_from_ref() {
+        }
+        if let Some(user) = message.get_from_ref() {
             check_mambers(message, &config, [user].into_iter()).await?;
         }
     }

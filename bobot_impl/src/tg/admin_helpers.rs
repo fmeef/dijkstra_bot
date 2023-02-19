@@ -343,7 +343,7 @@ pub async fn get_action(chat: &Chat, user: &User) -> Result<Option<actions::Mode
         move |_, _| async move {
             let time = Utc::now();
             let res = actions::Entity::find_by_id((user, chat))
-                .filter(actions::Column::Expires.lt(time))
+                .filter(actions::Column::Expires.gt(time))
                 .one(DB.deref())
                 .await?;
             Ok(res)
@@ -707,6 +707,7 @@ pub async fn update_actions_permissions(
         .on_conflict(
             OnConflict::columns([actions::Column::UserId, actions::Column::ChatId])
                 .update_columns([
+                    actions::Column::Pending,
                     actions::Column::CanSendMessages,
                     actions::Column::CanSendAudio,
                     actions::Column::CanSendVideo,
@@ -744,6 +745,7 @@ pub async fn handle_pending_action(update: &UpdateExt) -> Result<()> {
             unmute(&chat, &user).await?;
         }
         if let Some(action) = get_action(&chat, &user).await? {
+            log::info!("handling pending action");
             if action.pending {
                 let lang = get_chat_lang(chat.get_id()).await?;
 

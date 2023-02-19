@@ -218,20 +218,26 @@ impl TgClient {
                             }
                         }
 
-                        if let Some(cb) = repeats.get(&data) {
+                        let remove = if let Some(cb) = repeats.get(&data) {
                             match cb.cb(callbackquery).await {
                                 Err(err) => {
-                                    repeats.remove(&data);
                                     log::error!("failed multi handler {}", err);
                                     err.record_stats();
+                                    true
                                 }
                                 Ok(v) => {
                                     if v {
                                         log::info!("removing multi callback");
-                                        repeats.remove(&data);
                                     }
+                                    v
                                 }
                             }
+                        } else {
+                            false
+                        };
+
+                        if remove {
+                            repeats.remove(&data);
                         }
                     }
                 }
