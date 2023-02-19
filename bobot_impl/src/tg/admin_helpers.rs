@@ -132,8 +132,7 @@ pub async fn action_message<'a, F>(
 where
     for<'b> F: FnOnce(&'b Message, &'b User, Option<ArgSlice<'b>>) -> BoxFuture<'b, Result<()>>,
 {
-    is_group_or_die(&message.get_chat()).await?;
-    self_admin_or_die(&message.get_chat()).await?;
+    message.group_admin_or_die().await?;
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
 
     if let Some(user) = message
@@ -206,7 +205,7 @@ pub async fn change_permissions_message<'a>(
     permissions: ChatPermissions,
     args: &'a TextArgs<'a>,
 ) -> Result<()> {
-    message.get_from().admin_or_die(&message.get_chat()).await?;
+    message.group_admin_or_die().await?;
     action_message(message, entities, Some(args), |message, user, args| {
         async move {
             let duration = parse_duration(&args, message.get_chat().get_id())?;
@@ -836,12 +835,43 @@ pub trait IsAdmin {
 }
 
 #[async_trait]
+pub trait IsGroupAdmin {
+    async fn group_admin_or_die(&self) -> Result<()>;
+    async fn is_group_admin(&self) -> Result<bool>;
+}
+
+#[async_trait]
 pub trait GetCachedAdmins {
     async fn get_cached_admins(&self) -> Result<HashMap<i64, ChatMember>>;
     async fn refresh_cached_admins(&self) -> Result<HashMap<i64, ChatMember>>;
     async fn is_user_admin(&self, user: i64) -> Result<Option<ChatMember>>;
     async fn promote(&self, user: i64) -> Result<()>;
     async fn demote(&self, user: i64) -> Result<()>;
+}
+
+#[async_trait]
+impl IsGroupAdmin for Message {
+    async fn is_group_admin(&self) -> Result<bool> {
+        if let Some(user) = self.get_from() {
+            user.is_admin(self.get_chat_ref()).await
+        } else {
+            Ok(false)
+        }
+    }
+
+    async fn group_admin_or_die(&self) -> Result<()> {
+        self_admin_or_die(self.get_chat_ref()).await?;
+        is_group_or_die(self.get_chat_ref()).await?;
+        if self.is_group_admin().await? {
+            Ok(())
+        } else if let Some(user) = self.get_from() {
+            let lang = get_chat_lang(self.get_chat().get_id()).await?;
+            let msg = rlformat!(lang, "lackingadminrights", user.name_humanreadable());
+            Err(BotError::speak(msg, self.get_chat().get_id()))
+        } else {
+            Err(BotError::Generic("not admin".to_owned()))
+        }
+    }
 }
 
 #[async_trait]
@@ -855,12 +885,7 @@ impl IsAdmin for User {
             Ok(())
         } else {
             let lang = get_chat_lang(chat.get_id()).await?;
-            let msg = rlformat!(
-                lang,
-                "lackingadminrights",
-                self.get_username_ref()
-                    .unwrap_or(self.get_id().to_string().as_str())
-            );
+            let msg = rlformat!(lang, "lackingadminrights", self.name_humanreadable());
             Err(BotError::speak(msg, chat.get_id()))
         }
     }

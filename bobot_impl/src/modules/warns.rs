@@ -70,10 +70,7 @@ pub async fn warn<'a>(
     entities: &Entities<'a>,
     args: &TextArgs<'a>,
 ) -> Result<()> {
-    is_group_or_die(&message.get_chat()).await?;
-    self_admin_or_die(&message.get_chat()).await?;
-    message.get_from().admin_or_die(&message.get_chat()).await?; //TODO: handle granular permissions
-
+    message.group_admin_or_die().await?;
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
 
     action_message(message, entities, Some(args), |message, user, args| {

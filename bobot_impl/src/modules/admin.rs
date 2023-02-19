@@ -24,10 +24,7 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
 }
 
 async fn promote<'a>(message: &Message, entities: &Entities<'a>) -> Result<()> {
-    is_group_or_die(&message.get_chat()).await?;
-    self_admin_or_die(&message.get_chat()).await?;
-    message.get_from().admin_or_die(&message.get_chat()).await?; //TODO: handle granular permissions
-
+    message.group_admin_or_die().await?;
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
     action_message(message, entities, None, |message, user, _| {
         async move {
@@ -45,10 +42,7 @@ async fn promote<'a>(message: &Message, entities: &Entities<'a>) -> Result<()> {
 }
 
 async fn demote<'a>(message: &Message, entities: &Entities<'a>) -> Result<()> {
-    is_group_or_die(&message.get_chat()).await?;
-    self_admin_or_die(&message.get_chat()).await?;
-    message.get_from().admin_or_die(&message.get_chat()).await?; //TODO: handle granular permissions
-
+    message.group_admin_or_die().await?;
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
     action_message(message, entities, None, |message, user, _| {
         async move {

@@ -5,9 +5,7 @@ use self::entities::captchastate::{self, CaptchaType};
 use crate::metadata::metadata;
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache, RedisStr};
 use crate::statics::{CONFIG, DB, REDIS, TG};
-use crate::tg::admin_helpers::{
-    is_group_or_die, kick, mute, parse_duration, self_admin_or_die, unmute, IsAdmin,
-};
+use crate::tg::admin_helpers::{kick, mute, parse_duration, unmute, IsAdmin, IsGroupAdmin};
 use crate::tg::button::{get_url, InlineKeyboardBuilder, OnPush};
 use crate::tg::command::{ArgSlice, Command, TextArgs};
 use crate::tg::user::{get_me, Username};
@@ -196,12 +194,7 @@ fn captcha_state_key(chat: &Chat) -> String {
 }
 
 async fn enable_captcha(message: &Message) -> Result<()> {
-    self_admin_or_die(message.get_chat_ref()).await?;
-    is_group_or_die(message.get_chat_ref()).await?;
-    message
-        .get_from()
-        .admin_or_die(message.get_chat_ref())
-        .await?;
+    message.group_admin_or_die().await?;
     let model = captchastate::ActiveModel {
         chat: Set(message.get_chat().get_id()),
         captcha_type: NotSet,
@@ -223,12 +216,7 @@ async fn enable_captcha(message: &Message) -> Result<()> {
 }
 
 async fn disable_captcha(message: &Message) -> Result<()> {
-    self_admin_or_die(message.get_chat_ref()).await?;
-    message
-        .get_from()
-        .admin_or_die(message.get_chat_ref())
-        .await?;
-
+    message.group_admin_or_die().await?;
     let key = captcha_state_key(message.get_chat_ref());
     captchastate::Entity::delete_by_id(message.get_chat().get_id())
         .exec(DB.deref())
@@ -302,13 +290,7 @@ async fn get_captcha_config(message: &Message) -> Result<Option<captchastate::Mo
 }
 
 async fn captchamode(message: &Message, mode: CaptchaType) -> Result<()> {
-    self_admin_or_die(message.get_chat_ref()).await?;
-
-    message
-        .get_from()
-        .admin_or_die(message.get_chat_ref())
-        .await?;
-
+    message.group_admin_or_die().await?;
     let model = captchastate::ActiveModel {
         chat: Set(message.get_chat().get_id()),
         captcha_type: Set(mode),
@@ -327,11 +309,7 @@ async fn captchamode(message: &Message, mode: CaptchaType) -> Result<()> {
 }
 
 async fn captchakick_cmd<'a>(message: &Message, args: &'a TextArgs<'a>) -> Result<()> {
-    self_admin_or_die(message.get_chat_ref()).await?;
-    message
-        .get_from()
-        .admin_or_die(message.get_chat_ref())
-        .await?;
+    message.group_admin_or_die().await?;
     match args.as_slice() {
         ArgSlice { text: "off", .. } => {
             captchakick(message, None).await?;
@@ -350,13 +328,7 @@ async fn captchakick_cmd<'a>(message: &Message, args: &'a TextArgs<'a>) -> Resul
 }
 
 async fn captchakick(message: &Message, kick: Option<i64>) -> Result<()> {
-    self_admin_or_die(message.get_chat_ref()).await?;
-
-    message
-        .get_from()
-        .admin_or_die(message.get_chat_ref())
-        .await?;
-
+    message.group_admin_or_die().await?;
     let model = captchastate::ActiveModel {
         chat: Set(message.get_chat().get_id()),
         captcha_type: NotSet,
@@ -665,10 +637,12 @@ where
         if user.get_id() == me.get_id() || user.is_admin(message.get_chat_ref()).await? {
             return Ok(());
         }
-        TG.client()
-            .build_delete_message(message.get_chat().get_id(), message.get_message_id())
-            .build()
-            .await?;
+        if !user_is_authorized(message.get_chat().get_id(), user.get_id()).await? {
+            TG.client()
+                .build_delete_message(message.get_chat().get_id(), message.get_message_id())
+                .build()
+                .await?;
+        }
     }
 
     let mut sent = false;
