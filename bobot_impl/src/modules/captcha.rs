@@ -35,7 +35,10 @@ use tokio::time::sleep;
 use uuid::Uuid;
 
 metadata!("Captcha",
-  { command = "captcha", help = "Sends a captcha for debugging" }
+    { command = "captcha", help = "Enabled or disables captcha. Usage: /captcha <on/off>" },
+    { command = "captchamode", help = "Sets the captcha mode to either button or text"},
+    { command = "captchakick", help = "Sets the timeout for removing users who haven't solved the captcha. off to disable"}
+
 );
 
 pub struct Migration;
