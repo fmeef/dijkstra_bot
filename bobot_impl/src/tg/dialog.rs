@@ -372,6 +372,7 @@ impl Conversation {
                                 {
                                     log::error!("failed to transition: {}", err);
                                 }
+                                Ok(())
                             });
                         }
                         b

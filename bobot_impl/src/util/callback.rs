@@ -16,10 +16,21 @@ pub struct OutputBoxer<F>(pub F);
 
 pub struct SingleCb<T, R>(Box<dyn for<'a> BoxedSingleCallback<'a, T, R, Fut = BotDbFuture<'a, R>>>);
 
+pub struct MultiCb<T, R>(Box<dyn for<'a> BoxedMultiCallback<'a, T, R, Fut = BotDbFuture<'a, R>>>);
 impl<'a, T, R: 'a> SingleCb<T, R> {
     pub fn new<F>(func: F) -> Self
     where
         F: for<'b> SingleCallback<'b, T, R> + 'static,
+        R: 'static,
+    {
+        Self(Box::new(OutputBoxer(func)))
+    }
+}
+
+impl<'a, T, R: 'a> MultiCb<T, R> {
+    pub fn new<F>(func: F) -> Self
+    where
+        F: for<'b> MultiCallback<'b, T, R> + 'static,
         R: 'static,
     {
         Self(Box::new(OutputBoxer(func)))
@@ -36,6 +47,21 @@ where
     }
 }
 
+impl<'a, T, R> MultiCallback<'a, T, R> for MultiCb<T, R>
+where
+    R: 'a,
+{
+    type Fut = BotDbFuture<'a, R>;
+    fn cb(&self, db: T) -> Self::Fut {
+        self.0.cb_boxed(db)
+    }
+}
+
+pub trait MultiCallback<'a, T, R>: Send + Sync {
+    type Fut: Future<Output = R> + Send + 'a;
+    fn cb(&self, db: T) -> Self::Fut;
+}
+
 pub trait SingleCallback<'a, T, R>: Send + Sync {
     type Fut: Future<Output = R> + Send + 'a;
     fn cb(self, db: T) -> Self::Fut;
@@ -48,6 +74,11 @@ pub trait CacheCallback<'a, R, P>: Send + Sync {
 pub trait BoxedSingleCallback<'a, T, R>: Send + Sync {
     type Fut: Future<Output = R> + Send + 'a;
     fn cb_boxed(self: Box<Self>, db: T) -> Self::Fut;
+}
+
+pub trait BoxedMultiCallback<'a, T, R>: Send + Sync {
+    type Fut: Future<Output = R> + Send + 'a;
+    fn cb_boxed(&self, db: T) -> Self::Fut;
 }
 
 impl<'a, F, R, P, Fut> CacheCallback<'a, R, P> for F
@@ -73,6 +104,30 @@ where
     type Fut = Fut;
     fn cb(self, db: T) -> Self::Fut {
         self(db)
+    }
+}
+
+impl<'a, F, T, R, Fut> MultiCallback<'a, T, R> for F
+where
+    F: Fn(T) -> Fut + Sync + Send + 'a,
+    T: 'a,
+    R: 'a,
+    Fut: Future<Output = R> + Send + 'a,
+{
+    type Fut = Fut;
+    fn cb(&self, db: T) -> Self::Fut {
+        self(db)
+    }
+}
+
+impl<'a, F, T, R> BoxedMultiCallback<'a, T, R> for OutputBoxer<F>
+where
+    F: MultiCallback<'a, T, R>,
+    R: 'a,
+{
+    type Fut = BotDbFuture<'a, R>;
+    fn cb_boxed(&self, db: T) -> Self::Fut {
+        (*self).0.cb(db).boxed()
     }
 }
 

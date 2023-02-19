@@ -82,7 +82,7 @@ RUN git clone https://github.com/helix-editor/helix /opt/helix && \
     git checkout 22.12 && \
     cargo install --path helix-term && cargo clean
 
-RUN apt update && apt install -y postgresql-client redis
+RUN apt update && apt install -y postgresql-client redis fish
 RUN mkdir -p /bobot/target && chown -R bobot:bobot /bobot && \
 chown -R bobot:bobot /usr/local && mkdir -p /bobot/migration/target && \
 chown -R bobot:bobot /bobot/migration/target && mkdir -p /bobot/bobot_impl/target && \
@@ -94,3 +94,5 @@ WORKDIR /bobot
 RUN rustup default stable
 ENV COLORTERM=truecolor
 ENV TERM xterm-256color
+COPY helix.toml /home/bobot/.config/helix/config.toml
+CMD [ "/usr/bin/fish" ]

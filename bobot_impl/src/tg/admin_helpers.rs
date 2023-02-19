@@ -60,6 +60,32 @@ fn get_warns_key(user: i64, chat: i64) -> String {
     format!("warns:{}:{}", user, chat)
 }
 
+pub async fn kick(user: i64, chat: i64) -> Result<()> {
+    TG.client()
+        .build_ban_chat_member(chat, user)
+        .build()
+        .await?;
+    TG.client()
+        .build_unban_chat_member(chat, user)
+        .build()
+        .await?;
+    Ok(())
+}
+
+pub async fn kick_message(message: &Message) -> Result<()> {
+    if let Some(from) = message.get_from() {
+        TG.client()
+            .build_ban_chat_member(message.get_chat().get_id(), from.get_id())
+            .build()
+            .await?;
+        TG.client()
+            .build_unban_chat_member(message.get_chat().get_id(), from.get_id())
+            .build()
+            .await?;
+    }
+    Ok(())
+}
+
 pub async fn change_permissions(
     chat: &Chat,
     user: &User,
@@ -85,6 +111,7 @@ pub async fn change_permissions(
                     .build()
                     .await?;
             } else {
+                log::info!("unmute!");
                 TG.client()
                     .build_restrict_chat_member(chat.get_id(), user.get_id(), permissions)
                     .build()
@@ -186,7 +213,6 @@ pub async fn change_permissions_message<'a>(
             let duration = parse_duration(&args, message.get_chat().get_id())?;
             change_permissions(message.get_chat_ref(), user, &permissions, duration).await?;
 
-            update_actions_permissions(user, message.get_chat_ref(), &permissions, None).await?;
             Ok(())
         }
         .boxed()
@@ -451,7 +477,6 @@ pub async fn unmute(chat: &Chat, user: &User) -> Result<()> {
         .set_can_send_other_messages(true)
         .build();
 
-    update_actions_permissions(user, chat, &permissions, None).await?;
     change_permissions(chat, user, &permissions, None).await?;
     Ok(())
 }
@@ -468,8 +493,7 @@ pub async fn mute(chat: &Chat, user: &User, duration: Option<Duration>) -> Resul
         .set_can_send_voice_notes(false)
         .set_can_send_other_messages(false)
         .build();
-    let time = duration.map(|t| Utc::now().checked_add_signed(t)).flatten();
-    update_actions_permissions(user, chat, &permissions, time).await?;
+
     change_permissions(chat, user, &permissions, duration).await?;
     Ok(())
 }

@@ -48,6 +48,8 @@ pub enum BotError {
     TransactionErr(#[from] TransactionError<DbErr>),
     #[error("Time out of range {0}")]
     TimeOutOfRange(#[from] OutOfRangeError),
+    #[error("Base64 decode error {0}")]
+    Base64(#[from] base64::DecodeError),
     #[error("Generic error {0}")]
     Generic(String),
 }
@@ -79,6 +81,13 @@ impl BotError {
     pub fn record_stats(&self) {
         if let Self::ApiError(ref error) = self {
             if let Some(error) = error.get_response() {
+                log::error!(
+                    "telegram error {}",
+                    error
+                        .description
+                        .as_ref()
+                        .unwrap_or(&error.error_code.unwrap_or(0).to_string())
+                );
                 if let Some(error_code) = error.error_code {
                     crate::statics::count_error_code(error_code);
                 }

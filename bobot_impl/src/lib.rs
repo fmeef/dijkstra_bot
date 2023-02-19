@@ -1,7 +1,7 @@
 use prometheus::default_registry;
 use prometheus_hyper::Server;
 use sea_orm::ConnectionTrait;
-use statics::{get_executor, CONFIG};
+use statics::{CONFIG, EXEC};
 use tokio::sync::Notify;
 use util::error::Result;
 pub mod metadata;
@@ -20,8 +20,7 @@ fn init_db() {
     );
 }
 pub fn what() {
-    let v = get_executor();
-    v.block_on(async move {
+    EXEC.block_on(async move {
         let handle = prometheus_serve();
         drop(handle);
         statics::TG.run().await.unwrap();

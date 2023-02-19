@@ -22,7 +22,7 @@ use crate::{
     modules,
     tg::command::parse_cmd,
     util::{
-        callback::{SingleCallback, SingleCb},
+        callback::{MultiCallback, MultiCb, SingleCallback, SingleCb},
         error::BotError,
         string::{should_ignore_chat, Speak},
     },
@@ -88,7 +88,8 @@ impl MetadataCollection {
 pub struct TgClient {
     pub client: Bot,
     pub modules: Arc<MetadataCollection>,
-    pub button_events: Arc<DashMap<String, SingleCb<CallbackQuery, ()>>>,
+    pub button_events: Arc<DashMap<String, SingleCb<CallbackQuery, Result<()>>>>,
+    pub button_repeat: Arc<DashMap<String, MultiCb<CallbackQuery, Result<bool>>>>,
 }
 
 async fn show_help<'a>(message: &Message, helps: Arc<MetadataCollection>) -> Result<bool> {
@@ -136,14 +137,18 @@ async fn handle_help(update: &UpdateExt, helps: Arc<MetadataCollection>) -> Resu
         if let Some((cmd, args, _)) = parse_cmd(message) {
             return match cmd {
                 "help" => show_help(message, helps).await,
-                "start" => {
-                    if let Some("help") = args.args.first().map(|a| a.get_text()) {
+                "start" => match args.args.first().map(|a| a.get_text()) {
+                    Some("help") => {
                         show_help(message, helps).await?;
-                    } else {
-                        message.reply("Hi there start weeenie").await?;
+                        Ok(true)
                     }
-                    Ok(true)
-                }
+
+                    None => {
+                        message.reply("Hi there start weeenie").await?;
+                        Ok(true)
+                    }
+                    _ => Ok(false),
+                },
                 _ => Ok(false),
             };
         }
@@ -155,7 +160,7 @@ impl TgClient {
     pub fn register_button<F, Fut>(&self, button: &InlineKeyboardButton, func: F)
     where
         F: FnOnce(CallbackQuery) -> Fut + Sync + Send + 'static,
-        Fut: Future<Output = ()> + Send + 'static,
+        Fut: Future<Output = Result<()>> + Send + 'static,
     {
         if let Some(data) = button.get_callback_data() {
             log::info!("registering button callback with data {}", data);
@@ -163,6 +168,19 @@ impl TgClient {
                 .insert(data.into_owned(), SingleCb::new(func));
         }
     }
+
+    pub fn register_button_multi<F, Fut>(&self, button: &InlineKeyboardButton, func: F)
+    where
+        F: Fn(CallbackQuery) -> Fut + Sync + Send + 'static,
+        Fut: Future<Output = Result<bool>> + Send + 'static,
+    {
+        if let Some(data) = button.get_callback_data() {
+            log::info!("registering button callback with data {}", data);
+            self.button_repeat
+                .insert(data.into_owned(), MultiCb::new(func));
+        }
+    }
+
     pub fn connect<T>(token: T) -> Self
     where
         T: Into<String>,
@@ -180,18 +198,40 @@ impl TgClient {
             client: Bot::new(token).unwrap(),
             modules: Arc::new(metadata),
             button_events: Arc::new(DashMap::new()),
+            button_repeat: Arc::new(DashMap::new()),
         }
     }
 
     async fn handle_update(&self, update: std::result::Result<UpdateExt, ApiError>) {
         let modules = Arc::clone(&self.modules);
         let callbacks = Arc::clone(&self.button_events);
+        let repeats = Arc::clone(&self.button_repeat);
         tokio::spawn(async move {
             match update {
                 Ok(UpdateExt::CallbackQuery(callbackquery)) => {
                     if let Some(data) = callbackquery.get_data() {
-                        if let Some(cb) = callbacks.remove(data.as_ref()) {
-                            cb.1.cb(callbackquery).await;
+                        let data: String = data.into_owned();
+                        if let Some(cb) = callbacks.remove(&data) {
+                            if let Err(err) = cb.1.cb(callbackquery.clone()).await {
+                                log::error!("button handler err {}", err);
+                                err.record_stats();
+                            }
+                        }
+
+                        if let Some(cb) = repeats.get(&data) {
+                            match cb.cb(callbackquery).await {
+                                Err(err) => {
+                                    repeats.remove(&data);
+                                    log::error!("failed multi handler {}", err);
+                                    err.record_stats();
+                                }
+                                Ok(v) => {
+                                    if v {
+                                        log::info!("removing multi callback");
+                                        repeats.remove(&data);
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -220,6 +260,28 @@ impl TgClient {
 
     pub async fn run(&self) -> Result<()> {
         log::info!("run");
+        let updates = Some(
+            vec![
+                "update_id",
+                "message",
+                "edited_message",
+                "channel_post",
+                "edited_channel_post",
+                "inline_query",
+                "chosen_inline_result",
+                "callback_query",
+                "shipping_query",
+                "pre_checkout_query",
+                "poll",
+                "poll_answer",
+                "my_chat_member",
+                "chat_member",
+                "chat_join_request",
+            ]
+            .into_iter()
+            .map(|v| v.to_owned())
+            .collect(),
+        );
         match CONFIG.webhook.enable_webhook {
             false => {
                 self.client
@@ -227,7 +289,7 @@ impl TgClient {
                     .drop_pending_updates(true)
                     .build()
                     .await?;
-                LongPoller::new(&self.client)
+                LongPoller::new(&self.client, updates)
                     .get_updates()
                     .await
                     .for_each_concurrent(
@@ -242,6 +304,7 @@ impl TgClient {
                     BotUrl::Host(CONFIG.webhook.webhook_url.to_owned()),
                     false,
                     CONFIG.webhook.listen.to_owned(),
+                    updates,
                 )
                 .get_updates()
                 .await?
@@ -266,6 +329,7 @@ impl Clone for TgClient {
             client: self.client.clone(),
             modules: Arc::clone(&self.modules),
             button_events: Arc::clone(&self.button_events),
+            button_repeat: Arc::clone(&self.button_repeat),
         }
     }
 }

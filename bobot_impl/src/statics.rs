@@ -1,7 +1,7 @@
 use crate::logger::LevelFilterWrapper;
 use crate::persist::redis::{RedisPool, RedisPoolBuilder};
 use crate::tg::client::TgClient;
-use async_executors::{TokioTp, TokioTpBuilder};
+
 use chrono::Duration;
 use clap::Parser;
 use confy::load_path;
@@ -121,8 +121,9 @@ pub struct Args {
 }
 
 lazy_static! {
-    pub static ref EXEC: TokioTp = {
-        TokioTpBuilder::new()
+    pub static ref EXEC: Runtime = {
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
             .build()
             .expect("create tokio threadpool")
     };
@@ -172,8 +173,4 @@ pub fn count_error_code(err: i64) {
         register_int_counter!(format! {"errcode_{}", err}, "Telegram error counter").unwrap()
     });
     counter.value().inc();
-}
-
-pub fn get_executor() -> TokioTp {
-    EXEC.clone()
 }

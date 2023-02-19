@@ -68,15 +68,28 @@ pub trait OnPush {
     fn on_push<'a, F, Fut>(&self, func: F)
     where
         F: FnOnce(CallbackQuery) -> Fut + Sync + Send + 'static,
-        Fut: Future<Output = ()> + Send + 'static;
+        Fut: Future<Output = Result<()>> + Send + 'static;
+
+    fn on_push_multi<'a, F, Fut>(&self, func: F)
+    where
+        F: Fn(CallbackQuery) -> Fut + Sync + Send + 'static,
+        Fut: Future<Output = Result<bool>> + Send + 'static;
 }
 
 impl OnPush for InlineKeyboardButton {
     fn on_push<'a, F, Fut>(&self, func: F)
     where
         F: FnOnce(CallbackQuery) -> Fut + Sync + Send + 'static,
-        Fut: Future<Output = ()> + Send + 'static,
+        Fut: Future<Output = Result<()>> + Send + 'static,
     {
         TG.register_button(self, func);
+    }
+
+    fn on_push_multi<'a, F, Fut>(&self, func: F)
+    where
+        F: Fn(CallbackQuery) -> Fut + Sync + Send + 'static,
+        Fut: Future<Output = Result<bool>> + Send + 'static,
+    {
+        TG.register_button_multi(self, func);
     }
 }
