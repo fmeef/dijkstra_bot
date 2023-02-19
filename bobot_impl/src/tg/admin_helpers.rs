@@ -726,6 +726,7 @@ pub async fn handle_pending_action_user(user: &User, chat: &Chat) -> Result<()> 
                 }
 
                 unmute(&chat, &user).await?;
+                action.delete(DB.deref()).await?;
                 return Ok(());
             }
         }
