@@ -28,8 +28,8 @@ use macros::rlformat;
 use redis::AsyncCommands;
 
 use sea_orm::{
-    sea_query::OnConflict, ActiveValue::NotSet, ActiveValue::Set, ColumnTrait, DbErr, EntityTrait,
-    IntoActiveModel, ModelTrait, PaginatorTrait, QueryFilter, TransactionTrait,
+    sea_query::OnConflict, ActiveValue::NotSet, ActiveValue::Set, ColumnTrait, EntityTrait,
+    IntoActiveModel, ModelTrait, PaginatorTrait, QueryFilter,
 };
 
 use super::{
@@ -111,7 +111,6 @@ pub async fn change_permissions(
                     .build()
                     .await?;
             } else {
-                log::info!("unmute!");
                 TG.client()
                     .build_restrict_chat_member(chat.get_id(), user.get_id(), permissions)
                     .build()
@@ -304,46 +303,13 @@ pub async fn set_warn_mode(chat: &Chat, mode: &str) -> Result<()> {
     model.cache(key).await?;
     Ok(())
 }
-
-pub async fn get_expired_action(chat: &Chat, user: &User) -> Result<Option<actions::Model>> {
-    let chat = chat.get_id();
-    let user = user.get_id();
-    let key = get_action_key(user, chat);
-    let res = default_cache_query(
-        move |_, _| async move {
-            let res = DB
-                .transaction::<_, Option<actions::Model>, DbErr>(|trans| {
-                    async move {
-                        let time = Utc::now();
-                        let res = actions::Entity::find_by_id((user, chat))
-                            .filter(actions::Column::Expires.gte(time))
-                            .one(trans)
-                            .await?;
-                        if let Some(res) = res.clone() {
-                            res.delete(trans).await?;
-                        }
-                        Ok(res)
-                    }
-                    .boxed()
-                })
-                .await?;
-            Ok(res)
-        },
-        Duration::hours(1),
-    )
-    .query(&key, &())
-    .await?;
-    Ok(res)
-}
 pub async fn get_action(chat: &Chat, user: &User) -> Result<Option<actions::Model>> {
     let chat = chat.get_id();
     let user = user.get_id();
     let key = get_action_key(user, chat);
     let res = default_cache_query(
         move |_, _| async move {
-            let time = Utc::now();
             let res = actions::Entity::find_by_id((user, chat))
-                .filter(actions::Column::Expires.gt(time))
                 .one(DB.deref())
                 .await?;
             Ok(res)
@@ -637,7 +603,7 @@ pub async fn update_actions_pending(chat: &Chat, user: &User, pending: bool) -> 
     let res = actions::Entity::insert(active)
         .on_conflict(
             OnConflict::columns([actions::Column::UserId, actions::Column::ChatId])
-                .update_columns([actions::Column::IsBanned])
+                .update_columns([actions::Column::Pending])
                 .to_owned(),
         )
         .exec_with_returning(DB.deref().deref())
@@ -730,56 +696,72 @@ pub async fn update_actions_permissions(
 }
 
 pub async fn handle_pending_action(update: &UpdateExt) -> Result<()> {
-    if let (Some(chat), Some(user)) = (update.get_chat(), update.get_user()) {
-        if !is_self_admin(&chat).await? {
-            return Ok(());
+    match update {
+        UpdateExt::Message(ref message) => {
+            if let Some(user) = message.get_from_ref() {
+                handle_pending_action_user(user, message.get_chat_ref()).await?;
+            }
         }
-        if let Some(action) = get_expired_action(&chat, &user).await? {
+        _ => (),
+    };
+
+    Ok(())
+}
+
+pub async fn handle_pending_action_user(user: &User, chat: &Chat) -> Result<()> {
+    if !is_self_admin(&chat).await? {
+        return Ok(());
+    }
+    if let Some(action) = get_action(&chat, &user).await? {
+        log::info!("handling pending action user {}", user.name_humanreadable());
+        let time = Utc::now();
+        if let Some(expire) = action.expires {
+            if expire < time {
+                log::info!("expired action!");
+                if action.is_banned {
+                    TG.client()
+                        .build_unban_chat_member(chat.get_id(), user.get_id())
+                        .build()
+                        .await?;
+                }
+
+                unmute(&chat, &user).await?;
+                return Ok(());
+            }
+        }
+        if action.pending {
+            let lang = get_chat_lang(chat.get_id()).await?;
+
+            let name = user.name_humanreadable();
             if action.is_banned {
                 TG.client()
-                    .build_unban_chat_member(chat.get_id(), user.get_id())
+                    .build_ban_chat_member(chat.get_id(), user.get_id())
+                    .build()
+                    .await?;
+
+                chat.speak(rlformat!(lang, "banned", name)).await?;
+            } else {
+                let permissions = ChatPermissionsBuilder::new()
+                    .set_can_send_messages(action.can_send_messages)
+                    .set_can_send_polls(action.can_send_poll)
+                    .set_can_send_other_messages(action.can_send_other)
+                    .set_can_send_audios(action.can_send_audio)
+                    .set_can_send_documents(action.can_send_document)
+                    .set_can_send_photos(action.can_send_photo)
+                    .set_can_send_videos(action.can_send_video)
+                    .set_can_send_video_notes(action.can_send_video_note)
+                    .set_can_send_voice_notes(action.can_send_voice_note)
+                    .build();
+                TG.client()
+                    .build_restrict_chat_member(chat.get_id(), user.get_id(), &permissions)
                     .build()
                     .await?;
             }
 
-            unmute(&chat, &user).await?;
-        }
-        if let Some(action) = get_action(&chat, &user).await? {
-            log::info!("handling pending action");
-            if action.pending {
-                let lang = get_chat_lang(chat.get_id()).await?;
-
-                let name = user.name_humanreadable();
-                if action.is_banned {
-                    TG.client()
-                        .build_ban_chat_member(chat.get_id(), user.get_id())
-                        .build()
-                        .await?;
-
-                    chat.speak(rlformat!(lang, "banned", name)).await?;
-                } else {
-                    let permissions = ChatPermissionsBuilder::new()
-                        .set_can_send_messages(action.can_send_messages)
-                        .set_can_send_polls(action.can_send_poll)
-                        .set_can_send_other_messages(action.can_send_other)
-                        .set_can_send_audios(action.can_send_audio)
-                        .set_can_send_documents(action.can_send_document)
-                        .set_can_send_photos(action.can_send_photo)
-                        .set_can_send_videos(action.can_send_video)
-                        .set_can_send_video_notes(action.can_send_video_note)
-                        .set_can_send_voice_notes(action.can_send_voice_note)
-                        .build();
-                    TG.client()
-                        .build_restrict_chat_member(chat.get_id(), user.get_id(), &permissions)
-                        .build()
-                        .await?;
-                    chat.speak(rlformat!(lang, "restrict", name)).await?;
-                }
-
-                update_actions_pending(&chat, &user, false).await?;
-            }
+            update_actions_pending(&chat, &user, false).await?;
         }
     }
+
     Ok(())
 }
 
