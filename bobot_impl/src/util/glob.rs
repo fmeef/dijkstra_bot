@@ -168,16 +168,54 @@ impl<'a> PartialEq<&'a str> for WildMatch {
     }
 }
 
-pub struct Glob<'a>(&'a str);
+pub struct Glob(Vec<char>);
 
-impl<'a> Glob<'a> {
-    pub fn new(pattern: &'a str) -> Self {
-        Self(pattern)
+impl Glob {
+    pub fn new(pattern: &str) -> Self {
+        Self(pattern.chars().collect())
     }
 
-    pub fn is_match(&'a self, m: &str) -> bool {
-        let m = format!(" {} ", m);
-        let pattern = format!(" *{}* ", self.0);
-        WildMatch::new(&pattern).matches(&m)
+    pub fn is_match(&self, m: &str) -> bool {
+        let mut pattern_idx = 0;
+        let mut is_star = false;
+        for ch in m.chars() {
+            if ch.is_whitespace() {
+                is_star = false;
+            }
+            match self.0.get(pattern_idx) {
+                Some('?') => {
+                    if !ch.is_whitespace() {
+                        pattern_idx += 1;
+                    }
+                }
+                Some('*') => {
+                    is_star = true;
+                    pattern_idx += 1;
+                }
+                Some(c) => {
+                    if *c == ch {
+                        pattern_idx += 1;
+                    } else if !is_star {
+                        pattern_idx = 0;
+                    }
+                }
+                None => {
+                    return true;
+                }
+            };
+        }
+        false
+    }
+}
+
+mod tests {
+    use super::Glob;
+
+    #[test]
+    fn test_star() {
+        let s = "thing*many";
+        let glob = Glob::new(s);
+        assert!(glob.is_match("doof thingsomany fue"));
+        assert!(!glob.is_match("blarg boof"));
     }
 }
