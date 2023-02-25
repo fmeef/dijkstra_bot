@@ -6,6 +6,7 @@ services:
       target: dev
     ports:
       - "8080:8080"
+      - "8000:8000"
     environment:
       - DATABASE_URL=postgresql://bobot:changeme@db-dev/bobot    
     volumes:

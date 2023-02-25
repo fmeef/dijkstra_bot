@@ -18,17 +18,16 @@ use crate::util::error::BotError;
 use crate::util::error::Result;
 
 use crate::metadata::metadata;
+use crate::util::filter::Header;
+use crate::util::filter::Lexer;
+use crate::util::filter::Parser;
 use crate::util::string::Speak;
 use botapi::gen_types::{Message, UpdateExt};
 use chrono::Duration;
 use entities::{filters, triggers};
 use itertools::Itertools;
 use lazy_static::__Deref;
-use lazy_static::lazy_static;
-
-use pomelo::pomelo;
 use redis::AsyncCommands;
-use regex::Regex;
 use sea_orm::entity::ActiveValue;
 use sea_orm::sea_query::OnConflict;
 use sea_orm::ColumnTrait;
@@ -43,105 +42,6 @@ metadata!("Filters",
     { command = "stop", help = "Stop a filter" },
     { command = "stopall", help = "Stop all filters" }
 );
-
-pub enum Header {
-    List(Vec<String>),
-    Arg(String),
-}
-
-pub struct FilterCommond<'a> {
-    header: Header,
-    body: Option<String>,
-    #[allow(dead_code)]
-    footer: Option<&'a str>,
-}
-
-pomelo! {
-    %include {
-             use super::{FilterCommond, Header};
-             use crate::tg::command::TextArg;
-        }
-    %error crate::tg::markdown::DefaultParseErr;
-    %parser pub struct Parser<'e>{};
-    %type input FilterCommond<'e>;
-    %token #[derive(Debug)] pub enum Token<'e>{};
-    %type quote String;
-    %type word TextArg<'e>;
-    %type Whitespace &'e str;
-    %type multi Vec<TextArg<'e>>;
-    %type list Vec<TextArg<'e>>;
-    %type Str &'e str;
-    %type footer &'e str;
-    %type words String;
-    %type ign TextArg<'e>;
-    %type header Header;
-
-    input    ::= header(A) {
-        FilterCommond {
-            header: A,
-            body: None,
-            footer: None
-        }
-    }
-    input    ::= header(A) Whitespace(_) words(W) {
-        FilterCommond {
-            header: A,
-            body: Some(W),
-            footer: None
-        }
-    }
-    input    ::= header(A) Whitespace(_) words(W) Whitespace(_) footer(F) {
-        FilterCommond {
-            header: A,
-            body: Some(W),
-            footer: Some(F)
-        }
-    }
-    footer   ::= LBrace Str(A) Rbrace { A }
-    header   ::= multi(V)  { Header::List(V.into_iter().map(|v| v.get_text().to_owned()).collect()) }
-    header   ::= word(S) { Header::Arg(S.get_text().to_owned()) }
-    header   ::= quote(S) { Header::Arg(S) }
-    word     ::= Str(A) { TextArg::Arg(A) }
-    ign      ::= word(W) { W }
-    ign      ::= word(W) Whitespace(_) { W }
-    ign      ::= Whitespace(_) word(W) { W }
-    ign      ::= Whitespace(_) word(W) Whitespace(_) { W }
-    words    ::= word(W) { W.get_text().to_owned() }
-    words    ::= words(mut L) Whitespace(S) word(W) {
-        L.push_str(&S);
-        L.push_str(W.get_text());
-        L
-    }
-
-    quote    ::= Quote words(A) Quote { A }
-    multi    ::= LParen list(A) RParen {A }
-    list     ::= ign(A) { vec![A] }
-    list     ::= list(mut L) Comma ign(A) { L.push(A); L }
-
-}
-
-use parser::{Parser, Token};
-
-lazy_static! {
-    static ref TOKENS: Regex = Regex::new(r#"((\s+)|[\{\}\(\),"]|[^\{\}\(\),"\s]+)"#).unwrap();
-}
-
-struct Lexer<'a>(&'a str);
-
-impl<'a> Lexer<'a> {
-    fn all_tokens(&'a self) -> impl Iterator<Item = Token<'a>> {
-        TOKENS.find_iter(self.0).map(|t| match t.as_str() {
-            "(" => Token::LParen,
-            ")" => Token::RParen,
-            "{" => Token::LBrace,
-            "}" => Token::Rbrace,
-            "," => Token::Comma,
-            "\"" => Token::Quote,
-            s if t.as_str().trim().is_empty() => Token::Whitespace(s),
-            s => Token::Str(s),
-        })
-    }
-}
 
 struct Migration;
 
@@ -502,7 +402,7 @@ async fn command_filter<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()
         .get_from()
         .admin_or_die(message.get_chat_ref())
         .await?;
-    let lexer = Lexer(args.text);
+    let lexer = Lexer::new(args.text);
     let mut parser = Parser::new();
     for token in lexer.all_tokens() {
         parser
@@ -610,7 +510,7 @@ mod test {
     #[test]
     fn parse_cmd2() {
         let cmd = "(fme, fmoo,  cry) menhera";
-        let lexer = Lexer(cmd);
+        let lexer = Lexer::new(cmd);
         let mut parser = Parser::new();
         for token in lexer.all_tokens() {
             println!("token {:?}", token);
@@ -622,7 +522,7 @@ mod test {
     #[test]
     fn parse_whitespace() {
         let cmd = "fmef menhera";
-        let lexer = Lexer(cmd);
+        let lexer = Lexer::new(cmd);
         let mut parser = Parser::new();
         for token in lexer.all_tokens() {
             println!("token {:?}", token);
@@ -639,7 +539,7 @@ mod test {
     #[test]
     fn parse_quote() {
         let cmd = "\"thing manuy\" menhera";
-        let lexer = Lexer(cmd);
+        let lexer = Lexer::new(cmd);
         let mut parser = Parser::new();
         for token in lexer.all_tokens() {
             println!("token {:?}", token);

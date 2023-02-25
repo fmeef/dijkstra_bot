@@ -11,6 +11,8 @@ pub enum ActionType {
     Ban,
     #[sea_orm(num_value = 3)]
     Shame,
+    #[sea_orm(num_value = 4)]
+    Warn,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, DeriveEntityModel)]

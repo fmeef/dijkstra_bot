@@ -11,7 +11,7 @@ use crate::{
     util::error::Result,
     util::string::{get_chat_lang, Speak},
 };
-use botapi::gen_types::{Message, UpdateExt, User};
+use botapi::gen_types::{Message, UpdateExt};
 use chrono::Duration;
 use futures::FutureExt;
 use humantime::format_duration;
@@ -29,42 +29,6 @@ metadata!("Warns",
 pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![]
 }
-
-async fn warn_ban(message: &Message, user: &User, count: i32) -> Result<()> {
-    let lang = get_chat_lang(message.get_chat().get_id()).await?;
-    ban(message, user, None).await?;
-    message
-        .reply(&rlformat!(
-            lang,
-            "warnban",
-            count,
-            user.name_humanreadable()
-        ))
-        .await?;
-    Ok(())
-}
-
-async fn warn_mute(message: &Message, user: &User, count: i32) -> Result<()> {
-    let lang = get_chat_lang(message.get_chat().get_id()).await?;
-    mute(message.get_chat_ref(), user, None).await?;
-    message
-        .reply(&rlformat!(
-            lang,
-            "warnmute",
-            count,
-            user.name_humanreadable()
-        ))
-        .await?;
-
-    Ok(())
-}
-
-async fn warn_shame(message: &Message, _user: &User, _count: i32) -> Result<()> {
-    message.speak("shaming not implemented").await?;
-
-    Ok(())
-}
-
 pub async fn warn<'a>(
     message: &Message,
     entities: &Entities<'a>,
@@ -101,6 +65,7 @@ pub async fn warn<'a>(
                     actions::ActionType::Mute => warn_mute(message, user, count).await,
                     actions::ActionType::Ban => warn_ban(message, user, count).await,
                     actions::ActionType::Shame => warn_shame(message, user, count).await,
+                    actions::ActionType::Warn => Ok(()),
                 }?;
             }
 

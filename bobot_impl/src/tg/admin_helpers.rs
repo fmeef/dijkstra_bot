@@ -167,6 +167,30 @@ where
     Ok(())
 }
 
+pub fn parse_duration_str(arg: &str, chat: i64) -> Result<Option<Duration>> {
+    let head = &arg[0..arg.len() - 1];
+    let tail = &arg[arg.len() - 1..];
+    log::info!("head {} tail {}", head, tail);
+    let head = match str::parse::<i64>(head) {
+        Err(_) => return Err(BotError::speak("Enter a number", chat)),
+        Ok(res) => res,
+    };
+    let res = match tail {
+        "m" => Duration::minutes(head),
+        "h" => Duration::hours(head),
+        "d" => Duration::days(head),
+        _ => return Err(BotError::speak("Invalid time spec", chat)),
+    };
+
+    let res = if res.num_seconds() < 30 {
+        Duration::seconds(30)
+    } else {
+        res
+    };
+
+    Ok(Some(res))
+}
+
 pub fn parse_duration<'a>(args: &Option<ArgSlice<'a>>, chat: i64) -> Result<Option<Duration>> {
     if let Some(args) = args {
         if let Some(thing) = args.args.first() {
@@ -318,6 +342,41 @@ pub async fn get_action(chat: &Chat, user: &User) -> Result<Option<actions::Mode
     .query(&key, &())
     .await?;
     Ok(res)
+}
+
+pub async fn warn_ban(message: &Message, user: &User, count: i32) -> Result<()> {
+    let lang = get_chat_lang(message.get_chat().get_id()).await?;
+    ban(message, user, None).await?;
+    message
+        .reply(&rlformat!(
+            lang,
+            "warnban",
+            count,
+            user.name_humanreadable()
+        ))
+        .await?;
+    Ok(())
+}
+
+pub async fn warn_mute(message: &Message, user: &User, count: i32) -> Result<()> {
+    let lang = get_chat_lang(message.get_chat().get_id()).await?;
+    mute(message.get_chat_ref(), user, None).await?;
+    message
+        .reply(&rlformat!(
+            lang,
+            "warnmute",
+            count,
+            user.name_humanreadable()
+        ))
+        .await?;
+
+    Ok(())
+}
+
+pub async fn warn_shame(message: &Message, _user: &User, _count: i32) -> Result<()> {
+    message.speak("shaming not implemented").await?;
+
+    Ok(())
 }
 
 pub async fn get_warns(message: &Message, user: &User) -> Result<Vec<warns::Model>> {

@@ -50,6 +50,8 @@ pub enum BotError {
     TimeOutOfRange(#[from] OutOfRangeError),
     #[error("Base64 decode error {0}")]
     Base64(#[from] base64::DecodeError),
+    #[error("Invalid glob pattern: {0}")]
+    GlobError(#[from] globset::Error),
     #[error("Generic error {0}")]
     Generic(String),
 }
