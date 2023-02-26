@@ -161,12 +161,12 @@ impl<'a> PartialEq<&'a str> for WildMatch {
 }
 
 pub struct Glob(Vec<char>);
-
 impl Glob {
     pub fn new(pattern: &str) -> Self {
         Self(pattern.chars().collect())
     }
 
+    #[allow(unused_variables, unused_mut)]
     pub fn is_match(&self, m: &str) -> bool {
         let mut pattern_idx = 0;
         let mut is_star = false;
@@ -225,9 +225,9 @@ impl Glob {
     }
 }
 
+#[allow(unused_imports)]
 mod tests {
-    use super::Glob;
-
+    use super::*;
     #[test]
     fn star_single() {
         let s = "*thing";
