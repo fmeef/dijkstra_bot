@@ -361,7 +361,6 @@ async fn search_cache(message: &Message, text: &str) -> Result<Option<blocklists
                             should_match = true;
 
                             if match_ws != ws {
-                                log::info!("NO MATCH whitespace bad");
                                 return Ok(None);
                             }
 
@@ -372,7 +371,6 @@ async fn search_cache(message: &Message, text: &str) -> Result<Option<blocklists
                                 return get_blocklist(message, item).await;
                             }
                         } else if should_match && key_iter.peek().is_some() {
-                            log::info!("NO MATCH key empty");
                             return Ok(None);
                         }
                     }
