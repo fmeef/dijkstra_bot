@@ -3,7 +3,7 @@ use crate::{
     statics::TG,
     tg::admin_helpers::*,
     tg::{
-        command::{Command, Entities, TextArgs},
+        command::{Context, Entities, TextArgs},
         user::Username,
     },
     util::error::Result,
@@ -139,15 +139,8 @@ async fn kickme(message: &Message) -> Result<()> {
     Ok(())
 }
 
-async fn handle_command<'a>(message: &Message, cmd: Option<&Command<'a>>) -> Result<()> {
-    if let Some(&Command {
-        cmd,
-        ref entities,
-        ref args,
-    }) = cmd
-    {
-        log::info!("admin command {}", cmd);
-
+async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
+    if let Some((cmd, entities, args, message)) = ctx.cmd() {
         match cmd {
             "kickme" => kickme(message).await,
             "mute" => mute_cmd(message, &entities, args).await,
@@ -160,10 +153,6 @@ async fn handle_command<'a>(message: &Message, cmd: Option<&Command<'a>>) -> Res
     Ok(())
 }
 
-pub async fn handle_update<'a>(update: &UpdateExt, cmd: Option<&Command<'a>>) -> Result<()> {
-    match update {
-        UpdateExt::Message(ref message) => handle_command(message, cmd).await?,
-        _ => (),
-    };
-    Ok(())
+pub async fn handle_update<'a>(_: &UpdateExt, cmd: &Context<'a>) -> Result<()> {
+    handle_command(cmd).await
 }

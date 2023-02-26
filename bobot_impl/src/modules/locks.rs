@@ -2,7 +2,7 @@ use self::entities::locks;
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache};
 use crate::statics::{CONFIG, DB, REDIS};
 use crate::tg::admin_helpers::{change_permissions, self_admin_or_die, IsAdmin};
-use crate::tg::command::{Command, TextArg};
+use crate::tg::command::{Command, Context, TextArg};
 use crate::util::error::{BotError, Result};
 use crate::{metadata::metadata, statics::TG, util::string::Speak};
 use botapi::gen_types::{ChatPermissionsBuilder, Message, UpdateExt, User};
@@ -320,13 +320,14 @@ async fn handle_action(message: &Message, lockaction: LockAction) -> Result<()> 
     Ok(())
 }
 
-async fn handle_command<'a>(message: &Message, command: Option<&'a Command<'a>>) -> Result<()> {
-    if is_premium(message) {
-        if let Some(lock) = get_lock(message, LockType::Premium).await? {
-            handle_action(message, lock.lock_action).await?;
+async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
+    if let Some((cmd, _, _, message)) = ctx.cmd() {
+        let command = ctx.command.as_ref();
+        if is_premium(message) {
+            if let Some(lock) = get_lock(message, LockType::Premium).await? {
+                handle_action(message, lock.lock_action).await?;
+            }
         }
-    }
-    if let Some(&Command { cmd, .. }) = command {
         if let Some(user) = message.get_from() {
             match cmd {
                 "lock" => handle_lock(message, &command, &user).await?,
@@ -339,10 +340,6 @@ async fn handle_command<'a>(message: &Message, command: Option<&'a Command<'a>>)
     Ok(())
 }
 
-pub async fn handle_update<'a>(update: &UpdateExt, cmd: Option<&'a Command<'a>>) -> Result<()> {
-    match update {
-        UpdateExt::Message(ref message) => handle_command(message, cmd).await?,
-        _ => (),
-    };
-    Ok(())
+pub async fn handle_update<'a>(_: &UpdateExt, cmd: &Context<'a>) -> Result<()> {
+    handle_command(cmd).await
 }

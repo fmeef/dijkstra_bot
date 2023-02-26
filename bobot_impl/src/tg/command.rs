@@ -1,6 +1,6 @@
 use std::{borrow::Cow, collections::VecDeque};
 
-use botapi::gen_types::{Message, MessageEntity, User};
+use botapi::gen_types::{Message, MessageEntity, UpdateExt, User};
 use lazy_static::lazy_static;
 
 use regex::Regex;
@@ -102,6 +102,31 @@ pub struct Command<'a> {
     pub cmd: &'a str,
     pub args: TextArgs<'a>,
     pub entities: Entities<'a>,
+}
+
+pub struct Context<'a> {
+    pub message: Option<&'a Message>,
+    pub command: Option<Command<'a>>,
+}
+
+impl<'a> Context<'a> {
+    pub fn new(update: &'a UpdateExt) -> Self {
+        let message = match update {
+            UpdateExt::Message(message) => Some(message),
+            _ => None,
+        };
+
+        let command = message.map(|m| parse_cmd_struct(&m)).flatten();
+        Self { message, command }
+    }
+
+    pub fn cmd(&'a self) -> Option<(&'a str, &'a Entities<'a>, &'a TextArgs<'a>, &'a Message)> {
+        if let (Some(message), Some(command)) = (self.message, &self.command) {
+            Some((command.cmd, &command.entities, &command.args, message))
+        } else {
+            None
+        }
+    }
 }
 
 pub fn parse_cmd_struct<'a>(message: &'a Message) -> Option<Command<'a>> {

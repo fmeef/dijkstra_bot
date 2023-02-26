@@ -18,8 +18,8 @@ use crate::tg::admin_helpers::warn_shame;
 use crate::tg::admin_helpers::warn_user;
 use crate::tg::admin_helpers::IsAdmin;
 use crate::tg::admin_helpers::IsGroupAdmin;
-use crate::tg::command::Command;
 
+use crate::tg::command::Context;
 use crate::tg::command::TextArgs;
 
 use crate::tg::dialog::dialog_or_default;
@@ -240,10 +240,7 @@ fn get_blocklist_hash_key(message: &Message) -> String {
 }
 
 async fn delete_trigger(message: &Message, trigger: &str) -> Result<()> {
-    message
-        .get_from()
-        .admin_or_die(message.get_chat_ref())
-        .await?;
+    message.group_admin_or_die().await?;
     let trigger = &trigger.to_lowercase();
     let hash_key = get_blocklist_hash_key(message);
     let key: Option<i64> = REDIS
@@ -474,10 +471,7 @@ async fn insert_blocklist(
 }
 
 async fn command_blocklist<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
-    message
-        .get_from()
-        .admin_or_die(message.get_chat_ref())
-        .await?;
+    message.group_admin_or_die().await?;
     let lexer = Lexer::new(args.text);
     let mut parser = Parser::new();
     for token in lexer.all_tokens() {
@@ -670,11 +664,7 @@ async fn list_triggers(message: &Message) -> Result<()> {
 }
 
 async fn stopall(message: &Message) -> Result<()> {
-    message
-        .get_from()
-        .admin_or_die(message.get_chat_ref())
-        .await?;
-
+    message.group_admin_or_die().await?;
     blocklists::Entity::delete_many()
         .filter(blocklists::Column::Chat.eq(message.get_chat().get_id()))
         .exec(DB.deref())
@@ -687,8 +677,8 @@ async fn stopall(message: &Message) -> Result<()> {
 }
 
 #[allow(dead_code)]
-async fn handle_command<'a>(message: &Message, command: Option<&'a Command<'a>>) -> Result<()> {
-    if let Some(&Command { cmd, ref args, .. }) = command {
+async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
+    if let Some((cmd, _, args, message)) = ctx.cmd() {
         match cmd {
             "addblocklist" => command_blocklist(message, &args).await?,
             "rmblocklist" => delete_trigger(message, args.text).await?,
@@ -696,17 +686,13 @@ async fn handle_command<'a>(message: &Message, command: Option<&'a Command<'a>>)
             "rmallblocklists" => stopall(message).await?,
             _ => handle_trigger(message).await?,
         };
-    } else {
-        handle_trigger(message).await?;
+    } else if let Some(message) = &ctx.message {
+        handle_trigger(&message).await?;
     }
     Ok(())
 }
 
 #[allow(dead_code)]
-pub async fn handle_update<'a>(update: &UpdateExt, cmd: Option<&'a Command<'a>>) -> Result<()> {
-    match update {
-        UpdateExt::Message(ref message) => handle_command(message, cmd).await?,
-        _ => (),
-    };
-    Ok(())
+pub async fn handle_update<'a>(_: &UpdateExt, cmd: &Context<'a>) -> Result<()> {
+    handle_command(cmd).await
 }

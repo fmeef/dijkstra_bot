@@ -7,7 +7,7 @@ use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache, R
 use crate::statics::{CONFIG, DB, REDIS, TG};
 use crate::tg::admin_helpers::{kick, mute, parse_duration, unmute, IsAdmin, IsGroupAdmin};
 use crate::tg::button::{get_url, InlineKeyboardBuilder, OnPush};
-use crate::tg::command::{ArgSlice, Command, TextArgs};
+use crate::tg::command::{ArgSlice, Context, TextArgs};
 use crate::tg::user::{get_me, Username};
 use crate::util::error::BotError;
 use crate::util::error::Result;
@@ -689,9 +689,9 @@ async fn handle_user_action(message: &Message) -> Result<()> {
 }
 
 #[allow(dead_code)]
-async fn handle_command<'a>(message: &Message, cmd: Option<&'a Command<'a>>) -> Result<()> {
-    handle_user_action(message).await?;
-    if let Some(&Command { cmd, ref args, .. }) = cmd {
+async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
+    if let Some((cmd, _, args, message)) = ctx.cmd() {
+        handle_user_action(message).await?;
         match cmd {
             "captchakick" => {
                 captchakick_cmd(message, args).await?;
@@ -737,10 +737,6 @@ async fn handle_command<'a>(message: &Message, cmd: Option<&'a Command<'a>>) -> 
 }
 
 #[allow(dead_code)]
-pub async fn handle_update<'a>(update: &UpdateExt, cmd: Option<&'a Command<'a>>) -> Result<()> {
-    match update {
-        UpdateExt::Message(ref message) => handle_command(message, cmd).await?,
-        _ => (),
-    };
-    Ok(())
+pub async fn handle_update<'a>(_: &UpdateExt, cmd: &Context<'a>) -> Result<()> {
+    handle_command(cmd).await
 }

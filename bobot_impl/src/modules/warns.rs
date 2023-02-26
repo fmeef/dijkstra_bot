@@ -1,11 +1,12 @@
 use crate::persist::admin::actions;
+use crate::tg::command::Context;
 use crate::tg::user::Username;
 use crate::util::error::BotError;
 use crate::{
     metadata::metadata,
     tg::admin_helpers::*,
     tg::{
-        command::{Command, Entities, TextArgs},
+        command::{Entities, TextArgs},
         dialog::dialog_or_default,
     },
     util::error::Result,
@@ -177,13 +178,8 @@ async fn cmd_warn_mode<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()>
     Ok(())
 }
 
-async fn handle_command<'a>(message: &Message, cmd: Option<&Command<'a>>) -> Result<()> {
-    if let Some(&Command {
-        cmd,
-        ref entities,
-        ref args,
-    }) = cmd
-    {
+async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
+    if let Some((cmd, entities, args, message)) = ctx.cmd() {
         log::info!("admin command {}", cmd);
 
         match cmd {
@@ -198,10 +194,7 @@ async fn handle_command<'a>(message: &Message, cmd: Option<&Command<'a>>) -> Res
     Ok(())
 }
 
-pub async fn handle_update<'a>(update: &UpdateExt, cmd: Option<&Command<'a>>) -> Result<()> {
-    match update {
-        UpdateExt::Message(ref message) => handle_command(message, cmd).await?,
-        _ => (),
-    };
+pub async fn handle_update<'a>(_: &UpdateExt, cmd: &Context<'a>) -> Result<()> {
+    handle_command(cmd).await?;
     Ok(())
 }

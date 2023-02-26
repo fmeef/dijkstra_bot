@@ -2,7 +2,7 @@ use crate::{
     metadata::metadata,
     tg::{
         admin_helpers::*,
-        command::{Command, Entities},
+        command::{Context, Entities},
     },
     util::error::Result,
     util::string::{get_chat_lang, Speak},
@@ -83,18 +83,11 @@ async fn admincache(message: &Message) -> Result<()> {
     message.speak(rlformat!(lang, "refreshac")).await?;
     Ok(())
 }
-pub async fn handle_update<'a>(update: &UpdateExt, cmd: Option<&Command<'a>>) -> Result<()> {
-    match update {
-        UpdateExt::Message(ref message) => handle_command(message, cmd).await?,
-        _ => (),
-    };
-    Ok(())
+pub async fn handle_update<'a>(_: &UpdateExt, cmd: &Context<'a>) -> Result<()> {
+    handle_command(cmd).await
 }
-async fn handle_command<'a>(message: &Message, cmd: Option<&Command<'a>>) -> Result<()> {
-    if let Some(&Command {
-        cmd, ref entities, ..
-    }) = cmd
-    {
+async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
+    if let Some((cmd, entities, _, message)) = ctx.cmd() {
         match cmd {
             "admincache" => admincache(message).await,
             "admins" => listadmins(message).await,

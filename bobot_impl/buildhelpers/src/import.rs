@@ -88,13 +88,9 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
         pub async fn process_updates(
             update: ::botapi::gen_types::UpdateExt
             ) -> () {
-            let cmd = if let botapi::gen_types::UpdateExt::Message(ref message) = update {
-                 crate::tg::command::parse_cmd_struct(message)
-            } else {
-                None
-            };
+            let cmd = crate::tg::command::Context::new(&update);
             #(
-                if let Err(err) = #updates::handle_update(&update, cmd.as_ref()).await {
+                if let Err(err) = #updates::handle_update(&update, &cmd).await {
                     log::error!("handle_update {} error: {}", #updates::METADATA.name, err);
                     err.record_stats();
                     if let Err(err) = err.get_message().await {

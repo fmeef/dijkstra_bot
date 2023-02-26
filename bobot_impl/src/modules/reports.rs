@@ -1,12 +1,10 @@
 use crate::statics::TG;
+use crate::tg::command::Context;
 use crate::tg::user::Username;
 use crate::util::error::BotError;
 use crate::util::string::should_ignore_chat;
 use crate::{
-    metadata::metadata,
-    tg::admin_helpers::*,
-    tg::command::{Command, Entities},
-    util::error::Result,
+    metadata::metadata, tg::admin_helpers::*, tg::command::Entities, util::error::Result,
     util::string::get_chat_lang,
 };
 use botapi::gen_types::{Message, MessageEntity, MessageEntityBuilder, UpdateExt};
@@ -73,11 +71,8 @@ pub async fn report<'a>(message: &Message, entities: &Entities<'a>) -> Result<()
     Ok(())
 }
 
-async fn handle_command<'a>(message: &Message, cmd: Option<&Command<'a>>) -> Result<()> {
-    if let Some(&Command {
-        cmd, ref entities, ..
-    }) = cmd
-    {
+async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
+    if let Some((cmd, entities, _, message)) = ctx.cmd() {
         log::info!("admin command {}", cmd);
 
         match cmd {
@@ -88,10 +83,6 @@ async fn handle_command<'a>(message: &Message, cmd: Option<&Command<'a>>) -> Res
     Ok(())
 }
 
-pub async fn handle_update<'a>(update: &UpdateExt, cmd: Option<&Command<'a>>) -> Result<()> {
-    match update {
-        UpdateExt::Message(ref message) => handle_command(message, cmd).await?,
-        _ => (),
-    };
-    Ok(())
+pub async fn handle_update<'a>(_: &UpdateExt, cmd: &Context<'a>) -> Result<()> {
+    handle_command(cmd).await
 }

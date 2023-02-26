@@ -10,8 +10,8 @@ use crate::statics::CONFIG;
 use crate::statics::DB;
 use crate::statics::REDIS;
 use crate::tg::admin_helpers::IsAdmin;
-use crate::tg::command::Command;
 
+use crate::tg::command::Context;
 use crate::tg::command::TextArgs;
 
 use crate::util::error::BotError;
@@ -478,9 +478,8 @@ async fn stopall(message: &Message) -> Result<()> {
     Ok(())
 }
 
-#[allow(dead_code)]
-async fn handle_command<'a>(message: &Message, command: Option<&'a Command<'a>>) -> Result<()> {
-    if let Some(&Command { cmd, ref args, .. }) = command {
+async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
+    if let Some((cmd, _, args, message)) = ctx.cmd() {
         match cmd {
             "filter" => command_filter(message, &args).await?,
             "stop" => delete_trigger(message, args.text).await?,
@@ -488,19 +487,14 @@ async fn handle_command<'a>(message: &Message, command: Option<&'a Command<'a>>)
             "stopall" => stopall(message).await?,
             _ => handle_trigger(message).await?,
         };
-    } else {
-        handle_trigger(message).await?;
+    } else if let Some(message) = &ctx.message {
+        handle_trigger(&message).await?;
     }
     Ok(())
 }
 
-#[allow(dead_code)]
-pub async fn handle_update<'a>(update: &UpdateExt, cmd: Option<&'a Command<'a>>) -> Result<()> {
-    match update {
-        UpdateExt::Message(ref message) => handle_command(message, cmd).await?,
-        _ => (),
-    };
-    Ok(())
+pub async fn handle_update<'a>(_: &UpdateExt, cmd: &Context<'a>) -> Result<()> {
+    handle_command(cmd).await
 }
 
 #[allow(unused)]

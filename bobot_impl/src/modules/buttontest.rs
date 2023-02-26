@@ -1,4 +1,4 @@
-use crate::tg::command::Command;
+use crate::tg::command::Context;
 use crate::util::error::Result;
 use crate::{
     metadata::metadata,
@@ -64,8 +64,8 @@ async fn handle_markdown(message: &Message) -> Result<bool> {
 }
 
 #[allow(dead_code)]
-async fn handle_command<'a>(message: &Message, cmd: Option<&'a Command<'a>>) -> Result<()> {
-    if let Some(&Command { cmd, .. }) = cmd {
+async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
+    if let Some((cmd, _, _, message)) = ctx.cmd() {
         log::info!("piracy command {}", cmd);
         match cmd {
             //            "crash" => TG.client().close().await?,
@@ -87,10 +87,6 @@ async fn handle_command<'a>(message: &Message, cmd: Option<&'a Command<'a>>) -> 
 }
 
 #[allow(dead_code)]
-pub async fn handle_update<'a>(update: &UpdateExt, cmd: Option<&'a Command<'a>>) -> Result<()> {
-    match update {
-        UpdateExt::Message(ref message) => handle_command(message, cmd).await?,
-        _ => (),
-    };
-    Ok(())
+pub async fn handle_update<'a>(_: &UpdateExt, cmd: &Context<'a>) -> Result<()> {
+    handle_command(cmd).await
 }
