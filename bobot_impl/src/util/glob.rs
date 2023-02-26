@@ -85,23 +85,17 @@ impl WildMatch {
         const NONE: usize = usize::MAX;
         let mut last_wildcard_idx = NONE;
         let mut questionmark_matches: Vec<char> = Vec::with_capacity(self.max_questionmarks);
-
         for input_char in input.chars() {
-            if self.pattern[pattern_idx].next_char.is_none() {
-                return true;
-            }
             match self.pattern.get(pattern_idx) {
                 None => {
-                    return true;
+                    return false;
                 }
                 Some(p) if p.next_char == Some('?') => {
                     if p.has_wildcard {
                         last_wildcard_idx = pattern_idx;
                     }
                     pattern_idx += 1;
-                    if !input_char.is_whitespace() {
-                        questionmark_matches.push(input_char);
-                    }
+                    questionmark_matches.push(input_char);
                 }
                 Some(p) if p.next_char == Some(input_char) => {
                     if p.has_wildcard {
@@ -111,9 +105,7 @@ impl WildMatch {
                     pattern_idx += 1;
                 }
                 Some(p) if p.has_wildcard => {
-                    if input_char.is_whitespace() {
-                        pattern_idx += 1;
-                    } else if p.next_char == None {
+                    if p.next_char == None {
                         return true;
                     }
                 }
@@ -158,7 +150,7 @@ impl WildMatch {
                 }
             }
         }
-        false
+        self.pattern[pattern_idx].next_char.is_none()
     }
 }
 
@@ -179,11 +171,12 @@ impl Glob {
         let mut pattern_idx = 0;
         let mut is_star = false;
         let mut before: Option<char> = None;
-        let mut word_start = true;
-        for ch in m.chars() {
-            if before.unwrap_or(' ').is_whitespace() && !ch.is_whitespace() {
-                word_start = true;
-            }
+        let mut match_start = true;
+        let mut wordcount = 0;
+        let mut word_len = 0;
+        let mut skip = 0;
+        for (count, ch) in m.chars().enumerate() {
+            let before_ws = before.unwrap_or(' ').is_whitespace();
 
             match self.0.get(pattern_idx) {
                 Some('?') => {
@@ -192,33 +185,72 @@ impl Glob {
                     }
                 }
                 Some('*') => {
+                    if !match_start {
+                        match_start = true;
+                    }
                     is_star = true;
                     pattern_idx += 1;
                 }
                 Some(c) => {
                     if *c == ch {
+                        if before_ws && !match_start {
+                            match_start = true;
+                        }
+
                         pattern_idx += 1;
                     } else if !is_star {
+                        match_start = false;
                         pattern_idx = 0;
                     }
                 }
-                None => {
-                    if word_start && ch.is_whitespace() {
-                        return true;
-                    }
-                }
+                None => {}
             };
             before = Some(ch);
-            if word_start && ch.is_whitespace() {
-                word_start = false;
+            if ch.is_whitespace() {
+                is_star = false;
+                word_len = 0;
+            } else {
+                word_len += 1;
+            }
+            let get = self.0.get(pattern_idx);
+            println!("word_len {} pattern_idx {}", m.len(), count);
+            if self.0.get(pattern_idx).is_none()
+                && match_start
+                && ((count == m.len() - 1) || before_ws)
+            {
+                return true;
             }
         }
-        self.0.get(pattern_idx).is_none() && m.len() == pattern_idx
+        false
     }
 }
 
 mod tests {
     use super::Glob;
+
+    #[test]
+    fn star_single() {
+        let s = "*thing";
+        let glob = Glob::new(s);
+        assert!(glob.is_match("myything"));
+        assert!(!glob.is_match("blarg boof"));
+    }
+    #[test]
+    fn star_beginning() {
+        let s = "*thing";
+        let glob = Glob::new(s);
+        assert!(glob.is_match("doof mything fue"));
+        assert!(!glob.is_match("doof mythings fue"));
+        assert!(!glob.is_match("blarg boof"));
+    }
+
+    #[test]
+    fn star_end() {
+        let s = "thing*";
+        let glob = Glob::new(s);
+        assert!(glob.is_match("doof thingsomany fue"));
+        assert!(!glob.is_match("blarg boof"));
+    }
 
     #[test]
     fn star() {
@@ -240,6 +272,13 @@ mod tests {
         let s = "thingmany";
         let glob = Glob::new(s);
         assert!(glob.is_match("thingmany"));
+    }
+
+    #[test]
+    fn ending() {
+        let s = "thing";
+        let glob = Glob::new(s);
+        assert!(glob.is_match("this is a thing"));
     }
 
     #[test]
