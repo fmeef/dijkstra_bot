@@ -65,7 +65,7 @@ pub mod entities {
     }
 
     pub mod locks {
-        use sea_orm::{entity::prelude::*, TryFromU64};
+        use sea_orm::entity::prelude::*;
         use serde::{Deserialize, Serialize};
 
         #[derive(EnumIter, DeriveActiveEnum, Serialize, Deserialize, Clone, PartialEq, Debug)]
@@ -92,15 +92,6 @@ pub mod entities {
             Warn,
             #[sea_orm(num_value = 3)]
             Silent,
-        }
-
-        impl TryFromU64 for LockType {
-            fn try_from_u64(n: u64) -> Result<Self, DbErr> {
-                match n {
-                    1 => Ok(Self::Premium),
-                    _ => Err(DbErr::ConvertFromU64("cry")),
-                }
-            }
         }
 
         #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
