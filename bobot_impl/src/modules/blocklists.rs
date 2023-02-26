@@ -53,11 +53,11 @@ use sea_orm::QueryFilter;
 
 use sea_orm_migration::{MigrationName, MigrationTrait};
 use wildmatch::WildMatch;
-metadata!("Filters",
-    { command = "blocklist", help = "<trigger> <reply> {action}: Add a blocklist" },
-    { command = "blocklists", help = "List all blocklists" },
-    { command = "stopbl", help = "Stop a blocklist by trigger" },
-    { command = "stopallbl", help = "Stop all blocklists" }
+metadata!("Blocklists",
+    { command = "addblocklist", help = "<trigger> <reply> {action}: Add a blocklist" },
+    { command = "addblocklist", help = "List all blocklists" },
+    { command = "rmblocklist", help = "Stop a blocklist by trigger" },
+    { command = "rmallblocklists", help = "Stop all blocklists" }
 );
 
 struct Migration;
@@ -692,10 +692,10 @@ async fn stopall(message: &Message) -> Result<()> {
 async fn handle_command<'a>(message: &Message, command: Option<&'a Command<'a>>) -> Result<()> {
     if let Some(&Command { cmd, ref args, .. }) = command {
         match cmd {
-            "blocklist" => command_blocklist(message, &args).await?,
-            "stopbl" => delete_trigger(message, args.text).await?,
-            "blocklists" => list_triggers(message).await?,
-            "stopallbl" => stopall(message).await?,
+            "addblocklist" => command_blocklist(message, &args).await?,
+            "rmblocklist" => delete_trigger(message, args.text).await?,
+            "blocklist" => list_triggers(message).await?,
+            "rmallblocklists" => stopall(message).await?,
             _ => handle_trigger(message).await?,
         };
     } else {
