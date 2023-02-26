@@ -178,10 +178,13 @@ impl Glob {
     pub fn is_match(&self, m: &str) -> bool {
         let mut pattern_idx = 0;
         let mut is_star = false;
+        let mut before: Option<char> = None;
+        let mut word_start = true;
         for ch in m.chars() {
-            if ch.is_whitespace() {
-                is_star = false;
+            if before.unwrap_or(' ').is_whitespace() && !ch.is_whitespace() {
+                word_start = true;
             }
+
             match self.0.get(pattern_idx) {
                 Some('?') => {
                     if !ch.is_whitespace() {
@@ -200,11 +203,17 @@ impl Glob {
                     }
                 }
                 None => {
-                    return true;
+                    if word_start && ch.is_whitespace() {
+                        return true;
+                    }
                 }
             };
+            before = Some(ch);
+            if word_start && ch.is_whitespace() {
+                word_start = false;
+            }
         }
-        self.0.get(pattern_idx).is_none()
+        self.0.get(pattern_idx).is_none() && m.len() == pattern_idx
     }
 }
 
