@@ -204,7 +204,7 @@ impl Glob {
                 }
             };
         }
-        false
+        self.0.get(pattern_idx).is_none()
     }
 }
 
@@ -212,10 +212,33 @@ mod tests {
     use super::Glob;
 
     #[test]
-    fn test_star() {
+    fn star() {
         let s = "thing*many";
         let glob = Glob::new(s);
         assert!(glob.is_match("doof thingsomany fue"));
         assert!(!glob.is_match("blarg boof"));
+    }
+
+    #[test]
+    fn no_space() {
+        let s = "la";
+        let glob = Glob::new(s);
+        assert!(!glob.is_match("luladedaa"));
+    }
+
+    #[test]
+    fn exact() {
+        let s = "thingmany";
+        let glob = Glob::new(s);
+        assert!(glob.is_match("thingmany"));
+    }
+
+    #[test]
+    fn question() {
+        let s = "thing?many";
+        let glob = Glob::new(s);
+        assert!(!glob.is_match("doof thingsomany fue"));
+        assert!(!glob.is_match("blarg boof"));
+        assert!(glob.is_match("d thingbmany d"))
     }
 }
