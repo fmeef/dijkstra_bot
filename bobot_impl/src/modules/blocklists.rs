@@ -8,6 +8,7 @@ use crate::persist::redis::RedisStr;
 use crate::statics::CONFIG;
 use crate::statics::DB;
 use crate::statics::REDIS;
+use crate::statics::TG;
 use crate::tg::admin_helpers::ban;
 use crate::tg::admin_helpers::mute;
 use crate::tg::admin_helpers::parse_duration_str;
@@ -95,7 +96,7 @@ pub mod entities {
                             ColumnDef::new(blocklists::Column::Action)
                                 .integer()
                                 .not_null()
-                                .default(ActionType::Mute),
+                                .default(ActionType::Delete),
                         )
                         .col(
                             ColumnDef::new(blocklists::Column::Duration)
@@ -519,7 +520,7 @@ async fn command_blocklist<'a>(message: &Message, args: &TextArgs<'a>) -> Result
                     .map(|d| parse_duration_str(d, message.get_chat().get_id()).ok())
                     .flatten(),
             ),
-            None => (ActionType::Mute, None),
+            None => (ActionType::Delete, None),
             _ => {
                 return Err(BotError::speak(
                     "Invalid action",
@@ -528,7 +529,7 @@ async fn command_blocklist<'a>(message: &Message, args: &TextArgs<'a>) -> Result
             }
         }
     } else {
-        (ActionType::Mute, None)
+        (ActionType::Delete, None)
     };
     if let Some(message) = message.get_reply_to_message_ref() {
         insert_blocklist(
@@ -556,6 +557,14 @@ async fn command_blocklist<'a>(message: &Message, args: &TextArgs<'a>) -> Result
     Ok(())
 }
 
+async fn delete(message: &Message) -> Result<()> {
+    TG.client
+        .build_delete_message(message.get_chat().get_id(), message.get_message_id())
+        .build()
+        .await?;
+    Ok(())
+}
+
 async fn warn(message: &Message, user: &User, reason: Option<String>) -> Result<()> {
     let dialog = dialog_or_default(message.get_chat_ref()).await?;
 
@@ -568,6 +577,7 @@ async fn warn(message: &Message, user: &User, reason: Option<String>) -> Result<
             ActionType::Ban => warn_ban(message, user, count).await,
             ActionType::Shame => warn_shame(message, user, count).await,
             ActionType::Warn => Ok(()),
+            ActionType::Delete => Ok(()),
         }?;
     }
 
@@ -631,6 +641,9 @@ async fn handle_trigger(message: &Message) -> Result<()> {
                         warn(message, &user, res.reason).await?;
                     }
                     ActionType::Shame => (),
+                    ActionType::Delete => {
+                        delete(message).await?;
+                    }
                 }
             }
         }

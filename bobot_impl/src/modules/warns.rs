@@ -66,6 +66,7 @@ pub async fn warn<'a>(
                     actions::ActionType::Ban => warn_ban(message, user, count).await,
                     actions::ActionType::Shame => warn_shame(message, user, count).await,
                     actions::ActionType::Warn => Ok(()),
+                    actions::ActionType::Delete => Ok(()),
                 }?;
             }
 
