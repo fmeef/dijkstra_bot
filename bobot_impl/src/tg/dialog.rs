@@ -25,6 +25,7 @@ use log::info;
 use std::sync::Arc;
 
 use super::button::InlineKeyboardBuilder;
+use super::markdown::MarkupBuilder;
 pub const TYPE_DIALOG: &str = "DialogDb";
 
 #[inline(always)]
@@ -327,16 +328,27 @@ impl Conversation {
         row_limit: usize,
     ) -> Result<()> {
         if let Some(message) = callback.get_message() {
-            self.write_key(trans).await?;
-
             let n = self.get_current_markup(row_limit).await?;
-            TG.client()
-                .build_edit_message_text(&content)
-                .message_id(message.get_message_id())
-                .reply_markup(&n)
-                .chat_id(message.get_chat().get_id())
-                .build()
-                .await?;
+            self.write_key(trans).await?;
+            if let Ok(builder) = MarkupBuilder::from_murkdown(&content) {
+                let (content, entities) = builder.build();
+                TG.client()
+                    .build_edit_message_text(&content)
+                    .message_id(message.get_message_id())
+                    .reply_markup(&n)
+                    .entities(entities)
+                    .chat_id(message.get_chat().get_id())
+                    .build()
+                    .await?;
+            } else {
+                TG.client()
+                    .build_edit_message_text(&content)
+                    .message_id(message.get_message_id())
+                    .reply_markup(&n)
+                    .chat_id(message.get_chat().get_id())
+                    .build()
+                    .await?;
+            }
 
             TG.client()
                 .build_answer_callback_query(&callback.get_id())

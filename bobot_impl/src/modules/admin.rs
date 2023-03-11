@@ -3,6 +3,8 @@ use crate::{
     tg::{
         admin_helpers::*,
         command::{Context, Entities},
+        markdown::MarkupType,
+        user::Username,
     },
     util::error::Result,
     util::string::{get_chat_lang, Speak},
@@ -10,10 +12,13 @@ use crate::{
 use botapi::gen_types::{Message, UpdateExt};
 use futures::FutureExt;
 use itertools::Itertools;
-use macros::rlformat;
+use macros::{entity_fmt, lang_fmt};
 use sea_orm_migration::MigrationTrait;
 
 metadata!("Admin",
+    r#"
+    Manage admins using the bot. Promote or demote users without having to google how to do it on iOS
+    "#,
     { command = "admincache", help = "Refresh the cached list of admins" },
     { command = "admins", help = "Get a list of admins" },
     { command = "promote", help = "Promote a user to admin"},
@@ -29,10 +34,17 @@ async fn promote<'a>(message: &Message, entities: &Entities<'a>) -> Result<()> {
     action_message(message, entities, None, |message, user, _| {
         async move {
             message.get_chat().promote(user.get_id()).await?;
-            let name = user
-                .get_username()
-                .unwrap_or_else(|| std::borrow::Cow::Owned(user.get_id().to_string()));
-            message.speak(rlformat!(lang, "promote", name)).await?;
+
+            let name = user.name_humanreadable();
+            let mention = MarkupType::TextMention(user.to_owned()).text(&name);
+            message
+                .speak_fmt(entity_fmt!(
+                    lang,
+                    message.get_chat().get_id(),
+                    "promote",
+                    mention
+                ))
+                .await?;
             Ok(())
         }
         .boxed()
@@ -47,10 +59,17 @@ async fn demote<'a>(message: &Message, entities: &Entities<'a>) -> Result<()> {
     action_message(message, entities, None, |message, user, _| {
         async move {
             message.get_chat().demote(user.get_id()).await?;
-            let name = user
-                .get_username()
-                .unwrap_or_else(|| std::borrow::Cow::Owned(user.get_id().to_string()));
-            message.speak(rlformat!(lang, "demote", name)).await?;
+
+            let name = user.name_humanreadable();
+            let mention = MarkupType::TextMention(user.to_owned()).text(&name);
+            message
+                .speak_fmt(entity_fmt!(
+                    lang,
+                    message.get_chat().get_id(),
+                    "demote",
+                    mention
+                ))
+                .await?;
 
             Ok(())
         }
@@ -63,7 +82,7 @@ async fn demote<'a>(message: &Message, entities: &Entities<'a>) -> Result<()> {
 async fn listadmins(message: &Message) -> Result<()> {
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
     let admins = message.get_chat().get_cached_admins().await?;
-    let header = rlformat!(lang, "foundadmins", admins.len());
+    let header = lang_fmt!(lang, "foundadmins", admins.len());
     let body = admins
         .values()
         .map(|v| {
@@ -80,7 +99,7 @@ async fn listadmins(message: &Message) -> Result<()> {
 async fn admincache(message: &Message) -> Result<()> {
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
     message.get_chat().refresh_cached_admins().await?;
-    message.speak(rlformat!(lang, "refreshac")).await?;
+    message.speak(lang_fmt!(lang, "refreshac")).await?;
     Ok(())
 }
 pub async fn handle_update<'a>(_: &UpdateExt, cmd: &Context<'a>) -> Result<()> {

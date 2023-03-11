@@ -1,5 +1,6 @@
 use crate::statics::TG;
 use crate::tg::command::Context;
+
 use crate::tg::user::{GetChat, RecordChat};
 use crate::util::error::BotError;
 use crate::util::string::{set_chat_lang, should_ignore_chat, Lang, Speak};
@@ -11,12 +12,15 @@ use crate::{
 };
 
 use botapi::gen_types::{Message, UpdateExt};
-use macros::{inline_lang, rlformat};
+use macros::{inline_lang, lang_fmt};
 use sea_orm_migration::MigrationTrait;
 use uuid::Uuid;
 
 metadata! {
     "Language",
+    r#"This bot supports automatic translations! Set the language for the current chat
+    using this module
+    "#,
     { command = "setlang", help = "Set languge" }
 }
 
@@ -37,11 +41,11 @@ async fn handle_terminal_state(current: Uuid, conv: Conversation, chat: i64) -> 
         let lang = Lang::from_code(&state.content);
         match lang {
             Lang::Invalid => {
-                chat.speak(rlformat!(lang, "invalidlang")).await?;
+                chat.speak(lang_fmt!(lang, "invalidlang")).await?;
             }
             l => {
                 set_chat_lang(&chat, l).await?;
-                chat.speak(rlformat!(l, "setlang")).await?;
+                chat.speak(lang_fmt!(l, "setlang")).await?;
             }
         }
     }
@@ -52,7 +56,7 @@ async fn get_lang_conversation(message: &Message) -> Result<Conversation> {
     let current = get_chat_lang(message.get_chat().get_id()).await?;
     let mut state = ConversationState::new_prefix(
         "setlang".to_owned(),
-        rlformat!(current, "currentlang"),
+        lang_fmt!(current, "currentlang"),
         message.get_chat().get_id(),
         message.get_from().map(|u| u.get_id()).ok_or_else(|| {
             BotError::speak("user is not a user... what", message.get_chat().get_id())
@@ -62,7 +66,7 @@ async fn get_lang_conversation(message: &Message) -> Result<Conversation> {
 
     let start = state.get_start()?.state_id;
     get_langs().iter().for_each(|lang| {
-        let success = state.add_state(rlformat!(lang, "setlang"));
+        let success = state.add_state(lang_fmt!(lang, "setlang"));
         state.add_transition(start, success, lang.into_code());
     });
     message.get_chat().record_chat().await?;

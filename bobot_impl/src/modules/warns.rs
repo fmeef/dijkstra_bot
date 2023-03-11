@@ -16,10 +16,13 @@ use botapi::gen_types::{Message, UpdateExt};
 use chrono::Duration;
 use futures::FutureExt;
 use humantime::format_duration;
-use macros::rlformat;
+use macros::lang_fmt;
 use sea_orm_migration::MigrationTrait;
 
 metadata!("Warns",
+    r#"
+    Keep your users in line with warnings! Good for pressuring people not to say the word "bro"
+    "#,
     { command = "warn", help = "Warns a user"},
     { command = "warns", help = "Get warn count of a user"},
     { command = "clearwarns", help = "Delete all warns for a user"},
@@ -42,7 +45,7 @@ pub async fn warn<'a>(
         async move {
             if user.is_admin(message.get_chat_ref()).await? {
                 return Err(BotError::speak(
-                    &rlformat!(lang, "warnadmin"),
+                    &lang_fmt!(lang, "warnadmin"),
                     message.get_chat().get_id(),
                 ));
             }
@@ -109,13 +112,13 @@ pub async fn warns<'a>(message: &Message, entities: &Entities<'a>) -> Result<()>
                 .map(|w| {
                     format!(
                         "Reason: {}",
-                        w.reason.unwrap_or_else(|| rlformat!(lang, "noreason"))
+                        w.reason.unwrap_or_else(|| lang_fmt!(lang, "noreason"))
                     )
                 })
                 .collect::<Vec<String>>()
                 .join("\n");
             message
-                .reply(rlformat!(lang, "warns", user.name_humanreadable(), list))
+                .reply(lang_fmt!(lang, "warns", user.name_humanreadable(), list))
                 .await?;
             Ok(())
         }

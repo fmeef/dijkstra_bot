@@ -7,10 +7,13 @@ use crate::{
     util::string::{should_ignore_chat, Lang, Speak},
 };
 use botapi::gen_types::{Message, UpdateExt};
-use macros::rlformat;
+use macros::lang_fmt;
 use sea_orm_migration::MigrationTrait;
 
 metadata!("Antipiracy",
+    r#"
+    This is just a debugging module, it will be removed eventually. 
+    "#,
     { command = "report", help = "Report a pirate for termination" },
     { command = "crash", help = "Intentionally trigger a floodwait for debugging"},
     { command = "markdown", help = "Reply to a message to parse as markdown"},
@@ -41,7 +44,7 @@ async fn handle_murkdown(message: &Message) -> Result<bool> {
                 }
 
                 Err(err) => {
-                    message.speak(rlformat!(Lang::En, "test", err)).await?;
+                    message.speak(lang_fmt!(Lang::En, "test", err)).await?;
                 }
             }
         }

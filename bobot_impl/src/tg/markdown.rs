@@ -1,6 +1,8 @@
+use botapi::gen_methods::CallSendMessage;
 use botapi::gen_types::{MessageEntity, MessageEntityBuilder, User};
 use markdown::{Block, ListItem, Span};
 
+use crate::statics::TG;
 use crate::util::error::Result;
 use lazy_static::lazy_static;
 use pomelo::pomelo;
@@ -8,11 +10,6 @@ use regex::Regex;
 use std::fmt::Display;
 use std::{iter::Peekable, str::Chars};
 use thiserror::Error;
-pub struct MarkupBuilder {
-    entities: Vec<MessageEntity>,
-    offset: i64,
-    text: String,
-}
 
 #[derive(Debug, Error)]
 pub struct DefaultParseErr {}
@@ -43,6 +40,7 @@ pub enum TgSpan {
 
 lazy_static! {
     static ref RAWSTR: Regex = Regex::new(r#"([^\s"]+|")"#).unwrap();
+    pub static ref EMPTY_ENTITIES: Vec<MessageEntity> = vec![];
 }
 
 pomelo! {
@@ -122,6 +120,13 @@ impl<'a> Lexer<'a> {
             None
         }
     }
+}
+
+#[derive(Clone)]
+pub struct MarkupBuilder {
+    entities: Vec<MessageEntity>,
+    offset: i64,
+    text: String,
 }
 
 #[allow(dead_code)]
@@ -304,20 +309,24 @@ impl MarkupBuilder {
         self.entities.push(entity);
     }
 
-    fn regular<'a, T: AsRef<str>>(
-        &'a mut self,
-        text: T,
-        entity_type: &str,
-        advance: Option<i64>,
-    ) -> &'a mut Self {
-        let text = text.as_ref();
-        let n = text.encode_utf16().count() as i64;
-        let entity = MessageEntityBuilder::new(self.offset, n)
-            .set_type(entity_type.to_owned())
-            .build();
-        self.offset += advance.unwrap_or(n);
+    pub fn regular<'a, T: AsRef<str>>(&'a mut self, entity_type: Markup<T>) -> &'a mut Self {
+        let n = entity_type.get_text().encode_utf16().count() as i64;
+
+        self.text.push_str(entity_type.get_text());
+        let entity =
+            MessageEntityBuilder::new(self.offset, n).set_type(entity_type.get_type().to_owned());
+        let entity = match entity_type.markup_type {
+            MarkupType::TextLink(link) => entity.set_url(link),
+            MarkupType::TextMention(mention) => entity.set_user(mention),
+            MarkupType::Pre(pre) => entity.set_language(pre),
+            MarkupType::CustomEmoji(emoji) => entity.set_custom_emoji_id(emoji),
+            _ => entity,
+        };
+
+        let entity = entity.build();
+        self.offset += entity_type.advance.unwrap_or(n);
         self.entities.push(entity);
-        self.text.push_str(text);
+
         self
     }
 
@@ -394,51 +403,51 @@ impl MarkupBuilder {
     }
 
     pub fn strikethrough<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
-        self.regular(text, "strikethrough", None)
+        self.regular(MarkupType::StrikeThrough.text(&text))
     }
 
     pub fn hashtag<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
-        self.regular(text, "hashtag", None)
+        self.regular(MarkupType::HashTag.text(&text))
     }
 
     pub fn cashtag<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
-        self.regular(text, "cashtag", None)
+        self.regular(MarkupType::CashTag.text(&text))
     }
 
     pub fn bot_command<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
-        self.regular(text, "bot_command", None)
+        self.regular(MarkupType::BotCommand.text(&text))
     }
 
     pub fn email<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
-        self.regular(text, "email", None)
+        self.regular(MarkupType::Email.text(&text))
     }
 
     pub fn phone_number<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
-        self.regular(text, "phone_number", None)
+        self.regular(MarkupType::PhoneNumber.text(&text))
     }
 
     pub fn bold<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
-        self.regular(text, "bold", None)
+        self.regular(MarkupType::Bold.text(&text))
     }
 
     pub fn italic<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
-        self.regular(text, "italic", None)
+        self.regular(MarkupType::Italic.text(&text))
     }
 
     pub fn underline<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
-        self.regular(text, "underline", None)
+        self.regular(MarkupType::Underline.text(&text))
     }
 
     pub fn spoiler<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
-        self.regular(text, "spoiler", None)
+        self.regular(MarkupType::Spoiler.text(&text))
     }
 
     pub fn code<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
-        self.regular(text, "code", None)
+        self.regular(MarkupType::Code.text(&text))
     }
 
     pub fn mention<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
-        self.regular(text, "mention", None)
+        self.regular(MarkupType::Mention.text(&text))
     }
 
     pub fn s<'a>(&'a mut self) -> &'a mut Self {
@@ -455,6 +464,108 @@ impl MarkupBuilder {
 
     pub fn build_owned(self) -> (String, Vec<MessageEntity>) {
         (self.text, self.entities)
+    }
+}
+
+pub struct Markup<'a, T: AsRef<str>> {
+    markup_type: MarkupType,
+    text: &'a T,
+    advance: Option<i64>,
+}
+
+pub enum MarkupType {
+    Text,
+    StrikeThrough,
+    HashTag,
+    CashTag,
+    BotCommand,
+    Email,
+    PhoneNumber,
+    Bold,
+    Italic,
+    Underline,
+    Spoiler,
+    Code,
+    Mention,
+    TextLink(String),
+    TextMention(User),
+    Pre(String),
+    CustomEmoji(String),
+}
+
+impl MarkupType {
+    pub fn text<'a, T: AsRef<str>>(self, text: &'a T) -> Markup<'a, T> {
+        Markup {
+            markup_type: self,
+            text,
+            advance: None,
+        }
+    }
+}
+
+impl<'a, T> Markup<'a, T>
+where
+    T: AsRef<str>,
+{
+    fn get_type(&self) -> &str {
+        match &self.markup_type {
+            MarkupType::Text => "",
+            MarkupType::TextMention(_) => "text_mention",
+            MarkupType::TextLink(_) => "text_link",
+            MarkupType::Pre(_) => "pre",
+            MarkupType::CustomEmoji(_) => "custom_emoji",
+            MarkupType::StrikeThrough => "strikethrough",
+            MarkupType::HashTag => "hashtag",
+            MarkupType::CashTag => "cashtag",
+            MarkupType::BotCommand => "botcommand",
+            MarkupType::Email => "email",
+            MarkupType::PhoneNumber => "phone_number",
+            MarkupType::Bold => "bold",
+            MarkupType::Italic => "italic",
+            MarkupType::Underline => "underline",
+            MarkupType::Spoiler => "spoiler",
+            MarkupType::Code => "code",
+            MarkupType::Mention => "mention",
+        }
+    }
+
+    fn get_text(&'a self) -> &'a str {
+        self.text.as_ref()
+    }
+
+    pub fn advance(mut self, advance: i64) -> Self {
+        self.advance = Some(advance);
+        self
+    }
+}
+
+impl<'a, T> From<&'a T> for Markup<'a, T>
+where
+    T: AsRef<str>,
+{
+    fn from(value: &'a T) -> Self {
+        MarkupType::Text.text(&value)
+    }
+}
+
+pub struct EntityMessage(MarkupBuilder);
+
+impl EntityMessage {
+    pub fn new() -> Self {
+        Self(MarkupBuilder::new())
+    }
+
+    pub fn builder<'a>(&'a mut self) -> &'a mut MarkupBuilder {
+        &mut self.0
+    }
+
+    pub fn call<'a>(&'a mut self, chat: i64) -> CallSendMessage<'a> {
+        let (text, entities) = self.0.build();
+        TG.client.build_send_message(chat, text).entities(entities)
+    }
+
+    pub fn textentities<'a>(&'a self) -> (&'a str, &'a Vec<MessageEntity>) {
+        self.0.build()
     }
 }
 

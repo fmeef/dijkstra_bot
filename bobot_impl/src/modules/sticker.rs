@@ -45,6 +45,9 @@ const STATE_TAGS: &str = "Send tags for this sticker, one at a time. Send /done 
 const STATE_DONE: &str = "Successfully uploaded sticker";
 
 metadata!("Sticker Organizer",
+    r#"
+    Use this bot in inline mode to organize your stickers
+    "#,
     { command = "upload", help = "Uploads a sticker" },
     { command = "list", help = "Lists available stickers"},
     { command = "delete", help = "Deletes a sticker by uuid"}

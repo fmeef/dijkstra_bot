@@ -1,5 +1,6 @@
 use crate::statics::TG;
 use crate::tg::command::Context;
+use crate::tg::markdown::MarkupType;
 use crate::tg::user::Username;
 use crate::util::error::BotError;
 use crate::util::string::should_ignore_chat;
@@ -10,10 +11,13 @@ use crate::{
 use botapi::gen_types::{Message, MessageEntity, MessageEntityBuilder, UpdateExt};
 
 use futures::FutureExt;
-use macros::rlformat;
+use macros::textentity_fmt;
 use sea_orm_migration::MigrationTrait;
 
 metadata!("Reports",
+    r#"
+    Allow users to report wrongdoers to admins. Each report notifies up to 4 admins.  
+    "#,
     { command = "report", help = "Reports a user"}
 
 );
@@ -31,7 +35,6 @@ pub async fn report<'a>(message: &Message, entities: &Entities<'a>) -> Result<()
     }
 
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
-
     action_message(message, entities, None, |message, user, _| {
         async move {
             if user.is_admin(message.get_chat_ref()).await? {
@@ -40,8 +43,7 @@ pub async fn report<'a>(message: &Message, entities: &Entities<'a>) -> Result<()
                     message.get_chat().get_id(),
                 ));
             }
-            let name = user.name_humanreadable();
-            let admins = message
+            let mut admins = message
                 .get_chat()
                 .get_cached_admins()
                 .await?
@@ -53,11 +55,14 @@ pub async fn report<'a>(message: &Message, entities: &Entities<'a>) -> Result<()
                         .build()
                 })
                 .collect::<Vec<MessageEntity>>();
+
+            let name = user.name_humanreadable();
+            let mention = MarkupType::TextMention(user.to_owned()).text(&name);
+            let te = textentity_fmt!(lang, "reported", mention);
+            let (text, entities) = te.textentities();
+            admins.extend_from_slice(entities.as_slice());
             TG.client()
-                .build_send_message(
-                    message.get_chat().get_id(),
-                    &rlformat!(lang, "reported", name),
-                )
+                .build_send_message(message.get_chat().get_id(), text)
                 .reply_to_message_id(message.get_message_id())
                 .entities(&admins)
                 .build()

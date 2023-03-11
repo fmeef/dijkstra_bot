@@ -1,3 +1,4 @@
+use core::panic;
 use std::{collections::HashMap, sync::RwLock};
 
 use convert_case::{Case, Casing};
@@ -253,7 +254,7 @@ pub fn get_langs(_: TokenStream) -> TokenStream {
 }
 
 #[proc_macro]
-pub fn rformat(tokens: TokenStream) -> TokenStream {
+pub fn string_fmt(tokens: TokenStream) -> TokenStream {
     let input = parse_macro_input!(tokens as LocaleInput);
     let key = input.st;
     let locale = LOCALE.read().unwrap();
@@ -273,7 +274,44 @@ pub fn rformat(tokens: TokenStream) -> TokenStream {
 }
 
 #[proc_macro]
-pub fn rmformat(tokens: TokenStream) -> TokenStream {
+pub fn textentity_fmt(tokens: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(tokens as LangLocaleInput);
+    let key = input.st;
+    let language = input.lang;
+    let args = input.format;
+    let m = get_entity_match(language, key, args);
+
+    let res = quote! {
+        {
+            let mut builder = crate::tg::markdown::EntityMessage::new();
+            #m;
+            builder
+        }
+    };
+    TokenStream::from(res)
+}
+
+#[proc_macro]
+pub fn entity_fmt(tokens: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(tokens as ChatLocaleInput);
+    let key = input.st;
+    let language = input.lang;
+    let chat = input.chat;
+    let args = input.format;
+    let m = get_entity_match(language, key, args);
+
+    let res = quote! {
+        {
+            let mut builder = crate::tg::markdown::EntityMessage::new();
+            #m;
+            builder
+        }.call(#chat)
+    };
+    TokenStream::from(res)
+}
+
+#[proc_macro]
+pub fn message_fmt(tokens: TokenStream) -> TokenStream {
     let input = parse_macro_input!(tokens as ChatLocaleInput);
     let key = input.st;
     let language = input.lang;
@@ -288,6 +326,42 @@ pub fn rmformat(tokens: TokenStream) -> TokenStream {
         }
     };
     TokenStream::from(res)
+}
+
+fn get_entity_match(language: Expr, key: LitStr, args: Punctuated<Expr, Comma>) -> impl ToTokens {
+    let locale = LOCALE.read().unwrap();
+    let mut format = locale
+        .langs
+        .get("en")
+        .expect("invalid language")
+        .strings
+        .get(&key.value())
+        .expect("invalid resource")
+        .split("{}")
+        .collect::<Vec<&str>>();
+
+    let last = format.pop().expect("empty format");
+    if format.len() != args.len() {
+        panic!("wrong number of arguments {:?} {}", format, args.len());
+    }
+
+    let arms = STRINGS_DIR
+        .files()
+        .map(|f| f.path().file_stem())
+        .map(|thing| thing.unwrap().to_str().unwrap().to_case(Case::UpperCamel))
+        .map(|v| format_ident!("{}", v))
+        .map(|v| {
+            let idents = args.iter();
+            quote! {
+                #v => builder.builder() #(.text(#format).regular(#idents))*.text(#last).build()
+            }
+        });
+    quote! {
+        match #language {
+            #( #arms )*,
+            Invalid => ("invalid", &(*crate::tg::markdown::EMPTY_ENTITIES))
+        }
+    }
 }
 
 fn get_match(language: Expr, key: LitStr, args: Punctuated<Expr, Comma>) -> impl ToTokens {
@@ -320,7 +394,7 @@ fn get_match(language: Expr, key: LitStr, args: Punctuated<Expr, Comma>) -> impl
 }
 
 #[proc_macro]
-pub fn rlformat(tokens: TokenStream) -> TokenStream {
+pub fn lang_fmt(tokens: TokenStream) -> TokenStream {
     let input = parse_macro_input!(tokens as LangLocaleInput);
     let key = input.st;
     let language = input.lang;

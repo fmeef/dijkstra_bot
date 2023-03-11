@@ -8,7 +8,7 @@ use botapi::{
     },
 };
 use dashmap::DashMap;
-use macros::{rlformat, rmformat};
+use macros::{lang_fmt, message_fmt};
 
 use super::{
     admin_helpers::{handle_pending_action, is_dm},
@@ -53,7 +53,7 @@ impl MetadataCollection {
                     .map(|(c, h)| format!("/{}: {}", c, h))
                     .collect::<Vec<String>>()
                     .join("\n");
-                format!("{}:\n{}", v.name, helps)
+                format!("[*{}]:\n{}\n\nCommands:\n{}", v.name, v.description, helps)
             })
             .unwrap_or_else(|| INVALID.to_owned())
     }
@@ -64,7 +64,7 @@ impl MetadataCollection {
         let lang = get_chat_lang(message.get_chat().get_id()).await?;
         let mut state = ConversationState::new_prefix(
             "help".to_owned(),
-            rlformat!(lang, "welcome", me.get_first_name()),
+            lang_fmt!(lang, "welcome", me.get_first_name()),
             message.get_chat().get_id(),
             message.get_from().map(|u| u.get_id()).ok_or_else(|| {
                 BotError::speak("User does not exist", message.get_chat().get_id())
@@ -100,7 +100,7 @@ async fn show_help<'a>(message: &Message, helps: Arc<MetadataCollection>) -> Res
             TG.client()
                 .build_send_message(
                     message.get_chat().get_id(),
-                    &rlformat!(lang, "welcome", me.get_first_name()),
+                    &lang_fmt!(lang, "welcome", me.get_first_name()),
                 )
                 .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
                     helps
@@ -114,7 +114,7 @@ async fn show_help<'a>(message: &Message, helps: Arc<MetadataCollection>) -> Res
                 .await?;
         } else {
             let url = get_url("help").await?;
-            rmformat!(lang, message.get_chat().get_id(), "dmhelp")
+            message_fmt!(lang, message.get_chat().get_id(), "dmhelp")
                 .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
                     InlineKeyboardBuilder::default()
                         .button(

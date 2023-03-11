@@ -4,6 +4,7 @@ use crate::{
     tg::admin_helpers::*,
     tg::{
         command::{Context, Entities, TextArgs},
+        markdown::MarkupType,
         user::Username,
     },
     util::error::Result,
@@ -11,10 +12,16 @@ use crate::{
 };
 use botapi::gen_types::{ChatPermissionsBuilder, Message, UpdateExt};
 use futures::FutureExt;
-use macros::rlformat;
+use macros::{entity_fmt, lang_fmt};
 use sea_orm_migration::MigrationTrait;
 
 metadata!("Bans",
+    r#"
+    Ever had a problem with users being too annoying? Has someone admitted to using
+    a turing-complete language \(known to be a dangerous piracy tool\) or downloaded a
+    yellow terrorist app? This module is the solution!  
+    Mute or ban users, punish blue-texters with /kickme, etc
+    "#,
     { command = "kickme", help = "Send a free course on termux hacking"},
     { command = "mute", help = "Mute a user"},
     { command = "unmute", help = "Unmute a user"},
@@ -27,16 +34,20 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
 }
 
 pub async fn unban_cmd<'a>(message: &'a Message, entities: &Entities<'a>) -> Result<()> {
+    message.group_admin_or_die().await?;
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
-    is_group_or_die(&message.get_chat()).await?;
-    self_admin_or_die(&message.get_chat()).await?;
-    message.get_from().admin_or_die(&message.get_chat()).await?;
     action_message(message, entities, None, |message, user, _| {
         async move {
             unban(message, user).await?;
-
+            let name = user.name_humanreadable();
+            let entity = MarkupType::TextMention(user.to_owned()).text(&name);
             message
-                .speak(&rlformat!(lang, "unbanned", user.name_humanreadable()))
+                .speak_fmt(entity_fmt!(
+                    lang,
+                    message.get_chat().get_id(),
+                    "unbanned",
+                    entity
+                ))
                 .await?;
             Ok(())
         }
@@ -51,10 +62,7 @@ pub async fn ban_cmd<'a>(
     entities: &Entities<'a>,
     args: &'a TextArgs<'a>,
 ) -> Result<()> {
-    is_group_or_die(&message.get_chat()).await?;
-    self_admin_or_die(&message.get_chat()).await?;
-
-    message.get_from().admin_or_die(&message.get_chat()).await?;
+    message.group_admin_or_die().await?;
     action_message(message, entities, Some(args), |message, user, args| {
         async move {
             let duration = parse_duration(&args, message.get_chat().get_id())?;
@@ -84,8 +92,19 @@ pub async fn mute_cmd<'a>(
         .set_can_send_voice_notes(false)
         .set_can_send_other_messages(false)
         .build();
-    change_permissions_message(message, &entities, permissions, args).await?;
-    message.speak(rlformat!(lang, "muteuser")).await?;
+    let user = change_permissions_message(message, &entities, permissions, args).await?;
+    let name = user.name_humanreadable().into_owned();
+    let mention = MarkupType::TextMention(user).text(&name);
+
+    message
+        .speak_fmt(entity_fmt!(
+            lang,
+            message.get_chat().get_id(),
+            "muteuser",
+            mention
+        ))
+        .await?;
+    //  message.speak(lang_fmt!(lang, "muteuser")).await?;
 
     Ok(())
 }
@@ -109,19 +128,28 @@ pub async fn unmute_cmd<'a>(
         .set_can_send_other_messages(true)
         .build();
 
-    change_permissions_message(message, &entities, permissions, args).await?;
-    message.speak(rlformat!(lang, "unmuteuser")).await?;
+    let user = change_permissions_message(message, &entities, permissions, args).await?;
+
+    let name = user.name_humanreadable().into_owned();
+    let mention = MarkupType::TextMention(user).text(&name);
+    message
+        .speak_fmt(entity_fmt!(
+            lang,
+            message.get_chat().get_id(),
+            "unmuteuser",
+            mention
+        ))
+        .await?;
 
     Ok(())
 }
 
 async fn kickme(message: &Message) -> Result<()> {
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
-
     is_group_or_die(&message.get_chat()).await?;
     self_admin_or_die(&message.get_chat()).await?;
     if message.get_from().is_admin(&message.get_chat()).await? {
-        message.speak(rlformat!(lang, "kickadmin")).await?;
+        message.speak(lang_fmt!(lang, "kickadmin")).await?;
     } else {
         if let Some(from) = message.get_from() {
             TG.client()
@@ -132,7 +160,7 @@ async fn kickme(message: &Message) -> Result<()> {
                 .build_unban_chat_member(message.get_chat().get_id(), from.get_id())
                 .build()
                 .await?;
-            message.speak(rlformat!(lang, "kickme")).await?;
+            message.speak(lang_fmt!(lang, "kickme")).await?;
         }
     }
 

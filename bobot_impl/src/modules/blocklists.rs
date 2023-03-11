@@ -10,6 +10,7 @@ use crate::statics::DB;
 use crate::statics::REDIS;
 use crate::statics::TG;
 use crate::tg::admin_helpers::ban;
+use crate::tg::admin_helpers::is_dm;
 use crate::tg::admin_helpers::mute;
 use crate::tg::admin_helpers::parse_duration_str;
 use crate::tg::admin_helpers::warn_ban;
@@ -53,6 +54,7 @@ use sea_orm::QueryFilter;
 
 use sea_orm_migration::{MigrationName, MigrationTrait};
 metadata!("Blocklists",
+    r#"Censor specific words in your group!. Supports globbing to match partial words."#,
     { command = "addblocklist", help = "<trigger> <reply> {action}: Add a blocklist" },
     { command = "addblocklist", help = "List all blocklists" },
     { command = "rmblocklist", help = "Stop a blocklist by trigger" },
@@ -592,7 +594,7 @@ async fn warn(message: &Message, user: &User, reason: Option<String>) -> Result<
 }
 
 async fn handle_trigger(message: &Message) -> Result<()> {
-    if message.get_from().is_admin(message.get_chat_ref()).await? {
+    if message.get_from().is_admin(message.get_chat_ref()).await? && is_dm(message.get_chat_ref()) {
         return Ok(());
     }
     if let Some(text) = message.get_text() {

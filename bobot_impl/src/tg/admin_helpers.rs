@@ -24,7 +24,7 @@ use chrono::{DateTime, Duration, Utc};
 use futures::{future::BoxFuture, FutureExt};
 
 use lazy_static::__Deref;
-use macros::rlformat;
+use macros::{entity_fmt, lang_fmt};
 use redis::AsyncCommands;
 
 use sea_orm::{
@@ -35,6 +35,7 @@ use sea_orm::{
 use super::{
     command::{ArgSlice, Entities, EntityArg, TextArgs},
     dialog::get_dialog_key,
+    markdown::MarkupType,
     user::{get_me, get_user_username, GetUser, Username},
 };
 
@@ -95,12 +96,12 @@ pub async fn change_permissions(
     let me = get_me().await?;
     let lang = get_chat_lang(chat.get_id()).await?;
     if user.is_admin(chat).await? {
-        Err(BotError::speak(rlformat!(lang, "muteadmin"), chat.get_id()))
+        Err(BotError::speak(lang_fmt!(lang, "muteadmin"), chat.get_id()))
     } else {
         if user.get_id() == me.get_id() {
-            chat.speak(rlformat!(lang, "mutemyself")).await?;
+            chat.speak(lang_fmt!(lang, "mutemyself")).await?;
             Err(BotError::speak(
-                rlformat!(lang, "mutemyself"),
+                lang_fmt!(lang, "mutemyself"),
                 chat.get_id(),
             ))
         } else {
@@ -128,7 +129,7 @@ pub async fn action_message<'a, F>(
     entities: &Entities<'a>,
     args: Option<&'a TextArgs<'a>>,
     action: F,
-) -> Result<()>
+) -> Result<User>
 where
     for<'b> F: FnOnce(&'b Message, &'b User, Option<ArgSlice<'b>>) -> BoxFuture<'b, Result<()>>,
 {
@@ -141,30 +142,32 @@ where
         .flatten()
     {
         action(&message, &user, args.map(|a| a.as_slice())).await?;
+        Ok(user.into_owned())
     } else {
         match entities.front() {
             Some(EntityArg::Mention(name)) => {
                 if let Some(user) = get_user_username(name).await? {
                     action(message, &user, args.map(|a| a.pop_slice()).flatten()).await?;
+                    Ok(user)
                 } else {
                     return Err(BotError::speak(
-                        rlformat!(lang, "usernotfound"),
+                        lang_fmt!(lang, "usernotfound"),
                         message.get_chat().get_id(),
                     ));
                 }
             }
             Some(EntityArg::TextMention(user)) => {
                 action(message, user, args.map(|a| a.pop_slice()).flatten()).await?;
+                Ok((*user).to_owned())
             }
             _ => {
                 return Err(BotError::speak(
-                    rlformat!(lang, "specifyuser"),
+                    lang_fmt!(lang, "specifyuser"),
                     message.get_chat().get_id(),
                 ));
             }
-        };
+        }
     }
-    Ok(())
 }
 
 pub fn parse_duration_str(arg: &str, chat: i64) -> Result<Option<Duration>> {
@@ -228,7 +231,7 @@ pub async fn change_permissions_message<'a>(
     entities: &VecDeque<EntityArg<'a>>,
     permissions: ChatPermissions,
     args: &'a TextArgs<'a>,
-) -> Result<()> {
+) -> Result<User> {
     message.group_admin_or_die().await?;
     action_message(message, entities, Some(args), |message, user, args| {
         async move {
@@ -239,8 +242,7 @@ pub async fn change_permissions_message<'a>(
         }
         .boxed()
     })
-    .await?;
-    Ok(())
+    .await
 }
 
 pub async fn set_warn_time(chat: &Chat, time: i64) -> Result<()> {
@@ -348,7 +350,7 @@ pub async fn warn_ban(message: &Message, user: &User, count: i32) -> Result<()> 
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
     ban(message, user, None).await?;
     message
-        .reply(&rlformat!(
+        .reply(&lang_fmt!(
             lang,
             "warnban",
             count,
@@ -361,12 +363,16 @@ pub async fn warn_ban(message: &Message, user: &User, count: i32) -> Result<()> 
 pub async fn warn_mute(message: &Message, user: &User, count: i32) -> Result<()> {
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
     mute(message.get_chat_ref(), user, None).await?;
+
+    let name = user.name_humanreadable().into_owned();
+    let mention = MarkupType::TextMention(user.to_owned()).text(&name);
     message
-        .reply(&rlformat!(
+        .reply_fmt(entity_fmt!(
             lang,
+            message.get_chat().get_id(),
             "warnmute",
-            count,
-            user.name_humanreadable()
+            MarkupType::Text.text(&count.to_string()),
+            mention
         ))
         .await?;
 
@@ -545,7 +551,15 @@ pub async fn ban(message: &Message, user: &User, duration: Option<Duration>) -> 
             .await?;
         let name = senderchat.name_humanreadable();
 
-        message.speak(rlformat!(lang, "banchat", name)).await?;
+        let mention = MarkupType::TextMention(user.to_owned()).text(&name);
+        message
+            .speak_fmt(entity_fmt!(
+                lang,
+                message.get_chat().get_id(),
+                "banchat",
+                mention
+            ))
+            .await?;
     } else {
         if let Some(duration) = duration.map(|v| Utc::now().checked_add_signed(v)).flatten() {
             TG.client()
@@ -561,7 +575,16 @@ pub async fn ban(message: &Message, user: &User, duration: Option<Duration>) -> 
         }
 
         let name = user.name_humanreadable();
-        message.speak(rlformat!(lang, "banned", name)).await?;
+
+        let mention = MarkupType::TextMention(user.to_owned()).text(&name);
+        message
+            .speak_fmt(entity_fmt!(
+                lang,
+                message.get_chat().get_id(),
+                "banned",
+                mention
+            ))
+            .await?;
     }
     Ok(())
 }
@@ -800,7 +823,9 @@ pub async fn handle_pending_action_user(user: &User, chat: &Chat) -> Result<()> 
                     .build()
                     .await?;
 
-                chat.speak(rlformat!(lang, "banned", name)).await?;
+                let mention = MarkupType::TextMention(user.to_owned()).text(&name);
+                chat.speak_fmt(entity_fmt!(lang, chat.get_id(), "banned", mention))
+                    .await?;
             } else {
                 let permissions = ChatPermissionsBuilder::new()
                     .set_can_send_messages(action.can_send_messages)
@@ -855,7 +880,7 @@ pub async fn update_actions(actions: actions::Model) -> Result<()> {
 pub async fn is_dm_or_die(chat: &Chat) -> Result<()> {
     let lang = get_chat_lang(chat.get_id()).await?;
     if !is_dm(chat) {
-        Err(BotError::speak(rlformat!(lang, "notdm"), chat.get_id()))
+        Err(BotError::speak(lang_fmt!(lang, "notdm"), chat.get_id()))
     } else {
         Ok(())
     }
@@ -864,9 +889,9 @@ pub async fn is_dm_or_die(chat: &Chat) -> Result<()> {
 pub async fn is_group_or_die(chat: &Chat) -> Result<()> {
     let lang = get_chat_lang(chat.get_id()).await?;
     match chat.get_tg_type().as_ref() {
-        "private" => Err(BotError::speak(rlformat!(lang, "baddm"), chat.get_id())),
+        "private" => Err(BotError::speak(lang_fmt!(lang, "baddm"), chat.get_id())),
         "group" => Err(BotError::speak(
-            rlformat!(lang, "notsupergroup"),
+            lang_fmt!(lang, "notsupergroup"),
             chat.get_id(),
         )),
         _ => Ok(()),
@@ -877,7 +902,7 @@ pub async fn self_admin_or_die(chat: &Chat) -> Result<()> {
     if !is_self_admin(chat).await? {
         let lang = get_chat_lang(chat.get_id()).await?;
         Err(BotError::speak(
-            rlformat!(lang, "needtobeadmin"),
+            lang_fmt!(lang, "needtobeadmin"),
             chat.get_id(),
         ))
     } else {
@@ -927,7 +952,7 @@ impl IsGroupAdmin for Message {
             Ok(())
         } else if let Some(user) = self.get_from() {
             let lang = get_chat_lang(self.get_chat().get_id()).await?;
-            let msg = rlformat!(lang, "lackingadminrights", user.name_humanreadable());
+            let msg = lang_fmt!(lang, "lackingadminrights", user.name_humanreadable());
             Err(BotError::speak(msg, self.get_chat().get_id()))
         } else {
             Err(BotError::Generic("not admin".to_owned()))
@@ -946,7 +971,7 @@ impl IsAdmin for User {
             Ok(())
         } else {
             let lang = get_chat_lang(chat.get_id()).await?;
-            let msg = rlformat!(lang, "lackingadminrights", self.name_humanreadable());
+            let msg = lang_fmt!(lang, "lackingadminrights", self.name_humanreadable());
             Err(BotError::speak(msg, chat.get_id()))
         }
     }
@@ -968,7 +993,7 @@ impl<'a> IsAdmin for Option<Cow<'a, User>> {
                 Ok(())
             } else {
                 let lang = get_chat_lang(chat.get_id()).await?;
-                let msg = rlformat!(
+                let msg = lang_fmt!(
                     lang,
                     "lackingadminrights",
                     user.get_username_ref()
@@ -994,13 +1019,13 @@ impl IsAdmin for i64 {
         } else {
             let lang = get_chat_lang(chat.get_id()).await?;
             let msg = if let Some(user) = self.get_cached_user().await? {
-                rlformat!(
+                lang_fmt!(
                     lang,
                     "lackingadminrights",
                     user.get_username_ref().unwrap_or(self.to_string().as_str())
                 )
             } else {
-                rlformat!(lang, "lackingadminrights", self)
+                lang_fmt!(lang, "lackingadminrights", self)
             };
 
             Err(BotError::speak(msg, chat.get_id()))
@@ -1122,7 +1147,7 @@ impl GetCachedAdmins for Chat {
             Ok(res)
         } else {
             let lang = get_chat_lang(self.get_id()).await?;
-            Err(BotError::speak(rlformat!(lang, "cachewait"), self.get_id()))
+            Err(BotError::speak(lang_fmt!(lang, "cachewait"), self.get_id()))
         }
     }
 }

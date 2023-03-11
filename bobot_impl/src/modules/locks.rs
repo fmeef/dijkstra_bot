@@ -17,16 +17,19 @@ use sea_orm::EntityTrait;
 use sea_orm_migration::{MigrationName, MigrationTrait};
 
 metadata!("Locks",
+    r#"
+    Are blue star check mark users ruining your group with their endless pop-psychobabble and
+    coin scams? Lock the group to keep the premiums out.
+    "#,
     { command = "lock", help = "Engage a lock" },
     { command = "unlock", help = "Disable a lock"},
     { command = "locks", help = "Get a list of active locks"}
 );
 
 pub mod entities {
+    use self::locks::LockAction;
     use crate::persist::migrate::ManagerHelper;
     use ::sea_orm_migration::prelude::*;
-
-    use self::locks::LockAction;
 
     use super::Migration;
 

@@ -16,6 +16,10 @@ use botapi::gen_types::{Message, UpdateExt};
 use crate::persist::core::media::*;
 
 metadata!("Notes",
+    r#"
+    Easily store and retrive text, media, and other content by keywords. 
+    Useful for storing answers to often asked questions or searching uploaded media.     
+    "#,
     { command = "save", help = "Saves a note" },
     { command = "get", help = "Get a note" }
 );

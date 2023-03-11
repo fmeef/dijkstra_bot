@@ -73,12 +73,13 @@ ENTRYPOINT [ "/bobot/bobot", "--config", "/config/config.toml"]
 FROM base AS dev
 RUN rustup default stable && rustup component add rustfmt && \
  cargo install sea-orm-cli
-RUN git clone --depth 1 https://github.com/rust-lang/rust-analyzer.git /opt/rust-analyzer && \
+RUN git clone https://github.com/rust-lang/rust-analyzer.git /opt/rust-analyzer && \
     cd /opt/rust-analyzer && \
+    git checkout 2023-03-06 && \
    rustup override set nightly && \
    cargo xtask install --server && cargo clean
 RUN git clone https://github.com/helix-editor/helix /opt/helix && \
-    cd /opt/helix && rustup override set nightly && \
+    cd /opt/helix && git checkout 22.12 && rustup override set nightly && \
      cargo install --locked --path helix-term && cargo clean
 
 RUN apt update && apt install -y postgresql-client redis fish

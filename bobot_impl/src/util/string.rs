@@ -5,6 +5,7 @@ use crate::statics::{CONFIG, DB, REDIS, TG};
 use crate::util::error::Result;
 
 use async_trait::async_trait;
+use botapi::gen_methods::CallSendMessage;
 use botapi::gen_types::{Chat, Message};
 use chrono::Duration;
 use lazy_static::__Deref;
@@ -79,6 +80,9 @@ pub trait Speak {
     async fn speak<T>(&self, message: T) -> Result<()>
     where
         T: AsRef<str> + Send + Sync;
+
+    async fn speak_fmt<'a>(&self, messsage: CallSendMessage<'a>) -> Result<()>;
+    async fn reply_fmt<'a>(&self, messsage: CallSendMessage<'a>) -> Result<()>;
     async fn reply<T>(&self, message: T) -> Result<()>
     where
         T: AsRef<str> + Send + Sync;
@@ -98,6 +102,24 @@ impl Speak for Message {
         }
         Ok(())
     }
+
+    async fn speak_fmt<'a>(&self, message: CallSendMessage<'a>) -> Result<()> {
+        if !should_ignore_chat(self.get_chat().get_id()).await? {
+            message.build().await?;
+        }
+        Ok(())
+    }
+
+    async fn reply_fmt<'a>(&self, message: CallSendMessage<'a>) -> Result<()> {
+        if !should_ignore_chat(self.get_chat().get_id()).await? {
+            message
+                .reply_to_message_id(self.get_message_id())
+                .build()
+                .await?;
+        }
+        Ok(())
+    }
+
     async fn reply<T>(&self, message: T) -> Result<()>
     where
         T: AsRef<str> + Send + Sync,
@@ -127,6 +149,21 @@ impl Speak for Chat {
         }
         Ok(())
     }
+
+    async fn speak_fmt<'a>(&self, message: CallSendMessage<'a>) -> Result<()> {
+        if !should_ignore_chat(self.get_id()).await? {
+            message.build().await?;
+        }
+        Ok(())
+    }
+
+    async fn reply_fmt<'a>(&self, message: CallSendMessage<'a>) -> Result<()> {
+        if !should_ignore_chat(self.get_id()).await? {
+            message.build().await?;
+        }
+        Ok(())
+    }
+
     async fn reply<T>(&self, message: T) -> Result<()>
     where
         T: AsRef<str> + Send + Sync,
