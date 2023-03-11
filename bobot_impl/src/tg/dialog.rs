@@ -11,7 +11,7 @@ use sea_orm::sea_query::OnConflict;
 use sea_orm::EntityTrait;
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::str::FromStr;
 use uuid::Uuid;
 
@@ -129,7 +129,7 @@ pub struct ConversationState {
     pub user: i64,
     pub states: HashMap<Uuid, FSMState>,
     start: Uuid,
-    pub transitions: HashMap<(Uuid, String), FSMTransition>,
+    pub transitions: BTreeMap<(Uuid, String), FSMTransition>,
     rediskey: String,
     #[serde(default, skip)]
     state_callback: Option<Box<dyn Fn(Uuid, Conversation) -> () + Send + Sync>>,
@@ -247,7 +247,7 @@ impl ConversationState {
             states,
             start,
             user,
-            transitions: HashMap::new(),
+            transitions: BTreeMap::new(),
             rediskey: get_conversation_key_prefix(chat, user, prefix),
             state_callback: None,
         };
