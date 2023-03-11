@@ -1033,6 +1033,33 @@ impl IsAdmin for i64 {
     }
 }
 
+pub async fn update_self_admin(update: &UpdateExt) -> Result<()> {
+    if let UpdateExt::MyChatMember(member) = update {
+        let key = get_chat_admin_cache_key(member.get_chat().get_id());
+        match member.get_new_chat_member_ref() {
+            ChatMember::ChatMemberAdministrator(ref admin) => {
+                log::info!("bot updated to admin");
+                let user_id = admin.get_user().get_id();
+                let admin = RedisStr::new(&admin)?;
+                REDIS.sq(|q| q.hset(&key, user_id, admin)).await?;
+            }
+            ChatMember::ChatMemberOwner(ref owner) => {
+                log::info!("Im soemhow the owner. What?");
+                let user_id = owner.get_user().get_id();
+                let admin = RedisStr::new(&owner)?;
+                REDIS.sq(|q| q.hset(&key, user_id, admin)).await?;
+            }
+            mamber => {
+                log::info!("Im not admin anymore ;(");
+                let user_id = mamber.get_user().get_id();
+                REDIS.sq(|q| q.hdel(&key, user_id)).await?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
 #[async_trait]
 impl GetCachedAdmins for Chat {
     async fn get_cached_admins(&self) -> Result<HashMap<i64, ChatMember>> {
