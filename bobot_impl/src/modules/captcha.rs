@@ -694,7 +694,6 @@ async fn handle_user_action(message: &Message) -> Result<()> {
 #[allow(dead_code)]
 async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
     if let Some((cmd, _, args, message)) = ctx.cmd() {
-        handle_user_action(message).await?;
         match cmd {
             "captchakick" => {
                 captchakick_cmd(message, args).await?;
@@ -740,6 +739,9 @@ async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
 }
 
 #[allow(dead_code)]
-pub async fn handle_update<'a>(_: &UpdateExt, cmd: &Context<'a>) -> Result<()> {
+pub async fn handle_update<'a>(update: &UpdateExt, cmd: &Context<'a>) -> Result<()> {
+    if let UpdateExt::Message(ref message) = update {
+        handle_user_action(message).await?;
+    }
     handle_command(cmd).await
 }
