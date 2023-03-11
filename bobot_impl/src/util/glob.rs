@@ -84,20 +84,33 @@ impl WildMatch {
         let mut pattern_idx = 0;
         const NONE: usize = usize::MAX;
         let mut last_wildcard_idx = NONE;
+        let mut start = true;
         let mut questionmark_matches: Vec<char> = Vec::with_capacity(self.max_questionmarks);
         for input_char in input.chars() {
             match self.pattern.get(pattern_idx) {
                 None => {
                     return false;
                 }
-                Some(p) if p.next_char == Some('?') => {
+                Some(p)
+                    if input_char.is_whitespace()
+                        && !(p.next_char.map(|c| c.is_whitespace()) == Some(true)) =>
+                {
+                    if pattern_idx + 1 == self.pattern.len() && start {
+                        return true;
+                    }
+                    pattern_idx = 0;
+                    questionmark_matches.clear();
+                    last_wildcard_idx = 0;
+                    start = false;
+                }
+                Some(p) if p.next_char == Some('?') && start => {
                     if p.has_wildcard {
                         last_wildcard_idx = pattern_idx;
                     }
                     pattern_idx += 1;
                     questionmark_matches.push(input_char);
                 }
-                Some(p) if p.next_char == Some(input_char) => {
+                Some(p) if p.next_char == Some(input_char) && start => {
                     if p.has_wildcard {
                         last_wildcard_idx = pattern_idx;
                         questionmark_matches.clear();
@@ -110,47 +123,58 @@ impl WildMatch {
                     }
                 }
                 _ => {
-                    if last_wildcard_idx == NONE {
-                        return false;
-                    }
-                    if !questionmark_matches.is_empty() {
-                        // Try to match a different set for questionmark
-                        let mut questionmark_idx = 0;
-                        let current_idx = pattern_idx;
-                        pattern_idx = last_wildcard_idx;
-                        for prev_state in self.pattern[last_wildcard_idx + 1..current_idx].iter() {
-                            if self.pattern[pattern_idx].next_char == Some('?') {
-                                pattern_idx += 1;
-                                continue;
-                            }
-                            let mut prev_input_char = prev_state.next_char;
-                            if prev_input_char == Some('?') {
-                                prev_input_char = Some(questionmark_matches[questionmark_idx]);
-                                questionmark_idx += 1;
-                            }
-                            if self.pattern[pattern_idx].next_char == prev_input_char {
-                                pattern_idx += 1;
-                            } else {
-                                pattern_idx = last_wildcard_idx;
-                                questionmark_matches.clear();
-                                break;
-                            }
+                    if start {
+                        if last_wildcard_idx == NONE {
+                            start = false;
+                            continue;
                         }
-                    } else {
-                        // Directly go back to the last wildcard
-                        pattern_idx = last_wildcard_idx;
-                    }
+                        if !questionmark_matches.is_empty() {
+                            // Try to match a different set for questionmark
+                            let mut questionmark_idx = 0;
+                            let current_idx = pattern_idx;
+                            pattern_idx = last_wildcard_idx;
+                            for prev_state in
+                                self.pattern[last_wildcard_idx + 1..current_idx].iter()
+                            {
+                                if self.pattern[pattern_idx].next_char == Some('?') {
+                                    pattern_idx += 1;
+                                    continue;
+                                }
+                                let mut prev_input_char = prev_state.next_char;
+                                if prev_input_char == Some('?') {
+                                    prev_input_char = Some(questionmark_matches[questionmark_idx]);
+                                    questionmark_idx += 1;
+                                }
+                                if self.pattern[pattern_idx].next_char == prev_input_char {
+                                    pattern_idx += 1;
+                                } else {
+                                    pattern_idx = last_wildcard_idx;
+                                    questionmark_matches.clear();
+                                    break;
+                                }
+                            }
+                        } else {
+                            // Directly go back to the last wildcard
+                            pattern_idx = last_wildcard_idx;
+                        }
 
-                    // Match last char again
-                    if self.pattern[pattern_idx].next_char == Some('?')
-                        || self.pattern[pattern_idx].next_char == Some(input_char)
-                    {
-                        pattern_idx += 1;
+                        // Match last char again
+                        if self.pattern[pattern_idx].next_char == Some('?')
+                            || self.pattern[pattern_idx].next_char == Some(input_char)
+                        {
+                            pattern_idx += 1;
+                        } else {
+                            start = false;
+                        }
                     }
                 }
             }
+            if !start {
+                start = input_char.is_whitespace();
+            }
         }
-        self.pattern[pattern_idx].next_char.is_none()
+
+        self.pattern[pattern_idx].next_char.is_none() && start
     }
 }
 
@@ -213,7 +237,7 @@ impl Glob {
                 word_len += 1;
             }
             let get = self.0.get(pattern_idx);
-            println!("word_len {} pattern_idx {}", m.len(), count);
+
             if self.0.get(pattern_idx).is_none()
                 && match_start
                 && ((count == m.len() - 1) || before_ws)
@@ -231,62 +255,69 @@ mod tests {
     #[test]
     fn star_single() {
         let s = "*thing";
-        let glob = Glob::new(s);
-        assert!(glob.is_match("myything"));
-        assert!(!glob.is_match("blarg boof"));
+        let glob = WildMatch::new(s);
+        assert!(glob.matches("myything"));
+        assert!(!glob.matches("blarg boof"));
     }
     #[test]
     fn star_beginning() {
         let s = "*thing";
-        let glob = Glob::new(s);
-        assert!(glob.is_match("doof mything fue"));
-        assert!(!glob.is_match("doof mythings fue"));
-        assert!(!glob.is_match("blarg boof"));
+        let glob = WildMatch::new(s);
+        assert!(glob.matches("doof mything fue"));
+        assert!(!glob.matches("doof mythings fue"));
+        assert!(!glob.matches("blarg boof"));
     }
 
     #[test]
     fn star_end() {
         let s = "thing*";
-        let glob = Glob::new(s);
-        assert!(glob.is_match("doof thingsomany fue"));
-        assert!(!glob.is_match("blarg boof"));
+        let glob = WildMatch::new(s);
+        assert!(glob.matches("doof thingsomany fue"));
+        assert!(!glob.matches("blarg boof"));
     }
 
     #[test]
     fn star() {
         let s = "thing*many";
-        let glob = Glob::new(s);
-        assert!(glob.is_match("doof thingsomany fue"));
-        assert!(!glob.is_match("blarg boof"));
+        let glob = WildMatch::new(s);
+        assert!(glob.matches("doof thingsomany fue"));
+        assert!(!glob.matches("blarg boof"));
     }
 
     #[test]
     fn no_space() {
         let s = "la";
-        let glob = Glob::new(s);
-        assert!(!glob.is_match("luladedaa"));
+        let glob = WildMatch::new(s);
+        assert!(!glob.matches("luladedaa"));
+        assert!(!glob.matches("las"));
+        assert!(!glob.matches("las luu"));
+        assert!(!glob.matches("luu las"));
+        assert!(!glob.matches("las luu las"));
+        assert!(!glob.matches("lula "));
+        assert!(glob.matches("lu la"));
+        assert!(glob.matches("lu la de da"));
     }
 
     #[test]
     fn exact() {
         let s = "thingmany";
-        let glob = Glob::new(s);
-        assert!(glob.is_match("thingmany"));
+        let glob = WildMatch::new(s);
+        assert!(glob.matches("thingmany"));
     }
 
     #[test]
     fn ending() {
         let s = "thing";
-        let glob = Glob::new(s);
-        assert!(glob.is_match("this is a thing"));
+        let glob = WildMatch::new(s);
+        assert!(glob.matches("this is a thing"));
     }
 
     #[test]
     fn question() {
         let s = "thing?many";
-        let glob = Glob::new(s);
-        assert!(!glob.is_match("doof thingsomany fue"));
-        assert!(!glob.is_match("blarg boof"));
-        assert!(glob.is_match("d thingbmany d"))
+        let glob = WildMatch::new(s);
+        assert!(!glob.matches("doof thingsomany fue"));
+        assert!(!glob.matches("blarg boof"));
+        assert!(glob.matches("d thingbmany d"))
     }
 }

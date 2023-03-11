@@ -32,7 +32,7 @@ use crate::util::filter::Header;
 use crate::util::filter::Lexer;
 use crate::util::filter::Parser;
 
-use crate::util::glob::Glob;
+use crate::util::glob::WildMatch;
 use crate::util::string::Speak;
 use botapi::gen_types::User;
 use botapi::gen_types::{Message, UpdateExt};
@@ -52,7 +52,6 @@ use sea_orm::IntoActiveModel;
 use sea_orm::QueryFilter;
 
 use sea_orm_migration::{MigrationName, MigrationTrait};
-use wildmatch::WildMatch;
 metadata!("Blocklists",
     { command = "addblocklist", help = "<trigger> <reply> {action}: Add a blocklist" },
     { command = "addblocklist", help = "List all blocklists" },
@@ -324,15 +323,15 @@ fn iter_whitespace<'a>(text: &'a str) -> Vec<(&'a str, Option<&'a str>)> {
 }
 
 #[allow(dead_code)]
-async fn search_cache_ex(message: &Message, text: &str) -> Result<Option<blocklists::Model>> {
+async fn search_cache(message: &Message, text: &str) -> Result<Option<blocklists::Model>> {
     update_cache_from_db(message).await?;
     let hash_key = get_blocklist_hash_key(message);
     REDIS
         .query(|mut q| async move {
             let mut iter: redis::AsyncIter<(String, i64)> = q.hscan(&hash_key).await?;
             while let Some((key, item)) = iter.next_item().await {
-                let glob = Glob::new(&key);
-                if glob.is_match(text) {
+                let glob = WildMatch::new(&key);
+                if glob.matches(text) {
                     return get_blocklist(message, item).await;
                 }
             }
@@ -342,7 +341,7 @@ async fn search_cache_ex(message: &Message, text: &str) -> Result<Option<blockli
 }
 
 #[allow(dead_code)]
-async fn search_cache(message: &Message, text: &str) -> Result<Option<blocklists::Model>> {
+async fn search_cache_hack(message: &Message, text: &str) -> Result<Option<blocklists::Model>> {
     update_cache_from_db(message).await?;
     let hash_key = get_blocklist_hash_key(message);
     REDIS

@@ -297,8 +297,26 @@ async fn search_cache(message: &Message, text: &str) -> Result<Option<filters::M
         .query(|mut q| async move {
             let mut iter: redis::AsyncIter<(String, i64)> = q.hscan(&hash_key).await?;
             while let Some((key, item)) = iter.next_item().await {
-                if text.to_lowercase().contains(&key) {
-                    return get_filter(message, item).await;
+                let t = text.to_lowercase();
+                if let Some(mut idx) = t.find(&key) {
+                    if idx == 0 && idx + key.len() == text.len() {
+                        return get_filter(message, item).await;
+                    } else {
+                        if idx == 0 {
+                            idx = 1;
+                        }
+                        let keylen = if key.len() + 1 < text.len() {
+                            key.len() + idx
+                        } else {
+                            text.len() - 1
+                        };
+                        let ws = &text[idx - 1..keylen];
+                        if ws.starts_with(|c: char| c.is_whitespace())
+                            || ws.ends_with(|c: char| c.is_whitespace())
+                        {
+                            return get_filter(message, item).await;
+                        }
+                    }
                 }
             }
             Ok(None)
