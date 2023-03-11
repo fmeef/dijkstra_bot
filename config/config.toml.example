@@ -1,9 +1,8 @@
-cache_timeout = 172800
 bot_token = 'changeme'
 
 [persistence]
-database_connection = 'postgresql://bobot:changeme@db/bobot'
-redis_connection = 'redis://redis'
+database_connection = 'postgresql://bobot:changeme@db-dev/bobot'
+redis_connection = 'redis://redis-dev'
 
 [webhook]
 enable_webhook = false
@@ -11,5 +10,11 @@ webhook_url = 'https://bot.ustc.edu.cn'
 listen = '0.0.0.0:8080'
 
 [logging]
-log_level = 'trace'
+log_level = 'info'
 prometheus_hook = '0.0.0.0:9999'
+
+[timing]
+cache_timeout = 172800
+antifloodwait_count = 80
+antifloodwait_time = 150
+ignore_chat_time = 600

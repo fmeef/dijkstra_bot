@@ -79,8 +79,7 @@ RUN git clone --depth 1 https://github.com/rust-lang/rust-analyzer.git /opt/rust
    cargo xtask install --server && cargo clean
 RUN git clone https://github.com/helix-editor/helix /opt/helix && \
     cd /opt/helix && rustup override set nightly && \
-    git checkout 22.12 && \
-    cargo install --path helix-term && cargo clean
+     cargo install --locked --path helix-term && cargo clean
 
 RUN apt update && apt install -y postgresql-client redis fish
 RUN mkdir -p /bobot/target && chown -R bobot:bobot /bobot && \
