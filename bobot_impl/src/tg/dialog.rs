@@ -328,8 +328,9 @@ impl Conversation {
         row_limit: usize,
     ) -> Result<()> {
         if let Some(message) = callback.get_message() {
-            let n = self.get_current_markup(row_limit).await?;
             self.write_key(trans).await?;
+
+            let n = self.get_current_markup(row_limit).await?;
             if let Ok(builder) = MarkupBuilder::from_murkdown(&content) {
                 let (content, entities) = builder.build();
                 TG.client()
