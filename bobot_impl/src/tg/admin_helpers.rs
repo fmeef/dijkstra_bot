@@ -756,8 +756,10 @@ pub async fn update_actions_permissions(
 pub async fn handle_pending_action(update: &UpdateExt) -> Result<()> {
     match update {
         UpdateExt::Message(ref message) => {
-            if let Some(user) = message.get_from_ref() {
-                handle_pending_action_user(user, message.get_chat_ref()).await?;
+            if !is_dm(&message.get_chat()) {
+                if let Some(user) = message.get_from_ref() {
+                    handle_pending_action_user(user, message.get_chat_ref()).await?;
+                }
             }
         }
         _ => (),
