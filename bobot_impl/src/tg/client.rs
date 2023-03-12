@@ -135,6 +135,7 @@ async fn show_help<'a>(message: &Message, helps: Arc<MetadataCollection>) -> Res
 async fn handle_help(update: &UpdateExt, helps: Arc<MetadataCollection>) -> Result<bool> {
     if let UpdateExt::Message(ref message) = update {
         if let Some((cmd, args, _)) = parse_cmd(message) {
+            let lang = get_chat_lang(message.get_chat().get_id()).await?;
             return match cmd {
                 "help" => show_help(message, helps).await,
                 "start" => match args.args.first().map(|a| a.get_text()) {
@@ -144,7 +145,7 @@ async fn handle_help(update: &UpdateExt, helps: Arc<MetadataCollection>) -> Resu
                     }
 
                     None => {
-                        message.reply("Hi there start weeenie").await?;
+                        message.reply(lang_fmt!(lang, "startcmd")).await?;
                         Ok(true)
                     }
                     _ => Ok(false),
