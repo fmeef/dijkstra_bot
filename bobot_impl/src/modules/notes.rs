@@ -1,11 +1,12 @@
 use crate::metadata::metadata;
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache};
-use crate::statics::DB;
+use crate::statics::{DB, REDIS};
 use crate::tg::command::{single_arg, Context, TextArg, TextArgs};
 
 use crate::util::string::Speak;
 use ::sea_orm_migration::prelude::*;
 use chrono::Duration;
+use redis::AsyncCommands;
 
 use lazy_static::__Deref;
 use sea_orm::EntityTrait;
@@ -179,6 +180,7 @@ async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
         match cmd {
             "save" => save(message, &args).await,
             "get" => get(message, &args).await,
+            "delete" => delete(message, args).await,
             _ => Ok(()),
         }?;
     }
@@ -227,6 +229,18 @@ async fn get<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
     }
 }
 
+async fn delete<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
+    let model = get_model(message, args)?;
+    let key = format!("note:{}:{}", message.get_chat().get_id(), model.name);
+    log::info!("delete key: {}", key);
+    let name = model.name.clone();
+    REDIS.sq(|q| q.del(&key)).await?;
+    entities::notes::Entity::delete_by_id((model.name, message.get_chat().get_id()))
+        .exec(DB.deref().deref())
+        .await?;
+    message.speak(format!("Deleted note {}", name)).await?;
+    Ok(())
+}
 async fn save<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
     let model = get_model(message, args)?;
     let key = format!("note:{}:{}", message.get_chat().get_id(), model.name);
