@@ -22,7 +22,8 @@ metadata!("Notes",
     Useful for storing answers to often asked questions or searching uploaded media.     
     "#,
     { command = "save", help = "Saves a note" },
-    { command = "get", help = "Get a note" }
+    { command = "get", help = "Get a note" },
+    { command = "delete", help = "Delete a note" }
 );
 
 struct Migration;
