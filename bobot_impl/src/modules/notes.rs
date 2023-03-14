@@ -1,7 +1,7 @@
 use crate::metadata::metadata;
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache};
 use crate::statics::{DB, REDIS};
-use crate::tg::command::{single_arg, Context, TextArg, TextArgs};
+use crate::tg::command::{get_content, Context, InputType, TextArg, TextArgs};
 
 use crate::util::string::Speak;
 use ::sea_orm_migration::prelude::*;
@@ -106,37 +106,6 @@ pub mod entities {
         }
 
         impl ActiveModelBehavior for ActiveModel {}
-    }
-}
-
-enum InputType<'a> {
-    Reply(&'a str, Option<&'a str>, &'a Message),
-    Command(&'a str, Option<&'a str>, &'a Message),
-}
-
-fn get_input_type<'a>(
-    message: &'a Message,
-    textargs: &'a TextArgs<'a>,
-    name: &'a str,
-    end: usize,
-) -> InputType<'a> {
-    log::info!("get:{}", textargs.text);
-    if let Some(reply) = message.get_reply_to_message_ref() {
-        InputType::Reply(name, reply.get_text_ref(), reply)
-    } else {
-        let tail = &textargs.text[end..];
-        InputType::Command(name, Some(tail), message)
-    }
-}
-
-fn get_content<'a>(message: &'a Message, textargs: &'a TextArgs<'a>) -> Result<InputType<'a>> {
-    match single_arg(textargs.text) {
-        Some((TextArg::Arg(name), _, end)) => Ok(get_input_type(message, textargs, name, end)),
-        Some((TextArg::Quote(name), _, end)) => Ok(get_input_type(message, textargs, name, end)),
-        _ => Err(BotError::speak(
-            "Invalid argument, need to specify name",
-            message.get_chat().get_id(),
-        )),
     }
 }
 

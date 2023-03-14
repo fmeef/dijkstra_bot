@@ -1,8 +1,8 @@
 use std::{borrow::Cow, collections::VecDeque};
 
+use crate::util::error::BotError;
 use botapi::gen_types::{Message, MessageEntity, UpdateExt, User};
 use lazy_static::lazy_static;
-
 use regex::Regex;
 
 lazy_static! {
@@ -11,6 +11,40 @@ lazy_static! {
     static ref TOKENS: Regex = Regex::new(r#"([^\s"!/]+|"|^!|^/)"#).unwrap();
     static ref ARGS: Regex = Regex::new(r#"(".*"|[^"\s]+)"#).unwrap();
     static ref QUOTE: Regex = Regex::new(r#"".*""#).unwrap();
+}
+
+pub enum InputType<'a> {
+    Reply(&'a str, Option<&'a str>, &'a Message),
+    Command(&'a str, Option<&'a str>, &'a Message),
+}
+
+pub fn get_input_type<'a>(
+    message: &'a Message,
+    textargs: &'a TextArgs<'a>,
+    name: &'a str,
+    end: usize,
+) -> InputType<'a> {
+    log::info!("get:{}", textargs.text);
+    if let Some(reply) = message.get_reply_to_message_ref() {
+        InputType::Reply(name, reply.get_text_ref(), reply)
+    } else {
+        let tail = &textargs.text[end..];
+        InputType::Command(name, Some(tail), message)
+    }
+}
+
+pub fn get_content<'a>(
+    message: &'a Message,
+    textargs: &'a TextArgs<'a>,
+) -> crate::util::error::Result<InputType<'a>> {
+    match single_arg(textargs.text) {
+        Some((TextArg::Arg(name), _, end)) => Ok(get_input_type(message, textargs, name, end)),
+        Some((TextArg::Quote(name), _, end)) => Ok(get_input_type(message, textargs, name, end)),
+        _ => Err(BotError::speak(
+            "Invalid argument, need to specify name",
+            message.get_chat().get_id(),
+        )),
+    }
 }
 
 pub type Entities<'a> = VecDeque<EntityArg<'a>>;
