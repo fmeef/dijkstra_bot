@@ -331,7 +331,7 @@ impl Conversation {
             self.write_key(trans).await?;
 
             let n = self.get_current_markup(row_limit).await?;
-            if let Ok(builder) = MarkupBuilder::from_murkdown(&content) {
+            if let Ok(builder) = MarkupBuilder::from_murkdown_message(&content, &message) {
                 let (content, entities) = builder.build();
                 TG.client()
                     .build_edit_message_text(&content)

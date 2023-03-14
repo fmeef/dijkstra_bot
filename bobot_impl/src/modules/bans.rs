@@ -93,7 +93,7 @@ pub async fn mute_cmd<'a>(
         .set_can_send_other_messages(false)
         .build();
     let user = change_permissions_message(message, &entities, permissions, args).await?;
-    let name = user.name_humanreadable().into_owned();
+    let name = user.name_humanreadable();
     let mention = MarkupType::TextMention(user).text(&name);
 
     message
@@ -130,7 +130,7 @@ pub async fn unmute_cmd<'a>(
 
     let user = change_permissions_message(message, &entities, permissions, args).await?;
 
-    let name = user.name_humanreadable().into_owned();
+    let name = user.name_humanreadable();
     let mention = MarkupType::TextMention(user).text(&name);
     message
         .speak_fmt(entity_fmt!(

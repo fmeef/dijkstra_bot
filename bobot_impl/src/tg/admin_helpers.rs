@@ -364,7 +364,7 @@ pub async fn warn_mute(message: &Message, user: &User, count: i32) -> Result<()>
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
     mute(message.get_chat_ref(), user, None).await?;
 
-    let name = user.name_humanreadable().into_owned();
+    let name = user.name_humanreadable();
     let mention = MarkupType::TextMention(user.to_owned()).text(&name);
     message
         .reply_fmt(entity_fmt!(

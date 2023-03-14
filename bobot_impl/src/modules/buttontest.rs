@@ -27,7 +27,7 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
 async fn handle_murkdown(message: &Message) -> Result<bool> {
     if let Some(message) = message.get_reply_to_message() {
         if let Some(text) = message.get_text() {
-            match MarkupBuilder::from_murkdown(text) {
+            match MarkupBuilder::from_murkdown_message(text, &message) {
                 Ok(md) => {
                     if !should_ignore_chat(message.get_chat().get_id()).await? {
                         if should_ignore_chat(message.get_chat().get_id()).await? {

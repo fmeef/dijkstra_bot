@@ -130,7 +130,7 @@ pub async fn get_chat(chat: i64) -> Result<Option<Chat>> {
 }
 
 pub trait Username {
-    fn name_humanreadable<'a>(&'a self) -> Cow<'a, str>;
+    fn name_humanreadable<'a>(&'a self) -> String;
 }
 
 #[async_trait]
@@ -155,16 +155,20 @@ pub trait GetUser {
 }
 
 impl Username for User {
-    fn name_humanreadable<'a>(&'a self) -> Cow<'a, str> {
+    fn name_humanreadable<'a>(&'a self) -> String {
         self.get_username()
-            .unwrap_or_else(|| std::borrow::Cow::Owned(self.get_id().to_string()))
+            .map(|v| format!("@{}", v))
+            .unwrap_or_else(|| self.get_id().to_string())
     }
 }
 
 impl Username for Chat {
-    fn name_humanreadable<'a>(&'a self) -> Cow<'a, str> {
-        self.get_username()
-            .unwrap_or_else(|| std::borrow::Cow::Owned(self.get_id().to_string()))
+    fn name_humanreadable<'a>(&'a self) -> String {
+        self.get_title().map(|v| v.into_owned()).unwrap_or_else(|| {
+            self.get_username()
+                .map(|v| v.into_owned())
+                .unwrap_or_else(|| self.get_id().to_string())
+        })
     }
 }
 

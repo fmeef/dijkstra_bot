@@ -1,5 +1,5 @@
 use botapi::gen_methods::CallSendMessage;
-use botapi::gen_types::{MessageEntity, MessageEntityBuilder, User};
+use botapi::gen_types::{Message, MessageEntity, MessageEntityBuilder, User};
 use markdown::{Block, ListItem, Span};
 
 use crate::statics::TG;
@@ -36,6 +36,7 @@ pub enum TgSpan {
     Spoiler(Vec<TgSpan>),
     Link(Vec<TgSpan>, String),
     Raw(String),
+    Filling(String),
 }
 
 lazy_static! {
@@ -68,6 +69,7 @@ pomelo! {
     raw       ::= RawChar(C) { C.into() }
     raw       ::= raw(mut R) RawChar(C) { R.push(C); R }
 
+    word      ::= LCurly raw(W) RCurly { super::TgSpan::Filling(W) }
     word      ::= LSBracket Tick raw(W) RSBracket { super::TgSpan::Code(W) }
     word      ::= LSBracket Star main(S) RSBracket { super::TgSpan::Bold(S) }
     word      ::= LSBracket main(H) RSBracket LParen raw(L) RParen { super::TgSpan::Link(H, L) }
@@ -78,6 +80,8 @@ pomelo! {
 }
 
 use parser::{Parser, Token};
+
+use super::user::Username;
 
 struct Lexer<'a>(Peekable<Chars<'a>>);
 
@@ -114,6 +118,8 @@ impl<'a> Lexer<'a> {
                 ']' => Some(Token::RSBracket),
                 '(' => Some(Token::LParen),
                 ')' => Some(Token::RParen),
+                '{' => Some(Token::LCurly),
+                '}' => Some(Token::RCurly),
                 _ => Some(Token::RawChar(char)),
             }
         } else {
@@ -139,40 +145,40 @@ impl MarkupBuilder {
         }
     }
 
-    fn parse_tgspan(&mut self, span: Vec<TgSpan>) -> (i64, i64) {
+    fn parse_tgspan(&mut self, span: Vec<TgSpan>, message: Option<&Message>) -> (i64, i64) {
         let mut size = 0;
         for span in span {
-            match span {
-                TgSpan::Code(code) => {
+            match (span, message) {
+                (TgSpan::Code(code), _) => {
                     self.code(&code);
                 }
-                TgSpan::Italic(s) => {
-                    let (s, e) = self.parse_tgspan(s);
+                (TgSpan::Italic(s), _) => {
+                    let (s, e) = self.parse_tgspan(s, message);
                     size += e;
                     self.manual("italic", s, e);
                 }
-                TgSpan::Bold(s) => {
-                    let (s, e) = self.parse_tgspan(s);
+                (TgSpan::Bold(s), _) => {
+                    let (s, e) = self.parse_tgspan(s, message);
                     size += e;
                     self.manual("bold", s, e);
                 }
-                TgSpan::Strikethrough(s) => {
-                    let (s, e) = self.parse_tgspan(s);
+                (TgSpan::Strikethrough(s), _) => {
+                    let (s, e) = self.parse_tgspan(s, message);
                     size += e;
                     self.manual("strikethrough", s, e);
                 }
-                TgSpan::Underline(s) => {
-                    let (s, e) = self.parse_tgspan(s);
+                (TgSpan::Underline(s), _) => {
+                    let (s, e) = self.parse_tgspan(s, message);
                     size += e;
                     self.manual("underline", s, e);
                 }
-                TgSpan::Spoiler(s) => {
-                    let (s, e) = self.parse_tgspan(s);
+                (TgSpan::Spoiler(s), _) => {
+                    let (s, e) = self.parse_tgspan(s, message);
                     size += e;
                     self.manual("spoiler", s, e);
                 }
-                TgSpan::Link(hint, link) => {
-                    let (s, e) = self.parse_tgspan(hint);
+                (TgSpan::Link(hint, link), _) => {
+                    let (s, e) = self.parse_tgspan(hint, message);
                     size += e;
                     let entity = MessageEntityBuilder::new(s, e)
                         .set_type("text_link".to_owned())
@@ -180,8 +186,65 @@ impl MarkupBuilder {
                         .build();
                     self.entities.push(entity);
                 }
+                (TgSpan::Raw(s), _) => {
+                    size += s.encode_utf16().count() as i64;
+                    self.text(s);
+                }
+                (TgSpan::Filling(filling), Some(message)) => match filling.as_str() {
+                    "username" => {
+                        if let Some(user) = message.get_from() {
+                            let user = user.into_owned();
+                            let name = user.name_humanreadable();
+                            size += name.encode_utf16().count() as i64;
+                            self.text_mention(name, user, None);
+                        }
+                    }
+                    "first" => {
+                        if let Some(user) = message.get_from() {
+                            let first = user.get_first_name();
+                            size += first.encode_utf16().count() as i64;
+                            self.text(first);
+                        }
+                    }
+                    "last" => {
+                        if let Some(user) = message.get_from() {
+                            let last = user
+                                .get_last_name()
+                                .map(|v| v.into_owned())
+                                .unwrap_or_else(|| "".to_owned());
+                            size += last.encode_utf16().count() as i64;
+                            self.text(last);
+                        }
+                    }
+                    "mention" => {
+                        if let Some(user) = message.get_from() {
+                            let user = user.into_owned();
+                            let first = user.get_first_name().into_owned();
+                            size += first.encode_utf16().count() as i64;
+                            self.text_mention(first, user, None);
+                        }
+                    }
+                    "chatname" => {
+                        let chat = message.get_chat().name_humanreadable();
+                        size += chat.encode_utf16().count() as i64;
+                        self.text(chat);
+                    }
+                    "id" => {
+                        if let Some(user) = message.get_from() {
+                            let id = user.get_id().to_string();
+                            size += id.encode_utf16().count() as i64;
+                            self.text(id);
+                        }
+                    }
+                    s => {
+                        let s = format!("{{{}}}", s);
+                        size += s.encode_utf16().count() as i64;
+                        self.text(s);
+                    }
+                },
 
-                TgSpan::Raw(s) => {
+                (TgSpan::Filling(filling), _) => {
+                    let s = format!("{{{}}}", filling);
                     size += s.encode_utf16().count() as i64;
                     self.text(s);
                 }
@@ -284,6 +347,14 @@ impl MarkupBuilder {
     }
 
     pub fn from_murkdown<T: AsRef<str>>(text: T) -> Result<Self> {
+        Self::from_murkdown_internal(text, None)
+    }
+
+    pub fn from_murkdown_message<T: AsRef<str>>(text: T, message: &Message) -> Result<Self> {
+        Self::from_murkdown_internal(text, Some(message))
+    }
+
+    fn from_murkdown_internal<T: AsRef<str>>(text: T, messsage: Option<&Message>) -> Result<Self> {
         let text = text.as_ref();
         let mut s = Self::new();
         let mut parser = Parser::new();
@@ -292,7 +363,7 @@ impl MarkupBuilder {
             parser.parse(token)?;
         }
         let res = parser.end_of_input()?;
-        s.parse_tgspan(res);
+        s.parse_tgspan(res, messsage);
         Ok(s)
     }
 
@@ -683,7 +754,7 @@ mod test {
     fn markup_builder() {
         let p = test_parse(MARKDOWN_TEST);
         let mut b = MarkupBuilder::new();
-        b.parse_tgspan(p);
+        b.parse_tgspan(p, None);
         assert_eq!(b.entities.len(), 2);
         println!("{}", b.text);
     }

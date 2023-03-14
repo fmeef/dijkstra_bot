@@ -105,11 +105,12 @@ pub async fn send_media_reply(
         }
         MediaType::Text => {
             let text = text.ok_or_else(|| BotError::speak("invalid text", chat))?;
-            let (text, entities) = if let Ok(md) = MarkupBuilder::from_murkdown(&text) {
-                md.build_owned()
-            } else {
-                (text, Vec::new())
-            };
+            let (text, entities) =
+                if let Ok(md) = MarkupBuilder::from_murkdown_message(&text, message) {
+                    md.build_owned()
+                } else {
+                    (text, Vec::new())
+                };
             TG.client()
                 .build_send_message(chat, &text)
                 .reply_to_message_id(message.get_message_id())
