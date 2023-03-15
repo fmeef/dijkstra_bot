@@ -24,6 +24,7 @@ use log::info;
 
 use std::sync::Arc;
 
+use super::admin_helpers::IntoChatUser;
 use super::button::InlineKeyboardBuilder;
 use super::markdown::MarkupBuilder;
 pub const TYPE_DIALOG: &str = "DialogDb";
@@ -331,7 +332,9 @@ impl Conversation {
             self.write_key(trans).await?;
 
             let n = self.get_current_markup(row_limit).await?;
-            if let Ok(builder) = MarkupBuilder::from_murkdown_message(&content, &message) {
+            if let Ok(builder) =
+                MarkupBuilder::from_murkdown_chatuser(&content, message.get_chatuser().as_ref())
+            {
                 let (content, entities) = builder.build();
                 TG.client()
                     .build_edit_message_text(&content)

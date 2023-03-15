@@ -39,9 +39,30 @@ use super::{
     user::{get_me, get_user_username, GetUser, Username},
 };
 
-pub trait ChatUser {
-    fn chatuser<'a>(&'a self) -> (&'a Chat, &'a User);
-    fn chatuser_cow<'a>(&'a self) -> (Cow<'a, Chat>, Cow<'a, User>);
+pub struct ChatUser<'a> {
+    pub chat: Cow<'a, Chat>,
+    pub user: Cow<'a, User>,
+}
+
+pub trait IntoChatUser {
+    fn get_chatuser<'a>(&'a self) -> Option<ChatUser<'a>>;
+    fn get_chatuser_user<'a>(&'a self, user: Cow<'a, User>) -> ChatUser<'a>;
+}
+
+impl IntoChatUser for Message {
+    fn get_chatuser<'a>(&'a self) -> Option<ChatUser<'a>> {
+        self.get_from_ref().map(|f| ChatUser {
+            user: Cow::Borrowed(f),
+            chat: self.get_chat(),
+        })
+    }
+
+    fn get_chatuser_user<'a>(&'a self, user: Cow<'a, User>) -> ChatUser<'a> {
+        ChatUser {
+            user,
+            chat: self.get_chat(),
+        }
+    }
 }
 
 pub async fn is_self_admin(chat: &Chat) -> Result<bool> {

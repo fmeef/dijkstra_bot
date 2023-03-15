@@ -1,5 +1,5 @@
 use botapi::gen_methods::CallSendMessage;
-use botapi::gen_types::{Message, MessageEntity, MessageEntityBuilder, User};
+use botapi::gen_types::{MessageEntity, MessageEntityBuilder, User};
 use markdown::{Block, ListItem, Span};
 
 use crate::statics::TG;
@@ -81,6 +81,7 @@ pomelo! {
 
 use parser::{Parser, Token};
 
+use super::admin_helpers::ChatUser;
 use super::user::Username;
 
 struct Lexer<'a>(Peekable<Chars<'a>>);
@@ -145,7 +146,11 @@ impl MarkupBuilder {
         }
     }
 
-    fn parse_tgspan(&mut self, span: Vec<TgSpan>, message: Option<&Message>) -> (i64, i64) {
+    fn parse_tgspan<'a>(
+        &mut self,
+        span: Vec<TgSpan>,
+        message: Option<&ChatUser<'a>>,
+    ) -> (i64, i64) {
         let mut size = 0;
         for span in span {
             match (span, message) {
@@ -190,51 +195,42 @@ impl MarkupBuilder {
                     size += s.encode_utf16().count() as i64;
                     self.text(s);
                 }
-                (TgSpan::Filling(filling), Some(message)) => match filling.as_str() {
+                (TgSpan::Filling(filling), Some(chatuser)) => match filling.as_str() {
                     "username" => {
-                        if let Some(user) = message.get_from() {
-                            let user = user.into_owned();
-                            let name = user.name_humanreadable();
-                            size += name.encode_utf16().count() as i64;
-                            self.text_mention(name, user, None);
-                        }
+                        let user = chatuser.user.as_ref().to_owned();
+                        let name = user.name_humanreadable();
+                        size += name.encode_utf16().count() as i64;
+                        self.text_mention(name, user, None);
                     }
                     "first" => {
-                        if let Some(user) = message.get_from() {
-                            let first = user.get_first_name();
-                            size += first.encode_utf16().count() as i64;
-                            self.text(first);
-                        }
+                        let first = chatuser.user.get_first_name();
+                        size += first.encode_utf16().count() as i64;
+                        self.text(first);
                     }
                     "last" => {
-                        if let Some(user) = message.get_from() {
-                            let last = user
-                                .get_last_name()
-                                .map(|v| v.into_owned())
-                                .unwrap_or_else(|| "".to_owned());
-                            size += last.encode_utf16().count() as i64;
-                            self.text(last);
-                        }
+                        let last = chatuser
+                            .user
+                            .get_last_name()
+                            .map(|v| v.into_owned())
+                            .unwrap_or_else(|| "".to_owned());
+                        size += last.encode_utf16().count() as i64;
+                        self.text(last);
                     }
                     "mention" => {
-                        if let Some(user) = message.get_from() {
-                            let user = user.into_owned();
-                            let first = user.get_first_name().into_owned();
-                            size += first.encode_utf16().count() as i64;
-                            self.text_mention(first, user, None);
-                        }
+                        let user = chatuser.user.as_ref().to_owned();
+                        let first = user.get_first_name().into_owned();
+                        size += first.encode_utf16().count() as i64;
+                        self.text_mention(first, user, None);
                     }
                     "chatname" => {
-                        let chat = message.get_chat().name_humanreadable();
+                        let chat = chatuser.chat.name_humanreadable();
                         size += chat.encode_utf16().count() as i64;
                         self.text(chat);
                     }
                     "id" => {
-                        if let Some(user) = message.get_from() {
-                            let id = user.get_id().to_string();
-                            size += id.encode_utf16().count() as i64;
-                            self.text(id);
-                        }
+                        let id = chatuser.user.get_id().to_string();
+                        size += id.encode_utf16().count() as i64;
+                        self.text(id);
                     }
                     s => {
                         let s = format!("{{{}}}", s);
@@ -350,11 +346,17 @@ impl MarkupBuilder {
         Self::from_murkdown_internal(text, None)
     }
 
-    pub fn from_murkdown_message<T: AsRef<str>>(text: T, message: &Message) -> Result<Self> {
-        Self::from_murkdown_internal(text, Some(message))
+    pub fn from_murkdown_chatuser<'b, T: AsRef<str>>(
+        text: T,
+        chatuser: Option<&ChatUser<'b>>,
+    ) -> Result<Self> {
+        Self::from_murkdown_internal(text, chatuser)
     }
 
-    fn from_murkdown_internal<T: AsRef<str>>(text: T, messsage: Option<&Message>) -> Result<Self> {
+    fn from_murkdown_internal<'b, T: AsRef<str>>(
+        text: T,
+        chatuser: Option<&ChatUser<'b>>,
+    ) -> Result<Self> {
         let text = text.as_ref();
         let mut s = Self::new();
         let mut parser = Parser::new();
@@ -363,7 +365,7 @@ impl MarkupBuilder {
             parser.parse(token)?;
         }
         let res = parser.end_of_input()?;
-        s.parse_tgspan(res, messsage);
+        s.parse_tgspan(res, chatuser);
         Ok(s)
     }
 
