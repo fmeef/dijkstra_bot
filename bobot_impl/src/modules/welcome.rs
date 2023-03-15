@@ -20,10 +20,19 @@ use sea_query::OnConflict;
 
 metadata!("Welcome",
     r#"
-    Welcomes users with custom message
+    Welcomes users with custom message. Welcome messages are send when a user joins and
+    goodbye messages are sent when a user leaves. Note: this only works in groups with 50
+    or fewer members. Groups with more than 50 members will not send welcome messages.  
+
+    [*Example:]  
+    /welcome on  
+    /setwelcome Hi there \{mention\}, welcome to \{chatname\}
+    
     "#,
     { command = "welcome", help = "Usage: welcome <on/off>. Enables or disables welcome" },
-    { command = "setwelcome", help = "Sets the welcome text. Reply to a message or media to set"}
+    { command = "setwelcome", help = "Sets the welcome text. Reply to a message or media to set"},
+    { command = "setgoodbye", help = "Sets the goodbye message for when a user leaves"},
+    { command = "resetwelcome", help = "Resets welcome and goodbye messages to default" }
 );
 
 struct Migration;
