@@ -1,3 +1,4 @@
+use crate::util::error::BotError;
 use chrono::Utc;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -56,6 +57,39 @@ pub enum Relation {}
 impl Related<super::actions::Entity> for Entity {
     fn to() -> RelationDef {
         panic!("no relations")
+    }
+}
+
+impl ActionType {
+    pub fn from_str<T: AsRef<str>>(s: T, chat: i64) -> crate::util::error::Result<Self> {
+        Self::from_str_err(s.as_ref(), || {
+            BotError::speak(format!("Invalid action {}", s.as_ref()), chat)
+        })
+    }
+
+    pub fn get_name(&self) -> &str {
+        match self {
+            ActionType::Mute => "mute",
+            ActionType::Ban => "ban",
+            ActionType::Shame => "shame",
+            ActionType::Warn => "warn",
+            ActionType::Delete => "delete",
+        }
+    }
+
+    pub fn from_str_err<T, F>(s: T, err: F) -> crate::util::error::Result<Self>
+    where
+        F: FnOnce() -> BotError,
+        T: AsRef<str>,
+    {
+        match s.as_ref() {
+            "mute" => Ok(ActionType::Mute),
+            "ban" => Ok(ActionType::Ban),
+            "warn" => Ok(ActionType::Warn),
+            "shame" => Ok(ActionType::Warn),
+            "delete" => Ok(ActionType::Delete),
+            _ => Err(err()),
+        }
     }
 }
 

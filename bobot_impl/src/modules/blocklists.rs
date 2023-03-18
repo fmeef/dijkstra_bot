@@ -56,7 +56,7 @@ use sea_orm_migration::{MigrationName, MigrationTrait};
 metadata!("Blocklists",
     r#"Censor specific words in your group!. Supports globbing to match partial words."#,
     { command = "addblocklist", help = "<trigger> <reply> {action}: Add a blocklist" },
-    { command = "addblocklist", help = "List all blocklists" },
+    { command = "blocklist", help = "List all blocklists" },
     { command = "rmblocklist", help = "Stop a blocklist by trigger" },
     { command = "rmallblocklists", help = "Stop all blocklists" }
 );

@@ -1,18 +1,23 @@
-use self::entities::locks;
+use self::entities::{default_locks, locks};
+use crate::persist::admin::actions::ActionType;
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache};
 use crate::statics::{CONFIG, DB, REDIS};
-use crate::tg::admin_helpers::{change_permissions, self_admin_or_die, IsAdmin};
-use crate::tg::command::{Command, Context, TextArg};
+use crate::tg::admin_helpers::{mute, self_admin_or_die, IsAdmin};
+use crate::tg::command::{Command, Context, TextArg, TextArgs};
+use crate::tg::user::Username;
 use crate::util::error::{BotError, Result};
+use crate::util::string::get_chat_lang;
 use crate::{metadata::metadata, statics::TG, util::string::Speak};
-use botapi::gen_types::{ChatPermissionsBuilder, Message, UpdateExt, User};
+use botapi::gen_types::{Chat, Message, UpdateExt, User};
 use chrono::Duration;
-use entities::locks::{LockAction, LockType};
+use entities::locks::LockType;
 use lazy_static::__Deref;
-
+use macros::lang_fmt;
 use redis::AsyncCommands;
 use sea_orm::prelude::*;
 use sea_orm::sea_query::OnConflict;
+
+use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::EntityTrait;
 use sea_orm_migration::{MigrationName, MigrationTrait};
 
@@ -28,10 +33,12 @@ metadata!("Locks",
 
 pub mod entities {
     use self::locks::LockAction;
+    use crate::persist::admin::actions::ActionType;
     use crate::persist::migrate::ManagerHelper;
     use ::sea_orm_migration::prelude::*;
 
     use super::Migration;
+    use super::MigrationActionType;
 
     #[async_trait::async_trait]
     impl MigrationTrait for Migration {
@@ -67,9 +74,91 @@ pub mod entities {
         }
     }
 
+    #[async_trait::async_trait]
+    impl MigrationTrait for MigrationActionType {
+        async fn up(&self, manager: &SchemaManager) -> std::result::Result<(), DbErr> {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(locks::Entity)
+                        .modify_column(ColumnDef::new(locks::Column::LockAction).integer())
+                        .to_owned(),
+                )
+                .await?;
+
+            manager
+                .create_table(
+                    Table::create()
+                        .table(default_locks::Entity)
+                        .col(
+                            ColumnDef::new(locks::Column::Chat)
+                                .big_integer()
+                                .primary_key(),
+                        )
+                        .col(
+                            ColumnDef::new(locks::Column::LockAction)
+                                .integer()
+                                .not_null()
+                                .default(ActionType::Delete),
+                        )
+                        .to_owned(),
+                )
+                .await?;
+
+            Ok(())
+        }
+
+        async fn down(&self, manager: &SchemaManager) -> std::result::Result<(), DbErr> {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(locks::Entity)
+                        .modify_column(
+                            ColumnDef::new(locks::Column::LockAction)
+                                .integer()
+                                .not_null()
+                                .default(LockAction::Silent),
+                        )
+                        .to_owned(),
+                )
+                .await?;
+            manager.drop_table_auto(default_locks::Entity).await?;
+            Ok(())
+        }
+    }
+
+    pub mod default_locks {
+
+        use sea_orm::entity::prelude::*;
+        use serde::{Deserialize, Serialize};
+
+        use crate::persist::admin::actions::ActionType;
+
+        #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+        pub enum Relation {}
+        impl Related<super::locks::Entity> for Entity {
+            fn to() -> RelationDef {
+                panic!("no relations")
+            }
+        }
+
+        impl ActiveModelBehavior for ActiveModel {}
+
+        #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+        #[sea_orm(table_name = "default_locks")]
+        pub struct Model {
+            #[sea_orm(primary_key)]
+            pub chat: i64,
+            #[sea_orm(default = ActionType::Delete)]
+            pub lock_action: ActionType,
+        }
+    }
+
     pub mod locks {
         use sea_orm::entity::prelude::*;
         use serde::{Deserialize, Serialize};
+
+        use crate::persist::admin::actions::ActionType;
 
         #[derive(EnumIter, DeriveActiveEnum, Serialize, Deserialize, Clone, PartialEq, Debug)]
         #[sea_orm(rs_type = "i32", db_type = "Integer")]
@@ -104,8 +193,8 @@ pub mod entities {
             pub chat: i64,
             #[sea_orm(primary_key)]
             pub lock_type: LockType,
-            #[sea_orm(default = LockAction::Silent)]
-            pub lock_action: LockAction,
+            #[sea_orm(default = ActionType::Delete)]
+            pub lock_action: Option<ActionType>,
         }
 
         #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -121,10 +210,17 @@ pub mod entities {
 }
 
 pub struct Migration;
+pub struct MigrationActionType;
 
 impl MigrationName for Migration {
     fn name(&self) -> &str {
         "m20230129_000001_create_locks"
+    }
+}
+
+impl MigrationName for MigrationActionType {
+    fn name(&self) -> &str {
+        "m20230316_000001_update_action_type"
     }
 }
 
@@ -133,7 +229,7 @@ pub fn get_lock_key(chat: i64, locktype: &LockType) -> String {
 }
 
 pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
-    vec![Box::new(Migration)]
+    vec![Box::new(Migration), Box::new(MigrationActionType)]
 }
 
 async fn get_lock(message: &Message, locktype: LockType) -> Result<Option<locks::Model>> {
@@ -166,9 +262,9 @@ async fn set_lock(message: &Message, locktype: LockType, user: &User) -> Result<
     user.admin_or_die(message.get_chat_ref()).await?;
     let key = get_lock_key(message.get_chat().get_id(), &locktype);
     let model = locks::ActiveModel {
-        chat: sea_orm::ActiveValue::Set(message.get_chat().get_id()),
-        lock_type: sea_orm::ActiveValue::Set(locktype),
-        lock_action: sea_orm::ActiveValue::NotSet,
+        chat: Set(message.get_chat().get_id()),
+        lock_type: Set(locktype),
+        lock_action: NotSet,
     };
     let res = locks::Entity::insert(model)
         .on_conflict(
@@ -182,11 +278,48 @@ async fn set_lock(message: &Message, locktype: LockType, user: &User) -> Result<
     Ok(())
 }
 
-#[allow(dead_code)]
+#[inline(always)]
+fn get_default_key(chat: &Chat) -> String {
+    format!("daction:{}", chat.get_id())
+}
+
+async fn get_default_action(chat: &Chat) -> Result<ActionType> {
+    let chat_id = chat.get_id();
+    let key = get_default_key(chat);
+    default_cache_query(
+        |_, _| async move {
+            let model = default_locks::Entity::find_by_id(chat_id)
+                .one(DB.deref())
+                .await?;
+            Ok(model.map(|v| v.lock_action).unwrap_or(ActionType::Delete))
+        },
+        Duration::seconds(CONFIG.timing.cache_timeout as i64),
+    )
+    .query(&key, &())
+    .await
+}
+
+async fn set_default_action(chat: &Chat, lock_action: ActionType) -> Result<()> {
+    let model = default_locks::Model {
+        chat: chat.get_id(),
+        lock_action,
+    };
+    let key = get_default_key(chat);
+    default_locks::Entity::insert(model.cache(&key).await?)
+        .on_conflict(
+            OnConflict::column(default_locks::Column::Chat)
+                .update_column(default_locks::Column::LockAction)
+                .to_owned(),
+        )
+        .exec(DB.deref())
+        .await?;
+    Ok(())
+}
+
 async fn set_lock_action(
     message: &Message,
     locktype: LockType,
-    lockaction: LockAction,
+    lockaction: ActionType,
     user: &User,
 ) -> Result<()> {
     user.admin_or_die(message.get_chat_ref()).await?;
@@ -194,7 +327,7 @@ async fn set_lock_action(
     let model = locks::Model {
         chat: message.get_chat().get_id(),
         lock_type: locktype,
-        lock_action: lockaction,
+        lock_action: Some(lockaction),
     };
     locks::Entity::insert(model.cache(key).await?)
         .on_conflict(
@@ -207,14 +340,23 @@ async fn set_lock_action(
     Ok(())
 }
 
-fn locktype_from_args<'a>(cmd: &Option<&'a Command<'a>>) -> Option<LockType> {
+fn locktype_from_args<'a>(
+    cmd: &Option<&'a Command<'a>>,
+    chat: i64,
+) -> (Option<LockType>, Option<ActionType>) {
     if let Some(&Command { ref args, .. }) = cmd {
         match args.args.first() {
-            Some(TextArg::Arg("premium")) => Some(LockType::Premium),
-            _ => None,
+            Some(TextArg::Arg("premium")) => (
+                Some(LockType::Premium),
+                args.args
+                    .get(1)
+                    .map(|v| ActionType::from_str(v.get_text(), chat).ok())
+                    .flatten(),
+            ),
+            _ => (None, None),
         }
     } else {
-        None
+        (None, None)
     }
 }
 
@@ -227,13 +369,31 @@ fn is_premium(message: &Message) -> bool {
 }
 
 async fn handle_lock<'a>(message: &Message, cmd: &Option<&Command<'a>>, user: &User) -> Result<()> {
+    let lang = get_chat_lang(message.get_chat().get_id());
     user.admin_or_die(message.get_chat_ref()).await?;
-    if let Some(lock) = locktype_from_args(cmd) {
-        set_lock(message, lock, user).await?;
-        message.reply("Set lock").await?;
-    } else {
-        message.reply("Specify a lock").await?;
-    }
+    match locktype_from_args(cmd, message.get_chat().get_id()) {
+        (Some(lock), None) => {
+            let t = lock.get_name();
+            set_lock(message, lock, user).await?;
+
+            message
+                .reply(lang_fmt!(
+                    lang,
+                    "setlock",
+                    t,
+                    message.get_chat().name_humanreadable()
+                ))
+                .await?;
+        }
+        (Some(lock), Some(action)) => {
+            let reply = lang_fmt!(lang, "setlockaction", action.get_name());
+            set_lock_action(message, lock, action, user).await?;
+            message.reply(reply).await?;
+        }
+        _ => {
+            message.reply(lang_fmt!(lang, "locknotspec")).await?;
+        }
+    };
     Ok(())
 }
 
@@ -242,12 +402,14 @@ async fn handle_unlock<'a>(
     cmd: &Option<&Command<'a>>,
     user: &User,
 ) -> Result<()> {
+    let lang = get_chat_lang(message.get_chat().get_id());
     user.admin_or_die(message.get_chat_ref()).await?;
-    if let Some(lock) = locktype_from_args(cmd) {
+    if let (Some(lock), _) = locktype_from_args(cmd, message.get_chat().get_id()) {
+        let name = lock.get_name();
         clear_lock(message, lock).await?;
-        message.reply("Cleared lock").await?;
+        message.reply(lang_fmt!(lang, "clearedlock", name)).await?;
     } else {
-        message.reply("Specify a lock").await?;
+        message.reply(lang_fmt!(lang, "locknotspec")).await?;
     }
     Ok(())
 }
@@ -273,7 +435,7 @@ async fn handle_list(message: &Message, user: &User) -> Result<()> {
     Ok(())
 }
 
-async fn handle_action(message: &Message, lockaction: LockAction) -> Result<()> {
+async fn handle_action(message: &Message, lockaction: ActionType) -> Result<()> {
     self_admin_or_die(message.get_chat_ref()).await?;
 
     if let Some(user) = message.get_from() {
@@ -284,27 +446,16 @@ async fn handle_action(message: &Message, lockaction: LockAction) -> Result<()> 
             ));
         }
         match lockaction {
-            LockAction::Mute => {
-                let permissions = ChatPermissionsBuilder::new()
-                    .set_can_send_messages(false)
-                    .set_can_send_audios(false)
-                    .set_can_send_documents(false)
-                    .set_can_send_photos(false)
-                    .set_can_send_videos(false)
-                    .set_can_send_video_notes(false)
-                    .set_can_send_polls(false)
-                    .set_can_send_voice_notes(false)
-                    .set_can_send_other_messages(false)
-                    .build();
-                change_permissions(message.get_chat_ref(), &user, &permissions, None).await?;
+            ActionType::Mute => {
+                mute(message.get_chat_ref(), &user, None).await?;
                 message.reply("Muted premium user").await?;
             }
-            LockAction::Warn => {
+            ActionType::Warn => {
                 message
                     .reply("Warns not implemented, you lucky dawg")
                     .await?;
             }
-            LockAction::Silent => (),
+            _ => (),
         };
     }
     TG.client()
@@ -314,12 +465,32 @@ async fn handle_action(message: &Message, lockaction: LockAction) -> Result<()> 
     Ok(())
 }
 
+async fn lock_action<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
+    let chat_id = message.get_chat().get_id();
+    let lang = get_chat_lang(chat_id).await?;
+    if let Some(arg) = args.args.first() {
+        let action = ActionType::from_str_err(arg.get_text(), || {
+            BotError::speak("Invalid action", chat_id)
+        })?;
+        set_default_action(message.get_chat_ref(), action).await?;
+        message.reply(lang_fmt!(lang, "setdefaultaction")).await?;
+    } else {
+        message.reply(lang_fmt!(lang, "noactionarg")).await?;
+    }
+    Ok(())
+}
+
 async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
-    if let Some((cmd, _, _, message)) = ctx.cmd() {
+    if let Some((cmd, _, args, message)) = ctx.cmd() {
         let command = ctx.command.as_ref();
         if is_premium(message) {
             if let Some(lock) = get_lock(message, LockType::Premium).await? {
-                handle_action(message, lock.lock_action).await?;
+                if let Some(action) = lock.lock_action {
+                    handle_action(message, action).await?;
+                } else {
+                    let action = get_default_action(&message.get_chat()).await?;
+                    handle_action(message, action).await?;
+                }
             }
         }
         if let Some(user) = message.get_from() {
@@ -327,6 +498,7 @@ async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
                 "lock" => handle_lock(message, &command, &user).await?,
                 "unlock" => handle_unlock(message, &command, &user).await?,
                 "locks" => handle_list(message, &user).await?,
+                "lockaction" => lock_action(message, &args).await?,
                 _ => (),
             };
         }

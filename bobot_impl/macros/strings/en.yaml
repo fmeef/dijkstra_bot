@@ -44,3 +44,12 @@ resetwelcome: "Cleared welcome config"
 welcomeinvalid: "Invalid argument, use on/off/yes/no"
 setwelcome: "Set group welcome to {}"
 setgoodbye: "Set group goodbye to {}"
+setdefaultaction: "Set default action"
+noactionarg: "You need to specify the action to set"
+locknotspec: "Lock not specified. Please specify a lock"
+clearedlock: |
+  Cleared lock "{}"
+setlock: |
+  Set lock "{}" for chat "{}"
+setlockaction: |
+  Set lock action to "{}"
