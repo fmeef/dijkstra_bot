@@ -21,7 +21,7 @@ use crate::tg::command::Context;
 use crate::tg::command::TextArgs;
 
 use crate::tg::dialog::dialog_or_default;
-use crate::tg::user::Username;
+
 use crate::util::error::BotError;
 use crate::util::error::Result;
 
@@ -559,29 +559,13 @@ async fn warn(message: &Message, user: &User, reason: Option<String>) -> Result<
     let dialog = dialog_or_default(message.get_chat_ref()).await?;
 
     let time = dialog.warn_time.map(|t| Duration::seconds(t));
-    let (count, limit) = warn_with_action(
+    warn_with_action(
         message,
         user,
         reason.clone().as_ref().map(|v| v.as_str()),
         time,
     )
     .await?;
-    let name = user.name_humanreadable();
-    if let Some(reason) = reason {
-        message
-            .reply(format!(
-                "Yowzers! Warned user {} for \"{}\", total warns: {}/{}",
-                name, reason, count, limit
-            ))
-            .await?;
-    } else {
-        message
-            .reply(format!(
-                "Yowzers! Warned user {}, total warns: {}/{}",
-                name, count, limit
-            ))
-            .await?;
-    }
     Ok(())
 }
 

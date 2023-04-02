@@ -49,30 +49,14 @@ pub async fn warn<'a>(
             let reason = args
                 .map(|a| {
                     if a.args.len() > 0 {
-                        Some(a.text.trim())
+                        Some(format!("\"{}\"", a.text.trim()))
                     } else {
                         None
                     }
                 })
                 .flatten();
 
-            let (count, limit) = warn_with_action(message, user, reason, None).await?;
-            let name = user.name_humanreadable();
-            if let Some(reason) = reason {
-                message
-                    .reply(format!(
-                        "Yowzers! Warned user {} for \"{}\", total warns: {}/{}",
-                        name, reason, count, limit
-                    ))
-                    .await?;
-            } else {
-                message
-                    .reply(format!(
-                        "Yowzers! Warned user {}, total warns: {}/{}",
-                        name, count, limit
-                    ))
-                    .await?;
-            }
+            warn_with_action(message, user, reason.as_ref().map(|v| v.as_str()), None).await?;
             Ok(())
         }
         .boxed()

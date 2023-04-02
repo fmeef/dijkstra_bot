@@ -276,6 +276,23 @@ pub async fn warn_with_action(
     let time = dialog.warn_time.map(|t| Duration::seconds(t));
     let count = warn_user(message, user, reason.map(|v| v.to_owned()), &time).await?;
 
+    let name = user.name_humanreadable();
+    if let Some(reason) = reason {
+        message
+            .reply(format!(
+                "Yowzers! Warned user {} with {}/{} warns for {}",
+                name, count, dialog.warn_limit, reason
+            ))
+            .await?;
+    } else {
+        message
+            .reply(format!(
+                "Yowzers! Warned user {}, total warns: {}/{}",
+                name, count, dialog.warn_limit
+            ))
+            .await?;
+    }
+
     if count >= dialog.warn_limit {
         match dialog.action_type {
             actions::ActionType::Mute => warn_mute(message, user, count, duration).await,
@@ -285,7 +302,6 @@ pub async fn warn_with_action(
             actions::ActionType::Delete => Ok(()),
         }?;
     }
-
     Ok((count, dialog.warn_limit))
 }
 

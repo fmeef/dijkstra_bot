@@ -576,9 +576,13 @@ async fn handle_user_event(update: &UpdateExt) -> Result<()> {
                 }
                 let default = get_default_settings(message.get_chat_ref()).await?;
                 let lang = get_chat_lang(message.get_chat().get_id()).await?;
-                let reasons = locks
+                let reasons = ["\n".to_owned()]
                     .into_iter()
-                    .map(|v| lang_fmt!(lang, "lockedinchat", v.get_name()))
+                    .chain(
+                        locks
+                            .into_iter()
+                            .map(|v| lang_fmt!(lang, "lockedinchat", v.get_name())),
+                    )
                     .collect::<Vec<String>>()
                     .join("\n");
 
@@ -599,16 +603,13 @@ async fn handle_user_event(update: &UpdateExt) -> Result<()> {
                                 .build()
                                 .await?;
                         } else if let Some(user) = message.get_from() {
-                            let (count, limit) = warn_with_action(
+                            warn_with_action(
                                 message,
                                 &user,
-                                None,
+                                Some(&reasons),
                                 default.duration.map(|v| Duration::seconds(v)),
                             )
                             .await?;
-                            if count < limit {
-                                message.speak(lang_fmt!(lang, "lockwarn", reasons)).await?;
-                            }
                         }
                     }
                     _ => (),
