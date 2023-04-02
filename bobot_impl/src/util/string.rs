@@ -130,8 +130,11 @@ impl Speak for Message {
         T: AsRef<str> + Send + Sync,
     {
         if !should_ignore_chat(self.get_chat().get_id()).await? {
+            let md = MarkupBuilder::from_murkdown_chatuser(message, self.get_chatuser().as_ref())?;
+            let (text, entities) = md.build();
             TG.client()
-                .build_send_message(self.get_chat().get_id(), message.as_ref())
+                .build_send_message(self.get_chat().get_id(), text)
+                .entities(entities)
                 .reply_to_message_id(self.get_message_id())
                 .build()
                 .await?;

@@ -54,6 +54,11 @@ setlock: |
 setlockaction: |
   Set lock action to "{}"
 lockedinchat: "- {} is locked in this chat"
+warnreason: |
+  Yowzers! Warned user {} with {}/{} warns
+  [*Reason:]
+  {}
+warn: "Yowzers!: Warned user {} with {}/{} warns"
 lockwarn: |
   User {{mention}} warned! 
   [*Reason:]

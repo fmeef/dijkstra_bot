@@ -273,23 +273,25 @@ pub async fn warn_with_action(
     duration: Option<Duration>,
 ) -> Result<(i32, i32)> {
     let dialog = dialog_or_default(message.get_chat_ref()).await?;
+    let lang = get_chat_lang(message.get_chat().get_id()).await?;
     let time = dialog.warn_time.map(|t| Duration::seconds(t));
     let count = warn_user(message, user, reason.map(|v| v.to_owned()), &time).await?;
 
     let name = user.name_humanreadable();
     if let Some(reason) = reason {
         message
-            .reply(format!(
-                "Yowzers! Warned user {} with {}/{} warns for {}",
-                name, count, dialog.warn_limit, reason
+            .reply(lang_fmt!(
+                lang,
+                "warnreason",
+                name,
+                count,
+                dialog.warn_limit,
+                reason
             ))
             .await?;
     } else {
         message
-            .reply(format!(
-                "Yowzers! Warned user {}, total warns: {}/{}",
-                name, count, dialog.warn_limit
-            ))
+            .reply(lang_fmt!(lang, "warn", name, count, dialog.warn_limit))
             .await?;
     }
 

@@ -49,14 +49,14 @@ pub async fn warn<'a>(
             let reason = args
                 .map(|a| {
                     if a.args.len() > 0 {
-                        Some(format!("\"{}\"", a.text.trim()))
+                        Some(a.text.trim())
                     } else {
                         None
                     }
                 })
                 .flatten();
 
-            warn_with_action(message, user, reason.as_ref().map(|v| v.as_str()), None).await?;
+            warn_with_action(message, user, reason, None).await?;
             Ok(())
         }
         .boxed()

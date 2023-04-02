@@ -576,13 +576,9 @@ async fn handle_user_event(update: &UpdateExt) -> Result<()> {
                 }
                 let default = get_default_settings(message.get_chat_ref()).await?;
                 let lang = get_chat_lang(message.get_chat().get_id()).await?;
-                let reasons = ["\n".to_owned()]
+                let reasons = locks
                     .into_iter()
-                    .chain(
-                        locks
-                            .into_iter()
-                            .map(|v| lang_fmt!(lang, "lockedinchat", v.get_name())),
-                    )
+                    .map(|v| lang_fmt!(lang, "lockedinchat", v.get_name()))
                     .collect::<Vec<String>>()
                     .join("\n");
 
