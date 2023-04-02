@@ -2,7 +2,7 @@ use self::entities::{default_locks, locks};
 use crate::persist::admin::actions::ActionType;
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache};
 use crate::statics::{CONFIG, DB, REDIS};
-use crate::tg::admin_helpers::{ban_message, warn_with_action, IsAdmin};
+use crate::tg::admin_helpers::{ban_message, warn_with_action, IsAdmin, IsGroupAdmin};
 use crate::tg::command::{Command, Context, TextArg, TextArgs};
 use crate::tg::user::Username;
 use crate::util::error::{BotError, Result};
@@ -353,9 +353,7 @@ async fn set_lock_action(
     message: &Message,
     locktype: LockType,
     lockaction: ActionType,
-    user: &User,
 ) -> Result<()> {
-    user.admin_or_die(message.get_chat_ref()).await?;
     let key = get_lock_key(message.get_chat().get_id(), &locktype);
     let model = locks::Model {
         chat: message.get_chat().get_id(),
@@ -405,8 +403,8 @@ fn is_premium(message: &Message) -> bool {
 }
 
 async fn handle_lock<'a>(message: &Message, cmd: &Option<&Command<'a>>, user: &User) -> Result<()> {
+    message.group_admin_or_die().await?;
     let lang = get_chat_lang(message.get_chat().get_id());
-    user.admin_or_die(message.get_chat_ref()).await?;
     match locktype_from_args(cmd, message.get_chat().get_id()) {
         (Some(lock), None) => {
             let t = lock.get_name().to_owned();
@@ -423,7 +421,7 @@ async fn handle_lock<'a>(message: &Message, cmd: &Option<&Command<'a>>, user: &U
         }
         (Some(lock), Some(action)) => {
             let reply = lang_fmt!(lang, "setlockaction", action.get_name());
-            set_lock_action(message, lock, action, user).await?;
+            set_lock_action(message, lock, action).await?;
             message.reply(reply).await?;
         }
         _ => {
@@ -433,13 +431,9 @@ async fn handle_lock<'a>(message: &Message, cmd: &Option<&Command<'a>>, user: &U
     Ok(())
 }
 
-async fn handle_unlock<'a>(
-    message: &Message,
-    cmd: &Option<&Command<'a>>,
-    user: &User,
-) -> Result<()> {
+async fn handle_unlock<'a>(message: &Message, cmd: &Option<&Command<'a>>) -> Result<()> {
+    message.group_admin_or_die().await?;
     let lang = get_chat_lang(message.get_chat().get_id());
-    user.admin_or_die(message.get_chat_ref()).await?;
     if let (Some(lock), _) = locktype_from_args(cmd, message.get_chat().get_id()) {
         let name = lock.get_name().to_owned();
         clear_lock(message, lock).await?;
@@ -450,8 +444,8 @@ async fn handle_unlock<'a>(
     Ok(())
 }
 
-async fn handle_list(message: &Message, user: &User) -> Result<()> {
-    user.admin_or_die(message.get_chat_ref()).await?;
+async fn handle_list(message: &Message) -> Result<()> {
+    message.group_admin_or_die().await?;
     let chat = message.get_chat().get_id();
     let locks = locks::Entity::find()
         .filter(locks::Column::Chat.eq(chat))
@@ -472,6 +466,7 @@ async fn handle_list(message: &Message, user: &User) -> Result<()> {
 }
 
 async fn lock_action<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
+    message.group_admin_or_die().await?;
     let chat_id = message.get_chat().get_id();
     let lang = get_chat_lang(chat_id).await?;
     if let Some(arg) = args.args.first() {
@@ -492,8 +487,8 @@ async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
         if let Some(user) = message.get_from() {
             match cmd {
                 "lock" => handle_lock(message, &command, &user).await?,
-                "unlock" => handle_unlock(message, &command, &user).await?,
-                "locks" => handle_list(message, &user).await?,
+                "unlock" => handle_unlock(message, &command).await?,
+                "locks" => handle_list(message).await?,
                 "lockaction" => lock_action(message, &args).await?,
                 _ => (),
             };
