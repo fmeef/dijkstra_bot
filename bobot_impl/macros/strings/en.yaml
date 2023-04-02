@@ -56,9 +56,9 @@ setlockaction: |
 lockedinchat: "- {} is locked in this chat"
 lockwarn: |
   User {{mention}} warned! 
-  Reason: 
+  [*Reason:]
   {}
 lockban: |
   User {{mention}} banned!
-  Reason: 
+  [*Reason:]
   {}

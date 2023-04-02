@@ -28,7 +28,8 @@ metadata!("Locks",
     "#,
     { command = "lock", help = "Engage a lock" },
     { command = "unlock", help = "Disable a lock"},
-    { command = "locks", help = "Get a list of active locks"}
+    { command = "locks", help = "Get a list of active locks"},
+    { command = "lockaction", help = "Set the action when a user sends a locked item"}
 );
 
 pub mod entities {
@@ -520,7 +521,7 @@ async fn update_action(
                     .lock_action,
             )
         };
-        log::info!("comparing {:?} {:?}", newaction, action);
+
         if newaction > *action {
             *action = newaction;
         }
@@ -575,6 +576,9 @@ async fn handle_user_event(update: &UpdateExt) -> Result<()> {
     if let (Some(action), locks) = action_from_update(update).await? {
         match update {
             UpdateExt::Message(ref message) => {
+                if message.get_from().is_admin(message.get_chat_ref()).await? {
+                    return Ok(());
+                }
                 let default = get_default_settings(message.get_chat_ref()).await?;
                 let lang = get_chat_lang(message.get_chat().get_id()).await?;
                 let reasons = locks
@@ -582,7 +586,7 @@ async fn handle_user_event(update: &UpdateExt) -> Result<()> {
                     .map(|v| lang_fmt!(lang, "lockedinchat", v.get_name()))
                     .collect::<Vec<String>>()
                     .join("\n");
-                log::info!("action! {}", action);
+
                 match action {
                     ActionType::Delete => {}
                     ActionType::Ban => {
