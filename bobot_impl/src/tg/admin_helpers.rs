@@ -563,6 +563,32 @@ pub async fn unban(message: &Message, user: &User) -> Result<()> {
     }
     Ok(())
 }
+
+pub async fn ban_message(message: &Message, duration: Option<Duration>) -> Result<()> {
+    if let Some(senderchat) = message.get_sender_chat() {
+        TG.client()
+            .build_ban_chat_sender_chat(message.get_chat().get_id(), senderchat.get_id())
+            .build()
+            .await?;
+    } else {
+        if let Some(user) = message.get_from() {
+            if let Some(duration) = duration.map(|v| Utc::now().checked_add_signed(v)).flatten() {
+                TG.client()
+                    .build_ban_chat_member(message.get_chat().get_id(), user.get_id())
+                    .until_date(duration.timestamp())
+                    .build()
+                    .await?;
+            } else {
+                TG.client()
+                    .build_ban_chat_member(message.get_chat().get_id(), user.get_id())
+                    .build()
+                    .await?;
+            }
+        }
+    }
+    Ok(())
+}
+
 pub async fn ban(message: &Message, user: &User, duration: Option<Duration>) -> Result<()> {
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
     if let Some(senderchat) = message.get_sender_chat() {

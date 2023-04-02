@@ -46,10 +46,19 @@ setwelcome: "Set group welcome to {}"
 setgoodbye: "Set group goodbye to {}"
 setdefaultaction: "Set default action"
 noactionarg: "You need to specify the action to set"
-locknotspec: "Lock not specified. Please specify a lock"
+locknotspec: "Invalid lock type, see /help for available locks"
 clearedlock: |
   Cleared lock "{}"
 setlock: |
   Set lock "{}" for chat "{}"
 setlockaction: |
   Set lock action to "{}"
+lockedinchat: "- {} is locked in this chat"
+lockwarn: |
+  User {{mention}} warned! 
+  Reason: 
+  {}
+lockban: |
+  User {{mention}} banned!
+  Reason: 
+  {}

@@ -2,6 +2,8 @@ use std::ops::DerefMut;
 
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisStr};
 use crate::statics::{CONFIG, DB, REDIS, TG};
+use crate::tg::admin_helpers::IntoChatUser;
+use crate::tg::markdown::MarkupBuilder;
 use crate::util::error::Result;
 
 use async_trait::async_trait;
@@ -95,8 +97,11 @@ impl Speak for Message {
         T: AsRef<str> + Send + Sync,
     {
         if !should_ignore_chat(self.get_chat().get_id()).await? {
+            let md = MarkupBuilder::from_murkdown_chatuser(message, self.get_chatuser().as_ref())?;
+            let (text, entities) = md.build();
             TG.client()
-                .build_send_message(self.get_chat().get_id(), message.as_ref())
+                .build_send_message(self.get_chat().get_id(), text)
+                .entities(&entities)
                 .build()
                 .await?;
         }

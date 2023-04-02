@@ -2,7 +2,7 @@ use self::entities::{default_locks, locks};
 use crate::persist::admin::actions::ActionType;
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache};
 use crate::statics::{CONFIG, DB, REDIS};
-use crate::tg::admin_helpers::{mute, self_admin_or_die, IsAdmin};
+use crate::tg::admin_helpers::{ban_message, warn_user, IsAdmin};
 use crate::tg::command::{Command, Context, TextArg, TextArgs};
 use crate::tg::user::Username;
 use crate::util::error::{BotError, Result};
@@ -81,7 +81,13 @@ pub mod entities {
                 .alter_table(
                     Table::alter()
                         .table(locks::Entity)
-                        .modify_column(ColumnDef::new(locks::Column::LockAction).integer())
+                        .modify_column(
+                            ColumnDef::new(locks::Column::LockAction)
+                                .default(None::<LockAction>)
+                                .null()
+                                .integer(),
+                        )
+                        .add_column(ColumnDef::new(locks::Column::Reason).text())
                         .to_owned(),
                 )
                 .await?;
@@ -91,16 +97,17 @@ pub mod entities {
                     Table::create()
                         .table(default_locks::Entity)
                         .col(
-                            ColumnDef::new(locks::Column::Chat)
+                            ColumnDef::new(default_locks::Column::Chat)
                                 .big_integer()
                                 .primary_key(),
                         )
                         .col(
-                            ColumnDef::new(locks::Column::LockAction)
+                            ColumnDef::new(default_locks::Column::LockAction)
                                 .integer()
                                 .not_null()
                                 .default(ActionType::Delete),
                         )
+                        .col(ColumnDef::new(default_locks::Column::Duration).big_integer())
                         .to_owned(),
                 )
                 .await?;
@@ -119,6 +126,7 @@ pub mod entities {
                                 .not_null()
                                 .default(LockAction::Silent),
                         )
+                        .drop_column(locks::Column::Reason)
                         .to_owned(),
                 )
                 .await?;
@@ -133,6 +141,7 @@ pub mod entities {
         use serde::{Deserialize, Serialize};
 
         use crate::persist::admin::actions::ActionType;
+        use sea_orm::ActiveValue::{NotSet, Set};
 
         #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
         pub enum Relation {}
@@ -151,6 +160,17 @@ pub mod entities {
             pub chat: i64,
             #[sea_orm(default = ActionType::Delete)]
             pub lock_action: ActionType,
+            pub duration: Option<i64>,
+        }
+
+        impl Model {
+            pub fn default_from_chat(chat: i64) -> ActiveModel {
+                ActiveModel {
+                    chat: Set(chat),
+                    lock_action: NotSet,
+                    duration: NotSet,
+                }
+            }
         }
     }
 
@@ -165,12 +185,15 @@ pub mod entities {
         pub enum LockType {
             #[sea_orm(num_value = 1)]
             Premium,
+            #[sea_orm(num_value = 2)]
+            Link,
         }
 
         impl LockType {
-            pub fn get_name(&self) -> String {
+            pub fn get_name(&self) -> &str {
                 match self {
-                    Self::Premium => "Premium mambers".to_owned(),
+                    Self::Premium => "Premium mambers",
+                    Self::Link => "Web links",
                 }
             }
         }
@@ -195,6 +218,7 @@ pub mod entities {
             pub lock_type: LockType,
             #[sea_orm(default = ActionType::Delete)]
             pub lock_action: Option<ActionType>,
+            pub reason: Option<String>,
         }
 
         #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -265,6 +289,7 @@ async fn set_lock(message: &Message, locktype: LockType, user: &User) -> Result<
         chat: Set(message.get_chat().get_id()),
         lock_type: Set(locktype),
         lock_action: NotSet,
+        reason: NotSet,
     };
     let res = locks::Entity::insert(model)
         .on_conflict(
@@ -283,15 +308,21 @@ fn get_default_key(chat: &Chat) -> String {
     format!("daction:{}", chat.get_id())
 }
 
-async fn get_default_action(chat: &Chat) -> Result<ActionType> {
+async fn get_default_settings(chat: &Chat) -> Result<default_locks::Model> {
     let chat_id = chat.get_id();
     let key = get_default_key(chat);
     default_cache_query(
         |_, _| async move {
-            let model = default_locks::Entity::find_by_id(chat_id)
-                .one(DB.deref())
-                .await?;
-            Ok(model.map(|v| v.lock_action).unwrap_or(ActionType::Delete))
+            let model =
+                default_locks::Entity::insert(default_locks::Model::default_from_chat(chat_id))
+                    .on_conflict(
+                        OnConflict::column(default_locks::Column::Chat)
+                            .do_nothing()
+                            .to_owned(),
+                    )
+                    .exec_with_returning(DB.deref())
+                    .await?;
+            Ok(model)
         },
         Duration::seconds(CONFIG.timing.cache_timeout as i64),
     )
@@ -303,6 +334,7 @@ async fn set_default_action(chat: &Chat, lock_action: ActionType) -> Result<()> 
     let model = default_locks::Model {
         chat: chat.get_id(),
         lock_action,
+        duration: None,
     };
     let key = get_default_key(chat);
     default_locks::Entity::insert(model.cache(&key).await?)
@@ -328,6 +360,7 @@ async fn set_lock_action(
         chat: message.get_chat().get_id(),
         lock_type: locktype,
         lock_action: Some(lockaction),
+        reason: None,
     };
     locks::Entity::insert(model.cache(key).await?)
         .on_conflict(
@@ -345,16 +378,18 @@ fn locktype_from_args<'a>(
     chat: i64,
 ) -> (Option<LockType>, Option<ActionType>) {
     if let Some(&Command { ref args, .. }) = cmd {
-        match args.args.first() {
-            Some(TextArg::Arg("premium")) => (
-                Some(LockType::Premium),
-                args.args
-                    .get(1)
-                    .map(|v| ActionType::from_str(v.get_text(), chat).ok())
-                    .flatten(),
-            ),
-            _ => (None, None),
-        }
+        let action = args
+            .args
+            .get(1)
+            .map(|v| ActionType::from_str(v.get_text(), chat).ok())
+            .flatten();
+        let arg = match args.args.first() {
+            Some(TextArg::Arg("premium")) => Some(LockType::Premium),
+            Some(TextArg::Arg("link")) => Some(LockType::Link),
+            _ => None,
+        };
+
+        (arg, action)
     } else {
         (None, None)
     }
@@ -373,7 +408,7 @@ async fn handle_lock<'a>(message: &Message, cmd: &Option<&Command<'a>>, user: &U
     user.admin_or_die(message.get_chat_ref()).await?;
     match locktype_from_args(cmd, message.get_chat().get_id()) {
         (Some(lock), None) => {
-            let t = lock.get_name();
+            let t = lock.get_name().to_owned();
             set_lock(message, lock, user).await?;
 
             message
@@ -405,7 +440,7 @@ async fn handle_unlock<'a>(
     let lang = get_chat_lang(message.get_chat().get_id());
     user.admin_or_die(message.get_chat_ref()).await?;
     if let (Some(lock), _) = locktype_from_args(cmd, message.get_chat().get_id()) {
-        let name = lock.get_name();
+        let name = lock.get_name().to_owned();
         clear_lock(message, lock).await?;
         message.reply(lang_fmt!(lang, "clearedlock", name)).await?;
     } else {
@@ -435,36 +470,6 @@ async fn handle_list(message: &Message, user: &User) -> Result<()> {
     Ok(())
 }
 
-async fn handle_action(message: &Message, lockaction: ActionType) -> Result<()> {
-    self_admin_or_die(message.get_chat_ref()).await?;
-
-    if let Some(user) = message.get_from() {
-        if user.is_admin(message.get_chat_ref()).await? {
-            return Err(BotError::speak(
-                "Premium user detected, but I can't ban an admin... cry.",
-                message.get_chat().get_id(),
-            ));
-        }
-        match lockaction {
-            ActionType::Mute => {
-                mute(message.get_chat_ref(), &user, None).await?;
-                message.reply("Muted premium user").await?;
-            }
-            ActionType::Warn => {
-                message
-                    .reply("Warns not implemented, you lucky dawg")
-                    .await?;
-            }
-            _ => (),
-        };
-    }
-    TG.client()
-        .build_delete_message(message.get_chat().get_id(), message.get_message_id())
-        .build()
-        .await?;
-    Ok(())
-}
-
 async fn lock_action<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
     let chat_id = message.get_chat().get_id();
     let lang = get_chat_lang(chat_id).await?;
@@ -483,16 +488,6 @@ async fn lock_action<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
 async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
     if let Some((cmd, _, args, message)) = ctx.cmd() {
         let command = ctx.command.as_ref();
-        if is_premium(message) {
-            if let Some(lock) = get_lock(message, LockType::Premium).await? {
-                if let Some(action) = lock.lock_action {
-                    handle_action(message, action).await?;
-                } else {
-                    let action = get_default_action(&message.get_chat()).await?;
-                    handle_action(message, action).await?;
-                }
-            }
-        }
         if let Some(user) = message.get_from() {
             match cmd {
                 "lock" => handle_lock(message, &command, &user).await?,
@@ -506,6 +501,130 @@ async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
     Ok(())
 }
 
-pub async fn handle_update<'a>(_: &UpdateExt, cmd: &Context<'a>) -> Result<()> {
+#[inline(always)]
+async fn update_action(
+    message: &Message,
+    locktype: LockType,
+    action: &mut Option<ActionType>,
+    locks: &mut Vec<LockType>,
+    p: bool,
+) -> Result<()> {
+    if p {
+        let newaction = get_lock(message, locktype.clone()).await?;
+        let newaction = if let Some(action) = newaction.map(|v| v.lock_action).flatten() {
+            Some(action)
+        } else {
+            Some(
+                get_default_settings(message.get_chat_ref())
+                    .await?
+                    .lock_action,
+            )
+        };
+        log::info!("comparing {:?} {:?}", newaction, action);
+        if newaction > *action {
+            *action = newaction;
+        }
+        locks.push(locktype);
+    }
+
+    Ok(())
+}
+
+async fn action_from_update(update: &UpdateExt) -> Result<(Option<ActionType>, Vec<LockType>)> {
+    let mut action: Option<ActionType> = None;
+    let mut locks = Vec::<LockType>::new();
+    match update {
+        UpdateExt::Message(ref message) => {
+            update_action(
+                message,
+                LockType::Link,
+                &mut action,
+                &mut locks,
+                is_link(message),
+            )
+            .await?;
+
+            update_action(
+                message,
+                LockType::Premium,
+                &mut action,
+                &mut locks,
+                is_premium(message),
+            )
+            .await?;
+        }
+        _ => (),
+    }
+    Ok((action, locks))
+}
+
+fn is_link(message: &Message) -> bool {
+    if let Some(entities) = message.get_entities_ref() {
+        for entity in entities {
+            match entity.get_tg_type_ref() {
+                "url" => return true,
+                "text_link" => return true,
+                _ => (),
+            }
+        }
+    }
+    false
+}
+
+async fn handle_user_event(update: &UpdateExt) -> Result<()> {
+    if let (Some(action), locks) = action_from_update(update).await? {
+        match update {
+            UpdateExt::Message(ref message) => {
+                let default = get_default_settings(message.get_chat_ref()).await?;
+                let lang = get_chat_lang(message.get_chat().get_id()).await?;
+                let reasons = locks
+                    .into_iter()
+                    .map(|v| lang_fmt!(lang, "lockedinchat", v.get_name()))
+                    .collect::<Vec<String>>()
+                    .join("\n");
+                log::info!("action! {}", action);
+                match action {
+                    ActionType::Delete => {}
+                    ActionType::Ban => {
+                        ban_message(&message, default.duration.map(|v| Duration::seconds(v)))
+                            .await?;
+                        message.speak(lang_fmt!(lang, "lockban", reasons)).await?;
+                    }
+                    ActionType::Warn => {
+                        if let Some(chat) = message.get_sender_chat() {
+                            TG.client
+                                .build_ban_chat_sender_chat(
+                                    message.get_chat().get_id(),
+                                    chat.get_id(),
+                                )
+                                .build()
+                                .await?;
+                        } else if let Some(user) = message.get_from() {
+                            warn_user(
+                                message,
+                                &user,
+                                None,
+                                &default.duration.map(|v| Duration::seconds(v)),
+                            )
+                            .await?;
+                            message.speak(lang_fmt!(lang, "lockwarn", reasons)).await?;
+                        }
+                    }
+                    _ => (),
+                }
+
+                TG.client
+                    .build_delete_message(message.get_chat().get_id(), message.get_message_id())
+                    .build()
+                    .await?;
+            }
+            _ => (),
+        }
+    }
+    Ok(())
+}
+
+pub async fn handle_update<'a>(update: &UpdateExt, cmd: &Context<'a>) -> Result<()> {
+    handle_user_event(update).await?;
     handle_command(cmd).await
 }

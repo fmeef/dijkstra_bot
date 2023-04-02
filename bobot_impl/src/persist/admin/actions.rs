@@ -3,7 +3,7 @@ use chrono::Utc;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(EnumIter, DeriveActiveEnum, Serialize, Deserialize, Clone, PartialEq, Debug)]
+#[derive(EnumIter, DeriveActiveEnum, Serialize, Deserialize, Clone, Debug)]
 #[sea_orm(rs_type = "i32", db_type = "Integer")]
 pub enum ActionType {
     #[sea_orm(num_value = 1)]
@@ -77,6 +77,16 @@ impl ActionType {
         }
     }
 
+    pub fn get_severity(&self) -> u32 {
+        match self {
+            ActionType::Shame => 0,
+            ActionType::Delete => 1,
+            ActionType::Warn => 2,
+            ActionType::Mute => 3,
+            ActionType::Ban => 4,
+        }
+    }
+
     pub fn from_str_err<T, F>(s: T, err: F) -> crate::util::error::Result<Self>
     where
         F: FnOnce() -> BotError,
@@ -92,5 +102,25 @@ impl ActionType {
         }
     }
 }
+
+impl PartialOrd for ActionType {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.get_severity().partial_cmp(&other.get_severity())
+    }
+}
+
+impl Ord for ActionType {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.get_severity().cmp(&other.get_severity())
+    }
+}
+
+impl PartialEq for ActionType {
+    fn eq(&self, other: &Self) -> bool {
+        self.get_severity() == other.get_severity()
+    }
+}
+
+impl Eq for ActionType {}
 
 impl ActiveModelBehavior for ActiveModel {}
