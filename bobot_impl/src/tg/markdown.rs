@@ -386,20 +386,25 @@ impl MarkupBuilder {
         let n = entity_type.get_text().encode_utf16().count() as i64;
 
         self.text.push_str(entity_type.get_text());
-        let entity =
-            MessageEntityBuilder::new(self.offset, n).set_type(entity_type.get_type().to_owned());
-        let entity = match entity_type.markup_type {
-            MarkupType::TextLink(link) => entity.set_url(link),
-            MarkupType::TextMention(mention) => entity.set_user(mention),
-            MarkupType::Pre(pre) => entity.set_language(pre),
-            MarkupType::CustomEmoji(emoji) => entity.set_custom_emoji_id(emoji),
-            _ => entity,
-        };
+        match entity_type.markup_type {
+            MarkupType::Text => {}
+            _ => {
+                let entity = MessageEntityBuilder::new(self.offset, n)
+                    .set_type(entity_type.get_type().to_owned());
+                let entity = match entity_type.markup_type {
+                    MarkupType::TextLink(link) => entity.set_url(link),
+                    MarkupType::TextMention(mention) => entity.set_user(mention),
+                    MarkupType::Pre(pre) => entity.set_language(pre),
+                    MarkupType::CustomEmoji(emoji) => entity.set_custom_emoji_id(emoji),
+                    _ => entity,
+                };
 
-        let entity = entity.build();
+                let entity = entity.build();
+                self.entities.push(entity);
+            }
+        }
+
         self.offset += entity_type.advance.unwrap_or(n);
-        self.entities.push(entity);
-
         self
     }
 

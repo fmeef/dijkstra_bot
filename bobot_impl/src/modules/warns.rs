@@ -1,19 +1,15 @@
-use crate::persist::admin::actions;
 use crate::tg::command::Context;
 use crate::tg::user::Username;
 use crate::util::error::BotError;
 use crate::{
     metadata::metadata,
     tg::admin_helpers::*,
-    tg::{
-        command::{Entities, TextArgs},
-        dialog::dialog_or_default,
-    },
+    tg::command::{Entities, TextArgs},
     util::error::Result,
     util::string::{get_chat_lang, Speak},
 };
 use botapi::gen_types::{Message, UpdateExt};
-use chrono::Duration;
+
 use futures::FutureExt;
 use humantime::format_duration;
 use macros::lang_fmt;
@@ -60,33 +56,20 @@ pub async fn warn<'a>(
                 })
                 .flatten();
 
-            let dialog = dialog_or_default(message.get_chat_ref()).await?;
-            let time = dialog.warn_time.map(|t| Duration::seconds(t));
-            let count = warn_user(message, user, reason.map(|v| v.to_owned()), &time).await?;
-
-            if count >= dialog.warn_limit {
-                match dialog.action_type {
-                    actions::ActionType::Mute => warn_mute(message, user, count).await,
-                    actions::ActionType::Ban => warn_ban(message, user, count).await,
-                    actions::ActionType::Shame => warn_shame(message, user, count).await,
-                    actions::ActionType::Warn => Ok(()),
-                    actions::ActionType::Delete => Ok(()),
-                }?;
-            }
-
+            let (count, limit) = warn_with_action(message, user, reason, None).await?;
             let name = user.name_humanreadable();
             if let Some(reason) = reason {
                 message
                     .reply(format!(
-                        "Yowzers! Warned user {} for \"{}\", total warns: {}",
-                        name, reason, count
+                        "Yowzers! Warned user {} for \"{}\", total warns: {}/{}",
+                        name, reason, count, limit
                     ))
                     .await?;
             } else {
                 message
                     .reply(format!(
-                        "Yowzers! Warned user {}, total warns: {}",
-                        name, count
+                        "Yowzers! Warned user {}, total warns: {}/{}",
+                        name, count, limit
                     ))
                     .await?;
             }

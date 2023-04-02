@@ -2,7 +2,7 @@ use self::entities::{default_locks, locks};
 use crate::persist::admin::actions::ActionType;
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache};
 use crate::statics::{CONFIG, DB, REDIS};
-use crate::tg::admin_helpers::{ban_message, warn_user, IsAdmin};
+use crate::tg::admin_helpers::{ban_message, warn_with_action, IsAdmin};
 use crate::tg::command::{Command, Context, TextArg, TextArgs};
 use crate::tg::user::Username;
 use crate::util::error::{BotError, Result};
@@ -600,14 +600,16 @@ async fn handle_user_event(update: &UpdateExt) -> Result<()> {
                                 .build()
                                 .await?;
                         } else if let Some(user) = message.get_from() {
-                            warn_user(
+                            let (count, limit) = warn_with_action(
                                 message,
                                 &user,
                                 None,
-                                &default.duration.map(|v| Duration::seconds(v)),
+                                default.duration.map(|v| Duration::seconds(v)),
                             )
                             .await?;
-                            message.speak(lang_fmt!(lang, "lockwarn", reasons)).await?;
+                            if count < limit {
+                                message.speak(lang_fmt!(lang, "lockwarn", reasons)).await?;
+                            }
                         }
                     }
                     _ => (),

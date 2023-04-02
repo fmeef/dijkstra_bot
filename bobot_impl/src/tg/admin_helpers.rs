@@ -34,7 +34,7 @@ use sea_orm::{
 
 use super::{
     command::{ArgSlice, Entities, EntityArg, TextArgs},
-    dialog::get_dialog_key,
+    dialog::{dialog_or_default, get_dialog_key},
     markdown::MarkupType,
     user::{get_me, get_user_username, GetUser, Username},
 };
@@ -266,6 +266,29 @@ pub async fn change_permissions_message<'a>(
     .await
 }
 
+pub async fn warn_with_action(
+    message: &Message,
+    user: &User,
+    reason: Option<&str>,
+    duration: Option<Duration>,
+) -> Result<(i32, i32)> {
+    let dialog = dialog_or_default(message.get_chat_ref()).await?;
+    let time = dialog.warn_time.map(|t| Duration::seconds(t));
+    let count = warn_user(message, user, reason.map(|v| v.to_owned()), &time).await?;
+
+    if count >= dialog.warn_limit {
+        match dialog.action_type {
+            actions::ActionType::Mute => warn_mute(message, user, count, duration).await,
+            actions::ActionType::Ban => warn_ban(message, user, count, duration).await,
+            actions::ActionType::Shame => warn_shame(message, user, count).await,
+            actions::ActionType::Warn => Ok(()),
+            actions::ActionType::Delete => Ok(()),
+        }?;
+    }
+
+    Ok((count, dialog.warn_limit))
+}
+
 pub async fn set_warn_time(chat: &Chat, time: i64) -> Result<()> {
     let chat_id = chat.get_id();
 
@@ -367,9 +390,14 @@ pub async fn get_action(chat: &Chat, user: &User) -> Result<Option<actions::Mode
     Ok(res)
 }
 
-pub async fn warn_ban(message: &Message, user: &User, count: i32) -> Result<()> {
+pub async fn warn_ban(
+    message: &Message,
+    user: &User,
+    count: i32,
+    duration: Option<Duration>,
+) -> Result<()> {
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
-    ban(message, user, None).await?;
+    ban(message, user, duration).await?;
     message
         .reply(&lang_fmt!(
             lang,
@@ -381,9 +409,14 @@ pub async fn warn_ban(message: &Message, user: &User, count: i32) -> Result<()> 
     Ok(())
 }
 
-pub async fn warn_mute(message: &Message, user: &User, count: i32) -> Result<()> {
+pub async fn warn_mute(
+    message: &Message,
+    user: &User,
+    count: i32,
+    duration: Option<Duration>,
+) -> Result<()> {
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
-    mute(message.get_chat_ref(), user, None).await?;
+    mute(message.get_chat_ref(), user, duration).await?;
 
     let name = user.name_humanreadable();
     let mention = MarkupType::TextMention(user.to_owned()).text(&name);

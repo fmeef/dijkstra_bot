@@ -13,13 +13,10 @@ use crate::tg::admin_helpers::ban;
 use crate::tg::admin_helpers::is_dm;
 use crate::tg::admin_helpers::mute;
 use crate::tg::admin_helpers::parse_duration_str;
-use crate::tg::admin_helpers::warn_ban;
-use crate::tg::admin_helpers::warn_mute;
-use crate::tg::admin_helpers::warn_shame;
-use crate::tg::admin_helpers::warn_user;
 use crate::tg::admin_helpers::IsAdmin;
 use crate::tg::admin_helpers::IsGroupAdmin;
 
+use crate::tg::admin_helpers::warn_with_action;
 use crate::tg::command::Context;
 use crate::tg::command::TextArgs;
 
@@ -562,31 +559,26 @@ async fn warn(message: &Message, user: &User, reason: Option<String>) -> Result<
     let dialog = dialog_or_default(message.get_chat_ref()).await?;
 
     let time = dialog.warn_time.map(|t| Duration::seconds(t));
-    let count = warn_user(message, user, reason.clone(), &time).await?;
-
-    if count >= dialog.warn_limit {
-        match dialog.action_type {
-            ActionType::Mute => warn_mute(message, user, count).await,
-            ActionType::Ban => warn_ban(message, user, count).await,
-            ActionType::Shame => warn_shame(message, user, count).await,
-            ActionType::Warn => Ok(()),
-            ActionType::Delete => Ok(()),
-        }?;
-    }
-
+    let (count, limit) = warn_with_action(
+        message,
+        user,
+        reason.clone().as_ref().map(|v| v.as_str()),
+        time,
+    )
+    .await?;
     let name = user.name_humanreadable();
     if let Some(reason) = reason {
         message
             .reply(format!(
-                "Yowzers! Warned user {} for \"{}\", total warns: {}",
-                name, reason, count
+                "Yowzers! Warned user {} for \"{}\", total warns: {}/{}",
+                name, reason, count, limit
             ))
             .await?;
     } else {
         message
             .reply(format!(
-                "Yowzers! Warned user {}, total warns: {}",
-                name, count
+                "Yowzers! Warned user {}, total warns: {}/{}",
+                name, count, limit
             ))
             .await?;
     }
