@@ -30,6 +30,7 @@ pub async fn report<'a>(message: &Message, entities: &Entities<'a>) -> Result<()
     if should_ignore_chat(message.get_chat().get_id()).await? {
         return Ok(());
     }
+    is_group_or_die(message.get_chat_ref()).await?;
     if message.get_from().is_admin(message.get_chat_ref()).await? {
         return Err(BotError::Generic("Admins can't warn".into()));
     }
@@ -78,8 +79,6 @@ pub async fn report<'a>(message: &Message, entities: &Entities<'a>) -> Result<()
 
 async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
     if let Some((cmd, entities, _, message)) = ctx.cmd() {
-        log::info!("admin command {}", cmd);
-
         match cmd {
             "report" => report(message, &entities).await,
             _ => Ok(()),

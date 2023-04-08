@@ -80,6 +80,7 @@ async fn demote<'a>(message: &Message, entities: &Entities<'a>) -> Result<()> {
 }
 
 async fn listadmins(message: &Message) -> Result<()> {
+    is_group_or_die(message.get_chat_ref()).await?;
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
     let admins = message.get_chat().get_cached_admins().await?;
     let header = lang_fmt!(lang, "foundadmins", admins.len());
@@ -97,6 +98,7 @@ async fn listadmins(message: &Message) -> Result<()> {
 }
 
 async fn admincache(message: &Message) -> Result<()> {
+    is_group_or_die(message.get_chat_ref()).await?;
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
     message.get_chat().refresh_cached_admins().await?;
     message.speak(lang_fmt!(lang, "refreshac")).await?;

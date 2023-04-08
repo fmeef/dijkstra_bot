@@ -122,10 +122,7 @@ pub async fn clear<'a>(message: &Message, entities: &Entities<'a>) -> Result<()>
 }
 
 async fn set_time<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
-    message
-        .get_from()
-        .admin_or_die(message.get_chat_ref())
-        .await?;
+    message.group_admin_or_die().await?;
     if let Some(time) = parse_duration(&Some(args.as_slice()), message.get_chat().get_id())? {
         set_warn_time(message.get_chat_ref(), time.num_seconds()).await?;
         let time = format_duration(time.to_std()?);
@@ -137,10 +134,7 @@ async fn set_time<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
 }
 
 async fn cmd_warn_mode<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
-    message
-        .get_from()
-        .admin_or_die(message.get_chat_ref())
-        .await?;
+    message.group_admin_or_die().await?;
     set_warn_mode(message.get_chat_ref(), args.text).await?;
     message
         .reply(format!("Set warn mode {}", args.text))
@@ -150,8 +144,6 @@ async fn cmd_warn_mode<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()>
 
 async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
     if let Some((cmd, entities, args, message)) = ctx.cmd() {
-        log::info!("admin command {}", cmd);
-
         match cmd {
             "warn" => warn(message, &entities, args).await,
             "warns" => warns(message, &entities).await,

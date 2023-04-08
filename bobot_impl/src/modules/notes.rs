@@ -1,6 +1,7 @@
 use crate::metadata::metadata;
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache};
 use crate::statics::{DB, REDIS};
+use crate::tg::admin_helpers::is_group_or_die;
 use crate::tg::command::{get_content, Context, InputType, TextArg, TextArgs};
 
 use crate::util::string::Speak;
@@ -145,8 +146,6 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
 
 async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
     if let Some((cmd, _, args, message)) = ctx.cmd() {
-        log::info!("admin command {}", cmd);
-
         match cmd {
             "save" => save(message, &args).await,
             "get" => get(message, &args).await,
@@ -163,6 +162,7 @@ async fn print_note(message: &Message, note: entities::notes::Model) -> Result<(
 }
 
 async fn get<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
+    is_group_or_die(message.get_chat_ref()).await?;
     let name = match args.args.first() {
         Some(TextArg::Arg(name)) => Some(name),
         Some(TextArg::Quote(name)) => Some(name),
@@ -200,6 +200,7 @@ async fn get<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
 }
 
 async fn delete<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
+    is_group_or_die(message.get_chat_ref()).await?;
     let model = get_model(message, args)?;
     let key = format!("note:{}:{}", message.get_chat().get_id(), model.name);
     log::info!("delete key: {}", key);
@@ -212,6 +213,8 @@ async fn delete<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
     Ok(())
 }
 async fn save<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
+    is_group_or_die(message.get_chat_ref()).await?;
+
     let model = get_model(message, args)?;
     let key = format!("note:{}:{}", message.get_chat().get_id(), model.name);
     log::info!("save key: {}", key);

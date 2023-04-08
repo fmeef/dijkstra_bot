@@ -80,6 +80,7 @@ pub async fn mute_cmd<'a>(
     entities: &Entities<'a>,
     args: &TextArgs<'a>,
 ) -> Result<()> {
+    message.group_admin_or_die().await?;
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
     let permissions = ChatPermissionsBuilder::new()
         .set_can_send_messages(false)
@@ -114,6 +115,7 @@ pub async fn unmute_cmd<'a>(
     entities: &Entities<'a>,
     args: &'a TextArgs<'a>,
 ) -> Result<()> {
+    message.group_admin_or_die().await?;
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
 
     let permissions = ChatPermissionsBuilder::new()

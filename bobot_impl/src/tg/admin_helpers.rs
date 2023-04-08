@@ -154,7 +154,6 @@ pub async fn action_message<'a, F>(
 where
     for<'b> F: FnOnce(&'b Message, &'b User, Option<ArgSlice<'b>>) -> BoxFuture<'b, Result<()>>,
 {
-    message.group_admin_or_die().await?;
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
 
     if let Some(user) = message
@@ -253,7 +252,6 @@ pub async fn change_permissions_message<'a>(
     permissions: ChatPermissions,
     args: &'a TextArgs<'a>,
 ) -> Result<User> {
-    message.group_admin_or_die().await?;
     action_message(message, entities, Some(args), |message, user, args| {
         async move {
             let duration = parse_duration(&args, message.get_chat().get_id())?;
@@ -1044,8 +1042,9 @@ impl IsGroupAdmin for Message {
     }
 
     async fn group_admin_or_die(&self) -> Result<()> {
-        self_admin_or_die(self.get_chat_ref()).await?;
         is_group_or_die(self.get_chat_ref()).await?;
+        self_admin_or_die(self.get_chat_ref()).await?;
+
         if self.is_group_admin().await? {
             Ok(())
         } else if let Some(user) = self.get_from() {
@@ -1242,6 +1241,9 @@ impl GetCachedAdmins for Chat {
     }
 
     async fn refresh_cached_admins(&self) -> Result<HashMap<i64, ChatMember>> {
+        if let Err(_) = is_group_or_die(self).await {
+            return Ok(HashMap::new());
+        }
         let admins = TG
             .client()
             .build_get_chat_administrators(self.get_id())

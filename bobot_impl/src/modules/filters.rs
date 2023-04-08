@@ -10,7 +10,7 @@ use crate::statics::CONFIG;
 use crate::statics::DB;
 use crate::statics::REDIS;
 use crate::tg::admin_helpers::IsAdmin;
-
+use crate::tg::admin_helpers::IsGroupAdmin;
 use crate::tg::command::Context;
 use crate::tg::command::TextArgs;
 
@@ -226,10 +226,7 @@ fn get_filter_hash_key(message: &Message) -> String {
 }
 
 async fn delete_trigger(message: &Message, trigger: &str) -> Result<()> {
-    message
-        .get_from()
-        .admin_or_die(message.get_chat_ref())
-        .await?;
+    message.group_admin_or_die().await?;
     let trigger = &trigger.to_lowercase();
     let hash_key = get_filter_hash_key(message);
     let key: Option<i64> = REDIS
@@ -484,11 +481,7 @@ async fn list_triggers(message: &Message) -> Result<()> {
 }
 
 async fn stopall(message: &Message) -> Result<()> {
-    message
-        .get_from()
-        .admin_or_die(message.get_chat_ref())
-        .await?;
-
+    message.group_admin_or_die().await?;
     filters::Entity::delete_many()
         .filter(filters::Column::Chat.eq(message.get_chat().get_id()))
         .exec(DB.deref())
