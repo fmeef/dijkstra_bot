@@ -7,9 +7,9 @@ edition = "2021"
 
 [dependencies]
 dotenv = "0.15.0"
-tokio = { version = "1.26.0", features = ["full", "net", "socket2", "io-util", "tokio-macros"] }
+tokio = { version = "1.27.0", features = ["full", "net", "socket2", "io-util", "tokio-macros"] }
 migration = { path = "migration" }
 bobot_impl = { path = "bobot_impl" }
-openssl = { version = "0.10.48", features = ["vendored"] }
-clap = { version = "4.1.13", features = ["derive"] }
+openssl = { version = "0.10.49", features = ["vendored"] }
+clap = { version = "4.2.1", features = ["derive"] }
 markdown = "0.3.0"
