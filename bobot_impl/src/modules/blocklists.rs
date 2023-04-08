@@ -610,10 +610,9 @@ async fn handle_trigger(message: &Message) -> Result<()> {
                         warn(message, &user, res.reason).await?;
                     }
                     ActionType::Shame => (),
-                    ActionType::Delete => {
-                        delete(message).await?;
-                    }
+                    ActionType::Delete => (),
                 }
+                delete(message).await?;
             }
         }
     }
