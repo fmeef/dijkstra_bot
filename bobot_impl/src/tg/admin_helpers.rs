@@ -49,6 +49,39 @@ pub trait IntoChatUser {
     fn get_chatuser_user<'a>(&'a self, user: Cow<'a, User>) -> ChatUser<'a>;
 }
 
+pub trait DeleteAfterTime {
+    fn delete_after_time(&self, duration: Duration);
+}
+
+impl DeleteAfterTime for Message {
+    fn delete_after_time(&self, duration: Duration) {
+        let chat_id = self.get_chat().get_id();
+        let message_id = self.get_message_id();
+
+        tokio::spawn(async move {
+            tokio::time::sleep(duration.to_std()?).await;
+            if let Err(err) = TG
+                .client
+                .build_delete_message(chat_id, message_id)
+                .build()
+                .await
+            {
+                BotError::from(err).record_stats();
+            }
+
+            Ok::<(), BotError>(())
+        });
+    }
+}
+
+impl DeleteAfterTime for Option<Message> {
+    fn delete_after_time(&self, duration: Duration) {
+        if let Some(message) = self {
+            message.delete_after_time(duration);
+        }
+    }
+}
+
 impl IntoChatUser for Message {
     fn get_chatuser<'a>(&'a self) -> Option<ChatUser<'a>> {
         self.get_from_ref().map(|f| ChatUser {

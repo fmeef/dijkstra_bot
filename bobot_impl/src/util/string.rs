@@ -79,100 +79,117 @@ pub async fn ignore_chat(chat: i64, time: &Duration) -> Result<()> {
 
 #[async_trait]
 pub trait Speak {
-    async fn speak<T>(&self, message: T) -> Result<()>
+    async fn speak<T>(&self, message: T) -> Result<Option<Message>>
     where
         T: AsRef<str> + Send + Sync;
 
-    async fn speak_fmt<'a>(&self, messsage: CallSendMessage<'a>) -> Result<()>;
-    async fn reply_fmt<'a>(&self, messsage: CallSendMessage<'a>) -> Result<()>;
-    async fn reply<T>(&self, message: T) -> Result<()>
+    async fn speak_fmt<'a>(&self, messsage: CallSendMessage<'a>) -> Result<Option<Message>>;
+    async fn reply_fmt<'a>(&self, messsage: CallSendMessage<'a>) -> Result<Option<Message>>;
+    async fn reply<T>(&self, message: T) -> Result<Option<Message>>
     where
         T: AsRef<str> + Send + Sync;
 }
 
 #[async_trait]
 impl Speak for Message {
-    async fn speak<T>(&self, message: T) -> Result<()>
+    async fn speak<T>(&self, message: T) -> Result<Option<Message>>
     where
         T: AsRef<str> + Send + Sync,
     {
         if !should_ignore_chat(self.get_chat().get_id()).await? {
             let md = MarkupBuilder::from_murkdown_chatuser(message, self.get_chatuser().as_ref())?;
             let (text, entities) = md.build();
-            TG.client()
+            let m = TG
+                .client()
                 .build_send_message(self.get_chat().get_id(), text)
                 .entities(&entities)
                 .build()
                 .await?;
+            Ok(Some(m))
+        } else {
+            Ok(None)
         }
-        Ok(())
     }
 
-    async fn speak_fmt<'a>(&self, message: CallSendMessage<'a>) -> Result<()> {
+    async fn speak_fmt<'a>(&self, message: CallSendMessage<'a>) -> Result<Option<Message>> {
         if !should_ignore_chat(self.get_chat().get_id()).await? {
-            message.build().await?;
+            let m = message.build().await?;
+            Ok(Some(m))
+        } else {
+            Ok(None)
         }
-        Ok(())
     }
 
-    async fn reply_fmt<'a>(&self, message: CallSendMessage<'a>) -> Result<()> {
+    async fn reply_fmt<'a>(&self, message: CallSendMessage<'a>) -> Result<Option<Message>> {
         if !should_ignore_chat(self.get_chat().get_id()).await? {
-            message
+            let m = message
                 .reply_to_message_id(self.get_message_id())
                 .build()
                 .await?;
+            Ok(Some(m))
+        } else {
+            Ok(None)
         }
-        Ok(())
     }
 
-    async fn reply<T>(&self, message: T) -> Result<()>
+    async fn reply<T>(&self, message: T) -> Result<Option<Message>>
     where
         T: AsRef<str> + Send + Sync,
     {
         if !should_ignore_chat(self.get_chat().get_id()).await? {
             let md = MarkupBuilder::from_murkdown_chatuser(message, self.get_chatuser().as_ref())?;
             let (text, entities) = md.build();
-            TG.client()
+            let m = TG
+                .client()
                 .build_send_message(self.get_chat().get_id(), text)
                 .entities(entities)
                 .reply_to_message_id(self.get_message_id())
                 .build()
                 .await?;
+            Ok(Some(m))
+        } else {
+            Ok(None)
         }
-        Ok(())
     }
 }
 
 #[async_trait]
 impl Speak for Chat {
-    async fn speak<T>(&self, message: T) -> Result<()>
+    async fn speak<T>(&self, message: T) -> Result<Option<Message>>
     where
         T: AsRef<str> + Send + Sync,
     {
         if !should_ignore_chat(self.get_id()).await? {
-            TG.client()
+            let m = TG
+                .client()
                 .build_send_message(self.get_id(), message.as_ref())
                 .build()
                 .await?;
+            Ok(Some(m))
+        } else {
+            Ok(None)
         }
-        Ok(())
     }
 
-    async fn speak_fmt<'a>(&self, message: CallSendMessage<'a>) -> Result<()> {
+    async fn speak_fmt<'a>(&self, message: CallSendMessage<'a>) -> Result<Option<Message>> {
         if !should_ignore_chat(self.get_id()).await? {
-            message.build().await?;
+            let m = message.build().await?;
+            Ok(Some(m))
+        } else {
+            Ok(None)
         }
-        Ok(())
     }
 
-    async fn reply_fmt<'a>(&self, message: CallSendMessage<'a>) -> Result<()> {
+    async fn reply_fmt<'a>(&self, message: CallSendMessage<'a>) -> Result<Option<Message>> {
         if !should_ignore_chat(self.get_id()).await? {
-            message.build().await?;
+            let m = message.build().await?;
+            Ok(Some(m))
+        } else {
+            Ok(None)
         }
-        Ok(())
     }
 
-    async fn reply<T>(&self, message: T) -> Result<()>
+    async fn reply<T>(&self, message: T) -> Result<Option<Message>>
     where
         T: AsRef<str> + Send + Sync,
     {

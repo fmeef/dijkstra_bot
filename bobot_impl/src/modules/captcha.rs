@@ -5,7 +5,9 @@ use self::entities::captchastate::{self, CaptchaType};
 use crate::metadata::metadata;
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache, RedisStr};
 use crate::statics::{CONFIG, DB, REDIS, TG};
-use crate::tg::admin_helpers::{kick, mute, parse_duration, unmute, IsAdmin, IsGroupAdmin};
+use crate::tg::admin_helpers::{
+    kick, mute, parse_duration, unmute, DeleteAfterTime, IsAdmin, IsGroupAdmin,
+};
 use crate::tg::button::{get_url, InlineKeyboardBuilder, OnPush};
 use crate::tg::command::{ArgSlice, Context, TextArgs};
 use crate::tg::user::{get_me, Username};
@@ -374,11 +376,15 @@ async fn button_captcha(message: &Message, unmute_chat: &Chat) -> Result<()> {
     unmute_button.on_push(|callback| async move {
         authorize_user(callback.get_from_ref(), &unmute_chat).await?;
         if let Some(message) = callback.get_message() {
-            message.speak("User unmuted!").await?;
+            message
+                .speak("User unmuted!")
+                .await?
+                .delete_after_time(Duration::minutes(5));
         }
         Ok(())
     });
-    TG.client()
+    let m = TG
+        .client()
         .build_send_message(
             message.get_chat().get_id(),
             "Push the button to unmute yourself",
@@ -390,13 +396,15 @@ async fn button_captcha(message: &Message, unmute_chat: &Chat) -> Result<()> {
         ))
         .build()
         .await?;
-
+    m.delete_after_time(Duration::minutes(5));
     Ok(())
 }
+
 async fn send_captcha_chooser(message: &Message) -> Result<()> {
     if let Some(user) = message.get_from() {
         let url = get_captcha_url(message.get_chat_ref(), &user).await?;
-        TG.client()
+        let nm = TG
+            .client()
             .build_send_message(
                 message.get_chat().get_id(),
                 "Solve this captcha to continue",
@@ -412,6 +420,7 @@ async fn send_captcha_chooser(message: &Message) -> Result<()> {
             ))
             .build()
             .await?;
+        nm.delete_after_time(Duration::minutes(5));
     }
     Ok(())
 }
