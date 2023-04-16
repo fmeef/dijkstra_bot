@@ -17,8 +17,8 @@ use crate::util::string::Speak;
 use base64::engine::general_purpose;
 use base64::Engine;
 use botapi::gen_types::{
-    CallbackQuery, Chat, EReplyMarkup, InlineKeyboardButton, InlineKeyboardButtonBuilder, Message,
-    UpdateExt, User,
+    CallbackQuery, Chat, ChatMember, ChatMemberMember, ChatMemberUpdated, EReplyMarkup,
+    InlineKeyboardButton, InlineKeyboardButtonBuilder, Message, UpdateExt, User,
 };
 use captcha::gen;
 use chrono::Duration;
@@ -263,21 +263,28 @@ async fn user_is_authorized(chat: i64, user: i64) -> Result<bool> {
 }
 
 async fn authorize_user(user: &User, unmumte_chat: &Chat) -> Result<()> {
-    let model = authorized::Model {
-        chat: unmumte_chat.get_id(),
-        user: user.get_id(),
-    };
     let key = auth_key(unmumte_chat.get_id());
-    REDIS.sq(|q| q.sadd(&key, user.get_id())).await?;
-    authorized::Entity::insert(model.into_active_model())
-        .on_conflict(OnConflict::new().do_nothing().to_owned())
-        .exec(DB.deref())
+    let (r, _): (i64, ()) = REDIS
+        .pipe(|q| {
+            q.sadd(&key, user.get_id())
+                .expire(&key, CONFIG.timing.cache_timeout)
+        })
         .await?;
-    unmute(unmumte_chat, user).await?;
+    if r == 1 {
+        let model = authorized::Model {
+            chat: unmumte_chat.get_id(),
+            user: user.get_id(),
+        };
+        authorized::Entity::insert(model.into_active_model())
+            .on_conflict(OnConflict::new().do_nothing().to_owned())
+            .exec(DB.deref())
+            .await?;
+        unmute(unmumte_chat, user).await?;
+    }
     Ok(())
 }
 
-async fn get_captcha_config(message: &Message) -> Result<Option<captchastate::Model>> {
+async fn get_captcha_config(message: &ChatMemberUpdated) -> Result<Option<captchastate::Model>> {
     let key = captcha_state_key(message.get_chat_ref());
     let chat = message.get_chat().get_id();
     let res = default_cache_query(
@@ -368,13 +375,13 @@ pub async fn get_captcha_url(chat: &Chat, user: &User) -> Result<String> {
     Ok(bs)
 }
 
-async fn button_captcha(message: &Message, unmute_chat: &Chat) -> Result<()> {
-    let unmute_chat = unmute_chat.clone();
+async fn button_captcha(unmute_chat: &Chat) -> Result<()> {
+    let chat = unmute_chat.clone();
     let unmute_button = InlineKeyboardButtonBuilder::new("Press me to unmute".to_owned())
         .set_callback_data(Uuid::new_v4().to_string())
         .build();
     unmute_button.on_push(|callback| async move {
-        authorize_user(callback.get_from_ref(), &unmute_chat).await?;
+        authorize_user(callback.get_from_ref(), &chat).await?;
         if let Some(message) = callback.get_message() {
             message
                 .speak("User unmuted!")
@@ -385,10 +392,7 @@ async fn button_captcha(message: &Message, unmute_chat: &Chat) -> Result<()> {
     });
     let m = TG
         .client()
-        .build_send_message(
-            message.get_chat().get_id(),
-            "Push the button to unmute yourself",
-        )
+        .build_send_message(unmute_chat.get_id(), "Push the button to unmute yourself")
         .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(
             InlineKeyboardBuilder::default()
                 .button(unmute_button)
@@ -400,28 +404,24 @@ async fn button_captcha(message: &Message, unmute_chat: &Chat) -> Result<()> {
     Ok(())
 }
 
-async fn send_captcha_chooser(message: &Message) -> Result<()> {
-    if let Some(user) = message.get_from() {
-        let url = get_captcha_url(message.get_chat_ref(), &user).await?;
-        let nm = TG
-            .client()
-            .build_send_message(
-                message.get_chat().get_id(),
-                "Solve this captcha to continue",
-            )
-            .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(
-                InlineKeyboardBuilder::default()
-                    .button(
-                        InlineKeyboardButtonBuilder::new("Captcha".to_owned())
-                            .set_url(url)
-                            .build(),
-                    )
-                    .build(),
-            ))
-            .build()
-            .await?;
-        nm.delete_after_time(Duration::minutes(5));
-    }
+async fn send_captcha_chooser(message: &ChatMemberMember, chat: &Chat) -> Result<()> {
+    let url = get_captcha_url(chat, &message.get_user()).await?;
+    let nm = TG
+        .client()
+        .build_send_message(chat.get_id(), "Solve this captcha to continue")
+        .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(
+            InlineKeyboardBuilder::default()
+                .button(
+                    InlineKeyboardButtonBuilder::new("Captcha".to_owned())
+                        .set_url(url)
+                        .build(),
+                )
+                .build(),
+        ))
+        .build()
+        .await?;
+    nm.delete_after_time(Duration::minutes(5));
+
     Ok(())
 }
 
@@ -635,66 +635,43 @@ async fn send_captcha(message: &Message, unmute_chat: Chat) -> Result<()> {
     Ok(())
 }
 
-async fn check_mambers<'a, T>(
-    message: &Message,
+async fn check_mambers<'a>(
+    message: &ChatMemberUpdated,
     config: &captchastate::Model,
-    mambers: T,
-) -> Result<()>
-where
-    T: Iterator<Item = &'a User>,
-{
+    mamber: &ChatMemberMember,
+) -> Result<()> {
     let me = get_me().await?;
-
-    if let Some(user) = message.get_from() {
-        if user.get_id() == me.get_id() || user.is_admin(message.get_chat_ref()).await? {
-            return Ok(());
-        }
-        if !user_is_authorized(message.get_chat().get_id(), user.get_id()).await? {
-            TG.client()
-                .build_delete_message(message.get_chat().get_id(), message.get_message_id())
-                .build()
-                .await?;
-        }
+    let user = message.get_from();
+    if user.get_id() == me.get_id() || user.is_admin(message.get_chat_ref()).await? {
+        return Ok(());
     }
-
-    let mut sent = false;
     let chat = message.get_chat();
-    for mamber in mambers {
-        if mamber.get_id() == me.get_id() || mamber.is_admin(message.get_chat_ref()).await? {
-            continue;
-        }
-        if !user_is_authorized(chat.get_id(), mamber.get_id()).await? {
-            mute(&chat, mamber, None).await?;
-            if let Some(kicktime) = config.kick_time {
-                let chatid = chat.get_id();
-                let userid = mamber.get_id();
-                tokio::spawn(async move {
-                    sleep(Duration::seconds(kicktime).to_std()?).await;
+    if !user_is_authorized(chat.get_id(), user.get_id()).await? {
+        mute(&chat, &user, None).await?;
+        if let Some(kicktime) = config.kick_time {
+            let chatid = chat.get_id();
+            let userid = user.get_id();
+            tokio::spawn(async move {
+                sleep(Duration::seconds(kicktime).to_std()?).await;
 
-                    if !user_is_authorized(chatid, userid).await? {
-                        kick(userid, chatid).await?;
-                    }
-                    Ok::<(), BotError>(())
-                });
-            }
-            if !sent {
-                sent = true;
-                match config.captcha_type {
-                    CaptchaType::Text => send_captcha_chooser(message).await?,
-                    CaptchaType::Button => button_captcha(message, &chat).await?,
+                if !user_is_authorized(chatid, userid).await? {
+                    kick(userid, chatid).await?;
                 }
-            }
+                Ok::<(), BotError>(())
+            });
+        }
+        match config.captcha_type {
+            CaptchaType::Text => send_captcha_chooser(mamber, &chat).await?,
+            CaptchaType::Button => button_captcha(&chat).await?,
         }
     }
+
     Ok(())
 }
-async fn handle_user_action(message: &Message) -> Result<()> {
+async fn handle_user_action(message: &ChatMemberUpdated) -> Result<()> {
     if let Some(config) = get_captcha_config(message).await? {
-        if let Some(mambers) = message.get_new_chat_members() {
-            check_mambers(message, &config, mambers.iter()).await?;
-        }
-        if let Some(user) = message.get_from_ref() {
-            check_mambers(message, &config, [user].into_iter()).await?;
+        if let ChatMember::ChatMemberMember(member) = message.get_new_chat_member_ref() {
+            check_mambers(message, &config, &member).await?;
         }
     }
     Ok(())
@@ -749,8 +726,8 @@ async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
 
 #[allow(dead_code)]
 pub async fn handle_update<'a>(update: &UpdateExt, cmd: &Context<'a>) -> Result<()> {
-    if let UpdateExt::Message(ref message) = update {
-        handle_user_action(message).await?;
+    if let UpdateExt::ChatMember(ref member) = update {
+        handle_user_action(member).await?;
     }
     handle_command(cmd).await
 }
