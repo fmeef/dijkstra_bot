@@ -2,6 +2,7 @@ use crate::logger::LevelFilterWrapper;
 use crate::persist::redis::{RedisPool, RedisPoolBuilder};
 use crate::tg::client::TgClient;
 
+use botapi::gen_types::User;
 use chrono::Duration;
 use clap::Parser;
 use confy::load_path;
@@ -15,6 +16,7 @@ use sea_orm::{ConnectOptions, Database};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use tokio::sync::OnceCell;
 
 use tokio::runtime::Runtime;
 
@@ -118,6 +120,10 @@ pub struct Args {
     // Path to config file
     #[clap(short, long)]
     pub config: PathBuf,
+}
+
+lazy_static! {
+    pub static ref ME: OnceCell<User> = OnceCell::new();
 }
 
 lazy_static! {

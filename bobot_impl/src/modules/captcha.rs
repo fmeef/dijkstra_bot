@@ -4,21 +4,22 @@ use self::entities::authorized;
 use self::entities::captchastate::{self, CaptchaType};
 use crate::metadata::metadata;
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache, RedisStr};
-use crate::statics::{CONFIG, DB, REDIS, TG};
+use crate::statics::{CONFIG, DB, ME, REDIS, TG};
 use crate::tg::admin_helpers::{
-    kick, mute, parse_duration, unmute, DeleteAfterTime, IsAdmin, IsGroupAdmin,
+    kick, mute, parse_duration, unmute, DeleteAfterTime, IsAdmin, IsGroupAdmin, UpdateHelpers,
+    UserChanged,
 };
 use crate::tg::button::{get_url, InlineKeyboardBuilder, OnPush};
 use crate::tg::command::{ArgSlice, Context, TextArgs};
-use crate::tg::user::{get_me, Username};
+use crate::tg::user::Username;
 use crate::util::error::BotError;
 use crate::util::error::Result;
 use crate::util::string::Speak;
 use base64::engine::general_purpose;
 use base64::Engine;
 use botapi::gen_types::{
-    CallbackQuery, Chat, ChatMember, ChatMemberMember, ChatMemberUpdated, EReplyMarkup,
-    InlineKeyboardButton, InlineKeyboardButtonBuilder, Message, UpdateExt, User,
+    CallbackQuery, Chat, ChatMemberUpdated, EReplyMarkup, InlineKeyboardButton,
+    InlineKeyboardButtonBuilder, Message, UpdateExt, User,
 };
 use captcha::gen;
 use chrono::Duration;
@@ -371,7 +372,7 @@ pub async fn get_captcha_url(chat: &Chat, user: &User) -> Result<String> {
         .pipe(|q| q.set(&key, ser).expire(&key, CONFIG.timing.cache_timeout))
         .await?;
     let bs = general_purpose::URL_SAFE_NO_PAD.encode(r.into_bytes());
-    let bs = get_url(bs).await?;
+    let bs = get_url(bs)?;
     Ok(bs)
 }
 
@@ -404,8 +405,8 @@ async fn button_captcha(unmute_chat: &Chat) -> Result<()> {
     Ok(())
 }
 
-async fn send_captcha_chooser(message: &ChatMemberMember, chat: &Chat) -> Result<()> {
-    let url = get_captcha_url(chat, &message.get_user()).await?;
+async fn send_captcha_chooser(user: &User, chat: &Chat) -> Result<()> {
+    let url = get_captcha_url(chat, user).await?;
     let nm = TG
         .client()
         .build_send_message(chat.get_id(), "Solve this captcha to continue")
@@ -638,9 +639,8 @@ async fn send_captcha(message: &Message, unmute_chat: Chat) -> Result<()> {
 async fn check_mambers<'a>(
     message: &ChatMemberUpdated,
     config: &captchastate::Model,
-    mamber: &ChatMemberMember,
 ) -> Result<()> {
-    let me = get_me().await?;
+    let me = ME.get().unwrap();
     let user = message.get_from();
     if user.get_id() == me.get_id() || user.is_admin(message.get_chat_ref()).await? {
         return Ok(());
@@ -661,7 +661,7 @@ async fn check_mambers<'a>(
             });
         }
         match config.captcha_type {
-            CaptchaType::Text => send_captcha_chooser(mamber, &chat).await?,
+            CaptchaType::Text => send_captcha_chooser(&user, &chat).await?,
             CaptchaType::Button => button_captcha(&chat).await?,
         }
     }
@@ -670,9 +670,7 @@ async fn check_mambers<'a>(
 }
 async fn handle_user_action(message: &ChatMemberUpdated) -> Result<()> {
     if let Some(config) = get_captcha_config(message).await? {
-        if let ChatMember::ChatMemberMember(member) = message.get_new_chat_member_ref() {
-            check_mambers(message, &config, &member).await?;
-        }
+        check_mambers(message, &config).await?;
     }
     Ok(())
 }
@@ -726,7 +724,7 @@ async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
 
 #[allow(dead_code)]
 pub async fn handle_update<'a>(update: &UpdateExt, cmd: &Context<'a>) -> Result<()> {
-    if let UpdateExt::ChatMember(ref member) = update {
+    if let Some(UserChanged::UserJoined(ref member)) = update.user_event() {
         handle_user_action(member).await?;
     }
     handle_command(cmd).await

@@ -14,12 +14,12 @@ use super::{
     admin_helpers::{handle_pending_action, is_dm, update_self_admin},
     button::{get_url, InlineKeyboardBuilder},
     dialog::{Conversation, ConversationState},
-    user::get_me,
     user::RecordUser,
 };
 use crate::{
     metadata::Metadata,
     modules,
+    statics::ME,
     tg::command::parse_cmd,
     util::{
         callback::{MultiCallback, MultiCb, SingleCallback, SingleCb},
@@ -59,7 +59,7 @@ impl MetadataCollection {
     }
 
     pub async fn get_conversation(&self, message: &Message) -> Result<Conversation> {
-        let me = get_me().await?;
+        let me = ME.get().unwrap();
 
         let lang = get_chat_lang(message.get_chat().get_id()).await?;
         let mut state = ConversationState::new_prefix(
@@ -96,7 +96,7 @@ async fn show_help<'a>(message: &Message, helps: Arc<MetadataCollection>) -> Res
     if !should_ignore_chat(message.get_chat().get_id()).await? {
         let lang = get_chat_lang(message.get_chat().get_id()).await?;
         if is_dm(message.get_chat_ref()) {
-            let me = get_me().await?;
+            let me = ME.get().unwrap();
             TG.client()
                 .build_send_message(
                     message.get_chat().get_id(),
@@ -113,7 +113,7 @@ async fn show_help<'a>(message: &Message, helps: Arc<MetadataCollection>) -> Res
                 .build()
                 .await?;
         } else {
-            let url = get_url("help").await?;
+            let url = get_url("help")?;
             message_fmt!(lang, message.get_chat().get_id(), "dmhelp")
                 .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
                     InlineKeyboardBuilder::default()

@@ -12,13 +12,14 @@ use crate::{
         core::dialogs,
         redis::{default_cache_query, CachedQuery, CachedQueryTrait, RedisCache, RedisStr},
     },
-    statics::{CONFIG, DB, REDIS, TG},
+    statics::{CONFIG, DB, ME, REDIS, TG},
     util::error::{BotError, Result},
     util::string::{get_chat_lang, Speak},
 };
 use async_trait::async_trait;
 use botapi::gen_types::{
-    Chat, ChatMember, ChatPermissions, ChatPermissionsBuilder, Message, UpdateExt, User,
+    Chat, ChatMember, ChatMemberUpdated, ChatPermissions, ChatPermissionsBuilder, Message,
+    UpdateExt, User,
 };
 use chrono::{DateTime, Duration, Utc};
 use futures::{future::BoxFuture, FutureExt};
@@ -36,7 +37,7 @@ use super::{
     command::{ArgSlice, Entities, EntityArg, TextArgs},
     dialog::{dialog_or_default, get_dialog_key},
     markdown::MarkupType,
-    user::{get_me, get_user_username, GetUser, Username},
+    user::{get_user_username, GetUser, Username},
 };
 
 pub struct ChatUser<'a> {
@@ -47,6 +48,60 @@ pub struct ChatUser<'a> {
 pub trait IntoChatUser {
     fn get_chatuser<'a>(&'a self) -> Option<ChatUser<'a>>;
     fn get_chatuser_user<'a>(&'a self, user: Cow<'a, User>) -> ChatUser<'a>;
+}
+
+pub enum UserChanged<'a> {
+    UserJoined(&'a ChatMemberUpdated),
+    UserLeft(&'a ChatMemberUpdated),
+}
+
+impl<'a> UserChanged<'a> {
+    pub fn get_chat(&'a self) -> &'a Chat {
+        match self {
+            UserChanged::UserJoined(m) => m.get_chat_ref(),
+            UserChanged::UserLeft(m) => m.get_chat_ref(),
+        }
+    }
+}
+
+pub trait UpdateHelpers {
+    fn user_event<'a>(&'a self) -> Option<UserChanged<'a>>;
+}
+
+impl UpdateHelpers for UpdateExt {
+    fn user_event<'a>(&'a self) -> Option<UserChanged<'a>> {
+        if let UpdateExt::ChatMember(member) = self {
+            if member.get_from().get_id() == ME.get().unwrap().get_id() {
+                return None;
+            }
+            // log::info!(
+            //     "welcome \nold: {:?}\nnew {:?}",
+            //     member.get_old_chat_member_ref(),
+            //     member.get_new_chat_member_ref()
+            // );
+            let old_left = match member.get_old_chat_member_ref() {
+                ChatMember::ChatMemberLeft(_) => true,
+                ChatMember::ChatMemberBanned(_) => true,
+                ChatMember::ChatMemberRestricted(res) => !res.get_is_member(),
+                _ => false,
+            };
+
+            let new_left = match member.get_new_chat_member_ref() {
+                ChatMember::ChatMemberLeft(_) => true,
+                ChatMember::ChatMemberBanned(_) => true,
+                ChatMember::ChatMemberRestricted(res) => !res.get_is_member(),
+                _ => false,
+            };
+
+            if old_left && !new_left {
+                Some(UserChanged::UserJoined(member))
+            } else {
+                Some(UserChanged::UserLeft(member))
+            }
+        } else {
+            None
+        }
+    }
 }
 
 pub trait DeleteAfterTime {
@@ -99,7 +154,7 @@ impl IntoChatUser for Message {
 }
 
 pub async fn is_self_admin(chat: &Chat) -> Result<bool> {
-    let me = get_me().await?;
+    let me = ME.get().unwrap();
     Ok(chat.is_user_admin(me.get_id()).await?.is_some())
 }
 
@@ -147,7 +202,7 @@ pub async fn change_permissions(
     permissions: &ChatPermissions,
     time: Option<Duration>,
 ) -> Result<()> {
-    let me = get_me().await?;
+    let me = ME.get().unwrap();
     let lang = get_chat_lang(chat.get_id()).await?;
     if user.is_admin(chat).await? {
         Err(BotError::speak(lang_fmt!(lang, "muteadmin"), chat.get_id()))

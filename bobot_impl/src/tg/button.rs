@@ -1,11 +1,10 @@
+use crate::statics::ME;
+use crate::util::error::Result;
+use crate::{statics::TG, util::error::BotError};
 use botapi::gen_types::{
     CallbackQuery, InlineKeyboardButton, InlineKeyboardButtonBuilder, InlineKeyboardMarkup,
 };
 use futures::Future;
-
-use super::user::get_me;
-use crate::util::error::Result;
-use crate::{statics::TG, util::error::BotError};
 
 const MAX_BUTTONS: usize = 8;
 
@@ -17,8 +16,8 @@ impl Default for InlineKeyboardBuilder {
     }
 }
 
-pub async fn get_url<T: AsRef<str>>(param: T) -> Result<String> {
-    let me = get_me().await?;
+pub fn get_url<T: AsRef<str>>(param: T) -> Result<String> {
+    let me = ME.get().unwrap();
     let url = format!(
         "https://t.me/{}?start={}",
         me.get_username_ref()

@@ -23,6 +23,8 @@ pub fn what() {
     EXEC.block_on(async move {
         let handle = prometheus_serve();
         drop(handle);
+        let me = statics::TG.client.get_me().await.unwrap();
+        statics::ME.set(me).unwrap();
         statics::TG.run().await.unwrap();
     });
 }

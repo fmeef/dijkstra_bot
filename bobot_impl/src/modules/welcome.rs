@@ -1,13 +1,13 @@
 use crate::persist::core::media::{get_media_type, send_media_reply_chatuser, MediaType};
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache};
 use crate::statics::{CONFIG, DB, REDIS};
-use crate::tg::admin_helpers::IsGroupAdmin;
+use crate::tg::admin_helpers::{IsGroupAdmin, UpdateHelpers, UserChanged};
 use crate::tg::command::{Context, TextArgs};
 use crate::util::error::{BotError, Result};
 
 use crate::util::string::get_chat_lang;
 use crate::{metadata::metadata, util::string::Speak};
-use botapi::gen_types::{Chat, ChatMember, ChatMemberUpdated, Message, UpdateExt};
+use botapi::gen_types::{Chat, ChatMemberUpdated, Message, UpdateExt};
 use chrono::Duration;
 use lazy_static::__Deref;
 
@@ -337,25 +337,12 @@ async fn goodbye_mambers(upd: &ChatMemberUpdated, model: entities::welcomes::Mod
 }
 
 pub async fn handle_update<'a>(update: &UpdateExt, cmd: &Context<'a>) -> Result<()> {
-    if let UpdateExt::ChatMember(member) = update {
-        if let Some(model) = should_welcome(member.get_chat_ref()).await? {
+    if let Some(userchanged) = update.user_event() {
+        if let Some(model) = should_welcome(userchanged.get_chat()).await? {
             if model.enabled {
-                let old_left = match member.get_old_chat_member_ref() {
-                    ChatMember::ChatMemberLeft(_) => true,
-                    ChatMember::ChatMemberBanned(_) => true,
-                    _ => false,
-                };
-
-                let new_left = match member.get_new_chat_member_ref() {
-                    ChatMember::ChatMemberLeft(_) => true,
-                    ChatMember::ChatMemberBanned(_) => true,
-                    _ => false,
-                };
-
-                if old_left && !new_left {
-                    welcome_mambers(member, model).await?;
-                } else {
-                    goodbye_mambers(member, model).await?;
+                match userchanged {
+                    UserChanged::UserJoined(member) => welcome_mambers(member, model).await?,
+                    UserChanged::UserLeft(member) => goodbye_mambers(member, model).await?,
                 }
             }
         }
