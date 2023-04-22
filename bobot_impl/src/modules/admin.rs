@@ -111,7 +111,7 @@ pub async fn handle_update<'a>(_: &UpdateExt, cmd: &Option<Context<'a>>) -> Resu
     Ok(())
 }
 async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
-    if let Some((cmd, entities, _, message, _)) = ctx.cmd() {
+    if let Some((cmd, _, _, message, _)) = ctx.cmd() {
         match cmd {
             "admincache" => admincache(message).await,
             "admins" => listadmins(message).await,
