@@ -49,6 +49,14 @@ pomelo! {
             footer: None
         }
     }
+    input    ::= header(A) Whitespace(_) footer(F) {
+        FilterCommond {
+            header: A,
+            body: None,
+            footer: Some(F)
+        }
+    }
+
     input    ::= header(A) Whitespace(_) words(W) Whitespace(_) footer(F) {
         FilterCommond {
             header: A,
