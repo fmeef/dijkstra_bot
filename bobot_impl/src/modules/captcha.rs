@@ -677,7 +677,7 @@ async fn handle_user_action(message: &ChatMemberUpdated) -> Result<()> {
 
 #[allow(dead_code)]
 async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
-    if let Some((cmd, _, args, message)) = ctx.cmd() {
+    if let Some((cmd, _, args, message, _)) = ctx.cmd() {
         match cmd {
             "captchakick" => {
                 captchakick_cmd(message, args).await?;

@@ -69,7 +69,7 @@ async fn handle_markdown(message: &Message) -> Result<bool> {
 
 #[allow(dead_code)]
 async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
-    if let Some((cmd, _, _, message)) = ctx.cmd() {
+    if let Some((cmd, _, _, message, _)) = ctx.cmd() {
         log::info!("piracy command {}", cmd);
         match cmd {
             //            "crash" => TG.client().close().await?,

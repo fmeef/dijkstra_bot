@@ -8,7 +8,7 @@ use crate::{
         user::Username,
     },
     util::error::Result,
-    util::string::{get_chat_lang, Speak},
+    util::string::{Lang, Speak},
 };
 use botapi::gen_types::{ChatPermissionsBuilder, Message, UpdateExt};
 use futures::FutureExt;
@@ -33,9 +33,12 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![]
 }
 
-pub async fn unban_cmd<'a>(message: &'a Message, entities: &Entities<'a>) -> Result<()> {
+pub async fn unban_cmd<'a>(
+    message: &'a Message,
+    entities: &Entities<'a>,
+    lang: Lang,
+) -> Result<()> {
     message.group_admin_or_die().await?;
-    let lang = get_chat_lang(message.get_chat().get_id()).await?;
     action_message(message, entities, None, |message, user, _| {
         async move {
             unban(message, user).await?;
@@ -79,9 +82,9 @@ pub async fn mute_cmd<'a>(
     message: &Message,
     entities: &Entities<'a>,
     args: &TextArgs<'a>,
+    lang: &Lang,
 ) -> Result<()> {
     message.group_admin_or_die().await?;
-    let lang = get_chat_lang(message.get_chat().get_id()).await?;
     let permissions = ChatPermissionsBuilder::new()
         .set_can_send_messages(false)
         .set_can_send_audios(false)
@@ -114,9 +117,9 @@ pub async fn unmute_cmd<'a>(
     message: &'a Message,
     entities: &Entities<'a>,
     args: &'a TextArgs<'a>,
+    lang: &Lang,
 ) -> Result<()> {
     message.group_admin_or_die().await?;
-    let lang = get_chat_lang(message.get_chat().get_id()).await?;
 
     let permissions = ChatPermissionsBuilder::new()
         .set_can_send_messages(true)
@@ -146,8 +149,7 @@ pub async fn unmute_cmd<'a>(
     Ok(())
 }
 
-async fn kickme(message: &Message) -> Result<()> {
-    let lang = get_chat_lang(message.get_chat().get_id()).await?;
+async fn kickme(message: &Message, lang: &Lang) -> Result<()> {
     is_group_or_die(&message.get_chat()).await?;
     self_admin_or_die(&message.get_chat()).await?;
     if message.get_from().is_admin(&message.get_chat()).await? {
@@ -171,13 +173,13 @@ async fn kickme(message: &Message) -> Result<()> {
 
 async fn handle_command<'a>(ctx: &Option<Context<'a>>) -> Result<()> {
     if let Some(ctx) = ctx {
-        if let Some((cmd, entities, args, message)) = ctx.cmd() {
+        if let Some((cmd, entities, args, message, lang)) = ctx.cmd() {
             match cmd {
-                "kickme" => kickme(message).await,
-                "mute" => mute_cmd(message, &entities, args).await,
-                "unmute" => unmute_cmd(message, &entities, args).await,
+                "kickme" => kickme(message, lang).await,
+                "mute" => mute_cmd(message, &entities, args, lang).await,
+                "unmute" => unmute_cmd(message, &entities, args, lang).await,
                 "ban" => ban_cmd(message, &entities, args).await,
-                "unban" => unban_cmd(message, &entities).await,
+                "unban" => unban_cmd(message, &entities, lang.clone()).await,
                 _ => Ok(()),
             }?;
         }

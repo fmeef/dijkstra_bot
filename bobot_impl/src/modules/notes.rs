@@ -145,7 +145,7 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
 }
 
 async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
-    if let Some((cmd, _, args, message)) = ctx.cmd() {
+    if let Some((cmd, _, args, message, _)) = ctx.cmd() {
         match cmd {
             "save" => save(message, &args).await,
             "get" => get(message, &args).await,

@@ -160,6 +160,7 @@ impl<'a> Context<'a> {
             UpdateExt::Message(m) => Some(m.get_chat_ref()),
             UpdateExt::EditedMessage(m) => Some(m.get_chat_ref()),
             UpdateExt::CallbackQuery(m) => m.get_message_ref().map(|m| m.get_chat_ref()),
+            UpdateExt::ChatMember(m) => Some(m.get_chat_ref()),
             _ => None,
         };
 
@@ -176,9 +177,23 @@ impl<'a> Context<'a> {
         }
     }
 
-    pub fn cmd(&'a self) -> Option<(&'a str, &'a Entities<'a>, &'a TextArgs<'a>, &'a Message)> {
+    pub fn cmd(
+        &'a self,
+    ) -> Option<(
+        &'a str,
+        &'a Entities<'a>,
+        &'a TextArgs<'a>,
+        &'a Message,
+        &'a Lang,
+    )> {
         if let (Some(message), Some(command)) = (self.message, &self.command) {
-            Some((command.cmd, &command.entities, &command.args, message))
+            Some((
+                command.cmd,
+                &command.entities,
+                &command.args,
+                message,
+                &self.lang,
+            ))
         } else {
             None
         }

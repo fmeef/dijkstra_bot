@@ -1,11 +1,6 @@
 use crate::{
     metadata::metadata,
-    tg::{
-        admin_helpers::*,
-        command::{Context, Entities},
-        markdown::MarkupType,
-        user::Username,
-    },
+    tg::{admin_helpers::*, command::Context, markdown::MarkupType, user::Username},
     util::error::Result,
     util::string::{get_chat_lang, Speak},
 };
@@ -28,54 +23,59 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![]
 }
 
-async fn promote<'a>(message: &Message, entities: &Entities<'a>) -> Result<()> {
-    message.group_admin_or_die().await?;
-    let lang = get_chat_lang(message.get_chat().get_id()).await?;
-    action_message(message, entities, None, |message, user, _| {
-        async move {
-            message.get_chat().promote(user.get_id()).await?;
+async fn promote<'a>(context: &'a Context<'a>) -> Result<()> {
+    if let (Some(command), Some(message)) = (context.command.as_ref(), context.message) {
+        message.group_admin_or_die().await?;
+        let lang = context.lang.clone();
+        action_message(message, &command.entities, None, |message, user, _| {
+            async move {
+                message.get_chat().promote(user.get_id()).await?;
 
-            let name = user.name_humanreadable();
-            let mention = MarkupType::TextMention(user.to_owned()).text(&name);
-            message
-                .speak_fmt(entity_fmt!(
-                    lang,
-                    message.get_chat().get_id(),
-                    "promote",
-                    mention
-                ))
-                .await?;
-            Ok(())
-        }
-        .boxed()
-    })
-    .await?;
+                let name = user.name_humanreadable();
+                let mention = MarkupType::TextMention(user.to_owned()).text(&name);
+                message
+                    .speak_fmt(entity_fmt!(
+                        lang,
+                        message.get_chat().get_id(),
+                        "promote",
+                        mention
+                    ))
+                    .await?;
+                Ok(())
+            }
+            .boxed()
+        })
+        .await?;
+    }
     Ok(())
 }
 
-async fn demote<'a>(message: &Message, entities: &Entities<'a>) -> Result<()> {
-    message.group_admin_or_die().await?;
-    let lang = get_chat_lang(message.get_chat().get_id()).await?;
-    action_message(message, entities, None, |message, user, _| {
-        async move {
-            message.get_chat().demote(user.get_id()).await?;
+async fn demote<'a>(context: &'a Context<'a>) -> Result<()> {
+    if let (Some(command), Some(message)) = (context.command.as_ref(), context.message) {
+        message.group_admin_or_die().await?;
+        let lang = context.lang.clone();
 
-            let name = user.name_humanreadable();
-            let mention = MarkupType::TextMention(user.to_owned()).text(&name);
-            message
-                .speak_fmt(entity_fmt!(
-                    lang,
-                    message.get_chat().get_id(),
-                    "demote",
-                    mention
-                ))
-                .await?;
+        action_message(message, &command.entities, None, |message, user, _| {
+            async move {
+                message.get_chat().demote(user.get_id()).await?;
 
-            Ok(())
-        }
-        .boxed()
-    })
-    .await?;
+                let name = user.name_humanreadable();
+                let mention = MarkupType::TextMention(user.to_owned()).text(&name);
+                message
+                    .speak_fmt(entity_fmt!(
+                        lang,
+                        message.get_chat().get_id(),
+                        "demote",
+                        mention
+                    ))
+                    .await?;
+
+                Ok(())
+            }
+            .boxed()
+        })
+        .await?;
+    }
     Ok(())
 }
 
@@ -111,12 +111,12 @@ pub async fn handle_update<'a>(_: &UpdateExt, cmd: &Option<Context<'a>>) -> Resu
     Ok(())
 }
 async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
-    if let Some((cmd, entities, _, message)) = ctx.cmd() {
+    if let Some((cmd, entities, _, message, _)) = ctx.cmd() {
         match cmd {
             "admincache" => admincache(message).await,
             "admins" => listadmins(message).await,
-            "promote" => promote(message, &entities).await,
-            "demote" => demote(message, &entities).await,
+            "promote" => promote(ctx).await,
+            "demote" => demote(ctx).await,
             _ => Ok(()),
         }?;
     }

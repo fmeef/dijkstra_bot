@@ -654,7 +654,7 @@ async fn stopall(message: &Message) -> Result<()> {
 
 #[allow(dead_code)]
 async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
-    if let Some((cmd, _, args, message)) = ctx.cmd() {
+    if let Some((cmd, _, args, message, _)) = ctx.cmd() {
         match cmd {
             "addblocklist" => command_blocklist(message, &args).await?,
             "rmblocklist" => delete_trigger(message, args.text).await?,

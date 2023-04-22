@@ -3,11 +3,8 @@ use crate::tg::command::Context;
 use crate::tg::markdown::MarkupType;
 use crate::tg::user::Username;
 use crate::util::error::BotError;
-use crate::util::string::should_ignore_chat;
-use crate::{
-    metadata::metadata, tg::admin_helpers::*, tg::command::Entities, util::error::Result,
-    util::string::get_chat_lang,
-};
+use crate::util::string::{should_ignore_chat, Lang};
+use crate::{metadata::metadata, tg::admin_helpers::*, tg::command::Entities, util::error::Result};
 use botapi::gen_types::{Message, MessageEntity, MessageEntityBuilder, UpdateExt};
 
 use futures::FutureExt;
@@ -26,7 +23,7 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![]
 }
 
-pub async fn report<'a>(message: &Message, entities: &Entities<'a>) -> Result<()> {
+pub async fn report<'a>(message: &Message, entities: &Entities<'a>, lang: Lang) -> Result<()> {
     if should_ignore_chat(message.get_chat().get_id()).await? {
         return Ok(());
     }
@@ -35,7 +32,6 @@ pub async fn report<'a>(message: &Message, entities: &Entities<'a>) -> Result<()
         return Err(BotError::Generic("Admins can't warn".into()));
     }
 
-    let lang = get_chat_lang(message.get_chat().get_id()).await?;
     action_message(message, entities, None, |message, user, _| {
         async move {
             if user.is_admin(message.get_chat_ref()).await? {
@@ -78,9 +74,9 @@ pub async fn report<'a>(message: &Message, entities: &Entities<'a>) -> Result<()
 }
 
 async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
-    if let Some((cmd, entities, _, message)) = ctx.cmd() {
+    if let Some((cmd, entities, _, message, lang)) = ctx.cmd() {
         match cmd {
-            "report" => report(message, &entities).await,
+            "report" => report(message, &entities, lang.clone()).await,
             _ => Ok(()),
         }?;
     }

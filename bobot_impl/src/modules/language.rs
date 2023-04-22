@@ -8,7 +8,7 @@ use crate::{
     metadata::metadata,
     tg::dialog::{Conversation, ConversationState},
     util::error::Result,
-    util::string::{get_chat_lang, get_langs},
+    util::string::get_langs,
 };
 
 use botapi::gen_types::{Message, UpdateExt};
@@ -52,8 +52,7 @@ async fn handle_terminal_state(current: Uuid, conv: Conversation, chat: i64) -> 
     Ok(())
 }
 
-async fn get_lang_conversation(message: &Message) -> Result<Conversation> {
-    let current = get_chat_lang(message.get_chat().get_id()).await?;
+async fn get_lang_conversation(message: &Message, current: &Lang) -> Result<Conversation> {
     let mut state = ConversationState::new_prefix(
         "setlang".to_owned(),
         lang_fmt!(current, "currentlang"),
@@ -87,10 +86,10 @@ async fn get_lang_conversation(message: &Message) -> Result<Conversation> {
 }
 
 async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
-    if let Some((cmd, _, _, message)) = ctx.cmd() {
+    if let Some((cmd, _, _, message, lang)) = ctx.cmd() {
         match cmd {
             "setlang" => {
-                let conv = get_lang_conversation(message).await?;
+                let conv = get_lang_conversation(message, lang).await?;
 
                 if should_ignore_chat(message.get_chat().get_id()).await? {
                     return Ok(());

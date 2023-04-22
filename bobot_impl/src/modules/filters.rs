@@ -494,7 +494,7 @@ async fn stopall(message: &Message) -> Result<()> {
 }
 
 async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
-    if let Some((cmd, _, args, message)) = ctx.cmd() {
+    if let Some((cmd, _, args, message, _)) = ctx.cmd() {
         match cmd {
             "filter" => command_filter(message, &args).await?,
             "stop" => delete_trigger(message, args.text).await?,

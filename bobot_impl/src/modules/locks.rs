@@ -6,7 +6,7 @@ use crate::tg::admin_helpers::{ban_message, warn_with_action, IsAdmin, IsGroupAd
 use crate::tg::command::{Command, Context, TextArg, TextArgs};
 use crate::tg::user::Username;
 use crate::util::error::{BotError, Result};
-use crate::util::string::get_chat_lang;
+use crate::util::string::{get_chat_lang, Lang};
 use crate::{metadata::metadata, statics::TG, util::string::Speak};
 use botapi::gen_types::{Chat, Message, UpdateExt, User};
 use chrono::Duration;
@@ -402,9 +402,13 @@ fn is_premium(message: &Message) -> bool {
     }
 }
 
-async fn handle_lock<'a>(message: &Message, cmd: &Option<&Command<'a>>, user: &User) -> Result<()> {
+async fn handle_lock<'a>(
+    message: &Message,
+    cmd: &Option<&Command<'a>>,
+    user: &User,
+    lang: &Lang,
+) -> Result<()> {
     message.group_admin_or_die().await?;
-    let lang = get_chat_lang(message.get_chat().get_id());
     match locktype_from_args(cmd, message.get_chat().get_id()) {
         (Some(lock), None) => {
             let t = lock.get_name().to_owned();
@@ -482,11 +486,11 @@ async fn lock_action<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
 }
 
 async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
-    if let Some((cmd, _, args, message)) = ctx.cmd() {
+    if let Some((cmd, _, args, message, lang)) = ctx.cmd() {
         let command = ctx.command.as_ref();
         if let Some(user) = message.get_from() {
             match cmd {
-                "lock" => handle_lock(message, &command, &user).await?,
+                "lock" => handle_lock(message, &command, &user, lang).await?,
                 "unlock" => handle_unlock(message, &command).await?,
                 "locks" => handle_list(message).await?,
                 "lockaction" => lock_action(message, &args).await?,
@@ -567,7 +571,7 @@ fn is_link(message: &Message) -> bool {
     false
 }
 
-async fn handle_user_event(update: &UpdateExt) -> Result<()> {
+async fn handle_user_event(update: &UpdateExt, lang: &Lang) -> Result<()> {
     if let (Some(action), locks) = action_from_update(update).await? {
         match update {
             UpdateExt::Message(ref message) => {
@@ -575,7 +579,6 @@ async fn handle_user_event(update: &UpdateExt) -> Result<()> {
                     return Ok(());
                 }
                 let default = get_default_settings(message.get_chat_ref()).await?;
-                let lang = get_chat_lang(message.get_chat().get_id()).await?;
                 let reasons = locks
                     .into_iter()
                     .map(|v| lang_fmt!(lang, "lockedinchat", v.get_name()))
@@ -623,8 +626,8 @@ async fn handle_user_event(update: &UpdateExt) -> Result<()> {
 }
 
 pub async fn handle_update<'a>(update: &UpdateExt, cmd: &Option<Context<'a>>) -> Result<()> {
-    handle_user_event(update).await?;
     if let Some(cmd) = cmd {
+        handle_user_event(update, &cmd.lang).await?;
         handle_command(cmd).await?;
     }
     Ok(())

@@ -1,12 +1,13 @@
 use crate::tg::command::Context;
 use crate::tg::user::Username;
 use crate::util::error::BotError;
+use crate::util::string::Lang;
 use crate::{
     metadata::metadata,
     tg::admin_helpers::*,
     tg::command::{Entities, TextArgs},
     util::error::Result,
-    util::string::{get_chat_lang, Speak},
+    util::string::Speak,
 };
 use botapi::gen_types::{Message, UpdateExt};
 
@@ -33,9 +34,9 @@ pub async fn warn<'a>(
     message: &Message,
     entities: &Entities<'a>,
     args: &TextArgs<'a>,
+    lang: Lang,
 ) -> Result<()> {
     message.group_admin_or_die().await?;
-    let lang = get_chat_lang(message.get_chat().get_id()).await?;
 
     action_message(message, entities, Some(args), |message, user, args| {
         async move {
@@ -65,11 +66,9 @@ pub async fn warn<'a>(
     Ok(())
 }
 
-pub async fn warns<'a>(message: &Message, entities: &Entities<'a>) -> Result<()> {
+pub async fn warns<'a>(message: &Message, entities: &Entities<'a>, lang: Lang) -> Result<()> {
     is_group_or_die(&message.get_chat()).await?;
     self_admin_or_die(&message.get_chat()).await?;
-
-    let lang = get_chat_lang(message.get_chat().get_id()).await?;
 
     action_message(message, entities, None, |message, user, _| {
         async move {
@@ -143,10 +142,10 @@ async fn cmd_warn_mode<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()>
 }
 
 async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
-    if let Some((cmd, entities, args, message)) = ctx.cmd() {
+    if let Some((cmd, entities, args, message, lang)) = ctx.cmd() {
         match cmd {
-            "warn" => warn(message, &entities, args).await,
-            "warns" => warns(message, &entities).await,
+            "warn" => warn(message, &entities, args, lang.clone()).await,
+            "warns" => warns(message, &entities, lang.clone()).await,
             "clearwarns" => clear(message, &entities).await,
             "warntime" => set_time(message, args).await,
             "warnmode" => cmd_warn_mode(message, args).await,

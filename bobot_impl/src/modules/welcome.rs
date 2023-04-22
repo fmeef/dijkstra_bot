@@ -5,7 +5,7 @@ use crate::tg::admin_helpers::{IsGroupAdmin, UpdateHelpers, UserChanged};
 use crate::tg::command::{Context, TextArgs};
 use crate::util::error::{BotError, Result};
 
-use crate::util::string::get_chat_lang;
+use crate::util::string::Lang;
 use crate::{metadata::metadata, util::string::Speak};
 use botapi::gen_types::{Chat, ChatMemberUpdated, Message, UpdateExt};
 use chrono::Duration;
@@ -158,9 +158,8 @@ fn get_model<'a>(
     Ok(res)
 }
 
-async fn enable_welcome<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
+async fn enable_welcome<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang) -> Result<()> {
     message.group_admin_or_die().await?;
-    let lang = get_chat_lang(message.get_chat().get_id()).await?;
     let key = format!("welcome:{}", message.get_chat().get_id());
     let enabled = match args.args.first().map(|v| v.get_text()) {
         Some("on") => Ok(true),
@@ -213,10 +212,9 @@ async fn should_welcome(chat: &Chat) -> Result<Option<entities::welcomes::Model>
     Ok(res)
 }
 
-async fn set_goodbye<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
+async fn set_goodbye<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang) -> Result<()> {
     message.group_admin_or_die().await?;
     let model = get_model(message, args, true)?;
-    let lang = get_chat_lang(message.get_chat().get_id()).await?;
     let key = format!("welcome:{}", message.get_chat().get_id());
     log::info!("save goodbye: {}", key);
     let model = entities::welcomes::Entity::insert(model)
@@ -242,10 +240,9 @@ async fn set_goodbye<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
     Ok(())
 }
 
-async fn set_welcome<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
+async fn set_welcome<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang) -> Result<()> {
     message.group_admin_or_die().await?;
 
-    let lang = get_chat_lang(message.get_chat().get_id()).await?;
     let model = get_model(message, args, false)?;
     let key = format!("welcome:{}", message.get_chat().get_id());
     log::info!("save welcome: {}", key);
@@ -273,21 +270,20 @@ async fn set_welcome<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
 }
 
 async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
-    if let Some((cmd, _, args, message)) = ctx.cmd() {
+    if let Some((cmd, _, args, message, lang)) = ctx.cmd() {
         match cmd {
-            "setwelcome" => set_welcome(message, args).await?,
-            "setgoodbye" => set_goodbye(message, args).await?,
-            "welcome" => enable_welcome(message, args).await?,
-            "resetwelcome" => reset_welcome(message).await?,
+            "setwelcome" => set_welcome(message, args, lang).await?,
+            "setgoodbye" => set_goodbye(message, args, lang).await?,
+            "welcome" => enable_welcome(message, args, lang).await?,
+            "resetwelcome" => reset_welcome(message, lang).await?,
             _ => (),
         };
     }
     Ok(())
 }
 
-async fn reset_welcome(message: &Message) -> Result<()> {
+async fn reset_welcome(message: &Message, lang: &Lang) -> Result<()> {
     message.group_admin_or_die().await?;
-    let lang = get_chat_lang(message.get_chat().get_id()).await?;
     let chat = message.get_chat().get_id();
     let key = format!("welcome:{}", chat);
 
@@ -299,8 +295,11 @@ async fn reset_welcome(message: &Message) -> Result<()> {
     Ok(())
 }
 
-async fn welcome_mambers(upd: &ChatMemberUpdated, model: entities::welcomes::Model) -> Result<()> {
-    let lang = get_chat_lang(upd.get_chat().get_id()).await?;
+async fn welcome_mambers(
+    upd: &ChatMemberUpdated,
+    model: entities::welcomes::Model,
+    lang: &Lang,
+) -> Result<()> {
     let text = if let Some(text) = model.text {
         text
     } else {
@@ -318,8 +317,11 @@ async fn welcome_mambers(upd: &ChatMemberUpdated, model: entities::welcomes::Mod
     Ok(())
 }
 
-async fn goodbye_mambers(upd: &ChatMemberUpdated, model: entities::welcomes::Model) -> Result<()> {
-    let lang = get_chat_lang(upd.get_chat().get_id()).await?;
+async fn goodbye_mambers(
+    upd: &ChatMemberUpdated,
+    model: entities::welcomes::Model,
+    lang: &Lang,
+) -> Result<()> {
     let text = if let Some(text) = model.goodbye_text {
         text
     } else {
@@ -337,18 +339,21 @@ async fn goodbye_mambers(upd: &ChatMemberUpdated, model: entities::welcomes::Mod
 }
 
 pub async fn handle_update<'a>(update: &UpdateExt, cmd: &Option<Context<'a>>) -> Result<()> {
-    if let Some(userchanged) = update.user_event() {
-        if let Some(model) = should_welcome(userchanged.get_chat()).await? {
-            if model.enabled {
-                match userchanged {
-                    UserChanged::UserJoined(member) => welcome_mambers(member, model).await?,
-                    UserChanged::UserLeft(member) => goodbye_mambers(member, model).await?,
+    if let Some(cmd) = cmd {
+        if let Some(userchanged) = update.user_event() {
+            if let Some(model) = should_welcome(userchanged.get_chat()).await? {
+                if model.enabled {
+                    match userchanged {
+                        UserChanged::UserJoined(member) => {
+                            welcome_mambers(member, model, &cmd.lang).await?
+                        }
+                        UserChanged::UserLeft(member) => {
+                            goodbye_mambers(member, model, &cmd.lang).await?
+                        }
+                    }
                 }
             }
         }
-    }
-
-    if let Some(cmd) = cmd {
         handle_command(cmd).await?;
     }
 
