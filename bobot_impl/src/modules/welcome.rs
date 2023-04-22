@@ -1,4 +1,4 @@
-use crate::persist::core::media::{get_media_type, send_media_reply, MediaType};
+use crate::persist::core::media::{get_media_type, send_media_reply_chatuser, MediaType};
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache};
 use crate::statics::{CONFIG, DB, REDIS};
 use crate::tg::admin_helpers::IsGroupAdmin;
@@ -7,7 +7,7 @@ use crate::util::error::{BotError, Result};
 
 use crate::util::string::get_chat_lang;
 use crate::{metadata::metadata, util::string::Speak};
-use botapi::gen_types::{Message, UpdateExt, User};
+use botapi::gen_types::{Chat, ChatMember, ChatMemberUpdated, Message, UpdateExt};
 use chrono::Duration;
 use lazy_static::__Deref;
 
@@ -196,9 +196,9 @@ async fn enable_welcome<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()
     Ok(())
 }
 
-async fn should_welcome(message: &Message) -> Result<Option<entities::welcomes::Model>> {
-    let key = format!("welcome:{}", message.get_chat().get_id());
-    let chat_id = message.get_chat().get_id();
+async fn should_welcome(chat: &Chat) -> Result<Option<entities::welcomes::Model>> {
+    let key = format!("welcome:{}", chat.get_id());
+    let chat_id = chat.get_id();
     let res = default_cache_query(
         |_, _| async move {
             let res = entities::welcomes::Entity::find_by_id(chat_id)
@@ -299,83 +299,67 @@ async fn reset_welcome(message: &Message) -> Result<()> {
     Ok(())
 }
 
-async fn welcome_mambers(
-    message: Message,
-    mambers: Vec<User>,
-    model: entities::welcomes::Model,
-) -> Result<()> {
-    let lang = get_chat_lang(message.get_chat().get_id()).await?;
+async fn welcome_mambers(upd: &ChatMemberUpdated, model: entities::welcomes::Model) -> Result<()> {
+    let lang = get_chat_lang(upd.get_chat().get_id()).await?;
     let text = if let Some(text) = model.text {
         text
     } else {
         lang_fmt!(lang, "defaultwelcome")
     };
-    for _ in mambers.iter() {
-        send_media_reply(
-            &message,
-            model.media_type.clone().unwrap_or(MediaType::Text),
-            Some(text.clone()),
-            model.media_id.clone(),
-        )
-        .await?;
-        if mambers.len() > 1 {
-            tokio::time::sleep(Duration::seconds(2).to_std()?).await;
-        }
-    }
+    send_media_reply_chatuser(
+        &upd.get_chat(),
+        model.media_type.unwrap_or(MediaType::Text),
+        Some(text),
+        model.media_id,
+        Some(upd.get_from_ref()),
+    )
+    .await?;
+
     Ok(())
 }
 
-async fn goodbye_mambers(
-    message: Message,
-    _mambers: User,
-    model: entities::welcomes::Model,
-) -> Result<()> {
-    let lang = get_chat_lang(message.get_chat().get_id()).await?;
+async fn goodbye_mambers(upd: &ChatMemberUpdated, model: entities::welcomes::Model) -> Result<()> {
+    let lang = get_chat_lang(upd.get_chat().get_id()).await?;
     let text = if let Some(text) = model.goodbye_text {
         text
     } else {
         lang_fmt!(lang, "defaultgoodbye")
     };
-    send_media_reply(
-        &message,
+    send_media_reply_chatuser(
+        &upd.get_chat(),
         model.goodbye_media_type.unwrap_or(MediaType::Text),
         Some(text),
         model.goodbye_media_id,
+        Some(upd.get_from_ref()),
     )
     .await?;
     Ok(())
 }
 
 pub async fn handle_update<'a>(update: &UpdateExt, cmd: &Context<'a>) -> Result<()> {
-    match update {
-        UpdateExt::Message(ref message) => {
-            if let Some(model) = should_welcome(message).await? {
-                if model.enabled {
-                    if let Some(mambers) = message.get_left_chat_member() {
-                        let mamber = mambers.into_owned();
-                        let message = message.to_owned();
-                        let model = model.clone();
-                        tokio::spawn(async move {
-                            if let Err(err) = goodbye_mambers(message, mamber, model).await {
-                                log::error!("goodbye mambers error: {}", err);
-                                err.record_stats();
-                            }
-                        });
-                    }
-                    if let Some(mambers) = message.get_new_chat_members() {
-                        let mambers = mambers.into_owned();
-                        let message = message.to_owned();
-                        tokio::spawn(async move {
-                            if let Err(err) = welcome_mambers(message, mambers, model).await {
-                                log::error!("welcome mambers error: {}", err);
-                                err.record_stats();
-                            }
-                        });
-                    }
+    if let UpdateExt::ChatMember(member) = update {
+        if let Some(model) = should_welcome(member.get_chat_ref()).await? {
+            if model.enabled {
+                let old_left = match member.get_old_chat_member_ref() {
+                    ChatMember::ChatMemberLeft(_) => true,
+                    ChatMember::ChatMemberBanned(_) => true,
+                    _ => false,
+                };
+
+                let new_left = match member.get_new_chat_member_ref() {
+                    ChatMember::ChatMemberLeft(_) => true,
+                    ChatMember::ChatMemberBanned(_) => true,
+                    _ => false,
+                };
+
+                if old_left && !new_left {
+                    welcome_mambers(member, model).await?;
+                } else {
+                    goodbye_mambers(member, model).await?;
                 }
             }
         }
-        _ => (),
-    };
+    }
+
     handle_command(cmd).await
 }

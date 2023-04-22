@@ -3035,8 +3035,10 @@ dependencies = [
  "anyhow",
  "convert_case",
  "itertools",
+ "lazy_static",
  "once_cell",
  "quote",
+ "regex",
  "serde",
  "serde_json",
 ]
