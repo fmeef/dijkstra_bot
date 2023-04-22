@@ -622,7 +622,10 @@ async fn handle_user_event(update: &UpdateExt) -> Result<()> {
     Ok(())
 }
 
-pub async fn handle_update<'a>(update: &UpdateExt, cmd: &Context<'a>) -> Result<()> {
+pub async fn handle_update<'a>(update: &UpdateExt, cmd: &Option<Context<'a>>) -> Result<()> {
     handle_user_event(update).await?;
-    handle_command(cmd).await
+    if let Some(cmd) = cmd {
+        handle_command(cmd).await?;
+    }
+    Ok(())
 }

@@ -88,17 +88,19 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
         pub async fn process_updates(
             update: ::botapi::gen_types::UpdateExt
             ) -> () {
-            let cmd = crate::tg::command::Context::new(&update);
-            #(
-                if let Err(err) = #updates::handle_update(&update, &cmd).await {
-                    log::error!("handle_update {} error: {}", #updates::METADATA.name, err);
-                    err.record_stats();
-                    if let Err(err) = err.get_message().await {
-                        log::error!("failed to send error message: {}, what the FLOOP", err);
+            match crate::tg::command::Context::get_context(&update).await {
+                Ok(cmd) => { #(
+                    if let Err(err) = #updates::handle_update(&update, &cmd).await {
+                        log::error!("handle_update {} error: {}", #updates::METADATA.name, err);
                         err.record_stats();
+                        if let Err(err) = err.get_message().await {
+                            log::error!("failed to send error message: {}, what the FLOOP", err);
+                            err.record_stats();
+                        }
                     }
-                }
-            )*
+                )*}
+                Err(err) => err.record_stats(),
+            }
         }
     };
     output

@@ -336,7 +336,7 @@ async fn goodbye_mambers(upd: &ChatMemberUpdated, model: entities::welcomes::Mod
     Ok(())
 }
 
-pub async fn handle_update<'a>(update: &UpdateExt, cmd: &Context<'a>) -> Result<()> {
+pub async fn handle_update<'a>(update: &UpdateExt, cmd: &Option<Context<'a>>) -> Result<()> {
     if let Some(userchanged) = update.user_event() {
         if let Some(model) = should_welcome(userchanged.get_chat()).await? {
             if model.enabled {
@@ -348,5 +348,9 @@ pub async fn handle_update<'a>(update: &UpdateExt, cmd: &Context<'a>) -> Result<
         }
     }
 
-    handle_command(cmd).await
+    if let Some(cmd) = cmd {
+        handle_command(cmd).await?;
+    }
+
+    Ok(())
 }

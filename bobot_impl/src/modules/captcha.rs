@@ -723,9 +723,12 @@ async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
 }
 
 #[allow(dead_code)]
-pub async fn handle_update<'a>(update: &UpdateExt, cmd: &Context<'a>) -> Result<()> {
+pub async fn handle_update<'a>(update: &UpdateExt, cmd: &Option<Context<'a>>) -> Result<()> {
     if let Some(UserChanged::UserJoined(ref member)) = update.user_event() {
         handle_user_action(member).await?;
     }
-    handle_command(cmd).await
+    if let Some(cmd) = cmd {
+        handle_command(cmd).await?;
+    }
+    Ok(())
 }

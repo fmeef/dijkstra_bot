@@ -104,8 +104,11 @@ async fn admincache(message: &Message) -> Result<()> {
     message.speak(lang_fmt!(lang, "refreshac")).await?;
     Ok(())
 }
-pub async fn handle_update<'a>(_: &UpdateExt, cmd: &Context<'a>) -> Result<()> {
-    handle_command(cmd).await
+pub async fn handle_update<'a>(_: &UpdateExt, cmd: &Option<Context<'a>>) -> Result<()> {
+    if let Some(cmd) = cmd {
+        handle_command(cmd).await?;
+    }
+    Ok(())
 }
 async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
     if let Some((cmd, entities, _, message)) = ctx.cmd() {

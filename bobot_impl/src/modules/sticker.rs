@@ -297,27 +297,23 @@ async fn handle_message<'a>(ctx: &Context<'a>) -> Result<()> {
     Ok(())
 }
 
-pub async fn handle_update<'a>(update: &UpdateExt, cmd: &Context<'a>) -> Result<()> {
-    let (res, _) = match update {
+pub async fn handle_update<'a>(update: &UpdateExt, cmd: &Option<Context<'a>>) -> Result<()> {
+    let _ = match update {
         UpdateExt::Message(ref message) => {
-            let r = handle_message(cmd).await;
+            if let Some(cmd) = cmd {
+                handle_message(cmd).await?;
+            }
             let id = message.get_chat().get_id();
-            (r, Some(id))
+            Some(id)
         }
         UpdateExt::InlineQuery(ref query) => {
-            let r = handle_inline(query).await;
+            handle_inline(query).await?;
             let id = query.get_from().get_id();
-            (r, Some(id))
+            Some(id)
         }
-        _ => (Ok(()), None),
+        _ => None,
     };
-
-    if let Err(err) = res {
-        info!("error {}", err);
-        Err(err.into())
-    } else {
-        Ok(())
-    }
+    Ok(())
 }
 
 async fn handle_command<'a>(message: &'a Message, cmd: Option<&Command<'a>>) -> Result<()> {

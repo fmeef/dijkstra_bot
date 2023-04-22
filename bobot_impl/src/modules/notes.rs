@@ -236,6 +236,9 @@ async fn save<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
     Ok(())
 }
 
-pub async fn handle_update<'a>(_: &UpdateExt, cmd: &Context<'a>) -> Result<()> {
-    handle_command(cmd).await
+pub async fn handle_update<'a>(_: &UpdateExt, cmd: &Option<Context<'a>>) -> Result<()> {
+    if let Some(cmd) = cmd {
+        handle_command(cmd).await?;
+    }
+    Ok(())
 }

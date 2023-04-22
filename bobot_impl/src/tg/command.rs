@@ -1,7 +1,10 @@
 use std::{borrow::Cow, collections::VecDeque};
 
-use crate::util::error::BotError;
-use botapi::gen_types::{Message, MessageEntity, UpdateExt, User};
+use crate::util::{
+    error::{BotError, Result},
+    string::{get_chat_lang, Lang},
+};
+use botapi::gen_types::{Chat, Message, MessageEntity, UpdateExt, User};
 use lazy_static::lazy_static;
 use regex::Regex;
 
@@ -141,17 +144,36 @@ pub struct Command<'a> {
 pub struct Context<'a> {
     pub message: Option<&'a Message>,
     pub command: Option<Command<'a>>,
+    pub chat: &'a Chat,
+    pub lang: Lang,
 }
 
 impl<'a> Context<'a> {
-    pub fn new(update: &'a UpdateExt) -> Self {
+    pub async fn get_context(update: &'a UpdateExt) -> Result<Option<Context<'a>>> {
         let message = match update {
             UpdateExt::Message(message) => Some(message),
             _ => None,
         };
 
         let command = message.map(|m| parse_cmd_struct(&m)).flatten();
-        Self { message, command }
+        let chat = match update {
+            UpdateExt::Message(m) => Some(m.get_chat_ref()),
+            UpdateExt::EditedMessage(m) => Some(m.get_chat_ref()),
+            UpdateExt::CallbackQuery(m) => m.get_message_ref().map(|m| m.get_chat_ref()),
+            _ => None,
+        };
+
+        if let Some(chat) = chat {
+            let lang = get_chat_lang(chat.get_id()).await?;
+            Ok(Some(Self {
+                message,
+                command,
+                chat,
+                lang,
+            }))
+        } else {
+            Ok(None)
+        }
     }
 
     pub fn cmd(&'a self) -> Option<(&'a str, &'a Entities<'a>, &'a TextArgs<'a>, &'a Message)> {

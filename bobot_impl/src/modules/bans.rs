@@ -169,20 +169,22 @@ async fn kickme(message: &Message) -> Result<()> {
     Ok(())
 }
 
-async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
-    if let Some((cmd, entities, args, message)) = ctx.cmd() {
-        match cmd {
-            "kickme" => kickme(message).await,
-            "mute" => mute_cmd(message, &entities, args).await,
-            "unmute" => unmute_cmd(message, &entities, args).await,
-            "ban" => ban_cmd(message, &entities, args).await,
-            "unban" => unban_cmd(message, &entities).await,
-            _ => Ok(()),
-        }?;
+async fn handle_command<'a>(ctx: &Option<Context<'a>>) -> Result<()> {
+    if let Some(ctx) = ctx {
+        if let Some((cmd, entities, args, message)) = ctx.cmd() {
+            match cmd {
+                "kickme" => kickme(message).await,
+                "mute" => mute_cmd(message, &entities, args).await,
+                "unmute" => unmute_cmd(message, &entities, args).await,
+                "ban" => ban_cmd(message, &entities, args).await,
+                "unban" => unban_cmd(message, &entities).await,
+                _ => Ok(()),
+            }?;
+        }
     }
     Ok(())
 }
 
-pub async fn handle_update<'a>(_: &UpdateExt, cmd: &Context<'a>) -> Result<()> {
+pub async fn handle_update<'a>(_: &UpdateExt, cmd: &Option<Context<'a>>) -> Result<()> {
     handle_command(cmd).await
 }
