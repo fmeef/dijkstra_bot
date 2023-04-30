@@ -97,15 +97,30 @@ impl Speak for Message {
         T: AsRef<str> + Send + Sync,
     {
         if !should_ignore_chat(self.get_chat().get_id()).await? {
-            let md = MarkupBuilder::from_murkdown_chatuser(message, self.get_chatuser().as_ref())?;
-            let (text, entities) = md.build();
-            let m = TG
-                .client()
-                .build_send_message(self.get_chat().get_id(), text)
-                .entities(&entities)
-                .build()
-                .await?;
-            Ok(Some(m))
+            match MarkupBuilder::from_murkdown_chatuser(
+                message.as_ref(),
+                self.get_chatuser().as_ref(),
+            ) {
+                Ok(md) => {
+                    let (text, entities) = md.build();
+                    let m = TG
+                        .client()
+                        .build_send_message(self.get_chat().get_id(), text)
+                        .entities(&entities)
+                        .build()
+                        .await?;
+
+                    Ok(Some(m))
+                }
+                Err(_) => {
+                    let m = TG
+                        .client()
+                        .build_send_message(self.get_chat().get_id(), message.as_ref())
+                        .build()
+                        .await?;
+                    Ok(Some(m))
+                }
+            }
         } else {
             Ok(None)
         }
@@ -137,16 +152,32 @@ impl Speak for Message {
         T: AsRef<str> + Send + Sync,
     {
         if !should_ignore_chat(self.get_chat().get_id()).await? {
-            let md = MarkupBuilder::from_murkdown_chatuser(message, self.get_chatuser().as_ref())?;
-            let (text, entities) = md.build();
-            let m = TG
-                .client()
-                .build_send_message(self.get_chat().get_id(), text)
-                .entities(entities)
-                .reply_to_message_id(self.get_message_id())
-                .build()
-                .await?;
-            Ok(Some(m))
+            match MarkupBuilder::from_murkdown_chatuser(
+                message.as_ref(),
+                self.get_chatuser().as_ref(),
+            ) {
+                Ok(md) => {
+                    let (text, entities) = md.build();
+                    let m = TG
+                        .client()
+                        .build_send_message(self.get_chat().get_id(), text)
+                        .entities(entities)
+                        .reply_to_message_id(self.get_message_id())
+                        .build()
+                        .await?;
+                    Ok(Some(m))
+                }
+
+                Err(_) => {
+                    let m = TG
+                        .client()
+                        .build_send_message(self.get_chat().get_id(), message.as_ref())
+                        .reply_to_message_id(self.get_message_id())
+                        .build()
+                        .await?;
+                    Ok(Some(m))
+                }
+            }
         } else {
             Ok(None)
         }
