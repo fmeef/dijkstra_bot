@@ -7,12 +7,12 @@ use crate::tg::markdown::MarkupBuilder;
 use crate::util::error::Result;
 
 use async_trait::async_trait;
+use botapi::bot::Part;
 use botapi::gen_methods::CallSendMessage;
-use botapi::gen_types::{Chat, Message};
+use botapi::gen_types::{Chat, FileData, Message};
 use chrono::Duration;
 use lazy_static::__Deref;
 use macros::get_langs;
-
 get_langs!();
 
 pub use langs::*;
@@ -97,6 +97,17 @@ impl Speak for Message {
         T: AsRef<str> + Send + Sync,
     {
         if !should_ignore_chat(self.get_chat().get_id()).await? {
+            if message.as_ref().len() > 4096 {
+                let bytes = FileData::Part(
+                    Part::text(message.as_ref().to_owned()).file_name("message.txt"),
+                );
+                let message = TG
+                    .client
+                    .build_send_document(self.get_chat().get_id(), bytes)
+                    .build()
+                    .await?;
+                return Ok(Some(message));
+            }
             match MarkupBuilder::from_murkdown_chatuser(
                 message.as_ref(),
                 self.get_chatuser().as_ref(),
@@ -152,6 +163,19 @@ impl Speak for Message {
         T: AsRef<str> + Send + Sync,
     {
         if !should_ignore_chat(self.get_chat().get_id()).await? {
+            if message.as_ref().len() > 4096 {
+                let bytes = FileData::Part(
+                    Part::text(message.as_ref().to_owned()).file_name("message.txt"),
+                );
+
+                let message = TG
+                    .client
+                    .build_send_document(self.get_chat().get_id(), bytes)
+                    .reply_to_message_id(self.get_message_id())
+                    .build()
+                    .await?;
+                return Ok(Some(message));
+            }
             match MarkupBuilder::from_murkdown_chatuser(
                 message.as_ref(),
                 self.get_chatuser().as_ref(),
