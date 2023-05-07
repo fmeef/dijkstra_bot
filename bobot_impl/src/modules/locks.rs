@@ -188,6 +188,8 @@ pub mod entities {
             Premium,
             #[sea_orm(num_value = 2)]
             Link,
+            #[sea_orm(num_value = 3)]
+            Code,
         }
 
         impl LockType {
@@ -195,6 +197,7 @@ pub mod entities {
                 match self {
                     Self::Premium => "Premium mambers",
                     Self::Link => "Web links",
+                    Self::Code => "Monospace formatted pre code",
                 }
             }
         }
@@ -385,6 +388,7 @@ fn locktype_from_args<'a>(
         let arg = match args.args.first() {
             Some(TextArg::Arg("premium")) => Some(LockType::Premium),
             Some(TextArg::Arg("link")) => Some(LockType::Link),
+            Some(TextArg::Arg("code")) => Some(LockType::Code),
             _ => None,
         };
 
@@ -552,10 +556,32 @@ async fn action_from_update(update: &UpdateExt) -> Result<(Option<ActionType>, V
                 is_premium(message),
             )
             .await?;
+
+            update_action(
+                message,
+                LockType::Code,
+                &mut action,
+                &mut locks,
+                is_pre(message),
+            )
+            .await?;
         }
         _ => (),
     }
     Ok((action, locks))
+}
+
+fn is_pre(message: &Message) -> bool {
+    if let Some(entities) = message.get_entities_ref() {
+        for entity in entities {
+            match entity.get_tg_type_ref() {
+                "pre" => return true,
+                "code" => return true,
+                _ => (),
+            }
+        }
+    }
+    false
 }
 
 fn is_link(message: &Message) -> bool {
