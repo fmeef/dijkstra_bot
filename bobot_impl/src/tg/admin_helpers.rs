@@ -744,6 +744,10 @@ pub async fn ban(message: &Message, user: &User, duration: Option<Duration>) -> 
                 mention
             ))
             .await?;
+    }
+    if user.is_admin(message.get_chat_ref()).await? {
+        let banadmin = lang_fmt!(lang, "banadmin");
+        return Err(BotError::speak(banadmin, message.get_chat().get_id()));
     } else {
         if let Some(duration) = duration.map(|v| Utc::now().checked_add_signed(v)).flatten() {
             TG.client()
