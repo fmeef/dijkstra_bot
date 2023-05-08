@@ -275,7 +275,7 @@ pub async fn get_chat_lang(chat: i64) -> Result<Lang> {
 
 pub async fn set_chat_lang(chat: &Chat, lang: Lang) -> Result<()> {
     let r = RedisStr::new(&lang)?;
-    let c = dialogs::Model::from_chat(chat);
+    let c = dialogs::Model::from_chat(chat).await?;
     let key = get_lang_key(chat.get_id());
     REDIS
         .pipe(|p| {

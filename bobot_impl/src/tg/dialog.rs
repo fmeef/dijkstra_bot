@@ -84,7 +84,7 @@ pub async fn dialog_or_default(chat: &Chat) -> Result<dialogs::Model> {
     let model = if let Some(model) = get_dialog(chat).await? {
         model
     } else {
-        dialogs::Entity::insert(dialogs::Model::from_chat(chat).cache(key).await?)
+        dialogs::Entity::insert(dialogs::Model::from_chat(chat).await?.cache(key).await?)
             .on_conflict(
                 OnConflict::column(dialogs::Column::ChatId)
                     .update_column(dialogs::Column::WarnLimit)

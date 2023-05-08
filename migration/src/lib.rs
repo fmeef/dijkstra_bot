@@ -6,6 +6,7 @@ mod m20221217_150626_create_user;
 mod m20230113_005856_addlang;
 mod m20230118_045027_adminactions;
 mod m20230211_202851_expires;
+mod m20230507_201523_dialog_permissions;
 
 pub struct Migrator;
 
@@ -19,6 +20,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20230113_005856_addlang::Migration),
             Box::new(m20230118_045027_adminactions::Migration),
             Box::new(m20230211_202851_expires::Migration),
+            Box::new(m20230507_201523_dialog_permissions::Migration),
         ];
         core_migrations.append(&mut module_migrations);
         core_migrations

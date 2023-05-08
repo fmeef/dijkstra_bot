@@ -8,7 +8,7 @@ use crate::tg::user::Username;
 use crate::util::error::{BotError, Result};
 use crate::util::string::{get_chat_lang, Lang};
 use crate::{metadata::metadata, statics::TG, util::string::Speak};
-use botapi::gen_types::{Chat, Message, UpdateExt, User};
+use botapi::gen_types::{Chat, ChatPermissionsBuilder, Message, UpdateExt, User};
 use chrono::Duration;
 use entities::locks::LockType;
 use lazy_static::__Deref;
@@ -190,6 +190,8 @@ pub mod entities {
             Link,
             #[sea_orm(num_value = 3)]
             Code,
+            #[sea_orm(num_value = 4)]
+            Photo,
         }
 
         impl LockType {
@@ -198,6 +200,7 @@ pub mod entities {
                     Self::Premium => "Premium mambers",
                     Self::Link => "Web links",
                     Self::Code => "Monospace formatted pre code",
+                    Self::Photo => "Photos",
                 }
             }
         }
@@ -389,6 +392,7 @@ fn locktype_from_args<'a>(
             Some(TextArg::Arg("premium")) => Some(LockType::Premium),
             Some(TextArg::Arg("link")) => Some(LockType::Link),
             Some(TextArg::Arg("code")) => Some(LockType::Code),
+            Some(TextArg::Arg("photo")) => Some(LockType::Photo),
             _ => None,
         };
 
@@ -416,8 +420,10 @@ async fn handle_lock<'a>(
     match locktype_from_args(cmd, message.get_chat().get_id()) {
         (Some(lock), None) => {
             let t = lock.get_name().to_owned();
-            set_lock(message, lock, user).await?;
 
+            handle_native_permissions(message, &lock, false).await?;
+
+            set_lock(message, lock, user).await?;
             message
                 .reply(lang_fmt!(
                     lang,
@@ -439,10 +445,29 @@ async fn handle_lock<'a>(
     Ok(())
 }
 
+async fn handle_native_permissions(message: &Message, lock: &LockType, set: bool) -> Result<()> {
+    match lock {
+        LockType::Photo => {
+            TG.client
+                .build_set_chat_permissions(
+                    message.get_chat().get_id(),
+                    &ChatPermissionsBuilder::new()
+                        .set_can_send_photos(set)
+                        .build(),
+                )
+                .build()
+                .await?;
+        }
+        _ => (),
+    };
+    Ok(())
+}
+
 async fn handle_unlock<'a>(message: &Message, cmd: &Option<&Command<'a>>) -> Result<()> {
     message.group_admin_or_die().await?;
     let lang = get_chat_lang(message.get_chat().get_id());
     if let (Some(lock), _) = locktype_from_args(cmd, message.get_chat().get_id()) {
+        handle_native_permissions(message, &lock, true).await?;
         let name = lock.get_name().to_owned();
         clear_lock(message, lock).await?;
         message.reply(lang_fmt!(lang, "clearedlock", name)).await?;

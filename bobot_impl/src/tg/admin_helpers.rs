@@ -403,6 +403,15 @@ pub async fn set_warn_time(chat: &Chat, time: i64) -> Result<()> {
         warn_limit: NotSet,
         action_type: NotSet,
         warn_time: Set(Some(time)),
+        can_send_messages: NotSet,
+        can_send_audio: NotSet,
+        can_send_video: NotSet,
+        can_send_photo: NotSet,
+        can_send_document: NotSet,
+        can_send_video_note: NotSet,
+        can_send_voice_note: NotSet,
+        can_send_poll: NotSet,
+        can_send_other: NotSet,
     };
 
     let key = get_dialog_key(chat_id);
@@ -429,6 +438,15 @@ pub async fn set_warn_limit(chat: &Chat, limit: i32) -> Result<()> {
         warn_limit: Set(limit),
         action_type: NotSet,
         warn_time: NotSet,
+        can_send_messages: NotSet,
+        can_send_audio: NotSet,
+        can_send_video: NotSet,
+        can_send_photo: NotSet,
+        can_send_document: NotSet,
+        can_send_video_note: NotSet,
+        can_send_voice_note: NotSet,
+        can_send_poll: NotSet,
+        can_send_other: NotSet,
     };
 
     let key = get_dialog_key(chat_id);
@@ -461,6 +479,15 @@ pub async fn set_warn_mode(chat: &Chat, mode: &str) -> Result<()> {
         warn_limit: NotSet,
         action_type: Set(mode),
         warn_time: NotSet,
+        can_send_messages: NotSet,
+        can_send_audio: NotSet,
+        can_send_video: NotSet,
+        can_send_photo: NotSet,
+        can_send_document: NotSet,
+        can_send_video_note: NotSet,
+        can_send_voice_note: NotSet,
+        can_send_poll: NotSet,
+        can_send_other: NotSet,
     };
 
     let key = get_dialog_key(chat_id);
