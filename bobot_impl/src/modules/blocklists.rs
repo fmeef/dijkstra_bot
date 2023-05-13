@@ -478,10 +478,10 @@ async fn command_blocklist<'a>(message: &Message, args: &TextArgs<'a>, lang: &La
         (ActionType::Delete, None)
     };
 
-    let f = if let Some(message) = message.get_reply_to_message_ref() {
-        message.get_text().map(|v| v.into_owned())
+    let (f, message) = if let Some(message) = message.get_reply_to_message_ref() {
+        (message.get_text().map(|v| v.into_owned()), message)
     } else {
-        cmd.body
+        (cmd.body, message)
     };
     insert_blocklist(message, filters.as_slice(), action, f, duration.flatten()).await?;
 

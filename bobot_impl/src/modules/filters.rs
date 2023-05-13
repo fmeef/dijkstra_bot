@@ -27,6 +27,7 @@ use entities::{filters, triggers};
 use itertools::Itertools;
 use lazy_static::__Deref;
 use macros::entity_fmt;
+use macros::lang_fmt;
 use redis::AsyncCommands;
 use sea_orm::entity::ActiveValue;
 use sea_orm::sea_query::OnConflict;
@@ -439,10 +440,10 @@ async fn command_filter<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang)
     };
 
     let filters = filters.iter().map(|v| v.as_str()).collect::<Vec<&str>>();
-    let f = if let Some(message) = message.get_reply_to_message_ref() {
-        message.get_text().map(|v| v.into_owned())
+    let (f, message) = if let Some(message) = message.get_reply_to_message_ref() {
+        (message.get_text().map(|v| v.into_owned()), message)
     } else {
-        cmd.body
+        (cmd.body, message)
     };
 
     insert_filter(message, filters.as_slice(), f.clone()).await?;
@@ -458,6 +459,8 @@ async fn command_filter<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang)
                 text
             ))
             .await?;
+    } else {
+        message.speak(lang_fmt!(lang, "addfilter", "")).await?;
     }
     Ok(())
 }
