@@ -52,6 +52,7 @@ wildmatch = "2.1.1"
 glob = "0.3.1"
 llama-rs = { path = "./llama-rs/llama-rs" }
 rusty_pool = "0.7.0"
+seq-macro = "0.3.3"
 
 
 [build-dependencies]

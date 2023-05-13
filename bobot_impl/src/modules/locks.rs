@@ -13,7 +13,6 @@ use crate::{metadata::metadata, statics::TG, util::string::Speak};
 use botapi::gen_types::{Chat, Message, UpdateExt, User};
 use chrono::Duration;
 use entities::locks::LockType;
-
 use lazy_static::__Deref;
 use macros::lang_fmt;
 use redis::AsyncCommands;
@@ -210,6 +209,14 @@ pub mod entities {
             Photo,
             #[sea_orm(num_value = 5)]
             Video,
+            #[sea_orm(num_value = 6)]
+            AnonChannel,
+            #[sea_orm(num_value = 7)]
+            Command,
+            #[sea_orm(num_value = 8)]
+            Forward,
+            #[sea_orm(num_value = 9)]
+            Sticker,
         }
 
         impl LockType {
@@ -220,6 +227,10 @@ pub mod entities {
                     Self::Code => "Monospace formatted pre code",
                     Self::Photo => "Photos",
                     Self::Video => "Videos",
+                    Self::AnonChannel => "Users speaking through anonymous channels",
+                    Self::Command => "Bot commands",
+                    Self::Forward => "Forwarded messages",
+                    Self::Sticker => "Stickers",
                 }
             }
         }
@@ -276,6 +287,16 @@ impl MigrationName for MigrationActionType {
 
 macro_rules! locks {
     ( $( { $name:expr, $description:expr, $lock:expr, $predicate:expr } ),* ) => {
+
+        static AVAILABLE_LOCKS: ::once_cell::sync::Lazy<::std::collections::HashMap<String, String>> =
+                ::once_cell::sync::Lazy::new(|| {
+           let mut map = ::std::collections::HashMap::new();
+            $(
+              map.insert($name.to_owned(), $description.to_owned());
+            )+
+            map
+        });
+
         async fn action_from_update(
             update: &UpdateExt,
         ) -> Result<(Option<ActionType>, Vec<LockType>)> {
@@ -361,7 +382,25 @@ locks! {
     }},
     {"video", "Video messages", LockType::Video, |message| {
         message.get_video().is_some()
-    }}
+    }},
+    {"anonchannel", "Users speaking through anonymous channels", LockType::AnonChannel, |message| {
+        message.get_sender_chat().is_some()
+    }},
+    {"command", "Bot commands", LockType::Command, |message| {
+        if let Some(entities) = message.get_entities_ref() {
+            for entity in entities {
+                match entity.get_tg_type_ref() {
+                    "bot_command" => return true,
+                    _ => (),
+                }
+            }
+        }
+        false
+    }},
+    {"forward", "Forwarded messages", LockType::Forward, |message| {
+        message.get_forward_from().is_some()
+    }},
+    {"sticker", "Stickers", LockType::Sticker, |message| message.get_sticker().is_some() }
 }
 
 pub fn get_lock_key(chat: i64, locktype: &LockType) -> String {
@@ -595,6 +634,20 @@ async fn is_approved(chat: &Chat, user: &User) -> Result<bool> {
     Ok(res)
 }
 
+async fn cmd_available<'a>(ctx: &Context<'a>) -> Result<()> {
+    let available = ["[*Available locks]:".to_owned()]
+        .into_iter()
+        .chain(
+            AVAILABLE_LOCKS
+                .iter()
+                .map(|(name, desc)| format!("[`{}:] {}", name, desc)),
+        )
+        .collect::<Vec<String>>()
+        .join("\n");
+    ctx.message.speak(available).await?;
+    Ok(())
+}
+
 async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
     if let Some((cmd, _, args, message, lang)) = ctx.cmd() {
         let command = ctx.command.as_ref();
@@ -604,6 +657,7 @@ async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
                 "unlock" => handle_unlock(message, &command).await?,
                 "locks" => handle_list(message).await?,
                 "lockaction" => lock_action(message, &args).await?,
+                "available" => cmd_available(ctx).await?,
                 _ => (),
             };
         }
