@@ -1,16 +1,19 @@
-use self::entities::{default_locks, locks};
+use self::entities::{approvals, default_locks, locks};
 use crate::persist::admin::actions::ActionType;
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache};
 use crate::statics::{CONFIG, DB, REDIS};
-use crate::tg::admin_helpers::{ban_message, warn_with_action, IsAdmin, IsGroupAdmin};
-use crate::tg::command::{Command, Context, TextArg, TextArgs};
+use crate::tg::admin_helpers::{
+    action_message, ban_message, warn_with_action, IsAdmin, IsGroupAdmin,
+};
+use crate::tg::command::{Command, Context, Entities, TextArg, TextArgs};
 use crate::tg::user::Username;
 use crate::util::error::{BotError, Result};
 use crate::util::string::{get_chat_lang, Lang};
 use crate::{metadata::metadata, statics::TG, util::string::Speak};
-use botapi::gen_types::{Chat, ChatPermissionsBuilder, Message, UpdateExt, User};
+use botapi::gen_types::{Chat, Message, UpdateExt, User};
 use chrono::Duration;
 use entities::locks::LockType;
+use futures::FutureExt;
 use lazy_static::__Deref;
 use macros::lang_fmt;
 use redis::AsyncCommands;
@@ -34,12 +37,16 @@ metadata!("Locks",
 
 pub mod entities {
     use self::locks::LockAction;
+    use super::Migration;
+    use super::MigrationActionType;
+    use super::MigrationApprovals;
     use crate::persist::admin::actions::ActionType;
     use crate::persist::migrate::ManagerHelper;
     use ::sea_orm_migration::prelude::*;
-
-    use super::Migration;
-    use super::MigrationActionType;
+    use sea_orm::ActiveValue::{NotSet, Set};
+    use sea_orm::ColumnTrait;
+    use sea_orm::EntityTrait;
+    use sea_orm::QueryFilter;
 
     #[async_trait::async_trait]
     impl MigrationTrait for Migration {
@@ -117,6 +124,16 @@ pub mod entities {
         }
 
         async fn down(&self, manager: &SchemaManager) -> std::result::Result<(), DbErr> {
+            locks::Entity::update_many()
+                .filter(locks::Column::LockAction.is_null())
+                .set(locks::ActiveModel {
+                    lock_type: NotSet,
+                    lock_action: Set(Some(ActionType::Delete)),
+                    chat: NotSet,
+                    reason: NotSet,
+                })
+                .exec(manager.get_connection())
+                .await?;
             manager
                 .alter_table(
                     Table::alter()
@@ -136,6 +153,66 @@ pub mod entities {
         }
     }
 
+    #[async_trait::async_trait]
+    impl MigrationTrait for MigrationApprovals {
+        async fn up(&self, manager: &SchemaManager) -> std::result::Result<(), DbErr> {
+            manager
+                .create_table(
+                    Table::create()
+                        .table(approvals::Entity)
+                        .col(
+                            ColumnDef::new(approvals::Column::Chat)
+                                .big_integer()
+                                .not_null(),
+                        )
+                        .col(
+                            ColumnDef::new(approvals::Column::User)
+                                .big_integer()
+                                .not_null(),
+                        )
+                        .primary_key(
+                            IndexCreateStatement::new()
+                                .col(approvals::Column::Chat)
+                                .col(approvals::Column::User)
+                                .primary(),
+                        )
+                        .to_owned(),
+                )
+                .await?;
+
+            Ok(())
+        }
+
+        async fn down(&self, manager: &SchemaManager) -> std::result::Result<(), DbErr> {
+            manager.drop_table_auto(approvals::Entity).await?;
+            Ok(())
+        }
+    }
+
+    pub mod approvals {
+
+        use sea_orm::entity::prelude::*;
+        use serde::{Deserialize, Serialize};
+
+        #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+        pub enum Relation {}
+        impl Related<super::locks::Entity> for Entity {
+            fn to() -> RelationDef {
+                panic!("no relations")
+            }
+        }
+
+        impl ActiveModelBehavior for ActiveModel {}
+
+        #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+        #[sea_orm(table_name = "approvals")]
+        pub struct Model {
+            #[sea_orm(primary_key)]
+            pub chat: i64,
+            #[sea_orm(primary_key)]
+            pub user: i64,
+        }
+    }
     pub mod default_locks {
 
         use sea_orm::entity::prelude::*;
@@ -192,6 +269,8 @@ pub mod entities {
             Code,
             #[sea_orm(num_value = 4)]
             Photo,
+            #[sea_orm(num_value = 5)]
+            Video,
         }
 
         impl LockType {
@@ -201,6 +280,7 @@ pub mod entities {
                     Self::Link => "Web links",
                     Self::Code => "Monospace formatted pre code",
                     Self::Photo => "Photos",
+                    Self::Video => "Videos",
                 }
             }
         }
@@ -242,6 +322,7 @@ pub mod entities {
 
 pub struct Migration;
 pub struct MigrationActionType;
+pub struct MigrationApprovals;
 
 impl MigrationName for Migration {
     fn name(&self) -> &str {
@@ -255,12 +336,112 @@ impl MigrationName for MigrationActionType {
     }
 }
 
+impl MigrationName for MigrationApprovals {
+    fn name(&self) -> &str {
+        "m20230336_000001_approvals"
+    }
+}
+
+macro_rules! locks {
+    ( $( { $name:expr, $description:expr, $lock:expr, $predicate:expr } ),* ) => {
+        async fn action_from_update(
+            update: &UpdateExt,
+        ) -> Result<(Option<ActionType>, Vec<LockType>)> {
+            let mut action: Option<ActionType> = None;
+            let mut locks = Vec::<LockType>::new();
+            match update {
+                UpdateExt::Message(ref message) => {
+                    $(
+                    update_action(
+                        message,
+                        $lock,
+                        &mut action,
+                        &mut locks,
+                        $predicate,
+                    )
+                    .await?;
+                    )*
+                }
+                _ => (),
+            }
+            Ok((action, locks))
+        }
+
+
+        fn locktype_from_args<'a>(
+            cmd: &Option<&'a Command<'a>>,
+            chat: i64,
+        ) -> (Option<LockType>, Option<ActionType>) {
+            if let Some(&Command { ref args, .. }) = cmd {
+                let action = args
+                    .args
+                    .get(1)
+                    .map(|v| ActionType::from_str(v.get_text(), chat).ok())
+                    .flatten();
+                let arg = match args.args.first() {
+                    $( Some(TextArg::Arg($name)) => Some($lock)),+,
+                    _ => None,
+                };
+
+                (arg, action)
+            } else {
+                (None, None)
+            }
+        }
+    };
+}
+
+locks! {
+    {"code", "Pre formatted code", LockType::Code, |message| {
+        if let Some(entities) = message.get_entities_ref() {
+            for entity in entities {
+                match entity.get_tg_type_ref() {
+                    "pre" => return true,
+                    "code" => return true,
+                    _ => (),
+                }
+            }
+        }
+        false
+
+    }},
+    {"premium", "Messages from premium users", LockType::Premium, |message| {
+       if let Some(user) = message.get_from() {
+            user.get_is_premium().unwrap_or(false)
+        } else {
+            false
+        }
+    }},
+    {"url", "http/https urls, as defined by telegram", LockType::Link, |message| {
+        if let Some(entities) = message.get_entities_ref() {
+            for entity in entities {
+                match entity.get_tg_type_ref() {
+                    "url" => return true,
+                    "text_link" => return true,
+                    _ => (),
+                }
+            }
+        }
+        false
+    }},
+    {"photo", "Photo messages", LockType::Photo, |message| {
+        message.get_photo().is_some()
+    }},
+    {"video", "Video messages", LockType::Video, |message| {
+        message.get_video().is_some()
+    }}
+}
+
 pub fn get_lock_key(chat: i64, locktype: &LockType) -> String {
     format!("lock:{}:{}", chat, locktype.to_string())
 }
 
 pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
-    vec![Box::new(Migration), Box::new(MigrationActionType)]
+    vec![
+        Box::new(Migration),
+        Box::new(MigrationActionType),
+        Box::new(MigrationApprovals),
+    ]
 }
 
 async fn get_lock(message: &Message, locktype: LockType) -> Result<Option<locks::Model>> {
@@ -378,38 +559,6 @@ async fn set_lock_action(
     Ok(())
 }
 
-fn locktype_from_args<'a>(
-    cmd: &Option<&'a Command<'a>>,
-    chat: i64,
-) -> (Option<LockType>, Option<ActionType>) {
-    if let Some(&Command { ref args, .. }) = cmd {
-        let action = args
-            .args
-            .get(1)
-            .map(|v| ActionType::from_str(v.get_text(), chat).ok())
-            .flatten();
-        let arg = match args.args.first() {
-            Some(TextArg::Arg("premium")) => Some(LockType::Premium),
-            Some(TextArg::Arg("link")) => Some(LockType::Link),
-            Some(TextArg::Arg("code")) => Some(LockType::Code),
-            Some(TextArg::Arg("photo")) => Some(LockType::Photo),
-            _ => None,
-        };
-
-        (arg, action)
-    } else {
-        (None, None)
-    }
-}
-
-fn is_premium(message: &Message) -> bool {
-    if let Some(user) = message.get_from() {
-        user.get_is_premium().unwrap_or(false)
-    } else {
-        false
-    }
-}
-
 async fn handle_lock<'a>(
     message: &Message,
     cmd: &Option<&Command<'a>>,
@@ -420,8 +569,6 @@ async fn handle_lock<'a>(
     match locktype_from_args(cmd, message.get_chat().get_id()) {
         (Some(lock), None) => {
             let t = lock.get_name().to_owned();
-
-            handle_native_permissions(message, &lock, false).await?;
 
             set_lock(message, lock, user).await?;
             message
@@ -445,29 +592,10 @@ async fn handle_lock<'a>(
     Ok(())
 }
 
-async fn handle_native_permissions(message: &Message, lock: &LockType, set: bool) -> Result<()> {
-    match lock {
-        LockType::Photo => {
-            TG.client
-                .build_set_chat_permissions(
-                    message.get_chat().get_id(),
-                    &ChatPermissionsBuilder::new()
-                        .set_can_send_photos(set)
-                        .build(),
-                )
-                .build()
-                .await?;
-        }
-        _ => (),
-    };
-    Ok(())
-}
-
 async fn handle_unlock<'a>(message: &Message, cmd: &Option<&Command<'a>>) -> Result<()> {
     message.group_admin_or_die().await?;
     let lang = get_chat_lang(message.get_chat().get_id());
     if let (Some(lock), _) = locktype_from_args(cmd, message.get_chat().get_id()) {
-        handle_native_permissions(message, &lock, true).await?;
         let name = lock.get_name().to_owned();
         clear_lock(message, lock).await?;
         message.reply(lang_fmt!(lang, "clearedlock", name)).await?;
@@ -514,8 +642,64 @@ async fn lock_action<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
     Ok(())
 }
 
+#[inline(always)]
+fn get_approval_key(chat: &Chat, user: &User) -> String {
+    format!("ap:{}:{}", chat.get_id(), user.get_id())
+}
+
+async fn is_approved(chat: &Chat, user: &User) -> Result<bool> {
+    let chat_id = chat.get_id();
+    let user_id = user.get_id();
+    let key = get_approval_key(chat, user);
+    let res = default_cache_query(
+        |_, _| async move {
+            let res = approvals::Entity::find_by_id((chat_id, user_id))
+                .one(DB.deref())
+                .await?;
+            Ok(res)
+        },
+        Duration::seconds(CONFIG.timing.cache_timeout as i64),
+    )
+    .query(&key, &())
+    .await?
+    .is_some();
+
+    Ok(res)
+}
+
+async fn cmd_approve<'a>(
+    message: &Message,
+    args: &TextArgs<'a>,
+    entities: &Entities<'a>,
+) -> Result<()> {
+    action_message(message, entities, Some(args), |message, user, _| {
+        async move {
+            approvals::Entity::insert(
+                approvals::Model {
+                    chat: message.get_chat().get_id(),
+                    user: user.get_id(),
+                }
+                .cache(get_approval_key(message.get_chat_ref(), user))
+                .await?,
+            )
+            .on_conflict(
+                OnConflict::columns([approvals::Column::Chat, approvals::Column::User])
+                    .update_columns([approvals::Column::Chat, approvals::Column::User])
+                    .to_owned(),
+            )
+            .exec(DB.deref())
+            .await?;
+
+            Ok(())
+        }
+        .boxed()
+    })
+    .await?;
+    Ok(())
+}
+
 async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
-    if let Some((cmd, _, args, message, lang)) = ctx.cmd() {
+    if let Some((cmd, entities, args, message, lang)) = ctx.cmd() {
         let command = ctx.command.as_ref();
         if let Some(user) = message.get_from() {
             match cmd {
@@ -523,6 +707,7 @@ async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
                 "unlock" => handle_unlock(message, &command).await?,
                 "locks" => handle_list(message).await?,
                 "lockaction" => lock_action(message, &args).await?,
+                "approve" => cmd_approve(message, args, entities).await?,
                 _ => (),
             };
         }
@@ -531,14 +716,17 @@ async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
 }
 
 #[inline(always)]
-async fn update_action(
+async fn update_action<F>(
     message: &Message,
     locktype: LockType,
     action: &mut Option<ActionType>,
     locks: &mut Vec<LockType>,
-    p: bool,
-) -> Result<()> {
-    if p {
+    p: F,
+) -> Result<()>
+where
+    F: for<'b> FnOnce(&'b Message) -> bool,
+{
+    if p(message) {
         let newaction = get_lock(message, locktype.clone()).await?;
         let newaction = if let Some(action) = newaction.map(|v| v.lock_action).flatten() {
             Some(action)
@@ -559,73 +747,15 @@ async fn update_action(
     Ok(())
 }
 
-async fn action_from_update(update: &UpdateExt) -> Result<(Option<ActionType>, Vec<LockType>)> {
-    let mut action: Option<ActionType> = None;
-    let mut locks = Vec::<LockType>::new();
-    match update {
-        UpdateExt::Message(ref message) => {
-            update_action(
-                message,
-                LockType::Link,
-                &mut action,
-                &mut locks,
-                is_link(message),
-            )
-            .await?;
-
-            update_action(
-                message,
-                LockType::Premium,
-                &mut action,
-                &mut locks,
-                is_premium(message),
-            )
-            .await?;
-
-            update_action(
-                message,
-                LockType::Code,
-                &mut action,
-                &mut locks,
-                is_pre(message),
-            )
-            .await?;
-        }
-        _ => (),
-    }
-    Ok((action, locks))
-}
-
-fn is_pre(message: &Message) -> bool {
-    if let Some(entities) = message.get_entities_ref() {
-        for entity in entities {
-            match entity.get_tg_type_ref() {
-                "pre" => return true,
-                "code" => return true,
-                _ => (),
-            }
-        }
-    }
-    false
-}
-
-fn is_link(message: &Message) -> bool {
-    if let Some(entities) = message.get_entities_ref() {
-        for entity in entities {
-            match entity.get_tg_type_ref() {
-                "url" => return true,
-                "text_link" => return true,
-                _ => (),
-            }
-        }
-    }
-    false
-}
-
 async fn handle_user_event(update: &UpdateExt, lang: &Lang) -> Result<()> {
     if let (Some(action), locks) = action_from_update(update).await? {
         match update {
             UpdateExt::Message(ref message) => {
+                if let Some(user) = message.get_from_ref() {
+                    if is_approved(message.get_chat_ref(), user).await? {
+                        return Ok(());
+                    }
+                }
                 if message.get_from().is_admin(message.get_chat_ref()).await? {
                     return Ok(());
                 }

@@ -680,6 +680,14 @@ pub async fn clear_warns(chat: &Chat, user: &User) -> Result<()> {
 }
 
 pub async fn unmute(chat: &Chat, user: &User) -> Result<()> {
+    let old = TG.client.get_chat(chat.get_id()).await?;
+    let old = old.get_permissions().ok_or_else(|| {
+        BotError::speak(
+            "cannot unmute user, failed to get permissions",
+            chat.get_id(),
+        )
+    })?;
+    let mut new = ChatPermissionsBuilder::new();
     let permissions = ChatPermissionsBuilder::new()
         .set_can_send_messages(true)
         .set_can_send_audios(true)
@@ -692,7 +700,10 @@ pub async fn unmute(chat: &Chat, user: &User) -> Result<()> {
         .set_can_send_other_messages(true)
         .build();
 
-    change_permissions(chat, user, &permissions, None).await?;
+    new = merge_permissions(&permissions, new);
+    new = merge_permissions(&old, new);
+
+    change_permissions(chat, user, &new.build(), None).await?;
     Ok(())
 }
 
@@ -710,6 +721,66 @@ pub async fn mute(chat: &Chat, user: &User, duration: Option<Duration>) -> Resul
         .build();
 
     change_permissions(chat, user, &permissions, duration).await?;
+    Ok(())
+}
+
+fn merge_permissions(
+    permissions: &ChatPermissions,
+    mut new: ChatPermissionsBuilder,
+) -> ChatPermissionsBuilder {
+    if let Some(p) = permissions.get_can_send_messages() {
+        new = new.set_can_send_messages(p);
+    }
+
+    if let Some(p) = permissions.get_can_send_audios() {
+        new = new.set_can_send_audios(p);
+    }
+
+    if let Some(p) = permissions.get_can_send_documents() {
+        new = new.set_can_send_documents(p);
+    }
+
+    if let Some(p) = permissions.get_can_send_photos() {
+        new = new.set_can_send_photos(p);
+    }
+
+    if let Some(p) = permissions.get_can_send_videos() {
+        new = new.set_can_send_videos(p);
+    }
+
+    if let Some(p) = permissions.get_can_send_video_notes() {
+        new = new.set_can_send_video_notes(p);
+    }
+
+    if let Some(p) = permissions.get_can_send_polls() {
+        new = new.set_can_send_polls(p);
+    }
+
+    if let Some(p) = permissions.get_can_send_voice_notes() {
+        new = new.set_can_send_voice_notes(p);
+    }
+
+    if let Some(p) = permissions.get_can_send_other_messages() {
+        new = new.set_can_send_other_messages(p);
+    }
+
+    new
+}
+
+pub async fn change_chat_permissions(chat: &Chat, permissions: &ChatPermissions) -> Result<()> {
+    let current_perms = TG.client.get_chat(chat.get_id()).await?;
+    let mut new = ChatPermissionsBuilder::new();
+    let old = current_perms
+        .get_permissions()
+        .ok_or_else(|| BotError::speak("failed to get chat permissions", chat.get_id()))?;
+    new = merge_permissions(&old, new);
+    new = merge_permissions(permissions, new);
+    let new = new.build();
+    TG.client
+        .build_set_chat_permissions(chat.get_id(), &new)
+        .use_independent_chat_permissions(true)
+        .build()
+        .await?;
     Ok(())
 }
 
