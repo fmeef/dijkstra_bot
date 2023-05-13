@@ -84,11 +84,16 @@ impl BotError {
         if let Self::ApiError(ref error) = self {
             if let Some(error) = error.get_response() {
                 log::error!(
-                    "telegram error {}",
+                    "telegram error code {} {}",
+                    error
+                        .error_code
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "invalid".to_owned()),
                     error
                         .description
                         .as_ref()
-                        .unwrap_or(&error.error_code.unwrap_or(0).to_string())
+                        .map(|v| v.as_str())
+                        .unwrap_or("no description")
                 );
                 if let Some(error_code) = error.error_code {
                     crate::persist::metrics::count_error_code(error_code);
