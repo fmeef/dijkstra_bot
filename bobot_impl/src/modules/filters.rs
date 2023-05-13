@@ -375,7 +375,12 @@ async fn insert_filter(
                 filters::Column::Chat,
                 filters::Column::MediaId,
             ])
-            .do_nothing()
+            .update_columns([
+                filters::Column::Text,
+                filters::Column::Chat,
+                filters::Column::MediaId,
+                filters::Column::MediaType,
+            ])
             .to_owned(),
         )
         .exec_with_returning(DB.deref().deref())

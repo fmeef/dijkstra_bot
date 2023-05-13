@@ -472,7 +472,7 @@ async fn get_default_settings(chat: &Chat) -> Result<default_locks::Model> {
                 default_locks::Entity::insert(default_locks::Model::default_from_chat(chat_id))
                     .on_conflict(
                         OnConflict::column(default_locks::Column::Chat)
-                            .do_nothing()
+                            .update_column(default_locks::Column::Chat)
                             .to_owned(),
                     )
                     .exec_with_returning(DB.deref())
