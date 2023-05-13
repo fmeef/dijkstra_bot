@@ -10,6 +10,7 @@ use crate::statics::DB;
 use crate::statics::REDIS;
 use crate::statics::TG;
 use crate::tg::admin_helpers::ban;
+use crate::tg::admin_helpers::is_approved;
 use crate::tg::admin_helpers::is_dm;
 use crate::tg::admin_helpers::mute;
 use crate::tg::admin_helpers::parse_duration_str;
@@ -212,7 +213,11 @@ pub mod entities {
 
         #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
         pub enum Relation {
-            #[sea_orm(has_many = "super::triggers::Entity")]
+            #[sea_orm(
+                belongs_to = "super::triggers::Entity",
+                from = "Column::Id",
+                to = "super::triggers::Column::BlocklistId"
+            )]
             Triggers,
         }
         impl Related<super::triggers::Entity> for Entity {
@@ -307,20 +312,6 @@ lazy_static! {
     static ref WHITESPACE: Regex = Regex::new(r#"\s+|\S*"#).unwrap();
 }
 
-fn iter_whitespace<'a>(text: &'a str) -> Vec<(&'a str, Option<&'a str>)> {
-    WHITESPACE
-        .find_iter(text)
-        .map(|v| v.as_str())
-        .chunks(2)
-        .into_iter()
-        .filter_map(|mut chunks| match (chunks.next(), chunks.next()) {
-            (Some(first), Some(next)) => Some((first, Some(next))),
-            (Some(first), None) => Some((first, None)),
-            _ => None,
-        })
-        .collect()
-}
-
 #[allow(dead_code)]
 async fn search_cache(message: &Message, text: &str) -> Result<Option<blocklists::Model>> {
     update_cache_from_db(message).await?;
@@ -339,46 +330,10 @@ async fn search_cache(message: &Message, text: &str) -> Result<Option<blocklists
         .await
 }
 
-#[allow(dead_code)]
-async fn search_cache_hack(message: &Message, text: &str) -> Result<Option<blocklists::Model>> {
-    update_cache_from_db(message).await?;
-    let hash_key = get_blocklist_hash_key(message);
-    REDIS
-        .query(|mut q| async move {
-            let mut iter: redis::AsyncIter<(String, i64)> = q.hscan(&hash_key).await?;
-            while let Some((key, item)) = iter.next_item().await {
-                let mut key_iter = iter_whitespace(&key).into_iter().peekable();
-                let mut should_match = false;
-                if let Some((mut match_word, mut match_ws)) = key_iter.next() {
-                    for (word, ws) in iter_whitespace(text) {
-                        let matcher = WildMatch::new(&match_word);
-                        if matcher.matches(word) {
-                            should_match = true;
-
-                            if match_ws != ws {
-                                return Ok(None);
-                            }
-
-                            if let Some((w, ws)) = key_iter.next() {
-                                match_word = w;
-                                match_ws = ws;
-                            } else {
-                                return get_blocklist(message, item).await;
-                            }
-                        } else if should_match && key_iter.peek().is_some() {
-                            return Ok(None);
-                        }
-                    }
-                }
-            }
-            Ok(None)
-        })
-        .await
-}
-
 async fn update_cache_from_db(message: &Message) -> Result<()> {
     let hash_key = get_blocklist_hash_key(message);
-    if !REDIS.sq(|q| q.exists(&hash_key)).await? {
+    let k: usize = REDIS.sq(|q| q.exists(&hash_key)).await?;
+    if k == 0 {
         let res = blocklists::Entity::find()
             .filter(blocklists::Column::Chat.eq(message.get_chat().get_id()))
             .find_with_related(triggers::Entity)
@@ -387,13 +342,13 @@ async fn update_cache_from_db(message: &Message) -> Result<()> {
         REDIS
             .try_pipe(|p| {
                 p.hset(&hash_key, "empty", 0);
-                for (filter, triggers) in res.iter() {
+                for (filter, triggers) in res.into_iter() {
                     let key = get_blocklist_key(message, filter.id);
                     let filter_st = RedisStr::new(&filter)?;
                     p.set(&key, filter_st)
                         .expire(&key, CONFIG.timing.cache_timeout);
-                    for trigger in triggers.iter() {
-                        p.hset(&hash_key, trigger.trigger.to_owned(), filter.id)
+                    for trigger in triggers.into_iter() {
+                        p.hset(&hash_key, trigger.trigger, filter.id)
                             .expire(&hash_key, CONFIG.timing.cache_timeout);
                     }
                 }
@@ -570,12 +525,16 @@ async fn warn(message: &Message, user: &User, reason: Option<String>) -> Result<
 }
 
 async fn handle_trigger(message: &Message) -> Result<()> {
-    if message.get_from().is_admin(message.get_chat_ref()).await? && is_dm(message.get_chat_ref()) {
-        return Ok(());
-    }
-    if let Some(text) = message.get_text() {
-        if let Some(res) = search_cache(message, &text).await? {
-            if let Some(user) = message.get_from() {
+    if let Some(user) = message.get_from() {
+        if message.get_from().is_admin(message.get_chat_ref()).await?
+            || is_dm(message.get_chat_ref())
+            || is_approved(message.get_chat_ref(), &user).await?
+        {
+            return Ok(());
+        }
+
+        if let Some(text) = message.get_text() {
+            if let Some(res) = search_cache(message, &text).await? {
                 let duration = res.duration.map(|v| Duration::seconds(v));
                 let duration_str = if let Some(duration) = duration {
                     format!(" for {}", format_duration(duration.to_std()?))

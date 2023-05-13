@@ -48,6 +48,8 @@ setgoodbye: "Set group goodbye to {}"
 setdefaultaction: "Set default action"
 noactionarg: "You need to specify the action to set"
 locknotspec: "Invalid lock type, see /help for available locks"
+approved: "Approved user {}"
+unapproved: "Unapproved user {}"
 clearedlock: |
   Cleared lock "{}"
 setlock: |

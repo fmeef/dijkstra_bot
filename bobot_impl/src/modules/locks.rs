@@ -1,5 +1,6 @@
-use self::entities::{approvals, default_locks, locks};
+use self::entities::{default_locks, locks};
 use crate::persist::admin::actions::ActionType;
+use crate::persist::admin::approvals;
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache};
 use crate::statics::{CONFIG, DB, REDIS};
 use crate::tg::admin_helpers::{
@@ -19,7 +20,6 @@ use macros::lang_fmt;
 use redis::AsyncCommands;
 use sea_orm::prelude::*;
 use sea_orm::sea_query::OnConflict;
-
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::EntityTrait;
 use sea_orm_migration::{MigrationName, MigrationTrait};
@@ -39,7 +39,7 @@ pub mod entities {
     use self::locks::LockAction;
     use super::Migration;
     use super::MigrationActionType;
-    use super::MigrationApprovals;
+
     use crate::persist::admin::actions::ActionType;
     use crate::persist::migrate::ManagerHelper;
     use ::sea_orm_migration::prelude::*;
@@ -153,66 +153,6 @@ pub mod entities {
         }
     }
 
-    #[async_trait::async_trait]
-    impl MigrationTrait for MigrationApprovals {
-        async fn up(&self, manager: &SchemaManager) -> std::result::Result<(), DbErr> {
-            manager
-                .create_table(
-                    Table::create()
-                        .table(approvals::Entity)
-                        .col(
-                            ColumnDef::new(approvals::Column::Chat)
-                                .big_integer()
-                                .not_null(),
-                        )
-                        .col(
-                            ColumnDef::new(approvals::Column::User)
-                                .big_integer()
-                                .not_null(),
-                        )
-                        .primary_key(
-                            IndexCreateStatement::new()
-                                .col(approvals::Column::Chat)
-                                .col(approvals::Column::User)
-                                .primary(),
-                        )
-                        .to_owned(),
-                )
-                .await?;
-
-            Ok(())
-        }
-
-        async fn down(&self, manager: &SchemaManager) -> std::result::Result<(), DbErr> {
-            manager.drop_table_auto(approvals::Entity).await?;
-            Ok(())
-        }
-    }
-
-    pub mod approvals {
-
-        use sea_orm::entity::prelude::*;
-        use serde::{Deserialize, Serialize};
-
-        #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-        pub enum Relation {}
-        impl Related<super::locks::Entity> for Entity {
-            fn to() -> RelationDef {
-                panic!("no relations")
-            }
-        }
-
-        impl ActiveModelBehavior for ActiveModel {}
-
-        #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
-        #[sea_orm(table_name = "approvals")]
-        pub struct Model {
-            #[sea_orm(primary_key)]
-            pub chat: i64,
-            #[sea_orm(primary_key)]
-            pub user: i64,
-        }
-    }
     pub mod default_locks {
 
         use sea_orm::entity::prelude::*;
@@ -322,7 +262,6 @@ pub mod entities {
 
 pub struct Migration;
 pub struct MigrationActionType;
-pub struct MigrationApprovals;
 
 impl MigrationName for Migration {
     fn name(&self) -> &str {
@@ -333,12 +272,6 @@ impl MigrationName for Migration {
 impl MigrationName for MigrationActionType {
     fn name(&self) -> &str {
         "m20230316_000001_update_action_type"
-    }
-}
-
-impl MigrationName for MigrationApprovals {
-    fn name(&self) -> &str {
-        "m20230336_000001_approvals"
     }
 }
 
@@ -360,7 +293,7 @@ macro_rules! locks {
                         $predicate,
                     )
                     .await?;
-                    )*
+                    )+
                 }
                 _ => (),
             }
@@ -437,11 +370,7 @@ pub fn get_lock_key(chat: i64, locktype: &LockType) -> String {
 }
 
 pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
-    vec![
-        Box::new(Migration),
-        Box::new(MigrationActionType),
-        Box::new(MigrationApprovals),
-    ]
+    vec![Box::new(Migration), Box::new(MigrationActionType)]
 }
 
 async fn get_lock(message: &Message, locktype: LockType) -> Result<Option<locks::Model>> {

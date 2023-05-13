@@ -7,7 +7,7 @@ use crate::{
     persist::{
         admin::{
             actions::{self, ActionType},
-            warns,
+            approvals, warns,
         },
         core::dialogs,
         redis::{default_cache_query, CachedQuery, CachedQueryTrait, RedisCache, RedisStr},
@@ -722,6 +722,65 @@ pub async fn mute(chat: &Chat, user: &User, duration: Option<Duration>) -> Resul
 
     change_permissions(chat, user, &permissions, duration).await?;
     Ok(())
+}
+
+#[inline(always)]
+fn get_approval_key(chat: &Chat, user: &User) -> String {
+    format!("ap:{}:{}", chat.get_id(), user.get_id())
+}
+
+pub async fn approve(chat: &Chat, user: &User) -> Result<()> {
+    approvals::Entity::insert(
+        approvals::Model {
+            chat: chat.get_id(),
+            user: user.get_id(),
+        }
+        .cache(get_approval_key(chat, user))
+        .await?,
+    )
+    .on_conflict(
+        OnConflict::columns([approvals::Column::Chat, approvals::Column::User])
+            .update_columns([approvals::Column::Chat, approvals::Column::User])
+            .to_owned(),
+    )
+    .exec(DB.deref())
+    .await?;
+
+    Ok(())
+}
+
+pub async fn unapprove(chat: &Chat, user: &User) -> Result<()> {
+    approvals::Entity::delete(approvals::ActiveModel {
+        chat: Set(chat.get_id()),
+        user: Set(user.get_id()),
+    })
+    .exec(DB.deref())
+    .await?;
+
+    let key = get_approval_key(chat, user);
+
+    REDIS.sq(|q| q.del(&key)).await?;
+    Ok(())
+}
+
+pub async fn is_approved(chat: &Chat, user: &User) -> Result<bool> {
+    let chat_id = chat.get_id();
+    let user_id = user.get_id();
+    let key = get_approval_key(chat, user);
+    let res = default_cache_query(
+        |_, _| async move {
+            let res = approvals::Entity::find_by_id((chat_id, user_id))
+                .one(DB.deref())
+                .await?;
+            Ok(res)
+        },
+        Duration::seconds(CONFIG.timing.cache_timeout as i64),
+    )
+    .query(&key, &())
+    .await?
+    .is_some();
+
+    Ok(res)
 }
 
 fn merge_permissions(
