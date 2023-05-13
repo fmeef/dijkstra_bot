@@ -21,11 +21,10 @@ use crate::{
     metadata::Metadata,
     modules,
     statics::ME,
-    tg::command::parse_cmd,
     util::{
         callback::{MultiCallback, MultiCb, SingleCallback, SingleCb},
         error::BotError,
-        string::{should_ignore_chat, Speak},
+        string::should_ignore_chat,
     },
 };
 use crate::{
@@ -93,7 +92,7 @@ pub struct TgClient {
     pub button_repeat: Arc<DashMap<String, MultiCb<CallbackQuery, Result<bool>>>>,
 }
 
-async fn show_help<'a>(message: &Message, helps: Arc<MetadataCollection>) -> Result<bool> {
+pub async fn show_help<'a>(message: &Message, helps: Arc<MetadataCollection>) -> Result<bool> {
     if !should_ignore_chat(message.get_chat().get_id()).await? {
         let lang = get_chat_lang(message.get_chat().get_id()).await?;
         if is_dm(message.get_chat_ref()) {
@@ -131,31 +130,6 @@ async fn show_help<'a>(message: &Message, helps: Arc<MetadataCollection>) -> Res
     }
 
     Ok(true)
-}
-
-async fn handle_help(update: &UpdateExt, helps: Arc<MetadataCollection>) -> Result<bool> {
-    if let UpdateExt::Message(ref message) = update {
-        if let Some((cmd, args, _)) = parse_cmd(message) {
-            let lang = get_chat_lang(message.get_chat().get_id()).await?;
-            return match cmd {
-                "help" => show_help(message, helps).await,
-                "start" => match args.args.first().map(|a| a.get_text()) {
-                    Some("help") => {
-                        show_help(message, helps).await?;
-                        Ok(true)
-                    }
-
-                    None => {
-                        message.reply(lang_fmt!(lang, "startcmd")).await?;
-                        Ok(true)
-                    }
-                    _ => Ok(false),
-                },
-                _ => Ok(false),
-            };
-        }
-    }
-    return Ok(false);
 }
 
 impl TgClient {
@@ -257,10 +231,9 @@ impl TgClient {
                         err.record_stats();
                     }
 
-                    match handle_help(&update, modules).await {
-                        Ok(false) => crate::modules::process_updates(update).await,
-                        Err(err) => log::error!("failed to show help: {}", err),
-                        _ => (),
+                    if let Err(err) = crate::modules::process_updates(update, modules).await {
+                        log::error!("process updates error: {}", err);
+                        err.record_stats()
                     }
                 }
                 Err(err) => {

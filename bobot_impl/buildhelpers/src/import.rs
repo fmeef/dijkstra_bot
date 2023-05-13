@@ -70,7 +70,7 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
     let modules = module_globs.iter();
     let output = quote! {
         #( mod #mods; )*
-
+        use crate::util::string::Speak;
         pub fn get_migrations() -> ::std::vec::Vec<::std::boxed::Box<dyn ::sea_orm_migration::prelude::MigrationTrait>> {
             let mut v = ::std::vec::Vec::<::std::boxed::Box<dyn ::sea_orm_migration::prelude::MigrationTrait>>::new();
             #(
@@ -86,25 +86,55 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
         }
 
         pub async fn process_updates(
-            update: ::botapi::gen_types::UpdateExt
-            ) -> () {
+            update: ::botapi::gen_types::UpdateExt,
+            helps: ::std::sync::Arc<crate::tg::client::MetadataCollection>
+            ) -> crate::util::error::Result<()> {
             match crate::tg::command::Context::get_context(&update).await {
-                Ok(cmd) => { #(
-                    if let Err(err) = #updates::handle_update(&update, &cmd).await {
-                        err.record_stats();
-                        match err.get_message().await {
-                            Err(err) => {
-                                log::error!("failed to send error message: {}, what the FLOOP", err);
-                                err.record_stats();
-                            }
-                            Ok(v) => if ! v {
-                               log::error!("handle_update {} error: {}", #updates::METADATA.name, err);
-                            }
+                Ok(cmd) => {
+
+                    let help = if let Some((cmd, _, args, message, lang)) = cmd.as_ref().map(|v| v.cmd()).flatten() {
+                         match cmd {
+                            "help" => crate::tg::client::show_help(message, helps).await,
+                            "start" => match args.args.first().map(|a| a.get_text()) {
+                                Some("help") => {
+                                    crate::tg::client::show_help(message, helps).await?;
+                                    Ok(true)
+                                }
+
+                                None => {
+                                    message.reply(macros::lang_fmt!(lang, "startcmd")).await?;
+                                    Ok(true)
+                                }
+                                _ => Ok(false),
+                            },
+                            _ => Ok(false),
                         }
+                    } else {
+                       Ok(false)
+                    };
+                    match help {
+                        Ok(false) => {#(
+                            if let Err(err) = #updates::handle_update(&update, &cmd).await {
+                                err.record_stats();
+                                match err.get_message().await {
+                                    Err(err) => {
+                                        log::error!("failed to send error message: {}, what the FLOOP", err);
+                                        err.record_stats();
+                                    }
+                                    Ok(v) => if ! v {
+                                       log::error!("handle_update {} error: {}", #updates::METADATA.name, err);
+                                    }
+                                }
+                            }
+                        )*}
+                       Ok(true) => (),
+                      Err(err)  => log::error!("failed help {}", err)
                     }
-                )*}
+
+                }
                 Err(err) => err.record_stats(),
             }
+            Ok(())
         }
     };
     output
