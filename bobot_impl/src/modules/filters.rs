@@ -9,11 +9,9 @@ use crate::persist::redis::RedisStr;
 use crate::statics::CONFIG;
 use crate::statics::DB;
 use crate::statics::REDIS;
-use crate::tg::admin_helpers::IsAdmin;
-use crate::tg::admin_helpers::IsGroupAdmin;
-use crate::tg::command::Context;
-use crate::tg::command::TextArgs;
-
+use crate::tg::command::*;
+use crate::tg::markdown::MarkupType;
+use crate::tg::permissions::*;
 use crate::util::error::BotError;
 use crate::util::error::Result;
 
@@ -21,12 +19,14 @@ use crate::metadata::metadata;
 use crate::util::filter::Header;
 use crate::util::filter::Lexer;
 use crate::util::filter::Parser;
+use crate::util::string::Lang;
 use crate::util::string::Speak;
 use botapi::gen_types::{Message, UpdateExt};
 use chrono::Duration;
 use entities::{filters, triggers};
 use itertools::Itertools;
 use lazy_static::__Deref;
+use macros::entity_fmt;
 use redis::AsyncCommands;
 use sea_orm::entity::ActiveValue;
 use sea_orm::sea_query::OnConflict;
@@ -416,7 +416,7 @@ async fn insert_filter(
     Ok(())
 }
 
-async fn command_filter<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
+async fn command_filter<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang) -> Result<()> {
     message
         .get_from()
         .admin_or_die(message.get_chat_ref())
@@ -439,18 +439,26 @@ async fn command_filter<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()
     };
 
     let filters = filters.iter().map(|v| v.as_str()).collect::<Vec<&str>>();
-
-    if let Some(message) = message.get_reply_to_message_ref() {
-        insert_filter(
-            message,
-            filters.as_slice(),
-            message.get_text().map(|v| v.into_owned()),
-        )
-        .await?;
+    let f = if let Some(message) = message.get_reply_to_message_ref() {
+        message.get_text().map(|v| v.into_owned())
     } else {
-        insert_filter(message, filters.as_slice(), cmd.body).await?;
+        cmd.body
+    };
+
+    insert_filter(message, filters.as_slice(), f.clone()).await?;
+    if let Some(f) = f {
+        let text = MarkupType::Code.text(&f);
+
+        message
+            .get_chat()
+            .speak_fmt(entity_fmt!(
+                lang,
+                message.get_chat().get_id(),
+                "addfilter",
+                text
+            ))
+            .await?;
     }
-    message.get_chat().speak(format!("Parsed filter")).await?;
     Ok(())
 }
 
@@ -494,17 +502,18 @@ async fn stopall(message: &Message) -> Result<()> {
 }
 
 async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
-    if let Some((cmd, _, args, message, _)) = ctx.cmd() {
+    if let Some((cmd, _, args, message, lang)) = ctx.cmd() {
         match cmd {
-            "filter" => command_filter(message, &args).await?,
+            "filter" => command_filter(message, &args, &lang).await?,
             "stop" => delete_trigger(message, args.text).await?,
             "filters" => list_triggers(message).await?,
             "stopall" => stopall(message).await?,
             _ => handle_trigger(message).await?,
         };
-    } else if let Some(message) = &ctx.message {
-        handle_trigger(&message).await?;
+    } else {
+        handle_trigger(&ctx.message).await?;
     }
+
     Ok(())
 }
 

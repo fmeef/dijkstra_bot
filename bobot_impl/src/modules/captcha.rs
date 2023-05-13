@@ -6,11 +6,11 @@ use crate::metadata::metadata;
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache, RedisStr};
 use crate::statics::{CONFIG, DB, ME, REDIS, TG};
 use crate::tg::admin_helpers::{
-    kick, mute, parse_duration, unmute, DeleteAfterTime, IsAdmin, IsGroupAdmin, UpdateHelpers,
-    UserChanged,
+    kick, mute, parse_duration, unmute, DeleteAfterTime, UpdateHelpers, UserChanged,
 };
 use crate::tg::button::{get_url, InlineKeyboardBuilder, OnPush};
 use crate::tg::command::{ArgSlice, Context, TextArgs};
+use crate::tg::permissions::*;
 use crate::tg::user::Username;
 use crate::util::error::BotError;
 use crate::util::error::Result;

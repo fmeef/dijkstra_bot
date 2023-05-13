@@ -290,10 +290,9 @@ async fn handle_inline(query: &InlineQuery) -> Result<()> {
 
 async fn handle_message<'a>(ctx: &Context<'a>) -> Result<()> {
     let cmd = ctx.command.as_ref();
-    if let Some(message) = &ctx.message {
-        handle_command(&message, cmd).await?;
-        handle_conversation(&message).await?;
-    }
+    handle_command(&ctx.message, cmd).await?;
+    handle_conversation(&ctx.message).await?;
+
     Ok(())
 }
 

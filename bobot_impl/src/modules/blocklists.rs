@@ -14,12 +14,11 @@ use crate::tg::admin_helpers::is_approved;
 use crate::tg::admin_helpers::is_dm;
 use crate::tg::admin_helpers::mute;
 use crate::tg::admin_helpers::parse_duration_str;
-use crate::tg::admin_helpers::IsAdmin;
-use crate::tg::admin_helpers::IsGroupAdmin;
-
 use crate::tg::admin_helpers::warn_with_action;
 use crate::tg::command::Context;
 use crate::tg::command::TextArgs;
+use crate::tg::markdown::MarkupType;
+use crate::tg::permissions::*;
 
 use crate::tg::dialog::dialog_or_default;
 
@@ -32,6 +31,7 @@ use crate::util::filter::Lexer;
 use crate::util::filter::Parser;
 
 use crate::util::glob::WildMatch;
+use crate::util::string::Lang;
 use crate::util::string::Speak;
 use botapi::gen_types::User;
 use botapi::gen_types::{Message, UpdateExt};
@@ -41,6 +41,7 @@ use humantime::format_duration;
 use itertools::Itertools;
 use lazy_static::__Deref;
 use lazy_static::lazy_static;
+use macros::entity_fmt;
 use redis::AsyncCommands;
 use regex::Regex;
 use sea_orm::entity::ActiveValue;
@@ -423,7 +424,7 @@ async fn insert_blocklist(
     Ok(())
 }
 
-async fn command_blocklist<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
+async fn command_blocklist<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang) -> Result<()> {
     message.group_admin_or_die().await?;
     let lexer = Lexer::new(args.text);
     let mut parser = Parser::new();
@@ -476,29 +477,33 @@ async fn command_blocklist<'a>(message: &Message, args: &TextArgs<'a>) -> Result
     } else {
         (ActionType::Delete, None)
     };
-    if let Some(message) = message.get_reply_to_message_ref() {
-        insert_blocklist(
-            message,
-            filters.as_slice(),
-            action,
-            message.get_text().map(|v| v.into_owned()),
-            duration.flatten(),
-        )
-        .await?;
+
+    let f = if let Some(message) = message.get_reply_to_message_ref() {
+        message.get_text().map(|v| v.into_owned())
     } else {
-        insert_blocklist(
-            message,
-            filters.as_slice(),
-            action,
-            cmd.body,
-            duration.flatten(),
-        )
-        .await?;
-    }
+        cmd.body
+    };
+    insert_blocklist(message, filters.as_slice(), action, f, duration.flatten()).await?;
+
+    let filters = [""]
+        .into_iter()
+        .chain(filters.into_iter())
+        .collect::<Vec<&str>>()
+        .join("\n - ");
+    //  let filters = format!("\n{}", filters);
+
+    let text = MarkupType::Code.text(&filters);
+
     message
         .get_chat()
-        .speak(format!("Parsed blocklist item."))
+        .speak_fmt(entity_fmt!(
+            lang,
+            message.get_chat().get_id(),
+            "addblocklist",
+            text
+        ))
         .await?;
+
     Ok(())
 }
 
@@ -530,6 +535,10 @@ async fn handle_trigger(message: &Message) -> Result<()> {
             || is_dm(message.get_chat_ref())
             || is_approved(message.get_chat_ref(), &user).await?
         {
+            log::info!(
+                "skipping trigger {}",
+                message.get_from().is_admin(message.get_chat_ref()).await?
+            );
             return Ok(());
         }
 
@@ -611,23 +620,22 @@ async fn stopall(message: &Message) -> Result<()> {
     Ok(())
 }
 
-#[allow(dead_code)]
 async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
-    if let Some((cmd, _, args, message, _)) = ctx.cmd() {
+    if let Some((cmd, _, args, message, lang)) = ctx.cmd() {
         match cmd {
-            "addblocklist" => command_blocklist(message, &args).await?,
+            "addblocklist" => command_blocklist(message, &args, &lang).await?,
             "rmblocklist" => delete_trigger(message, args.text).await?,
             "blocklist" => list_triggers(message).await?,
             "rmallblocklists" => stopall(message).await?,
             _ => handle_trigger(message).await?,
         };
-    } else if let Some(message) = &ctx.message {
-        handle_trigger(&message).await?;
     }
+
+    handle_trigger(&ctx.message).await?;
+
     Ok(())
 }
 
-#[allow(dead_code)]
 pub async fn handle_update<'a>(_: &UpdateExt, cmd: &Option<Context<'a>>) -> Result<()> {
     if let Some(cmd) = cmd {
         handle_command(cmd).await?;

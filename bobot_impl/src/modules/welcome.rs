@@ -1,8 +1,9 @@
 use crate::persist::core::media::{get_media_type, send_media_reply_chatuser, MediaType};
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache};
 use crate::statics::{CONFIG, DB, REDIS};
-use crate::tg::admin_helpers::{IsGroupAdmin, UpdateHelpers, UserChanged};
+use crate::tg::admin_helpers::{UpdateHelpers, UserChanged};
 use crate::tg::command::{Context, TextArgs};
+use crate::tg::permissions::*;
 use crate::util::error::{BotError, Result};
 
 use crate::util::string::Lang;

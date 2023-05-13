@@ -6,11 +6,9 @@ use botapi::gen_types::User;
 use chrono::Duration;
 use clap::Parser;
 use confy::load_path;
-use dashmap::DashMap;
 use futures::executor::block_on;
 use lazy_static::lazy_static;
 use log::LevelFilter;
-use prometheus::{register_histogram, register_int_counter, Histogram, IntCounter};
 use sea_orm::entity::prelude::DatabaseConnection;
 use sea_orm::{ConnectOptions, Database};
 use serde::{Deserialize, Serialize};
@@ -163,20 +161,4 @@ lazy_static! {
 //tg client
 lazy_static! {
     pub static ref TG: TgClient = TgClient::connect(CONFIG.bot_token.to_owned());
-}
-
-//counters
-lazy_static! {
-    pub static ref TEST_COUNTER: IntCounter =
-        register_int_counter!("testlabel", "testhelp").unwrap();
-    pub static ref ERROR_CODES: Histogram =
-        register_histogram!("module_fails", "Telegram api cries").unwrap();
-    pub static ref ERROR_CODES_MAP: DashMap<i64, IntCounter> = DashMap::new();
-}
-
-pub fn count_error_code(err: i64) {
-    let counter = ERROR_CODES_MAP.entry(err).or_insert_with(|| {
-        register_int_counter!(format! {"errcode_{}", err}, "Telegram error counter").unwrap()
-    });
-    counter.value().inc();
 }

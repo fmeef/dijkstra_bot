@@ -91,17 +91,18 @@ impl BotError {
                         .unwrap_or(&error.error_code.unwrap_or(0).to_string())
                 );
                 if let Some(error_code) = error.error_code {
-                    crate::statics::count_error_code(error_code);
+                    crate::persist::metrics::count_error_code(error_code);
                 }
             }
         }
     }
 
-    pub async fn get_message(&self) -> Result<()> {
+    pub async fn get_message(&self) -> Result<bool> {
         if let Self::Speak { say, chat, .. } = self {
             TG.client().build_send_message(*chat, &say).build().await?;
+            Ok(true)
+        } else {
+            Ok(false)
         }
-
-        Ok(())
     }
 }

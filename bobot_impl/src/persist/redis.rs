@@ -409,6 +409,36 @@ where
 {
     async fn cache_duration<K: AsRef<str> + Send>(self, key: K, expire: Duration) -> Result<V>;
     async fn cache<K: AsRef<str> + Send>(self, key: K) -> Result<V>;
+    async fn join_duration<K, J, A>(
+        self,
+        key: K,
+        join: Vec<J>,
+        expire: Duration,
+    ) -> Result<(V, Vec<A>)>
+    where
+        J: Sized + Serialize + IntoActiveModel<A> + Send,
+        A: ActiveModelTrait + Send,
+        K: AsRef<str> + Send;
+    async fn join<K, J, A>(self, key: K, join: Vec<J>) -> Result<(V, Vec<A>)>
+    where
+        J: Sized + Serialize + IntoActiveModel<A> + Send,
+        A: ActiveModelTrait + Send,
+        K: AsRef<str> + Send;
+    async fn join_single_duration<K, J, A>(
+        self,
+        key: K,
+        join: Option<J>,
+        expire: Duration,
+    ) -> Result<(V, Option<A>)>
+    where
+        J: Sized + Serialize + IntoActiveModel<A> + Send,
+        A: ActiveModelTrait + Send,
+        K: AsRef<str> + Send;
+    async fn join_single<K, J, A>(self, key: K, join: Option<J>) -> Result<(V, Option<A>)>
+    where
+        J: Sized + Serialize + IntoActiveModel<A> + Send,
+        A: ActiveModelTrait + Send,
+        K: AsRef<str> + Send;
 }
 
 #[async_trait]
@@ -430,6 +460,81 @@ where
     async fn cache<K: AsRef<str> + Send>(self, key: K) -> Result<V> {
         self.cache_duration(key, Duration::seconds(CONFIG.timing.cache_timeout as i64))
             .await
+    }
+
+    async fn join_duration<K, J, A>(
+        self,
+        key: K,
+        join: Vec<J>,
+        expire: Duration,
+    ) -> Result<(V, Vec<A>)>
+    where
+        J: Sized + Serialize + IntoActiveModel<A> + Send,
+        A: ActiveModelTrait + Send,
+        K: AsRef<str> + Send,
+    {
+        let v = (self, join);
+        let st = RedisStr::new(&v)?;
+        let r = key.as_ref();
+
+        REDIS
+            .pipe(|q| q.set(r, st).expire(r, expire.num_seconds() as usize))
+            .await?;
+        let o =
+            v.1.into_iter()
+                .map(|v| v.into_active_model())
+                .collect::<Vec<A>>();
+        Ok((v.0.into_active_model(), o))
+    }
+
+    async fn join<K, J, A>(self, key: K, join: Vec<J>) -> Result<(V, Vec<A>)>
+    where
+        J: Sized + Serialize + IntoActiveModel<A> + Send,
+        A: ActiveModelTrait + Send,
+        K: AsRef<str> + Send,
+    {
+        self.join_duration(
+            key,
+            join,
+            Duration::seconds(CONFIG.timing.cache_timeout as i64),
+        )
+        .await
+    }
+
+    async fn join_single_duration<K, J, A>(
+        self,
+        key: K,
+        join: Option<J>,
+        expire: Duration,
+    ) -> Result<(V, Option<A>)>
+    where
+        J: Sized + Serialize + IntoActiveModel<A> + Send,
+        A: ActiveModelTrait + Send,
+        K: AsRef<str> + Send,
+    {
+        let v = (self, join);
+        let st = RedisStr::new(&v)?;
+        let r = key.as_ref();
+
+        REDIS
+            .pipe(|q| q.set(r, st).expire(r, expire.num_seconds() as usize))
+            .await?;
+        let o = v.1.map(|v| v.into_active_model());
+        Ok((v.0.into_active_model(), o))
+    }
+
+    async fn join_single<K, J, A>(self, key: K, join: Option<J>) -> Result<(V, Option<A>)>
+    where
+        J: Sized + Serialize + IntoActiveModel<A> + Send,
+        A: ActiveModelTrait + Send,
+        K: AsRef<str> + Send,
+    {
+        self.join_single_duration(
+            key,
+            join,
+            Duration::seconds(CONFIG.timing.cache_timeout as i64),
+        )
+        .await
     }
 }
 

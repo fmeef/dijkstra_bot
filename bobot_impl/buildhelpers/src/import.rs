@@ -91,11 +91,15 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
             match crate::tg::command::Context::get_context(&update).await {
                 Ok(cmd) => { #(
                     if let Err(err) = #updates::handle_update(&update, &cmd).await {
-                        log::error!("handle_update {} error: {}", #updates::METADATA.name, err);
                         err.record_stats();
-                        if let Err(err) = err.get_message().await {
-                            log::error!("failed to send error message: {}, what the FLOOP", err);
-                            err.record_stats();
+                        match err.get_message().await {
+                            Err(err) => {
+                                log::error!("failed to send error message: {}, what the FLOOP", err);
+                                err.record_stats();
+                            }
+                            Ok(v) => if ! v {
+                               log::error!("handle_update {} error: {}", #updates::METADATA.name, err);
+                            }
                         }
                     }
                 )*}

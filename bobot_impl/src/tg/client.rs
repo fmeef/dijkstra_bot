@@ -11,9 +11,10 @@ use dashmap::DashMap;
 use macros::{lang_fmt, message_fmt};
 
 use super::{
-    admin_helpers::{handle_pending_action, is_dm, update_self_admin},
+    admin_helpers::{handle_pending_action, is_dm},
     button::{get_url, InlineKeyboardBuilder},
     dialog::{Conversation, ConversationState},
+    permissions::*,
     user::RecordUser,
 };
 use crate::{

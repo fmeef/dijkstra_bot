@@ -1,5 +1,6 @@
 services:
   bobot-dev:
+    hostname: bobot-dev
     build:
       context: .
       dockerfile: Dockerfile
@@ -7,6 +8,7 @@ services:
     ports:
       - "8080:8080"
       - "8000:8000"
+      - "9999:9999"
     environment:
       - DATABASE_URL=postgresql://bobot:changeme@db-dev/bobot    
     volumes:
@@ -47,7 +49,7 @@ services:
     volumes:
       - ./prometheus:/etc/prometheus:z
       - dev-prometheus-data:/prometheus
-    command: --web.enable-lifecycle  --config.file=/etc/prometheus/prometheus.yml
+    command: --web.enable-lifecycle  --config.file=/etc/prometheus/prometheus-dev.yml
        
 volumes:
   dev-bobot-redis:

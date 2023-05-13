@@ -6,6 +6,7 @@ use crate::{
     metadata::metadata,
     tg::admin_helpers::*,
     tg::command::{Entities, TextArgs},
+    tg::permissions::*,
     util::error::Result,
     util::string::Speak,
 };

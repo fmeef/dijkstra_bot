@@ -3,10 +3,9 @@ use crate::persist::admin::actions::ActionType;
 use crate::persist::admin::approvals;
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache};
 use crate::statics::{CONFIG, DB, REDIS};
-use crate::tg::admin_helpers::{
-    action_message, ban_message, warn_with_action, IsAdmin, IsGroupAdmin,
-};
-use crate::tg::command::{Command, Context, Entities, TextArg, TextArgs};
+use crate::tg::admin_helpers::{ban_message, warn_with_action};
+use crate::tg::command::{Command, Context, TextArg, TextArgs};
+use crate::tg::permissions::*;
 use crate::tg::user::Username;
 use crate::util::error::{BotError, Result};
 use crate::util::string::{get_chat_lang, Lang};
@@ -14,7 +13,7 @@ use crate::{metadata::metadata, statics::TG, util::string::Speak};
 use botapi::gen_types::{Chat, Message, UpdateExt, User};
 use chrono::Duration;
 use entities::locks::LockType;
-use futures::FutureExt;
+
 use lazy_static::__Deref;
 use macros::lang_fmt;
 use redis::AsyncCommands;
@@ -596,39 +595,8 @@ async fn is_approved(chat: &Chat, user: &User) -> Result<bool> {
     Ok(res)
 }
 
-async fn cmd_approve<'a>(
-    message: &Message,
-    args: &TextArgs<'a>,
-    entities: &Entities<'a>,
-) -> Result<()> {
-    action_message(message, entities, Some(args), |message, user, _| {
-        async move {
-            approvals::Entity::insert(
-                approvals::Model {
-                    chat: message.get_chat().get_id(),
-                    user: user.get_id(),
-                }
-                .cache(get_approval_key(message.get_chat_ref(), user))
-                .await?,
-            )
-            .on_conflict(
-                OnConflict::columns([approvals::Column::Chat, approvals::Column::User])
-                    .update_columns([approvals::Column::Chat, approvals::Column::User])
-                    .to_owned(),
-            )
-            .exec(DB.deref())
-            .await?;
-
-            Ok(())
-        }
-        .boxed()
-    })
-    .await?;
-    Ok(())
-}
-
 async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
-    if let Some((cmd, entities, args, message, lang)) = ctx.cmd() {
+    if let Some((cmd, _, args, message, lang)) = ctx.cmd() {
         let command = ctx.command.as_ref();
         if let Some(user) = message.get_from() {
             match cmd {
@@ -636,7 +604,6 @@ async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
                 "unlock" => handle_unlock(message, &command).await?,
                 "locks" => handle_list(message).await?,
                 "lockaction" => lock_action(message, &args).await?,
-                "approve" => cmd_approve(message, args, entities).await?,
                 _ => (),
             };
         }

@@ -1,7 +1,4 @@
-use std::{
-    borrow::Cow,
-    collections::{HashMap, VecDeque},
-};
+use std::{borrow::Cow, collections::VecDeque};
 
 use crate::{
     persist::{
@@ -9,14 +6,14 @@ use crate::{
             actions::{self, ActionType},
             approvals, warns,
         },
-        core::dialogs,
+        core::{dialogs, users},
         redis::{default_cache_query, CachedQuery, CachedQueryTrait, RedisCache, RedisStr},
     },
     statics::{CONFIG, DB, ME, REDIS, TG},
     util::error::{BotError, Result},
     util::string::{get_chat_lang, Speak},
 };
-use async_trait::async_trait;
+
 use botapi::gen_types::{
     Chat, ChatMember, ChatMemberUpdated, ChatPermissions, ChatPermissionsBuilder, Message,
     UpdateExt, User,
@@ -37,7 +34,8 @@ use super::{
     command::{ArgSlice, Entities, EntityArg, TextArgs},
     dialog::{dialog_or_default, get_dialog_key},
     markdown::MarkupType,
-    user::{get_user_username, GetUser, Username},
+    permissions::{GetCachedAdmins, IsAdmin},
+    user::{get_user_username, Username},
 };
 
 pub struct ChatUser<'a> {
@@ -730,13 +728,26 @@ fn get_approval_key(chat: &Chat, user: &User) -> String {
 }
 
 pub async fn approve(chat: &Chat, user: &User) -> Result<()> {
+    let testmodel = users::Entity::insert(users::ActiveModel {
+        user_id: Set(user.get_id()),
+        username: Set(user.get_username().map(|v| v.into_owned())),
+    })
+    .on_conflict(
+        OnConflict::column(users::Column::UserId)
+            .update_columns([users::Column::Username])
+            .to_owned(),
+    )
+    .exec_with_returning(DB.deref())
+    .await?;
+
     approvals::Entity::insert(
         approvals::Model {
             chat: chat.get_id(),
             user: user.get_id(),
         }
-        .cache(get_approval_key(chat, user))
-        .await?,
+        .join_single(get_approval_key(chat, user), Some(testmodel))
+        .await?
+        .0,
     )
     .on_conflict(
         OnConflict::columns([approvals::Column::Chat, approvals::Column::User])
@@ -770,9 +781,12 @@ pub async fn is_approved(chat: &Chat, user: &User) -> Result<bool> {
     let res = default_cache_query(
         |_, _| async move {
             let res = approvals::Entity::find_by_id((chat_id, user_id))
-                .one(DB.deref())
-                .await?;
-            Ok(res)
+                .find_with_related(users::Entity)
+                .all(DB.deref())
+                .await?
+                .pop();
+
+            Ok(res.map(|(res, _)| res))
         },
         Duration::seconds(CONFIG.timing.cache_timeout as i64),
     )
@@ -781,6 +795,28 @@ pub async fn is_approved(chat: &Chat, user: &User) -> Result<bool> {
     .is_some();
 
     Ok(res)
+}
+
+pub async fn get_approvals(chat: &Chat) -> Result<Vec<(i64, String)>> {
+    let chat_id = chat.get_id();
+    let res = approvals::Entity::find()
+        .filter(approvals::Column::Chat.eq(chat_id))
+        .find_with_related(users::Entity)
+        .all(DB.deref())
+        .await?;
+
+    Ok(res
+        .into_iter()
+        .map(|(res, mut user)| {
+            let id = res.user;
+            let name = user
+                .pop()
+                .map(|v| v.username)
+                .flatten()
+                .unwrap_or_else(|| id.to_string());
+            (id, name)
+        })
+        .collect())
 }
 
 fn merge_permissions(
@@ -1240,290 +1276,5 @@ pub async fn is_group_or_die(chat: &Chat) -> Result<()> {
             chat.get_id(),
         )),
         _ => Ok(()),
-    }
-}
-
-pub async fn self_admin_or_die(chat: &Chat) -> Result<()> {
-    if !is_self_admin(chat).await? {
-        let lang = get_chat_lang(chat.get_id()).await?;
-        Err(BotError::speak(
-            lang_fmt!(lang, "needtobeadmin"),
-            chat.get_id(),
-        ))
-    } else {
-        Ok(())
-    }
-}
-
-fn get_chat_admin_cache_key(chat: i64) -> String {
-    format!("ca:{}", chat)
-}
-
-#[async_trait]
-pub trait IsAdmin {
-    async fn is_admin(&self, chat: &Chat) -> Result<bool>;
-    async fn admin_or_die(&self, chat: &Chat) -> Result<()>;
-}
-
-#[async_trait]
-pub trait IsGroupAdmin {
-    async fn group_admin_or_die(&self) -> Result<()>;
-    async fn is_group_admin(&self) -> Result<bool>;
-}
-
-#[async_trait]
-pub trait GetCachedAdmins {
-    async fn get_cached_admins(&self) -> Result<HashMap<i64, ChatMember>>;
-    async fn refresh_cached_admins(&self) -> Result<HashMap<i64, ChatMember>>;
-    async fn is_user_admin(&self, user: i64) -> Result<Option<ChatMember>>;
-    async fn promote(&self, user: i64) -> Result<()>;
-    async fn demote(&self, user: i64) -> Result<()>;
-}
-
-#[async_trait]
-impl IsGroupAdmin for Message {
-    async fn is_group_admin(&self) -> Result<bool> {
-        if let Some(user) = self.get_from() {
-            user.is_admin(self.get_chat_ref()).await
-        } else {
-            Ok(false)
-        }
-    }
-
-    async fn group_admin_or_die(&self) -> Result<()> {
-        is_group_or_die(self.get_chat_ref()).await?;
-        self_admin_or_die(self.get_chat_ref()).await?;
-
-        if self.is_group_admin().await? {
-            Ok(())
-        } else if let Some(user) = self.get_from() {
-            let lang = get_chat_lang(self.get_chat().get_id()).await?;
-            let msg = lang_fmt!(lang, "lackingadminrights", user.name_humanreadable());
-            Err(BotError::speak(msg, self.get_chat().get_id()))
-        } else {
-            Err(BotError::Generic("not admin".to_owned()))
-        }
-    }
-}
-
-#[async_trait]
-impl IsAdmin for User {
-    async fn is_admin(&self, chat: &Chat) -> Result<bool> {
-        Ok(chat.is_user_admin(self.get_id()).await?.is_some())
-    }
-
-    async fn admin_or_die(&self, chat: &Chat) -> Result<()> {
-        if self.is_admin(chat).await? {
-            Ok(())
-        } else {
-            let lang = get_chat_lang(chat.get_id()).await?;
-            let msg = lang_fmt!(lang, "lackingadminrights", self.name_humanreadable());
-            Err(BotError::speak(msg, chat.get_id()))
-        }
-    }
-}
-
-#[async_trait]
-impl<'a> IsAdmin for Option<Cow<'a, User>> {
-    async fn is_admin(&self, chat: &Chat) -> Result<bool> {
-        if let Some(user) = self {
-            Ok(chat.is_user_admin(user.get_id()).await?.is_some())
-        } else {
-            Ok(false)
-        }
-    }
-
-    async fn admin_or_die(&self, chat: &Chat) -> Result<()> {
-        if let Some(user) = self {
-            if user.is_admin(chat).await? {
-                Ok(())
-            } else {
-                let lang = get_chat_lang(chat.get_id()).await?;
-                let msg = lang_fmt!(
-                    lang,
-                    "lackingadminrights",
-                    user.get_username_ref()
-                        .unwrap_or(user.get_id().to_string().as_str())
-                );
-                Err(BotError::speak(msg, chat.get_id()))
-            }
-        } else {
-            Err(BotError::Generic("fail".to_owned()))
-        }
-    }
-}
-
-#[async_trait]
-impl IsAdmin for i64 {
-    async fn is_admin(&self, chat: &Chat) -> Result<bool> {
-        Ok(chat.is_user_admin(*self).await?.is_some())
-    }
-
-    async fn admin_or_die(&self, chat: &Chat) -> Result<()> {
-        if self.is_admin(chat).await? {
-            Ok(())
-        } else {
-            let lang = get_chat_lang(chat.get_id()).await?;
-            let msg = if let Some(user) = self.get_cached_user().await? {
-                lang_fmt!(
-                    lang,
-                    "lackingadminrights",
-                    user.get_username_ref().unwrap_or(self.to_string().as_str())
-                )
-            } else {
-                lang_fmt!(lang, "lackingadminrights", self)
-            };
-
-            Err(BotError::speak(msg, chat.get_id()))
-        }
-    }
-}
-
-pub async fn update_self_admin(update: &UpdateExt) -> Result<()> {
-    if let UpdateExt::MyChatMember(member) = update {
-        let key = get_chat_admin_cache_key(member.get_chat().get_id());
-        match member.get_new_chat_member_ref() {
-            ChatMember::ChatMemberAdministrator(ref admin) => {
-                log::info!("bot updated to admin");
-                let user_id = admin.get_user().get_id();
-                let admin = RedisStr::new(&admin)?;
-                REDIS.sq(|q| q.hset(&key, user_id, admin)).await?;
-            }
-            ChatMember::ChatMemberOwner(ref owner) => {
-                log::info!("Im soemhow the owner. What?");
-                let user_id = owner.get_user().get_id();
-                let admin = RedisStr::new(&owner)?;
-                REDIS.sq(|q| q.hset(&key, user_id, admin)).await?;
-            }
-            mamber => {
-                log::info!("Im not admin anymore ;(");
-                let user_id = mamber.get_user().get_id();
-                REDIS.sq(|q| q.hdel(&key, user_id)).await?;
-            }
-        }
-    }
-
-    Ok(())
-}
-
-#[async_trait]
-impl GetCachedAdmins for Chat {
-    async fn get_cached_admins(&self) -> Result<HashMap<i64, ChatMember>> {
-        let key = get_chat_admin_cache_key(self.get_id());
-        let admins: Option<HashMap<i64, RedisStr>> = REDIS.sq(|q| q.hgetall(&key)).await?;
-        if let Some(admins) = admins {
-            let admins = admins
-                .into_iter()
-                .map(|(k, v)| (k, v.get::<ChatMember>()))
-                .try_fold(HashMap::new(), |mut acc, (k, v)| {
-                    acc.insert(k, v?);
-                    Ok::<_, BotError>(acc)
-                })?;
-            Ok(admins)
-        } else {
-            self.refresh_cached_admins().await
-        }
-    }
-
-    async fn is_user_admin(&self, user: i64) -> Result<Option<ChatMember>> {
-        let key = get_chat_admin_cache_key(self.get_id());
-        let (exists, admin): (bool, Option<RedisStr>) = REDIS
-            .pipe(|q| q.atomic().exists(&key).hget(&key, user))
-            .await?;
-        if exists {
-            if let Some(user) = admin {
-                Ok(Some(user.get::<ChatMember>()?))
-            } else {
-                Ok(None)
-            }
-        } else {
-            Ok(self.refresh_cached_admins().await?.remove(&user))
-        }
-    }
-
-    async fn promote(&self, user: i64) -> Result<()> {
-        TG.client()
-            .build_promote_chat_member(self.get_id(), user)
-            .can_manage_chat(true)
-            .can_restrict_members(true)
-            .can_post_messages(true)
-            .can_edit_messages(true)
-            .can_manage_video_chats(true)
-            .can_change_info(true)
-            .can_invite_users(true)
-            .can_pin_messages(true)
-            .can_delete_messages(true)
-            .can_promote_members(true)
-            .build()
-            .await?;
-
-        let mamber = TG
-            .client()
-            .build_get_chat_member(self.get_id(), user)
-            .build()
-            .await?;
-
-        let key = get_chat_admin_cache_key(self.get_id());
-        let cm = RedisStr::new(&mamber)?;
-        REDIS.sq(|q| q.hset(&key, user, cm)).await?;
-        Ok(())
-    }
-
-    async fn demote(&self, user: i64) -> Result<()> {
-        TG.client()
-            .build_promote_chat_member(self.get_id(), user)
-            .can_manage_chat(false)
-            .can_restrict_members(false)
-            .can_post_messages(false)
-            .can_edit_messages(false)
-            .can_manage_video_chats(false)
-            .can_change_info(false)
-            .can_invite_users(false)
-            .can_pin_messages(false)
-            .can_delete_messages(false)
-            .can_promote_members(false)
-            .build()
-            .await?;
-        let key = get_chat_admin_cache_key(self.get_id());
-        REDIS.sq(|q| q.hdel(&key, user)).await?;
-        Ok(())
-    }
-
-    async fn refresh_cached_admins(&self) -> Result<HashMap<i64, ChatMember>> {
-        if let Err(_) = is_group_or_die(self).await {
-            return Ok(HashMap::new());
-        }
-        let admins = TG
-            .client()
-            .build_get_chat_administrators(self.get_id())
-            .chat_id(self.get_id())
-            .build()
-            .await?;
-        let res = admins
-            .iter()
-            .cloned()
-            .map(|cm| (cm.get_user().get_id(), cm))
-            .collect::<HashMap<i64, ChatMember>>();
-        let mut admins = admins.into_iter().map(|cm| (cm.get_user().get_id(), cm));
-        let lockkey = format!("aclock:{}", self.get_id());
-        if !REDIS.sq(|q| q.exists(&lockkey)).await? {
-            let key = get_chat_admin_cache_key(self.get_id());
-
-            REDIS
-                .try_pipe(|q| {
-                    q.set(&lockkey, true);
-                    q.expire(&lockkey, Duration::minutes(10).num_seconds() as usize);
-                    admins.try_for_each(|(id, cm)| {
-                        q.hset(&key, id, RedisStr::new(&cm)?);
-                        Ok::<(), BotError>(())
-                    })?;
-                    Ok(q.expire(&key, Duration::hours(48).num_seconds() as usize))
-                })
-                .await?;
-            Ok(res)
-        } else {
-            let lang = get_chat_lang(self.get_id()).await?;
-            Err(BotError::speak(lang_fmt!(lang, "cachewait"), self.get_id()))
-        }
     }
 }

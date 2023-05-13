@@ -1,3 +1,4 @@
+use crate::tg::permissions::*;
 use crate::{
     metadata::metadata,
     tg::{admin_helpers::*, command::Context, markdown::MarkupType, user::Username},
@@ -9,7 +10,6 @@ use futures::FutureExt;
 use itertools::Itertools;
 use macros::{entity_fmt, lang_fmt};
 use sea_orm_migration::MigrationTrait;
-
 metadata!("Admin",
     r#"
     Manage admins using the bot. Promote or demote users without having to google how to do it on iOS
@@ -24,7 +24,7 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
 }
 
 async fn promote<'a>(context: &'a Context<'a>) -> Result<()> {
-    if let (Some(command), Some(message)) = (context.command.as_ref(), context.message) {
+    if let (Some(command), message) = (context.command.as_ref(), context.message) {
         message.group_admin_or_die().await?;
         let lang = context.lang.clone();
         action_message(message, &command.entities, None, |message, user, _| {
@@ -51,7 +51,7 @@ async fn promote<'a>(context: &'a Context<'a>) -> Result<()> {
 }
 
 async fn demote<'a>(context: &'a Context<'a>) -> Result<()> {
-    if let (Some(command), Some(message)) = (context.command.as_ref(), context.message) {
+    if let (Some(command), message) = (context.command.as_ref(), context.message) {
         message.group_admin_or_die().await?;
         let lang = context.lang.clone();
 

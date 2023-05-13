@@ -2,6 +2,7 @@ use crate::{
     metadata::metadata,
     statics::TG,
     tg::admin_helpers::*,
+    tg::permissions::*,
     tg::{
         command::{Context, Entities, TextArgs},
         markdown::MarkupType,
@@ -26,7 +27,8 @@ metadata!("Bans",
     { command = "mute", help = "Mute a user"},
     { command = "unmute", help = "Unmute a user"},
     { command = "ban", help = "Bans a user"},
-    { command = "unban", help = "Unbans a user"}
+    { command = "unban", help = "Unbans a user"},
+    { command = "kick", help = "Kicks a user, they can join again"}
 );
 
 pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
@@ -70,6 +72,29 @@ pub async fn ban_cmd<'a>(
         async move {
             let duration = parse_duration(&args, message.get_chat().get_id())?;
             ban(message, user, duration).await?;
+            Ok(())
+        }
+        .boxed()
+    })
+    .await?;
+    Ok(())
+}
+
+pub async fn kick_cmd<'a>(message: &'a Message, entities: &Entities<'a>, lang: Lang) -> Result<()> {
+    message.group_admin_or_die().await?;
+    action_message(message, entities, None, |message, user, _| {
+        async move {
+            kick(user.get_id(), message.get_chat().get_id()).await?;
+            let name = user.name_humanreadable();
+            let entity = MarkupType::TextMention(user.clone()).text(&name);
+            message
+                .speak_fmt(entity_fmt!(
+                    lang,
+                    message.get_chat().get_id(),
+                    "kicked",
+                    entity
+                ))
+                .await?;
             Ok(())
         }
         .boxed()
@@ -180,6 +205,7 @@ async fn handle_command<'a>(ctx: &Option<Context<'a>>) -> Result<()> {
                 "unmute" => unmute_cmd(message, &entities, args, lang).await,
                 "ban" => ban_cmd(message, &entities, args).await,
                 "unban" => unban_cmd(message, &entities, lang.clone()).await,
+                "kick" => kick_cmd(message, &entities, lang.clone()).await,
                 _ => Ok(()),
             }?;
         }

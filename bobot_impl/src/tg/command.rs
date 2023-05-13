@@ -142,7 +142,7 @@ pub struct Command<'a> {
 }
 
 pub struct Context<'a> {
-    pub message: Option<&'a Message>,
+    pub message: &'a Message,
     pub command: Option<Command<'a>>,
     pub chat: &'a Chat,
     pub lang: Lang,
@@ -151,11 +151,11 @@ pub struct Context<'a> {
 impl<'a> Context<'a> {
     pub async fn get_context(update: &'a UpdateExt) -> Result<Option<Context<'a>>> {
         let message = match update {
-            UpdateExt::Message(message) => Some(message),
-            _ => None,
+            UpdateExt::Message(message) => message,
+            _ => return Ok(None),
         };
 
-        let command = message.map(|m| parse_cmd_struct(&m)).flatten();
+        let command = parse_cmd_struct(&message);
         let chat = match update {
             UpdateExt::Message(m) => Some(m.get_chat_ref()),
             UpdateExt::EditedMessage(m) => Some(m.get_chat_ref()),
@@ -186,7 +186,7 @@ impl<'a> Context<'a> {
         &'a Message,
         &'a Lang,
     )> {
-        if let (Some(message), Some(command)) = (self.message, &self.command) {
+        if let (message, Some(command)) = (self.message, &self.command) {
             Some((
                 command.cmd,
                 &command.entities,
