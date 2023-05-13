@@ -122,7 +122,12 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
                                         err.record_stats();
                                     }
                                     Ok(v) => if ! v {
-                                       log::error!("handle_update {} error: {}", #updates::METADATA.name, err);
+                                        if let Some(cmd) = &cmd {
+                                            if let Err(err) = cmd.message.speak(err.to_string()).await {
+                                                log::error!("triple fault! {}", err);
+                                            }
+                                        }
+                                        log::error!("handle_update {} error: {}", #updates::METADATA.name, err);
                                     }
                                 }
                             }

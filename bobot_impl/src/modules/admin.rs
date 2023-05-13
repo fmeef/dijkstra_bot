@@ -57,18 +57,25 @@ async fn demote<'a>(context: &'a Context<'a>) -> Result<()> {
 
         action_message(message, &command.entities, None, |message, user, _| {
             async move {
-                message.get_chat().demote(user.get_id()).await?;
-
-                let name = user.name_humanreadable();
-                let mention = MarkupType::TextMention(user.to_owned()).text(&name);
-                message
-                    .speak_fmt(entity_fmt!(
-                        lang,
-                        message.get_chat().get_id(),
-                        "demote",
-                        mention
-                    ))
-                    .await?;
+                match message.get_chat().demote(user.get_id()).await {
+                    Err(err) => {
+                        message
+                            .reply(format!("failed to demote user: {}", err.get_tg_error()))
+                            .await?;
+                    }
+                    Ok(_) => {
+                        let name = user.name_humanreadable();
+                        let mention = MarkupType::TextMention(user.to_owned()).text(&name);
+                        message
+                            .speak_fmt(entity_fmt!(
+                                lang,
+                                message.get_chat().get_id(),
+                                "demote",
+                                mention
+                            ))
+                            .await?;
+                    }
+                }
 
                 Ok(())
             }
