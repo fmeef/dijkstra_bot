@@ -677,21 +677,23 @@ where
     F: for<'b> FnOnce(&'b Message) -> bool,
 {
     if p(message) {
-        let newaction = get_lock(message, locktype.clone()).await?;
-        let newaction = if let Some(action) = newaction.map(|v| v.lock_action).flatten() {
-            Some(action)
-        } else {
-            Some(
-                get_default_settings(message.get_chat_ref())
-                    .await?
-                    .lock_action,
-            )
-        };
+        if let Some(newaction) = get_lock(message, locktype.clone()).await? {
+            let newaction = if let Some(action) = newaction.lock_action {
+                Some(action)
+            } else {
+                Some(
+                    get_default_settings(message.get_chat_ref())
+                        .await?
+                        .lock_action,
+                )
+            };
 
-        if newaction > *action {
-            *action = newaction;
+            if newaction > *action {
+                *action = newaction;
+            }
+            log::info!("encountered locked media! {}", locktype.get_name());
+            locks.push(locktype);
         }
-        locks.push(locktype);
     }
 
     Ok(())
