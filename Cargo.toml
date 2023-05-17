@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 dotenv = "0.15.0"
-tokio = { version = "1.28.0", features = ["full", "net", "socket2", "io-util", "tokio-macros"] }
+tokio = { version = "1.28.1", features = ["full", "net", "socket2", "io-util", "tokio-macros"] }
 migration = { path = "migration" }
 bot_impl = { path = "bot_impl" }
 openssl = { version = "0.10.52", features = ["vendored"] }
