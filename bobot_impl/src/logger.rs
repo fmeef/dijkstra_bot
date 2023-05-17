@@ -1,3 +1,8 @@
+//! Logging setup and configuration
+//!
+//! currently using nonblock_logger, we need to implement Serialize and Deserialize for log
+//! types to allow configuring logs via the configuration file
+
 use nonblock_logger::{
     log::LevelFilter, BaseConsumer, BaseFilter, BaseFormater, JoinHandle, NonblockLogger,
 };
@@ -48,6 +53,7 @@ impl<'de> Deserialize<'de> for LevelFilterWrapper {
     }
 }
 
+/// Setup logging and start logger thread
 pub fn setup_log() -> JoinHandle {
     let formater = BaseFormater::new().local(true).color(true).level(4);
 

@@ -1,3 +1,6 @@
+//! ORM type for storing metadata on conversations
+//! conversations being DMs, channels, and supergroups
+
 use botapi::gen_types::Chat;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};

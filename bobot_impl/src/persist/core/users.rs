@@ -1,3 +1,6 @@
+//! ORM type for storing user information. Since redis is used for this ephemerally
+//! in most cases this is very simple
+
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 

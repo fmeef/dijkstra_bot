@@ -1,8 +1,8 @@
 bot_token = 'changeme'
 
 [persistence]
-database_connection = 'postgresql://bobot:changeme@db/bobot'
-redis_connection = 'redis://redis'
+database_connection = 'postgresql://bobot:changeme@db-dev/bobot'
+redis_connection = 'redis://redis-dev'
 
 [webhook]
 enable_webhook = false

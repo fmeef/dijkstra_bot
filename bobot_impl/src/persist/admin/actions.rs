@@ -1,3 +1,7 @@
+//! ORM type for a "pending action" that will be applied the next time the user is seen.
+//! This allows for bans or restrictions to be applied to a user that has not been interacted with
+//! in 48 hours (a telegram limitation) or is not cached in redis and specified by username
+
 use crate::util::error::BotError;
 use chrono::Utc;
 use sea_orm::entity::prelude::*;

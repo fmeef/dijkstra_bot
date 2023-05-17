@@ -1,3 +1,14 @@
+//! Wrapper for a redis connection pool, handling connection management, serialization,
+//! deserization, and sql query caching.
+//!
+//! Newer version of redis do use multiple threads for some operations, so using
+//! a connection pool has performance benefits. This wrapper makes it easy to
+//! accquire and release a pool connection for either a single command, a series of piped commands
+//! or a more complex async operation containing multiple commands.
+//!
+//! also by default the rust `redis` crate makes it tricky to store binary data in a single key,
+//! which makes serializing keys with msgpack hard. This crate contains a workaround for this that
+
 use crate::{
     statics::CONFIG,
     util::{
@@ -32,6 +43,7 @@ pub const KEY_WRAPPER: &str = "wc:wrapper";
 pub const KEY_TYPE_VAL: &str = "wc:typeval";
 pub const KEY_UUID: &str = "wc:uuid";
 
+/// helper function for getting a list of deserialized values from redis
 async fn redis_query_vec<'a, R, P>(key: &'a str, _: &'a P) -> Result<Option<Vec<R>>>
 where
     R: DeserializeOwned + DeserializeOwned + Sync + Send + 'a,
@@ -45,6 +57,7 @@ where
     }
 }
 
+/// default sql caching miss operation for a list of values
 async fn redis_miss_vec<'a, V>(key: &'a str, val: Vec<V>) -> Result<Vec<V>>
 where
     V: Serialize + DeserializeOwned + Send + Sync + 'a,
@@ -53,6 +66,7 @@ where
     Ok(val)
 }
 
+/// default sql query caching query operation
 pub async fn redis_query<'a, R, P>(key: &'a str, _: &'a P) -> Result<Option<R>>
 where
     R: DeserializeOwned + Sync + Send + 'a,
@@ -72,6 +86,7 @@ where
     Ok(res)
 }
 
+/// Default sql query cachin miss operation for a single value
 pub async fn redis_miss<'a, V>(key: &'a str, val: V, expire: Duration) -> Result<V>
 where
     V: Serialize + 'a,
@@ -86,10 +101,10 @@ where
     Ok(val)
 }
 
-/*
- * Helper type for caching a single value from the database
- * in redis.
- */
+/// Helper type for caching a single value from the database
+/// in redis. NOTE: for this to work any insert operations need to also
+/// be cached using the RedisCache trait. Skipping this step will result
+/// in data inconsistencies
 pub struct CachedQuery<'r, T, R, S, M, P>
 where
     T: Serialize + DeserializeOwned + Send + Sync,
@@ -105,6 +120,7 @@ where
     phantom2: PhantomData<&'r P>,
 }
 
+/// Trait to allow returning generic cached queries containing compile-time closures
 #[async_trait]
 pub trait CachedQueryTrait<'r, R, P>
 where
@@ -114,6 +130,7 @@ where
     async fn query(self, key: &'r str, param: &'r P) -> Result<R>;
 }
 
+/// Helper function to generate a cached query for a list of values with default behavior
 pub fn default_cached_query_vec<'r, T, S, P>(sql_query: S) -> impl CachedQueryTrait<'r, Vec<T>, P>
 where
     T: Serialize + DeserializeOwned + Send + Sync + 'r,
@@ -123,11 +140,9 @@ where
     CachedQuery::new(sql_query, redis_query_vec, redis_miss_vec)
 }
 
-/*
- * Return a default cached query that stores cached values as
- * single redis key. This behavior can be overridden if more
- * complex redis structures are required
- */
+/// Return a default cached query that stores cached values as
+/// single redis key. This behavior can be overridden if more
+/// complex redis structures are required
 pub fn default_cache_query<'r, T, S, P>(
     sql_query: S,
     expire: Duration,
@@ -180,6 +195,7 @@ where
     }
 }
 
+/// Maps redis errors to types we support
 pub fn error_mapper(err: RedisError) -> BotError {
     match err.kind() {
         _ => BotError::conversation_err("some redis error"),
@@ -187,15 +203,18 @@ pub fn error_mapper(err: RedisError) -> BotError {
 }
 
 // Workaround for redis-rs's inability to support non-utf8 strings
-// as single args.
+// as single args. Serializes binary strings using msgpack for efficiency
 pub struct RedisStr(Vec<u8>);
 
 impl RedisStr {
+    /// Create a new RedisStr from a serializable value
     pub fn new<T: Serialize>(val: &T) -> Result<Self> {
         let bytes = rmp_serde::to_vec_named(val)?;
         Ok(RedisStr(bytes))
     }
 
+    /// Create a new RedisStr from a serializable value potentially using a new thread.
+    /// this might have dubiously minor performance improvements but honestly its misguided
     pub async fn new_async<T: Serialize + Send + 'static>(val: T) -> Result<Self> {
         tokio::spawn(async move {
             let v: Result<Self> = Ok(RedisStr(rmp_serde::to_vec_named(&val)?));
@@ -204,6 +223,7 @@ impl RedisStr {
         .await?
     }
 
+    /// attempt to deserialize the value
     pub fn get<T>(&self) -> Result<T>
     where
         T: DeserializeOwned,
@@ -239,12 +259,14 @@ impl ToRedisArgs for RedisStr {
     }
 }
 
+/// Generate a random redis key using uuid v4
 #[inline(always)]
 pub fn random_key(prefix: &str) -> String {
     let uuid = Uuid::new_v4();
     format!("r:{}:{}", prefix, uuid.to_string())
 }
 
+/// append user and group id to a key
 #[inline(always)]
 pub fn scope_key_by_user(key: &str, user: i64) -> String {
     format!("u:{}:{}", user, key)
@@ -267,6 +289,7 @@ pub fn scope_key_by_chatuser(key: &str, message: &Message) -> Result<String> {
     scope_key(key, message, "cu")
 }
 
+/// Builder type for a managed pool of redis connections using bb8
 pub struct RedisPoolBuilder {
     connectionstr: String,
 }
@@ -288,15 +311,16 @@ impl RedisPoolBuilder {
 }
 
 impl RedisPool {
+    /// create a new redis pool from a connection string and immediately connect to it
     pub async fn new<T: AsRef<str>>(connectionstr: T) -> Result<Self> {
         let client = RedisConnectionManager::new(connectionstr.as_ref())?;
-
+        //TODO: don't use a hardcoded size here
         let pool = Pool::builder().max_size(15).build(client).await?;
         Ok(RedisPool { pool })
     }
 
-    // atomically create a list out of multipole Serialize types
-    // any previous list at this key will be overwritten
+    /// atomically create a list out of multipole Serialize types
+    /// any previous list at this key will be overwritten
     pub async fn create_list<U, V>(&self, key: &str, mut obj: U) -> Result<()>
     where
         V: Serialize + Send + Sync,
@@ -316,7 +340,7 @@ impl RedisPool {
         Ok(())
     }
 
-    // remove and deserialize all items in a list.
+    /// remove and deserialize all items in a list.
     pub async fn drain_list<R>(&self, key: &str) -> Result<Vec<R>>
     where
         R: DeserializeOwned + Send + Sync,
@@ -329,7 +353,7 @@ impl RedisPool {
             .collect()
     }
 
-    // construct and run a redis pipeline using the provided closure
+    /// construct and run a redis pipeline using the provided closure
     pub async fn pipe<T, R>(&self, func: T) -> Result<R>
     where
         for<'a> T: FnOnce(&'a mut Pipeline) -> &'a mut Pipeline,
@@ -342,8 +366,8 @@ impl RedisPool {
         Ok(res)
     }
 
-    // construct and run a redis pipeline using the provided closure
-    // any Err type returned will abort without running the query
+    /// construct and run a redis pipeline using the provided closure
+    /// any Err type returned will abort without running the query
     pub async fn try_pipe<T, R>(&self, func: T) -> Result<R>
     where
         for<'a> T: FnOnce(&'a mut Pipeline) -> Result<&'a mut Pipeline>,
@@ -356,7 +380,7 @@ impl RedisPool {
         Ok(res)
     }
 
-    // Run a single redis query
+    /// Run a single redis query
     pub async fn sq<'a, T, R>(&'a self, func: T) -> Result<R>
     where
         T: for<'b> FnOnce(
@@ -368,8 +392,8 @@ impl RedisPool {
         Ok(func(&mut self.pool.get().await?).await?)
     }
 
-    // Run one or more redis queries using the connection provided to the
-    // closure
+    /// Run one or more redis queries using the connection provided to the
+    /// closure
     pub async fn query<'a, T, R, Fut>(&'a self, func: T) -> Result<R>
     where
         T: FnOnce(PooledConnection<'a, RedisConnectionManager>) -> Fut + Send,
@@ -379,8 +403,8 @@ impl RedisPool {
         Ok(func(self.pool.get().await?).await?)
     }
 
-    // Run one or more redis queries using the connection provided to the
-    // closure. The closure is run via a separate tokio task
+    /// Run one or more redis queries using the connection provided to the
+    /// closure. The closure is run via a separate tokio task
     pub async fn query_spawn<T, R, Fut>(&self, func: T) -> JoinHandle<Result<R>>
     where
         T: for<'b> FnOnce(PooledConnection<'b, RedisConnectionManager>) -> Fut + Send + 'static,
@@ -395,20 +419,28 @@ impl RedisPool {
         })
     }
 
-    // Gets a single connection from the connection pool
+    /// Gets a single connection from the connection pool.
+    /// NOTE: this connection will not be returned to the pool until it is dropped
     pub async fn conn<'a>(&'a self) -> Result<PooledConnection<'a, RedisConnectionManager>> {
         let res = self.pool.get().await?;
         Ok(res)
     }
 }
 
+/// Helper trait intended to be used as an extension trait for caching ORM
+/// types
 #[async_trait]
 pub trait RedisCache<V>
 where
     Self: Sized + Send,
 {
+    /// Cache the type in redis for the specific duration
     async fn cache_duration<K: AsRef<str> + Send>(self, key: K, expire: Duration) -> Result<V>;
+
+    /// Cache the type in redis for the default duration specified by config
     async fn cache<K: AsRef<str> + Send>(self, key: K) -> Result<V>;
+
+    /// Cache the type along with related types, used for caching rows from related tables
     async fn join_duration<K, J, A>(
         self,
         key: K,
@@ -419,11 +451,15 @@ where
         J: Sized + Serialize + IntoActiveModel<A> + Send,
         A: ActiveModelTrait + Send,
         K: AsRef<str> + Send;
+
+    /// Cache type type along with a single related types, used for caching rows from related tables
     async fn join<K, J, A>(self, key: K, join: Vec<J>) -> Result<(V, Vec<A>)>
     where
         J: Sized + Serialize + IntoActiveModel<A> + Send,
         A: ActiveModelTrait + Send,
         K: AsRef<str> + Send;
+
+    /// Cache type type along with a single related types, used for caching rows from related tables
     async fn join_single_duration<K, J, A>(
         self,
         key: K,
@@ -434,6 +470,9 @@ where
         J: Sized + Serialize + IntoActiveModel<A> + Send,
         A: ActiveModelTrait + Send,
         K: AsRef<str> + Send;
+
+    /// Cache type type along with a single related types, used for caching rows from related tables
+    /// using default expire
     async fn join_single<K, J, A>(self, key: K, join: Option<J>) -> Result<(V, Option<A>)>
     where
         J: Sized + Serialize + IntoActiveModel<A> + Send,

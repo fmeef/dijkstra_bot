@@ -1,3 +1,7 @@
+//! Provides apis for managing strings, localization, and sending messages to chats
+//! All message sending should be done through this api for both localization/translation
+//! and ratelimiting to work
+
 use std::ops::DerefMut;
 
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisStr};
@@ -23,6 +27,7 @@ use sea_orm::{EntityTrait, IntoActiveModel};
 
 use crate::persist::core::dialogs;
 
+/// this is just here as an example of a cached query returned from a function
 #[allow(dead_code)]
 fn get_query<'r>() -> impl CachedQueryTrait<'r, Lang, i64> {
     default_cache_query(
@@ -38,6 +43,8 @@ fn get_query<'r>() -> impl CachedQueryTrait<'r, Lang, i64> {
     )
 }
 
+/// Returns false if ratelimiting is triggered. This function should be called before
+/// every attempt to send a messsage in a chat, as calling it determines ratelimiting
 pub async fn should_ignore_chat(chat: i64) -> Result<bool> {
     let counterkey = format!("ignc:{}", chat);
 
@@ -69,6 +76,8 @@ pub async fn should_ignore_chat(chat: i64) -> Result<bool> {
     Ok(count >= CONFIG.timing.antifloodwait_count)
 }
 
+/// Sets a redis key that causes all official methods of sending messages to suspend
+/// as long as the key exists. Part of ratelimiting system
 pub async fn ignore_chat(chat: i64, time: &Duration) -> Result<()> {
     let key = format!("ign:{}", chat);
     REDIS
@@ -77,14 +86,24 @@ pub async fn ignore_chat(chat: i64, time: &Duration) -> Result<()> {
     Ok(())
 }
 
+/// Extension trait with fuctions for sending messages. Types that implement this trait should be
+/// types containing distinct references to chats or objects that can be replied to.
 #[async_trait]
 pub trait Speak {
+    /// Send a text message to the chat associated with this type. Murkdown is parsed if valid
     async fn speak<T>(&self, message: T) -> Result<Option<Message>>
     where
         T: AsRef<str> + Send + Sync;
 
+    /// Sends a telegram api send_message builder, potentially with existing MessageEntities or
+    /// other formatting
     async fn speak_fmt<'a>(&self, messsage: CallSendMessage<'a>) -> Result<Option<Message>>;
+
+    /// Replies with a telegram api send_message builder, potentially with existing MessageEntities or
+    /// other formatting
     async fn reply_fmt<'a>(&self, messsage: CallSendMessage<'a>) -> Result<Option<Message>>;
+
+    /// Replies with a text message to the chat associated with this type. Murkdown is parsed if valid
     async fn reply<T>(&self, message: T) -> Result<Option<Message>>
     where
         T: AsRef<str> + Send + Sync;
@@ -256,6 +275,7 @@ fn get_lang_key(chat: i64) -> String {
     format!("lang:{}", chat)
 }
 
+/// Gets the language config for the current chat
 pub async fn get_chat_lang(chat: i64) -> Result<Lang> {
     let key = get_lang_key(chat);
     let res = default_cache_query(
@@ -273,6 +293,7 @@ pub async fn get_chat_lang(chat: i64) -> Result<Lang> {
     Ok(res)
 }
 
+/// Sets the current langauge config for the chat
 pub async fn set_chat_lang(chat: &Chat, lang: Lang) -> Result<()> {
     let r = RedisStr::new(&lang)?;
     let c = dialogs::Model::from_chat(chat).await?;

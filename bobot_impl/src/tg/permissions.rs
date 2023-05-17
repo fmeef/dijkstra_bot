@@ -1,3 +1,6 @@
+//! Admin permissions management interface. Allows for both admin/notadmin permissions and
+//! more granular permissions based on telegram's own system
+
 use std::{borrow::Cow, collections::HashMap};
 
 use crate::{
@@ -18,6 +21,8 @@ use super::{
     user::{GetUser, Username},
 };
 
+/// Granular permissions with associated humanreadable name. Used for printing
+/// detailed error messages to users
 #[derive(Clone, Debug)]
 pub struct NamedBotPermissions {
     pub can_manage_chat: NamedPermission,
@@ -29,6 +34,7 @@ pub struct NamedBotPermissions {
 }
 
 impl NamedBotPermissions {
+    /// Use the admin cache to check a user's permissions in a group
     pub async fn from_chatuser(user: &User, chat: &Chat) -> Result<Self> {
         if let Some(admin) = chat.is_user_admin(user.get_id()).await? {
             Ok(admin.into())
@@ -45,6 +51,8 @@ impl NamedBotPermissions {
         }
     }
 
+    /// Check the permissions of a message's sender. Returns an error if the message has
+    /// no sender
     pub async fn from_message(message: &Message) -> Result<Self> {
         let chat = message.get_chat();
         let user = message.get_from().ok_or_else(|| {
@@ -94,6 +102,7 @@ impl From<ChatMember> for NamedBotPermissions {
     }
 }
 
+/// A single permission with granted value and human readable name
 #[derive(Clone, Debug)]
 pub struct NamedPermission {
     name: &'static str,
@@ -101,11 +110,14 @@ pub struct NamedPermission {
 }
 
 impl NamedPermission {
+    /// Construct a new NamedPermission with name
     fn new(name: &'static str, val: bool) -> Self {
         Self { name, val }
     }
 }
 
+/// Permissions for chat admins (and the bot itself). Based off of telegram API's
+/// ChatPermissions
 #[derive(Clone, Debug)]
 pub struct BotPermissions {
     pub can_manage_chat: bool,
@@ -151,32 +163,62 @@ impl From<NamedBotPermissions> for BotPermissions {
     }
 }
 
+/// Extension trait for determining if users or user-like objects are admin
 #[async_trait]
 pub trait IsAdmin {
+    /// Returns true if the user is an admin
     async fn is_admin(&self, chat: &Chat) -> Result<bool>;
+
+    /// If the user is not an admin fail with printable error
     async fn admin_or_die(&self, chat: &Chat) -> Result<()>;
+
+    /// Get the permissions for a user
     async fn get_permissions(&self, chat: &Chat) -> Result<BotPermissions>;
+
+    /// Apply the mapper function to the permissions, if it returns false NamedPermissions,
+    /// return with error
     async fn check_permissions<F>(&self, chat: &Chat, func: F) -> Result<()>
     where
         F: FnOnce(NamedBotPermissions) -> NamedPermission + Send;
 }
 
+/// Extension trait similar to IsAdmin, but with checking for supergroups.
+/// Assumes that the implementor has a chat context
 #[async_trait]
 pub trait IsGroupAdmin {
+    /// If the user is not admin or the group is not a supergroup, return a printable error
     async fn group_admin_or_die(&self) -> Result<()>;
+
+    /// return true if the group is a supergroup and the user is an admin
     async fn is_group_admin(&self) -> Result<bool>;
+
+    /// get the permissions for a user
     async fn get_permissions(&self) -> Result<BotPermissions>;
+
+    /// Apply the mapper function to the permissions, if it returns false NamedPermissions,
+    /// return with error
     async fn check_permissions<F>(&self, func: F) -> Result<()>
     where
         F: FnOnce(NamedBotPermissions) -> NamedPermission + Send;
 }
 
+/// Defines behavior for interacting with the admin cache. Implementors should have
+/// somne concept of a User and Chat
 #[async_trait]
 pub trait GetCachedAdmins {
+    /// Retreive the entire admin cache, refreshing as needed
     async fn get_cached_admins(&self) -> Result<HashMap<i64, ChatMember>>;
+
+    /// Manually refresh admin cache. This is ratelimited to 10 minutes between requests
     async fn refresh_cached_admins(&self) -> Result<HashMap<i64, ChatMember>>;
+
+    /// Search the admin cache for a member
     async fn is_user_admin(&self, user: i64) -> Result<Option<ChatMember>>;
+
+    /// Promote a user, caching the promotion without refreshing
     async fn promote(&self, user: i64) -> Result<()>;
+
+    /// Demotes a user, caching the demotion without refreshing
     async fn demote(&self, user: i64) -> Result<()>;
 }
 
@@ -392,6 +434,7 @@ impl IsAdmin for i64 {
     }
 }
 
+/// Updates the admin cache with any changes in the bot's admin status
 pub async fn update_self_admin(update: &UpdateExt) -> Result<()> {
     if let UpdateExt::MyChatMember(member) = update {
         let key = get_chat_admin_cache_key(member.get_chat().get_id());
@@ -542,6 +585,7 @@ impl GetCachedAdmins for Chat {
     }
 }
 
+/// Fails with a printable error if the bot doesn't have full admin rights
 pub async fn self_admin_or_die(chat: &Chat) -> Result<()> {
     if !is_self_admin(chat).await? {
         let lang = get_chat_lang(chat.get_id()).await?;

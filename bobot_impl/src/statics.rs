@@ -1,3 +1,9 @@
+//! Due to limitations of the borrow checker when dealing with static async contexts,
+//! passing non-'static references to tokio tasks is very hard.
+//!
+//! Make critical parts of the bot's backend static to avoid loads of boilerplate
+//! or Arc::clone() calls
+
 use crate::logger::LevelFilterWrapper;
 use crate::persist::redis::{RedisPool, RedisPoolBuilder};
 use crate::tg::client::TgClient;
@@ -18,27 +24,43 @@ use tokio::sync::OnceCell;
 
 use tokio::runtime::Runtime;
 
+/// Serializable log config for webhook
 #[derive(Serialize, Deserialize)]
 pub struct WebhookConfig {
+    /// if true, use webhook, if false, use long polling
     pub enable_webhook: bool,
+
+    /// webhook url if using webhook
     pub webhook_url: String,
+
+    /// if using webhook listen on this socket
     pub listen: SocketAddr,
 }
 
+/// Serializable log setup config
 #[derive(Serialize, Deserialize)]
 pub struct LogConfig {
+    /// log level, one of "off", "error", "warn", "info", "debug", "trace"
     log_level: LevelFilterWrapper,
+
+    /// socket to listen on for prometheus scraping
     pub prometheus_hook: SocketAddr,
 }
 
+/// Serializable config for postgres and redis
 #[derive(Serialize, Deserialize)]
 pub struct Persistence {
+    /// postgres connection string
     pub database_connection: String,
+
+    /// redis connection string
     pub redis_connection: String,
 }
 
+/// Main configuration file contents. Serializable to toml
 #[derive(Serialize, Deserialize)]
 pub struct Config {
+    /// telegram bot api token
     pub bot_token: String,
     pub persistence: Persistence,
     pub webhook: WebhookConfig,
@@ -46,11 +68,19 @@ pub struct Config {
     pub timing: Timing,
 }
 
+/// Serializable timing config
 #[derive(Serialize, Deserialize)]
 pub struct Timing {
+    /// default redis key expiry
     pub cache_timeout: usize,
+
+    /// number of messages to trigger antiflood
     pub antifloodwait_count: usize,
+
+    /// time before antiflood counter resets
     pub antifloodwait_time: usize,
+
+    /// how long to ignore chat when triggering antiflood
     pub ignore_chat_time: usize,
 }
 

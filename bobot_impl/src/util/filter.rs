@@ -1,17 +1,25 @@
+//! Context-free grammar for parsing "filters" style commands.
+//! Currently this is used by filters and blocklists, but other modules may use it as well
+//!
+//! Example: (key1, key2, key3) multi word body {footer}
+//! Example: key1 multi word body
+//! Example: "multi word key" multi word body
+
 use lazy_static::lazy_static;
 
 use pomelo::pomelo;
 use regex::Regex;
 
+/// Data for filter's header
 pub enum Header {
     List(Vec<String>),
     Arg(String),
 }
 
+/// Complete parsed filter with header, body, and footer
 pub struct FilterCommond {
     pub header: Header,
     pub body: Option<String>,
-    #[allow(dead_code)]
     pub footer: Option<String>,
 }
 
@@ -93,6 +101,7 @@ lazy_static! {
     static ref TOKENS: Regex = Regex::new(r#"((\s+)|[\{\}\(\),"]|[^\{\}\(\),"\s]+)"#).unwrap();
 }
 
+/// Tokenizer for filters
 pub struct Lexer<'a>(&'a str);
 
 impl<'a> Lexer<'a> {

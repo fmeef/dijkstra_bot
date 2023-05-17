@@ -1,9 +1,14 @@
+//! macros for modules to register themselves with the bot
+//! modules are registered with a name, description, and command list
+
 use std::collections::HashMap;
 
 lazy_static! {
     pub static ref NEWLINE: Regex = Regex::new(r#"\s\s+\n\s*"#).unwrap();
 }
 
+/// Macro for registering a module. Generates a metadata getter out of a name, description, and
+/// command list
 macro_rules! metadata {
     ($name:expr, $description:expr) => {
         pub const METADATA: ::once_cell::sync::Lazy<crate::metadata::Metadata> =
@@ -37,6 +42,7 @@ use lazy_static::lazy_static;
 pub(crate) use metadata;
 use regex::Regex;
 
+/// metadata for a single module
 #[derive(Clone)]
 pub struct Metadata {
     pub name: String,

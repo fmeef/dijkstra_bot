@@ -1,3 +1,10 @@
+//! Unified error handling for everything in this project.
+//! Provides an error type using thiserror to handle and route errors from other
+//! components.
+//!
+//! Also provides helper functions for either logging errors to prometheus or
+//! sending formatted errors to the user via telegram
+
 use crate::{statics::TG, tg::markdown::DefaultParseErr};
 use async_trait::async_trait;
 use botapi::bot::ApiError;
@@ -7,11 +14,17 @@ use sea_orm::{DbErr, TransactionError};
 use thiserror::Error;
 use tokio::task::JoinError;
 
+/// Type alias for universal result type
 pub type Result<T> = std::result::Result<T, BotError>;
 
+/// Extension trait for mapping generic errors into BotError::Speak
+/// Meant to be implemented on Result
 #[async_trait]
 pub trait SpeakErr<T: Send> {
+    /// Maps the error to BotError::Speak, calling to_string() for the message
     async fn speak_err(self, chat: &Chat) -> Result<()>;
+
+    /// Maps the error to BotError::Speak using a custom function to derive error message
     async fn speak_err_fmt<F>(self, chat: &Chat, func: F) -> Result<()>
     where
         F: for<'b> FnOnce(&'b str) -> String + Send;
@@ -48,6 +61,7 @@ impl<T: Send> SpeakErr<T> for Result<T> {
     }
 }
 
+/// thiserror enum for all possible errors
 #[derive(Debug, Error)]
 pub enum BotError {
     #[error("{say}")]
@@ -97,9 +111,12 @@ pub enum BotError {
 }
 
 impl BotError {
+    /// constructor for conversation state machine error
     pub fn conversation_err<T: Into<String>>(text: T) -> Self {
         Self::ConversationError(text.into())
     }
+
+    /// constructor for "speak" error that is always converted into telegram message
     pub fn speak<T: Into<String>>(text: T, chat: i64) -> Self {
         Self::Speak {
             say: text.into(),
@@ -108,6 +125,7 @@ impl BotError {
         }
     }
 
+    /// construct a speak error with custom error type
     pub fn speak_err<T, E>(text: T, chat: i64, err: E) -> Self
     where
         T: Into<String>,
@@ -120,6 +138,7 @@ impl BotError {
         }
     }
 
+    /// record this error using prometheus error counters. Counters used depend on error
     pub fn record_stats(&self) {
         if let Self::ApiError(ref error) = self {
             if let Some(error) = error.get_response() {
@@ -142,6 +161,7 @@ impl BotError {
         }
     }
 
+    /// get humanreadable error string to print to user via telegram
     pub fn get_tg_error<'a>(&'a self) -> &'a str {
         if let BotError::ApiError(err) = self {
             err.get_response()
@@ -153,6 +173,7 @@ impl BotError {
         }
     }
 
+    /// send message via telegram for this error, returning true if a message was sent
     pub async fn get_message(&self) -> Result<bool> {
         if let Self::Speak { say, chat, .. } = self {
             TG.client().build_send_message(*chat, &say).build().await?;

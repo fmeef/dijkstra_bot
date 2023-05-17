@@ -1,3 +1,9 @@
+//! Utilities exposing a unified interface for parsing slash commands and their arguments
+//!
+//! Commands can be either a normal telegram slash command, or a command preceeded with a
+//! different character, currently "!". Command arguments are parsed using regex currently
+//! but in the near future will be switched to a context-free grammar
+
 use std::{borrow::Cow, collections::VecDeque};
 
 use crate::util::{
@@ -21,13 +27,12 @@ pub enum InputType<'a> {
     Command(&'a str, Option<&'a str>, &'a Message),
 }
 
-pub fn get_input_type<'a>(
+fn get_input_type<'a>(
     message: &'a Message,
     textargs: &'a TextArgs<'a>,
     name: &'a str,
     end: usize,
 ) -> InputType<'a> {
-    log::info!("get:{}", textargs.text);
     if let Some(reply) = message.get_reply_to_message_ref() {
         InputType::Reply(name, reply.get_text_ref(), reply)
     } else {
@@ -36,6 +41,8 @@ pub fn get_input_type<'a>(
     }
 }
 
+/// Helper to parse a command with either the argument to the command as text or
+/// the text of the message the command is replying to
 pub fn get_content<'a>(
     message: &'a Message,
     textargs: &'a TextArgs<'a>,
@@ -50,25 +57,35 @@ pub fn get_content<'a>(
     }
 }
 
+/// type alias for MessageEntities in a message containing a command
 pub type Entities<'a> = VecDeque<EntityArg<'a>>;
+
+/// type alias for parsed argument list of a command
 pub type Args<'a> = Vec<TextArg<'a>>;
 
+/// Contains references to both the unparsed text of a command (not including the /command)
+/// and the same text parsed into and argument list for convienience
 pub struct TextArgs<'a> {
     pub text: &'a str,
     pub args: Args<'a>,
 }
 
+/// A ranged slice of an argument list. Useful for recursively deconstructing commands
+/// or implementing subcommands
 pub struct ArgSlice<'a> {
     pub text: &'a str,
     pub args: &'a [TextArg<'a>],
 }
 
+/// A single argument, could be either raw text separated by whitespace or a quoted
+/// text block
 pub enum TextArg<'a> {
     Arg(&'a str),
     Quote(&'a str),
 }
 
 impl<'a> TextArg<'a> {
+    /// get the text of a single argument, whether or not it is quoted
     pub fn get_text(&self) -> &'a str {
         match self {
             TextArg::Arg(s) => s,
@@ -77,6 +94,7 @@ impl<'a> TextArg<'a> {
     }
 }
 
+/// Helper for wrapping supported MessageEntities in arguments without cloning or owning
 pub enum EntityArg<'a> {
     Command(&'a str),
     Quote(&'a str),
@@ -88,12 +106,15 @@ pub enum EntityArg<'a> {
 }
 
 impl<'a> TextArgs<'a> {
+    /// Convert and argument list to a slice of equal size
     pub fn as_slice(&'a self) -> ArgSlice<'a> {
         ArgSlice {
             text: self.text,
             args: self.args.as_slice(),
         }
     }
+
+    /// remove the first argument in an argument list as a slice
     pub fn pop_slice(&'a self) -> Option<ArgSlice<'a>> {
         if let Some(arg) = self.args.first() {
             let res = ArgSlice {
@@ -125,6 +146,7 @@ fn get_arg_type<'a>(message: &'a Message, entity: &'a MessageEntity) -> Option<E
     }
 }
 
+/// Parse a single argument manually. Useful for when you don't need the full text of a command
 pub fn single_arg<'a>(s: &'a str) -> Option<(TextArg<'a>, usize, usize)> {
     ARGS.find(s).map(|v| {
         if QUOTE.is_match(v.as_str()) {
@@ -135,12 +157,16 @@ pub fn single_arg<'a>(s: &'a str) -> Option<(TextArg<'a>, usize, usize)> {
     })
 }
 
+/// A full command including the /command or !command, the argument list, and any
+/// MessageEntities
 pub struct Command<'a> {
     pub cmd: &'a str,
     pub args: TextArgs<'a>,
     pub entities: Entities<'a>,
 }
 
+/// Everything needed to interact with user messages. Contains command and arguments, the message
+/// API type itself, the current language, and the chat
 pub struct Context<'a> {
     pub message: &'a Message,
     pub command: Option<Command<'a>>,
@@ -149,6 +175,8 @@ pub struct Context<'a> {
 }
 
 impl<'a> Context<'a> {
+    /// Get a context from an update. Returns none if one or more fields aren't present
+    /// Currently only Message updates return Some
     pub async fn get_context(update: &'a UpdateExt) -> Result<Option<Context<'a>>> {
         let message = match update {
             UpdateExt::Message(message) => message,
@@ -177,6 +205,7 @@ impl<'a> Context<'a> {
         }
     }
 
+    /// Makes accessing command related fields more ergonomic
     pub fn cmd(
         &'a self,
     ) -> Option<(
@@ -200,6 +229,7 @@ impl<'a> Context<'a> {
     }
 }
 
+/// Parse a command from a message. Returns none if the message isn't a /command or !command
 pub fn parse_cmd_struct<'a>(message: &'a Message) -> Option<Command<'a>> {
     parse_cmd(message).map(|(cmd, args, entities)| Command {
         cmd,
@@ -208,6 +238,7 @@ pub fn parse_cmd_struct<'a>(message: &'a Message) -> Option<Command<'a>> {
     })
 }
 
+/// Parse individual components of a /command or !command
 pub fn parse_cmd<'a>(message: &'a Message) -> Option<(&'a str, TextArgs<'a>, Entities<'a>)> {
     if let Some(Cow::Borrowed(cmd)) = message.get_text() {
         if let Some(head) = COMMOND_HEAD.find(&cmd) {

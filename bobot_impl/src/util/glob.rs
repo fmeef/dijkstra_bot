@@ -1,3 +1,7 @@
+//! Api for handling high performance text globbing. This is meant to serve as an alternative to regex
+//! more resistant to text globbing attacks. The globbling algorithm is a modified version of the `wildmatch`
+//! crate with different whitespace matching behavior
+
 use std::fmt;
 
 /// Wildcard matcher used to match strings.
@@ -184,6 +188,8 @@ impl<'a> PartialEq<&'a str> for WildMatch {
     }
 }
 
+/// Older attempt at making a globbing engine from scratch. Deprecated in favor of
+// the modified WildMatch
 pub struct Glob(Vec<char>);
 impl Glob {
     pub fn new(pattern: &str) -> Self {

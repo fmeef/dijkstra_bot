@@ -1,3 +1,7 @@
+//! Various functions for caching user details and group membership.
+//! This is intended to reduce the number of telegram requests, user information
+//! stored in persistent database, and to allow reverse lookup of @ handles
+
 use std::borrow::Cow;
 
 use crate::persist::redis::RedisStr;
@@ -7,11 +11,11 @@ use async_trait::async_trait;
 use botapi::gen_types::{Chat, UpdateExt, User};
 use redis::AsyncCommands;
 
-pub fn get_user_cache_key(user: i64) -> String {
+fn get_user_cache_key(user: i64) -> String {
     format!("usrc:{}", user)
 }
 
-pub fn get_username_cache_key(username: &str) -> String {
+fn get_username_cache_key(username: &str) -> String {
     format!("uname:{}", username)
 }
 
@@ -19,6 +23,7 @@ fn get_chat_cache_key(chat: i64) -> String {
     format!("chat:{}", chat)
 }
 
+/// Get the user for this bot. This function just caches the getMe telegram API call
 pub async fn get_me() -> Result<User> {
     let me_key = "user_me";
     REDIS
@@ -36,6 +41,7 @@ pub async fn get_me() -> Result<User> {
         .await
 }
 
+/// Record a user in redis for later lookup
 pub async fn record_cache_user(user: &User) -> Result<()> {
     let key = get_user_cache_key(user.get_id());
     let st = RedisStr::new(user)?;
@@ -57,6 +63,7 @@ pub async fn record_cache_user(user: &User) -> Result<()> {
     Ok(())
 }
 
+/// Record a chat in redis for later lookup
 pub async fn record_cache_chat(chat: &Chat) -> Result<()> {
     let key = get_chat_cache_key(chat.get_id());
     let st = RedisStr::new(chat)?;
@@ -66,6 +73,7 @@ pub async fn record_cache_chat(chat: &Chat) -> Result<()> {
     Ok(())
 }
 
+/// Parse an update for users and chats and record them as needed
 pub async fn record_cache_update(update: &UpdateExt) -> Result<()> {
     if let Some(user) = RecordUser::get_user(update) {
         record_cache_user(&user).await?;
@@ -86,6 +94,7 @@ pub async fn record_cache_update(update: &UpdateExt) -> Result<()> {
     Ok(())
 }
 
+/// get a cached user by id
 pub async fn get_user(user: i64) -> Result<Option<User>> {
     let key = get_user_cache_key(user);
     let model: Option<RedisStr> = REDIS.sq(|p| p.get(&key)).await?;
@@ -96,6 +105,7 @@ pub async fn get_user(user: i64) -> Result<Option<User>> {
     }
 }
 
+/// get a cached user by username
 pub async fn get_user_username<T: AsRef<str>>(username: T) -> Result<Option<User>> {
     let username = username.as_ref();
     let key = get_username_cache_key(username);
@@ -119,6 +129,7 @@ pub async fn get_user_username<T: AsRef<str>>(username: T) -> Result<Option<User
     }
 }
 
+/// get a cached chat by chatId
 pub async fn get_chat(chat: i64) -> Result<Option<Chat>> {
     let key = get_chat_cache_key(chat);
     let model: Option<RedisStr> = REDIS.sq(|p| p.get(&key)).await?;
@@ -129,28 +140,40 @@ pub async fn get_chat(chat: i64) -> Result<Option<Chat>> {
     }
 }
 
+/// extension trait for getting human readable names from telegram objects
 pub trait Username {
+    /// get the human readable name, often either the display name, @ handle, or id number
     fn name_humanreadable<'a>(&'a self) -> String;
 }
 
+/// extension trait for recording a chat to redis
 #[async_trait]
 pub trait RecordChat {
+    /// record the chat to redis
     async fn record_chat(&self) -> Result<()>;
 }
 
+/// extension trait for getting full cached information for a chat
 #[async_trait]
 pub trait GetChat {
+    /// get the chat information
     async fn get_chat(&self) -> Result<Option<Chat>>;
 }
 
+/// extension trait for recording and retrieving a user from redis cache
 #[async_trait]
 pub trait RecordUser {
+    /// helper to get the user from the value (not from cache)
     fn get_user<'a>(&'a self) -> Option<Cow<'a, User>>;
+
+    /// record this user to redis. Does nothing if full information is not present
     async fn record_user(&self) -> Result<()>;
 }
 
+/// extension trait for getting the full cached information of a user
 #[async_trait]
 pub trait GetUser {
+    /// Get the user's full information from redis cache
     async fn get_cached_user(&self) -> Result<Option<User>>;
 }
 

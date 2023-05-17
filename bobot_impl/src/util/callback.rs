@@ -1,12 +1,11 @@
+//! NOTE: async closures are not stable, so defining closure types returning future
+//! (and supporting both type erasure and sized-ness for storing in collections)
+//! are extremely ugly and full of annoying boilerplate.
+//!
+//! This is the containment module for async-closure related workarounds until we get stable
+//! support for native async closures
+
 use crate::util::error::Result;
-/**
- * NOTE: async closures are not stable, so defining closure types returning future
- * (and supporting both type erasure and sized-ness for storing in collections)
- * are extremely ugly and full of annoying boilerplate.
- *
- * This is the containment module for async-closure related workarounds until we get stable
- * support for native async closures
- */
 use futures::{future::BoxFuture, Future, FutureExt};
 use serde::{de::DeserializeOwned, Serialize};
 pub type BotDbFuture<'a, T> = BoxFuture<'a, T>;

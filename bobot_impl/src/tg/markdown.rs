@@ -1,3 +1,7 @@
+//! Various tools for generating formatted telegram text using MessageEntities
+//! There are two APIs here, a markdown like "murkdown" formatting language and
+//! a builder api for manually generating formatted text
+
 use botapi::gen_methods::CallSendMessage;
 use botapi::gen_types::{MessageEntity, MessageEntityBuilder, User};
 use markdown::{Block, ListItem, Span};
@@ -11,6 +15,7 @@ use std::fmt::Display;
 use std::{iter::Peekable, str::Chars};
 use thiserror::Error;
 
+/// Custom error type for murkdown parse failure. TODO: add additional context here
 #[derive(Debug, Error)]
 pub struct DefaultParseErr {}
 
@@ -27,6 +32,7 @@ impl Default for DefaultParseErr {
     }
 }
 
+/// Type for representing murkdown syntax tree
 pub enum TgSpan {
     Code(String),
     Italic(Vec<TgSpan>),
@@ -40,10 +46,14 @@ pub enum TgSpan {
 }
 
 lazy_static! {
+    /// regex for matching whitespace-separated string not containing murkdown reserved characters
     static ref RAWSTR: Regex = Regex::new(r#"([^\s"]+|")"#).unwrap();
+
+    /// static empty vec used for internal optimization
     pub static ref EMPTY_ENTITIES: Vec<MessageEntity> = vec![];
 }
 
+// Pomello parser generator macro call for murkdown context-free grammar
 pomelo! {
     %error super::DefaultParseErr;
     %type input Vec<super::TgSpan>;
@@ -84,6 +94,7 @@ use parser::{Parser, Token};
 use super::admin_helpers::ChatUser;
 use super::user::Username;
 
+/// Lexer to get murkdown tokens
 struct Lexer<'a>(Peekable<Chars<'a>>);
 
 impl<'a> Lexer<'a> {
@@ -136,8 +147,11 @@ pub struct MarkupBuilder {
     text: String,
 }
 
+/// Builder for MessageEntity formatting. Generates MessageEntities from either murkdown
+/// or manually
 #[allow(dead_code)]
 impl MarkupBuilder {
+    /// Constructs a new empty builder for manual formatting
     pub fn new() -> Self {
         Self {
             entities: Vec::new(),
@@ -333,6 +347,8 @@ impl MarkupBuilder {
         }
     }
 
+    /// Parses vanilla markdown and constructs a builder with the corresponding text
+    /// and entities
     pub fn from_markdown<T: AsRef<str>>(text: T) -> Self {
         let text = text.as_ref();
         let mut s = Self::new();
@@ -342,10 +358,14 @@ impl MarkupBuilder {
         s
     }
 
+    /// Parses murkdown and constructs a builder with the corresponding text and
+    /// entities
     pub fn from_murkdown<T: AsRef<str>>(text: T) -> Result<Self> {
         Self::from_murkdown_internal(text, None)
     }
 
+    /// Parses murkdown and constructs a builder with the corresponding text and
+    /// entities. The provided ChatUser value is used to perform automated formfilling
     pub fn from_murkdown_chatuser<'b, T: AsRef<str>>(
         text: T,
         chatuser: Option<&ChatUser<'b>>,
@@ -369,6 +389,7 @@ impl MarkupBuilder {
         Ok(s)
     }
 
+    /// Appends new unformated text
     pub fn text<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
         self.text.push_str(text.as_ref());
         self.offset += text.as_ref().encode_utf16().count() as i64;
@@ -382,6 +403,7 @@ impl MarkupBuilder {
         self.entities.push(entity);
     }
 
+    /// Appends a markup value
     pub fn regular<'a, T: AsRef<str>>(&'a mut self, entity_type: Markup<T>) -> &'a mut Self {
         let n = entity_type.get_text().encode_utf16().count() as i64;
 
@@ -408,6 +430,7 @@ impl MarkupBuilder {
         self
     }
 
+    /// Appends a new text link. Pass a number for advance to allow text/formatting overlap
     pub fn text_link<'a, T: AsRef<str>>(
         &'a mut self,
         text: T,
@@ -426,6 +449,7 @@ impl MarkupBuilder {
         self
     }
 
+    /// Appends a new text mention. Pass a number for advance to allow text/formatting overlap
     pub fn text_mention<'a, T: AsRef<str>>(
         &'a mut self,
         text: T,
@@ -444,6 +468,7 @@ impl MarkupBuilder {
         self
     }
 
+    /// Appends a new pre block. Pass a number for advance to allow text/formatting overlap
     pub fn pre<'a, T: AsRef<str>>(
         &'a mut self,
         text: T,
@@ -462,6 +487,7 @@ impl MarkupBuilder {
         self
     }
 
+    /// Appends a new custom emoji. Pass a number for advance to allow text/formatting overlap
     pub fn custom_emoji<'a, T: AsRef<str>>(
         &'a mut self,
         text: T,
@@ -480,54 +506,67 @@ impl MarkupBuilder {
         self
     }
 
+    /// Appends strikethrouh text. Pass a number for advance to allow text/formatting overlap
     pub fn strikethrough<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
         self.regular(MarkupType::StrikeThrough.text(&text))
     }
 
+    /// Appends a new hashtag. Pass a number for advance to allow text/formatting overlap
     pub fn hashtag<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
         self.regular(MarkupType::HashTag.text(&text))
     }
 
+    /// Appends a new cashtag. Pass a number for advance to allow text/formatting overlap
     pub fn cashtag<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
         self.regular(MarkupType::CashTag.text(&text))
     }
 
+    /// Appends a new bot command. Pass a number for advance to allow text/formatting overlap
     pub fn bot_command<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
         self.regular(MarkupType::BotCommand.text(&text))
     }
 
+    /// Appends a new email. Pass a number for advance to allow text/formatting overlap
     pub fn email<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
         self.regular(MarkupType::Email.text(&text))
     }
 
+    /// Appends a new phone number. Pass a number for advance to allow text/formatting overlap
     pub fn phone_number<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
         self.regular(MarkupType::PhoneNumber.text(&text))
     }
 
+    /// Appends bold text. Pass a number for advance to allow text/formatting overlap
     pub fn bold<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
         self.regular(MarkupType::Bold.text(&text))
     }
 
+    /// Appends a italic text. Pass a number for advance to allow text/formatting overlap
     pub fn italic<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
         self.regular(MarkupType::Italic.text(&text))
     }
 
+    /// Appends underline text. Pass a number for advance to allow text/formatting overlap
     pub fn underline<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
         self.regular(MarkupType::Underline.text(&text))
     }
 
+    /// Appends spoiler text. Pass a number for advance to allow text/formatting overlap
     pub fn spoiler<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
         self.regular(MarkupType::Spoiler.text(&text))
     }
 
+    /// Appends a formatted code block. Pass a number for advance to allow text/formatting overlap
     pub fn code<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
         self.regular(MarkupType::Code.text(&text))
     }
 
+    /// Appends a new mention. Pass a number for advance to allow text/formatting overlap
     pub fn mention<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
         self.regular(MarkupType::Mention.text(&text))
     }
 
+    /// shortcut for adding whitespace
     pub fn s<'a>(&'a mut self) -> &'a mut Self {
         let t = " ";
         let count = t.encode_utf16().count() as i64;
@@ -536,21 +575,26 @@ impl MarkupBuilder {
         self
     }
 
+    /// return references to message text and MessageEntities
     pub fn build<'a>(&'a self) -> (&'a str, &'a Vec<MessageEntity>) {
         (&self.text, &self.entities)
     }
 
+    /// Consume this builder and return owned text and MessageEntities in Vec form
     pub fn build_owned(self) -> (String, Vec<MessageEntity>) {
         (self.text, self.entities)
     }
 }
 
+/// Represents metadata for a single MessageEntity. Useful when programatically
+/// constructing formatted text using MarkupBuilder
 pub struct Markup<'a, T: AsRef<str>> {
     markup_type: MarkupType,
     text: &'a T,
     advance: Option<i64>,
 }
 
+/// Enum with varients for every kind of MessageEntity
 pub enum MarkupType {
     Text,
     StrikeThrough,
@@ -572,6 +616,7 @@ pub enum MarkupType {
 }
 
 impl MarkupType {
+    /// Adds text to an existing MarkupType, preserving current formatting
     pub fn text<'a, T: AsRef<str>>(self, text: &'a T) -> Markup<'a, T> {
         Markup {
             markup_type: self,
@@ -585,6 +630,7 @@ impl<'a, T> Markup<'a, T>
 where
     T: AsRef<str>,
 {
+    /// Gets the telegram api type for this Markup
     fn get_type(&self) -> &str {
         match &self.markup_type {
             MarkupType::Text => "",
@@ -607,10 +653,13 @@ where
         }
     }
 
+    /// gets the unformatted text for this markup
     fn get_text(&'a self) -> &'a str {
         self.text.as_ref()
     }
 
+    /// sets the "advance" for this markup, essentially how overlapped it is
+    /// with previous entities
     pub fn advance(mut self, advance: i64) -> Self {
         self.advance = Some(advance);
         self
@@ -626,6 +675,8 @@ where
     }
 }
 
+/// Type used by proc macros for hygiene purposes and to get the borrow checker
+/// to not complain. Don't use this manually
 pub struct EntityMessage(MarkupBuilder);
 
 impl EntityMessage {

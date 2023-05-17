@@ -1,3 +1,8 @@
+//! Telegram client wrapper with webhook support. Handles incomming updates from telegram
+//! and forwards them to modules. This type indexes module metadata and autogenerates a help
+//! command handler as well. Due to rust async limitations with the borrow checker this type
+//! is most useful from a static context only
+
 use std::collections::HashMap;
 
 use botapi::{
@@ -133,6 +138,8 @@ pub async fn show_help<'a>(message: &Message, helps: Arc<MetadataCollection>) ->
 }
 
 impl TgClient {
+    /// Register a button callback to be called when the corresponding callback button sends an update
+    /// This callback will only fire once and be removed afterwards
     pub fn register_button<F, Fut>(&self, button: &InlineKeyboardButton, func: F)
     where
         F: FnOnce(CallbackQuery) -> Fut + Sync + Send + 'static,
@@ -145,6 +152,8 @@ impl TgClient {
         }
     }
 
+    /// Register a button callback to be called when the corresponding callback button sends an update
+    /// This callback will be called any number of times until the callback returns false
     pub fn register_button_multi<F, Fut>(&self, button: &InlineKeyboardButton, func: F)
     where
         F: Fn(CallbackQuery) -> Fut + Sync + Send + 'static,
@@ -157,6 +166,7 @@ impl TgClient {
         }
     }
 
+    /// Creates a new client from a bot api token
     pub fn connect<T>(token: T) -> Self
     where
         T: Into<String>,
@@ -178,6 +188,7 @@ impl TgClient {
         }
     }
 
+    /// Processes a single update from telegram
     async fn handle_update(&self, update: std::result::Result<UpdateExt, ApiError>) {
         let modules = Arc::clone(&self.modules);
         let callbacks = Arc::clone(&self.button_events);
@@ -243,6 +254,8 @@ impl TgClient {
         });
     }
 
+    /// Handles updates from telegram forever either using webhooks or long polling
+    /// depending on toml config
     pub async fn run(&self) -> Result<()> {
         log::info!("run");
         let updates = Some(
@@ -271,7 +284,7 @@ impl TgClient {
             false => {
                 self.client
                     .build_delete_webhook()
-                    .drop_pending_updates(true)
+                    .drop_pending_updates(true) // TODO: change this
                     .build()
                     .await?;
                 LongPoller::new(&self.client, updates)

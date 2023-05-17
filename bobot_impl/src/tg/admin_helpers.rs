@@ -1,3 +1,9 @@
+//! Helper functions and types for performing common admin actions
+//! like banning, muting, warning etc.
+//!
+//! this module depends on the `static` module for access to the database, redis,
+//! and telegram client.
+
 use std::{borrow::Cow, collections::VecDeque};
 
 use crate::{
@@ -38,22 +44,29 @@ use super::{
     user::{get_user_username, Username},
 };
 
+/// Helper type for a named pair of chat and  user api types. Used to refer to a
+/// chat member
 pub struct ChatUser<'a> {
     pub chat: Cow<'a, Chat>,
     pub user: Cow<'a, User>,
 }
 
+/// Trait for getting a ChatUser from either a type containing both chat and user
+/// or a chat (with provided extra user)
 pub trait IntoChatUser {
     fn get_chatuser<'a>(&'a self) -> Option<ChatUser<'a>>;
     fn get_chatuser_user<'a>(&'a self, user: Cow<'a, User>) -> ChatUser<'a>;
 }
 
+/// Telegram's method for parsing a user's left or joined status from an Update
+/// is very confusing. This enum simplifies this along with the UpdateHelpers trait
 pub enum UserChanged<'a> {
     UserJoined(&'a ChatMemberUpdated),
     UserLeft(&'a ChatMemberUpdated),
 }
 
 impl<'a> UserChanged<'a> {
+    /// Get a chat from a UserChanged enum since all varients contain a Chat
     pub fn get_chat(&'a self) -> &'a Chat {
         match self {
             UserChanged::UserJoined(m) => m.get_chat_ref(),
@@ -62,11 +75,18 @@ impl<'a> UserChanged<'a> {
     }
 }
 
+/// Trait for extending UpdateExt with helper functions to simplify parsing
 pub trait UpdateHelpers {
+    /// Since telegram requires a lot of different cases to determine whether an
+    /// update is a 'chat left' or 'chat joined' event we simplify it by parsing to a
+    /// UserChanged type
     fn user_event<'a>(&'a self) -> Option<UserChanged<'a>>;
 }
 
 impl UpdateHelpers for UpdateExt {
+    /// Since telegram requires a lot of different cases to determine whether an
+    /// update is a 'chat left' or 'chat joined' event we simplify it by parsing to a
+    /// UserChanged type
     fn user_event<'a>(&'a self) -> Option<UserChanged<'a>> {
         if let UpdateExt::ChatMember(member) = self {
             if member.get_from().get_id() == ME.get().unwrap().get_id() {
@@ -102,7 +122,10 @@ impl UpdateHelpers for UpdateExt {
     }
 }
 
+/// Trait for telegram objects that can be deleted after a delay.
+/// Meant to be used as an extension trait
 pub trait DeleteAfterTime {
+    /// Delete the object after the specified duration
     fn delete_after_time(&self, duration: Duration);
 }
 
@@ -151,23 +174,29 @@ impl IntoChatUser for Message {
     }
 }
 
+/// Returns true if the bot is admin in a chat
 pub async fn is_self_admin(chat: &Chat) -> Result<bool> {
     let me = ME.get().unwrap();
     Ok(chat.is_user_admin(me.get_id()).await?.is_some())
 }
 
+/// Returns true if a chat is a direct message with a user
 pub fn is_dm(chat: &Chat) -> bool {
     chat.get_tg_type() == "private"
 }
 
+/// Gets the redis key string for caching admin actins
 fn get_action_key(user: i64, chat: i64) -> String {
     format!("act:{}:{}", user, chat)
 }
 
+/// Gets the redis key string for caching warns
 fn get_warns_key(user: i64, chat: i64) -> String {
     format!("warns:{}:{}", user, chat)
 }
 
+/// Kicks a user from the specified chat. This is implemented
+// by banning then immmediately unbanning
 pub async fn kick(user: i64, chat: i64) -> Result<()> {
     TG.client()
         .build_ban_chat_member(chat, user)
@@ -180,6 +209,7 @@ pub async fn kick(user: i64, chat: i64) -> Result<()> {
     Ok(())
 }
 
+/// Kicks the sender of a given message from the chat
 pub async fn kick_message(message: &Message) -> Result<()> {
     if let Some(from) = message.get_from() {
         TG.client()
@@ -194,6 +224,9 @@ pub async fn kick_message(message: &Message) -> Result<()> {
     Ok(())
 }
 
+/// Restrict a given user in a given chat for the provided duration.
+/// If the user is not currently in the chat the permission change is
+/// queued until the user joins
 pub async fn change_permissions(
     chat: &Chat,
     user: &User,
@@ -231,6 +264,11 @@ pub async fn change_permissions(
     }
 }
 
+/// Runs the provided function with parameters specifying a user and message parsed from the
+/// arguments of a command. This is used to allows users to specify messages to interact with
+/// using either mentioning a user via an @ handle or text mention or by replying to a message.
+/// The user mentioned OR the sender of the message that is replied to is passed to the callback
+/// function along with the remaining args and the message itself
 pub async fn action_message<'a, F>(
     message: &'a Message,
     entities: &Entities<'a>,
@@ -276,6 +314,7 @@ where
     }
 }
 
+/// Parse a std::chrono::Duration from a human readable string (5m, 4d, etc)
 pub fn parse_duration_str(arg: &str, chat: i64) -> Result<Option<Duration>> {
     let head = &arg[0..arg.len() - 1];
     let tail = &arg[arg.len() - 1..];
@@ -300,6 +339,7 @@ pub fn parse_duration_str(arg: &str, chat: i64) -> Result<Option<Duration>> {
     Ok(Some(res))
 }
 
+/// Parse an std::chrono::Duration from a argument list
 pub fn parse_duration<'a>(args: &Option<ArgSlice<'a>>, chat: i64) -> Result<Option<Duration>> {
     if let Some(args) = args {
         if let Some(thing) = args.args.first() {
@@ -332,6 +372,7 @@ pub fn parse_duration<'a>(args: &Option<ArgSlice<'a>>, chat: i64) -> Result<Opti
     }
 }
 
+/// Persistantly change the permission of a user by using action_message syntax
 pub async fn change_permissions_message<'a>(
     message: &Message,
     entities: &VecDeque<EntityArg<'a>>,
@@ -350,6 +391,8 @@ pub async fn change_permissions_message<'a>(
     .await
 }
 
+/// Issue a warning to a user, speaking in the chat as required. If the warn count
+/// exceeds the currently configured count fetch the configured action and apply it
 pub async fn warn_with_action(
     message: &Message,
     user: &User,
@@ -391,6 +434,7 @@ pub async fn warn_with_action(
     Ok((count, dialog.warn_limit))
 }
 
+/// Sets the duration after which warns expire for the provided chat
 pub async fn set_warn_time(chat: &Chat, time: i64) -> Result<()> {
     let chat_id = chat.get_id();
 
@@ -426,6 +470,7 @@ pub async fn set_warn_time(chat: &Chat, time: i64) -> Result<()> {
     Ok(())
 }
 
+/// Sets the number of warns until an action is triggered for the provided chat
 pub async fn set_warn_limit(chat: &Chat, limit: i32) -> Result<()> {
     let chat_id = chat.get_id();
 
@@ -461,6 +506,8 @@ pub async fn set_warn_limit(chat: &Chat, limit: i32) -> Result<()> {
     Ok(())
 }
 
+/// Sets the action to be applied when the warn count is exceeeded, parsing
+/// it from a string
 pub async fn set_warn_mode(chat: &Chat, mode: &str) -> Result<()> {
     let chat_id = chat.get_id();
     let mode = match mode {
@@ -501,6 +548,9 @@ pub async fn set_warn_mode(chat: &Chat, mode: &str) -> Result<()> {
     model.cache(key).await?;
     Ok(())
 }
+
+/// Gets pending permissions to be applied to a user. This map onto telegram's built-in
+/// restrictions with the addition of a 'ban' permission.
 pub async fn get_action(chat: &Chat, user: &User) -> Result<Option<actions::Model>> {
     let chat = chat.get_id();
     let user = user.get_id();
@@ -519,6 +569,8 @@ pub async fn get_action(chat: &Chat, user: &User) -> Result<Option<actions::Mode
     Ok(res)
 }
 
+/// Helper function to handle a ban action after warn limit is exceeded.
+/// Automatically sends localized string
 pub async fn warn_ban(
     message: &Message,
     user: &User,
@@ -538,6 +590,8 @@ pub async fn warn_ban(
     Ok(())
 }
 
+/// Helper function to handle a mute action after warn limit is exceeded.
+/// Automatically sends localized string
 pub async fn warn_mute(
     message: &Message,
     user: &User,
@@ -568,6 +622,7 @@ pub async fn warn_shame(message: &Message, _user: &User, _count: i32) -> Result<
     Ok(())
 }
 
+/// Gets a list of all warns for the current user in the given chat (from message)
 pub async fn get_warns(message: &Message, user: &User) -> Result<Vec<warns::Model>> {
     let user_id = user.get_id();
     let chat_id = message.get_chat().get_id();
@@ -587,7 +642,6 @@ pub async fn get_warns(message: &Message, user: &User) -> Result<Vec<warns::Mode
         |key, _| async move {
             let count: Vec<RedisStr> = REDIS.sq(|q| q.smembers(&key)).await?;
             if count.len() > 0 {
-                log::info!("miss! {}", count.len());
                 Ok(Some(
                     count
                         .into_iter()
@@ -631,6 +685,7 @@ pub async fn get_warns(message: &Message, user: &User) -> Result<Vec<warns::Mode
     Ok(res)
 }
 
+/// Gets the number of warns a user has in the given chat (from message)
 pub async fn get_warns_count(message: &Message, user: &User) -> Result<i32> {
     let user_id = user.get_id();
     let chat_id = message.get_chat().get_id();
@@ -663,6 +718,7 @@ pub async fn get_warns_count(message: &Message, user: &User) -> Result<i32> {
     }
 }
 
+/// Removes all warns from a user in a chat
 pub async fn clear_warns(chat: &Chat, user: &User) -> Result<()> {
     let key = get_warns_key(user.get_id(), chat.get_id());
     REDIS.sq(|q| q.del(&key)).await?;
@@ -677,6 +733,8 @@ pub async fn clear_warns(chat: &Chat, user: &User) -> Result<()> {
     Ok(())
 }
 
+/// Removes all restrictions on a user in a chat. This is persistent and
+/// if the user is not present the changes will be applied on joining
 pub async fn unmute(chat: &Chat, user: &User) -> Result<()> {
     let old = TG.client.get_chat(chat.get_id()).await?;
     let old = old.get_permissions().ok_or_else(|| {
@@ -705,6 +763,9 @@ pub async fn unmute(chat: &Chat, user: &User) -> Result<()> {
     Ok(())
 }
 
+/// Restricts a user in a given chat. If the user not present the restriction will be
+/// applied when they join. If a duration is specified the restrictions will be removed
+/// after the duration
 pub async fn mute(chat: &Chat, user: &User, duration: Option<Duration>) -> Result<()> {
     let permissions = ChatPermissionsBuilder::new()
         .set_can_send_messages(false)
@@ -727,6 +788,7 @@ fn get_approval_key(chat: &Chat, user: &User) -> String {
     format!("ap:{}:{}", chat.get_id(), user.get_id())
 }
 
+/// Adds a user to an allowlist so that all future moderation actions are ignored
 pub async fn approve(chat: &Chat, user: &User) -> Result<()> {
     let testmodel = users::Entity::insert(users::ActiveModel {
         user_id: Set(user.get_id()),
@@ -760,6 +822,7 @@ pub async fn approve(chat: &Chat, user: &User) -> Result<()> {
     Ok(())
 }
 
+/// Removes a user from the approval allowlist, all future moderation actions will be applied
 pub async fn unapprove(chat: &Chat, user: &User) -> Result<()> {
     approvals::Entity::delete(approvals::ActiveModel {
         chat: Set(chat.get_id()),
@@ -774,6 +837,8 @@ pub async fn unapprove(chat: &Chat, user: &User) -> Result<()> {
     Ok(())
 }
 
+/// Checks if a user should be ignored when applying moderation. All modules should honor
+/// this when moderating
 pub async fn is_approved(chat: &Chat, user: &User) -> Result<bool> {
     let chat_id = chat.get_id();
     let user_id = user.get_id();
@@ -797,6 +862,8 @@ pub async fn is_approved(chat: &Chat, user: &User) -> Result<bool> {
     Ok(res)
 }
 
+/// Gets a list of all approved users in the provided chat. Returns both user id and
+/// human readable name
 pub async fn get_approvals(chat: &Chat) -> Result<Vec<(i64, String)>> {
     let chat_id = chat.get_id();
     let res = approvals::Entity::find()
@@ -862,6 +929,7 @@ fn merge_permissions(
     new
 }
 
+/// Sets the default permissions for the current chat
 pub async fn change_chat_permissions(chat: &Chat, permissions: &ChatPermissions) -> Result<()> {
     let current_perms = TG.client.get_chat(chat.get_id()).await?;
     let mut new = ChatPermissionsBuilder::new();
@@ -879,6 +947,7 @@ pub async fn change_chat_permissions(chat: &Chat, permissions: &ChatPermissions)
     Ok(())
 }
 
+/// Unbans a user, transparently handling anonymous channels
 pub async fn unban(message: &Message, user: &User) -> Result<()> {
     if let Some(senderchat) = message.get_sender_chat() {
         TG.client()
@@ -894,6 +963,8 @@ pub async fn unban(message: &Message, user: &User) -> Result<()> {
     Ok(())
 }
 
+/// Bans the sender of a message, transparently handling anonymous channels.
+/// if a duration is provided, the ban will be lifted after the duration
 pub async fn ban_message(message: &Message, duration: Option<Duration>) -> Result<()> {
     if let Some(senderchat) = message.get_sender_chat() {
         TG.client()
@@ -919,6 +990,8 @@ pub async fn ban_message(message: &Message, duration: Option<Duration>) -> Resul
     Ok(())
 }
 
+/// Bans a user in the given chat (from message), transparently handling anonymous channels.
+/// if a duration is specified. the ban will be lifted
 pub async fn ban(message: &Message, user: &User, duration: Option<Duration>) -> Result<()> {
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
     if let Some(senderchat) = message.get_sender_chat() {
@@ -970,6 +1043,9 @@ pub async fn ban(message: &Message, user: &User, duration: Option<Duration>) -> 
     Ok(())
 }
 
+/// Warns a user in the given chat, incrementing and returning the warn count.
+/// if a reason is provided the reason is recorded with the warn. If a duration is provided
+/// the warn will be lifted after the duration
 pub async fn warn_user(
     message: &Message,
     user: &User,
@@ -1002,6 +1078,9 @@ pub async fn warn_user(
     Ok(count as i32)
 }
 
+/// Updates the current stored action with a user, either banning or unbanning.
+/// the user is not immediately unbanned but the action is applied the next time the user is
+/// seen
 pub async fn update_actions_ban(
     chat: &Chat,
     user: &User,
@@ -1041,6 +1120,8 @@ pub async fn update_actions_ban(
     Ok(())
 }
 
+/// Sets the 'pending' flag on a stored action. Pending actions are applied the next time a user is seen
+/// actions without pending set are ignored
 pub async fn update_actions_pending(chat: &Chat, user: &User, pending: bool) -> Result<()> {
     let key = get_action_key(user.get_id(), chat.get_id());
 
@@ -1076,6 +1157,8 @@ pub async fn update_actions_pending(chat: &Chat, user: &User, pending: bool) -> 
     Ok(())
 }
 
+/// Updates the current action for a user with new permissions.
+/// these permissions will be applied the next time the user is seen
 pub async fn update_actions_permissions(
     user: &User,
     chat: &Chat,
@@ -1157,6 +1240,8 @@ pub async fn update_actions_permissions(
     Ok(())
 }
 
+/// Checks an update for user interactions and applies the current action for the user
+/// if it is pending. clearing the pending flag in the process
 pub async fn handle_pending_action(update: &UpdateExt) -> Result<()> {
     match update {
         UpdateExt::Message(ref message) => {
@@ -1172,6 +1257,8 @@ pub async fn handle_pending_action(update: &UpdateExt) -> Result<()> {
     Ok(())
 }
 
+/// Checks if the provided user has a pending action, and applies it if needed.
+/// afterwards, the pending flag is cleared
 pub async fn handle_pending_action_user(user: &User, chat: &Chat) -> Result<()> {
     if !is_self_admin(&chat).await? {
         return Ok(());
@@ -1232,6 +1319,7 @@ pub async fn handle_pending_action_user(user: &User, chat: &Chat) -> Result<()> 
     Ok(())
 }
 
+/// Updates the current actions with a raw ORM model
 pub async fn update_actions(actions: actions::Model) -> Result<()> {
     let key = get_action_key(actions.user_id, actions.chat_id);
 
@@ -1258,6 +1346,8 @@ pub async fn update_actions(actions: actions::Model) -> Result<()> {
     Ok(())
 }
 
+/// If the current chat is a group or supergroup (i.e. not a dm)
+/// Warn the user and return Err
 pub async fn is_dm_or_die(chat: &Chat) -> Result<()> {
     let lang = get_chat_lang(chat.get_id()).await?;
     if !is_dm(chat) {
@@ -1267,6 +1357,7 @@ pub async fn is_dm_or_die(chat: &Chat) -> Result<()> {
     }
 }
 
+/// Check if the group is a supergroup, and warn the user while returning error if it is not
 pub async fn is_group_or_die(chat: &Chat) -> Result<()> {
     let lang = get_chat_lang(chat.get_id()).await?;
     match chat.get_tg_type().as_ref() {
