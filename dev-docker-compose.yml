@@ -15,7 +15,7 @@ services:
       - dev-cargo-cache:/usr/local/cargo/registry
       - build-volume:/bobot/target
       - migration-volume:/bobot/migration/target
-      - impl-volume:/bobot/bobot_impl/target
+      - impl-volume:/bobot/bot_impl/target
       - ./:/bobot:z
     depends_on:
       - redis-dev

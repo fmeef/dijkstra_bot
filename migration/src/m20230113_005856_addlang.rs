@@ -1,4 +1,4 @@
-use bobot_impl::persist::core::dialogs;
+use bot_impl::persist::core::dialogs;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -19,9 +19,9 @@ impl MigrationTrait for Migration {
                     .add_column(
                         ColumnDef::new_with_type(
                             dialogs::Column::Language,
-                            bobot_impl::util::string::Lang::column_type(),
+                            bot_impl::util::string::Lang::column_type(),
                         )
-                        .default(bobot_impl::util::string::Lang::En)
+                        .default(bot_impl::util::string::Lang::En)
                         .not_null(),
                     )
                     .add_column(

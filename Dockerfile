@@ -85,7 +85,7 @@ RUN git clone https://github.com/helix-editor/helix /opt/helix && \
 RUN apt update && apt install -y postgresql-client redis fish
 RUN mkdir -p /bobot/target && chown -R bobot:bobot /bobot && \
 chown -R bobot:bobot /usr/local && mkdir -p /bobot/migration/target && \
-chown -R bobot:bobot /bobot/migration/target && mkdir -p /bobot/bobot_impl/target && \
+chown -R bobot:bobot /bobot/migration/target && mkdir -p /bobot/bot_impl/target && \
 chown -R bobot:bobot /bobot
 USER bobot:bobot
 RUN mkdir -p /home/bobot/.config/helix && ln -sf /opt/helix/runtime /home/bobot/.config/helix/runtime

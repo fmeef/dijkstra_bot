@@ -1,6 +1,6 @@
-use bobot_impl::persist::migrate::ManagerHelper;
+use bot_impl::persist::migrate::ManagerHelper;
 use sea_orm_migration::prelude::*;
-use bobot_impl::persist::core::*;
+use bot_impl::persist::core::*;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -29,7 +29,7 @@ impl MigrationTrait for Migration {
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         // Replace the sample below with your own migration scripts
         manager
-            .drop_table_auto(bobot_impl::persist::core::users::Entity)
+            .drop_table_auto(bot_impl::persist::core::users::Entity)
             .await?;
         Ok(())
     }

@@ -1,5 +1,5 @@
-use bobot_impl::persist::admin::approvals;
-use bobot_impl::persist::migrate::ManagerHelper;
+use bot_impl::persist::admin::approvals;
+use bot_impl::persist::migrate::ManagerHelper;
 use sea_orm_migration::prelude::*;
 #[derive(DeriveMigrationName)]
 pub struct Migration;

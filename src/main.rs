@@ -1,3 +1,3 @@
 pub fn main() {
-    bobot_impl::run();
+    bot_impl::run();
 }

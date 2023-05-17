@@ -1,4 +1,4 @@
-use bobot_impl::persist::{
+use bot_impl::persist::{
     admin::{
         actions::{self, ActionType},
         warns,

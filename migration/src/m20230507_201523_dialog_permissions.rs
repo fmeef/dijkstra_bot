@@ -1,4 +1,4 @@
-use bobot_impl::persist::core::dialogs;
+use bot_impl::persist::core::dialogs;
 use sea_orm_migration::prelude::*;
 #[derive(DeriveMigrationName)]
 pub struct Migration;
