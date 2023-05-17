@@ -63,11 +63,11 @@ COPY --from=builder /etc/passwd /etc/passwd
 COPY --from=builder /etc/group /etc/group
 WORKDIR /bobot
 COPY --from=builder /etc/ssl /etc/ssl
-COPY --from=builder /usr/local/cargo/bin/bobot ./
+COPY --from=builder /usr/local/cargo/bin/dijkstra ./
 COPY --from=builder /usr/local/cargo/bin/sea-orm-cli ./
 USER bobot:bobot
 VOLUME /config
-ENTRYPOINT [ "/bobot/bobot", "--config", "/config/config.toml"]
+ENTRYPOINT [ "/bobot/dijkstra", "--config", "/config/config.toml"]
 
 
 FROM base AS dev
