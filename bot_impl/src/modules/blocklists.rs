@@ -244,7 +244,9 @@ fn get_blocklist_hash_key(message: &Message) -> String {
 }
 
 async fn delete_trigger(message: &Message, trigger: &str) -> Result<()> {
-    message.group_admin_or_die().await?;
+    message
+        .check_permissions(|p| p.can_restrict_members.and(p.can_change_info))
+        .await?;
     let trigger = &trigger.to_lowercase();
     let hash_key = get_blocklist_hash_key(message);
     let key: Option<i64> = REDIS
@@ -425,7 +427,7 @@ async fn insert_blocklist(
 }
 
 async fn command_blocklist<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang) -> Result<()> {
-    message.group_admin_or_die().await?;
+    message.check_permissions(|p| p.can_manage_chat).await?;
     let lexer = Lexer::new(args.text);
     let mut parser = Parser::new();
     for token in lexer.all_tokens() {
@@ -588,7 +590,7 @@ async fn handle_trigger(message: &Message) -> Result<()> {
 }
 
 async fn list_triggers(message: &Message) -> Result<()> {
-    message.group_admin_or_die().await?;
+    message.check_permissions(|p| p.can_manage_chat).await?;
     let hash_key = get_blocklist_hash_key(message);
     update_cache_from_db(message).await?;
     let res: Option<HashMap<String, i64>> = REDIS.sq(|q| q.hgetall(&hash_key)).await?;
@@ -608,7 +610,7 @@ async fn list_triggers(message: &Message) -> Result<()> {
 }
 
 async fn stopall(message: &Message) -> Result<()> {
-    message.group_admin_or_die().await?;
+    message.check_permissions(|p| p.can_change_info).await?;
     blocklists::Entity::delete_many()
         .filter(blocklists::Column::Chat.eq(message.get_chat().get_id()))
         .exec(DB.deref())

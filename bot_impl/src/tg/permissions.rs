@@ -13,6 +13,7 @@ use async_trait::async_trait;
 use botapi::gen_types::{Chat, ChatMember, ChatMemberAdministrator, Message, UpdateExt, User};
 use chrono::Duration;
 
+use itertools::Itertools;
 use macros::lang_fmt;
 use redis::AsyncCommands;
 
@@ -104,12 +105,41 @@ impl From<ChatMember> for NamedBotPermissions {
 
 /// A single permission with granted value and human readable name
 #[derive(Clone, Debug)]
-pub struct NamedPermission {
+pub struct NamedPermissionContent {
     name: &'static str,
     val: bool,
 }
 
+#[derive(Clone, Debug)]
+pub struct NamedPermission(Vec<NamedPermissionContent>);
+
+impl Into<bool> for NamedPermission {
+    fn into(self) -> bool {
+        self.0.iter().all(|v| v.val)
+    }
+}
+
 impl NamedPermission {
+    /// Construct a new NamedPermission with name
+    fn new(name: &'static str, val: bool) -> Self {
+        Self(vec![NamedPermissionContent::new(name, val)])
+    }
+
+    fn is_granted(&self) -> bool {
+        self.0.iter().all(|v| v.val)
+    }
+
+    fn get_name(&self) -> String {
+        self.0.iter().map(|v| v.name).join(" and ")
+    }
+
+    pub fn and(mut self, new_perm: Self) -> Self {
+        self.0.extend(new_perm.0);
+        self
+    }
+}
+
+impl NamedPermissionContent {
     /// Construct a new NamedPermission with name
     fn new(name: &'static str, val: bool) -> Self {
         Self { name, val }
@@ -153,12 +183,12 @@ impl Into<NamedBotPermissions> for BotPermissions {
 impl From<NamedBotPermissions> for BotPermissions {
     fn from(value: NamedBotPermissions) -> Self {
         Self {
-            can_manage_chat: value.can_manage_chat.val,
-            can_restrict_members: value.can_restrict_members.val,
-            can_delete_messages: value.can_delete_messages.val,
-            can_change_info: value.can_change_info.val,
-            can_promote_members: value.can_promote_members.val,
-            can_pin_messages: value.can_pin_messages.val,
+            can_manage_chat: value.can_manage_chat.is_granted(),
+            can_restrict_members: value.can_restrict_members.is_granted(),
+            can_delete_messages: value.can_delete_messages.is_granted(),
+            can_change_info: value.can_change_info.is_granted(),
+            can_promote_members: value.can_promote_members.is_granted(),
+            can_pin_messages: value.can_pin_messages.is_granted(),
         }
     }
 }
@@ -187,7 +217,7 @@ pub trait IsAdmin {
 #[async_trait]
 pub trait IsGroupAdmin {
     /// If the user is not admin or the group is not a supergroup, return a printable error
-    async fn group_admin_or_die(&self) -> Result<()>;
+    async fn legacy_check_permissions(&self) -> Result<()>;
 
     /// return true if the group is a supergroup and the user is an admin
     async fn is_group_admin(&self) -> Result<bool>;
@@ -232,7 +262,7 @@ impl IsGroupAdmin for Message {
         }
     }
 
-    async fn group_admin_or_die(&self) -> Result<()> {
+    async fn legacy_check_permissions(&self) -> Result<()> {
         is_group_or_die(self.get_chat_ref()).await?;
         self_admin_or_die(self.get_chat_ref()).await?;
 
@@ -270,9 +300,9 @@ impl IsGroupAdmin for Message {
         // log::info!("got permissions {:?}", permission);
 
         let p = func(permission);
-        if !p.val {
+        if !p.is_granted() {
             Err(BotError::speak(
-                format!("Permission denied. User missing \"{}\"", p.name),
+                format!("Permission denied. User missing \"{}\"", p.get_name()),
                 chat.get_id(),
             ))
         } else {
@@ -309,9 +339,9 @@ impl IsAdmin for User {
         let permission = NamedBotPermissions::from_chatuser(self, chat).await?;
 
         let p = func(permission);
-        if !p.val {
+        if !p.is_granted() {
             Err(BotError::speak(
-                format!("Permission denied. User missing \"{}\"", p.name),
+                format!("Permission denied. User missing \"{}\"", p.get_name()),
                 chat.get_id(),
             ))
         } else {
@@ -367,9 +397,9 @@ impl<'a> IsAdmin for Option<Cow<'a, User>> {
         let permission = NamedBotPermissions::from_chatuser(&user, chat).await?;
 
         let p = func(permission);
-        if !p.val {
+        if !p.is_granted() {
             Err(BotError::speak(
-                format!("Permission denied. User missing \"{}\"", p.name),
+                format!("Permission denied. User missing \"{}\"", p.get_name()),
                 chat.get_id(),
             ))
         } else {
@@ -423,9 +453,9 @@ impl IsAdmin for i64 {
         let permission = NamedBotPermissions::from_chatuser(&user, chat).await?;
 
         let p = func(permission);
-        if !p.val {
+        if !p.is_granted() {
             Err(BotError::speak(
-                format!("Permission denied. User missing \"{}\"", p.name),
+                format!("Permission denied. User missing \"{}\"", p.get_name()),
                 chat.get_id(),
             ))
         } else {

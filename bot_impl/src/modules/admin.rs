@@ -25,7 +25,7 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
 
 async fn promote<'a>(context: &'a Context<'a>) -> Result<()> {
     if let (Some(command), message) = (context.command.as_ref(), context.message) {
-        message.group_admin_or_die().await?;
+        message.check_permissions(|v| v.can_promote_members).await?;
         let lang = context.lang.clone();
         action_message(message, &command.entities, None, |message, user, _| {
             async move {
@@ -52,7 +52,7 @@ async fn promote<'a>(context: &'a Context<'a>) -> Result<()> {
 
 async fn demote<'a>(context: &'a Context<'a>) -> Result<()> {
     if let (Some(command), message) = (context.command.as_ref(), context.message) {
-        message.group_admin_or_die().await?;
+        message.check_permissions(|p| p.can_promote_members).await?;
         let lang = context.lang.clone();
 
         action_message(message, &command.entities, None, |message, user, _| {

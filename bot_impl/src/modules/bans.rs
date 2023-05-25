@@ -40,7 +40,9 @@ pub async fn unban_cmd<'a>(
     entities: &Entities<'a>,
     lang: Lang,
 ) -> Result<()> {
-    message.group_admin_or_die().await?;
+    message
+        .check_permissions(|p| p.can_restrict_members)
+        .await?;
     action_message(message, entities, None, |message, user, _| {
         async move {
             unban(message, user).await?;
@@ -67,7 +69,9 @@ pub async fn ban_cmd<'a>(
     entities: &Entities<'a>,
     args: &'a TextArgs<'a>,
 ) -> Result<()> {
-    message.group_admin_or_die().await?;
+    message
+        .check_permissions(|p| p.can_restrict_members)
+        .await?;
     action_message(message, entities, Some(args), |message, user, args| {
         async move {
             let duration = parse_duration(&args, message.get_chat().get_id())?;
@@ -81,7 +85,9 @@ pub async fn ban_cmd<'a>(
 }
 
 pub async fn kick_cmd<'a>(message: &'a Message, entities: &Entities<'a>, lang: Lang) -> Result<()> {
-    message.group_admin_or_die().await?;
+    message
+        .check_permissions(|p| p.can_restrict_members)
+        .await?;
     action_message(message, entities, None, |message, user, _| {
         async move {
             kick(user.get_id(), message.get_chat().get_id()).await?;
@@ -109,7 +115,9 @@ pub async fn mute_cmd<'a>(
     args: &TextArgs<'a>,
     lang: &Lang,
 ) -> Result<()> {
-    message.group_admin_or_die().await?;
+    message
+        .check_permissions(|p| p.can_restrict_members)
+        .await?;
     let permissions = ChatPermissionsBuilder::new()
         .set_can_send_messages(false)
         .set_can_send_audios(false)
@@ -144,7 +152,9 @@ pub async fn unmute_cmd<'a>(
     args: &'a TextArgs<'a>,
     lang: &Lang,
 ) -> Result<()> {
-    message.group_admin_or_die().await?;
+    message
+        .check_permissions(|p| p.can_restrict_members)
+        .await?;
 
     let permissions = ChatPermissionsBuilder::new()
         .set_can_send_messages(true)

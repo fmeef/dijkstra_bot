@@ -532,7 +532,9 @@ async fn handle_lock<'a>(
     user: &User,
     lang: &Lang,
 ) -> Result<()> {
-    message.group_admin_or_die().await?;
+    message
+        .check_permissions(|p| p.can_delete_messages.and(p.can_change_info))
+        .await?;
     match locktype_from_args(cmd, message.get_chat().get_id()) {
         (Some(lock), None) => {
             let t = lock.get_name().to_owned();
@@ -560,7 +562,9 @@ async fn handle_lock<'a>(
 }
 
 async fn handle_unlock<'a>(message: &Message, cmd: &Option<&Command<'a>>) -> Result<()> {
-    message.group_admin_or_die().await?;
+    message
+        .check_permissions(|p| p.can_restrict_members)
+        .await?;
     let lang = get_chat_lang(message.get_chat().get_id());
     if let (Some(lock), _) = locktype_from_args(cmd, message.get_chat().get_id()) {
         let name = lock.get_name().to_owned();
@@ -573,7 +577,9 @@ async fn handle_unlock<'a>(message: &Message, cmd: &Option<&Command<'a>>) -> Res
 }
 
 async fn handle_list(message: &Message) -> Result<()> {
-    message.group_admin_or_die().await?;
+    message
+        .check_permissions(|p| p.can_restrict_members)
+        .await?;
     let chat = message.get_chat().get_id();
     let locks = locks::Entity::find()
         .filter(locks::Column::Chat.eq(chat))
@@ -594,7 +600,9 @@ async fn handle_list(message: &Message) -> Result<()> {
 }
 
 async fn lock_action<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
-    message.group_admin_or_die().await?;
+    message
+        .check_permissions(|p| p.can_restrict_members)
+        .await?;
     let chat_id = message.get_chat().get_id();
     let lang = get_chat_lang(chat_id).await?;
     if let Some(arg) = args.args.first() {

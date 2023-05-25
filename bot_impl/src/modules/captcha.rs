@@ -200,7 +200,7 @@ fn captcha_state_key(chat: &Chat) -> String {
 }
 
 async fn enable_captcha(message: &Message) -> Result<()> {
-    message.group_admin_or_die().await?;
+    message.check_permissions(|p| p.can_change_info).await?;
     let model = captchastate::ActiveModel {
         chat: Set(message.get_chat().get_id()),
         captcha_type: NotSet,
@@ -222,7 +222,7 @@ async fn enable_captcha(message: &Message) -> Result<()> {
 }
 
 async fn disable_captcha(message: &Message) -> Result<()> {
-    message.group_admin_or_die().await?;
+    message.check_permissions(|p| p.can_change_info).await?;
     let key = captcha_state_key(message.get_chat_ref());
     captchastate::Entity::delete_by_id(message.get_chat().get_id())
         .exec(DB.deref())
@@ -303,7 +303,7 @@ async fn get_captcha_config(message: &ChatMemberUpdated) -> Result<Option<captch
 }
 
 async fn captchamode(message: &Message, mode: CaptchaType) -> Result<()> {
-    message.group_admin_or_die().await?;
+    message.check_permissions(|p| p.can_change_info).await?;
     let model = captchastate::ActiveModel {
         chat: Set(message.get_chat().get_id()),
         captcha_type: Set(mode),
@@ -322,7 +322,9 @@ async fn captchamode(message: &Message, mode: CaptchaType) -> Result<()> {
 }
 
 async fn captchakick_cmd<'a>(message: &Message, args: &'a TextArgs<'a>) -> Result<()> {
-    message.group_admin_or_die().await?;
+    message
+        .check_permissions(|p| p.can_change_info.and(p.can_restrict_members))
+        .await?;
     match args.as_slice() {
         ArgSlice { text: "off", .. } => {
             captchakick(message, None).await?;
@@ -341,7 +343,9 @@ async fn captchakick_cmd<'a>(message: &Message, args: &'a TextArgs<'a>) -> Resul
 }
 
 async fn captchakick(message: &Message, kick: Option<i64>) -> Result<()> {
-    message.group_admin_or_die().await?;
+    message
+        .check_permissions(|p| p.can_change_info.and(p.can_restrict_members))
+        .await?;
     let model = captchastate::ActiveModel {
         chat: Set(message.get_chat().get_id()),
         captcha_type: NotSet,

@@ -27,7 +27,7 @@ use entities::{filters, triggers};
 use itertools::Itertools;
 use lazy_static::__Deref;
 use macros::entity_fmt;
-use macros::lang_fmt;
+
 use redis::AsyncCommands;
 use sea_orm::entity::ActiveValue;
 use sea_orm::sea_query::OnConflict;
@@ -227,7 +227,7 @@ fn get_filter_hash_key(message: &Message) -> String {
 }
 
 async fn delete_trigger(message: &Message, trigger: &str) -> Result<()> {
-    message.group_admin_or_die().await?;
+    message.check_permissions(|p| p.can_change_info).await?;
     let trigger = &trigger.to_lowercase();
     let hash_key = get_filter_hash_key(message);
     let key: Option<i64> = REDIS
@@ -451,22 +451,19 @@ async fn command_filter<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang)
         (cmd.body, message)
     };
 
-    insert_filter(message, filters.as_slice(), f.clone()).await?;
-    if let Some(f) = f {
-        let text = MarkupType::Code.text(&f);
+    insert_filter(message, filters.as_slice(), f).await?;
+    let filters_fmt = [""].into_iter().chain(filters.into_iter()).join("\n - ");
+    let text = MarkupType::Code.text(&filters_fmt);
 
-        message
-            .get_chat()
-            .speak_fmt(entity_fmt!(
-                lang,
-                message.get_chat().get_id(),
-                "addfilter",
-                text
-            ))
-            .await?;
-    } else {
-        message.speak(lang_fmt!(lang, "addfilter", "")).await?;
-    }
+    message
+        .get_chat()
+        .speak_fmt(entity_fmt!(
+            lang,
+            message.get_chat().get_id(),
+            "addfilter",
+            text
+        ))
+        .await?;
     Ok(())
 }
 
@@ -497,7 +494,7 @@ async fn list_triggers(message: &Message) -> Result<()> {
 }
 
 async fn stopall(message: &Message) -> Result<()> {
-    message.group_admin_or_die().await?;
+    message.check_permissions(|p| p.can_change_info).await?;
     filters::Entity::delete_many()
         .filter(filters::Column::Chat.eq(message.get_chat().get_id()))
         .exec(DB.deref())

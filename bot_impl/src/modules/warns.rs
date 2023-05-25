@@ -37,7 +37,9 @@ pub async fn warn<'a>(
     args: &TextArgs<'a>,
     lang: Lang,
 ) -> Result<()> {
-    message.group_admin_or_die().await?;
+    message
+        .check_permissions(|p| p.can_restrict_members)
+        .await?;
 
     action_message(message, entities, Some(args), |message, user, args| {
         async move {
@@ -122,7 +124,9 @@ pub async fn clear<'a>(message: &Message, entities: &Entities<'a>) -> Result<()>
 }
 
 async fn set_time<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
-    message.group_admin_or_die().await?;
+    message
+        .check_permissions(|p| p.can_restrict_members)
+        .await?;
     if let Some(time) = parse_duration(&Some(args.as_slice()), message.get_chat().get_id())? {
         set_warn_time(message.get_chat_ref(), time.num_seconds()).await?;
         let time = format_duration(time.to_std()?);
@@ -134,7 +138,9 @@ async fn set_time<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
 }
 
 async fn cmd_warn_mode<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
-    message.group_admin_or_die().await?;
+    message
+        .check_permissions(|p| p.can_restrict_members)
+        .await?;
     set_warn_mode(message.get_chat_ref(), args.text).await?;
     message
         .reply(format!("Set warn mode {}", args.text))

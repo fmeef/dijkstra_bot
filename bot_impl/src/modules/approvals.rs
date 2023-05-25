@@ -63,7 +63,9 @@ async fn cmd_unapprove<'a>(
     entities: &Entities<'a>,
     lang: Lang,
 ) -> Result<()> {
-    message.group_admin_or_die().await?;
+    message
+        .check_permissions(|p| p.can_restrict_members)
+        .await?;
     action_message(message, entities, Some(args), |message, user, _| {
         async move {
             unapprove(message.get_chat_ref(), user).await?;

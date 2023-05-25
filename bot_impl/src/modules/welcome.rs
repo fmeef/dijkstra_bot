@@ -160,7 +160,7 @@ fn get_model<'a>(
 }
 
 async fn enable_welcome<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang) -> Result<()> {
-    message.group_admin_or_die().await?;
+    message.check_permissions(|p| p.can_change_info).await?;
     let key = format!("welcome:{}", message.get_chat().get_id());
     let enabled = match args.args.first().map(|v| v.get_text()) {
         Some("on") => Ok(true),
@@ -214,7 +214,7 @@ async fn should_welcome(chat: &Chat) -> Result<Option<entities::welcomes::Model>
 }
 
 async fn set_goodbye<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang) -> Result<()> {
-    message.group_admin_or_die().await?;
+    message.check_permissions(|p| p.can_change_info).await?;
     let model = get_model(message, args, true)?;
     let key = format!("welcome:{}", message.get_chat().get_id());
     log::info!("save goodbye: {}", key);
@@ -242,7 +242,7 @@ async fn set_goodbye<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang) ->
 }
 
 async fn set_welcome<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang) -> Result<()> {
-    message.group_admin_or_die().await?;
+    message.check_permissions(|p| p.can_change_info).await?;
 
     let model = get_model(message, args, false)?;
     let key = format!("welcome:{}", message.get_chat().get_id());
@@ -284,7 +284,7 @@ async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
 }
 
 async fn reset_welcome(message: &Message, lang: &Lang) -> Result<()> {
-    message.group_admin_or_die().await?;
+    message.check_permissions(|p| p.can_change_info).await?;
     let chat = message.get_chat().get_id();
     let key = format!("welcome:{}", chat);
 
