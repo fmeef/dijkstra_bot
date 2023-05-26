@@ -518,10 +518,10 @@ impl GetCachedAdmins for Chat {
 
     async fn is_user_admin(&self, user: i64) -> Result<Option<ChatMember>> {
         let key = get_chat_admin_cache_key(self.get_id());
-        let (exists, admin): (bool, Option<RedisStr>) = REDIS
-            .pipe(|q| q.atomic().exists(&key).hget(&key, user))
+        let (exists, ke, admin): (bool, bool, Option<RedisStr>) = REDIS
+            .pipe(|q| q.atomic().exists(&key).hexists(&key, user).hget(&key, user))
             .await?;
-        if exists {
+        if exists && ke {
             if let Some(user) = admin {
                 Ok(Some(user.get::<ChatMember>()?))
             } else {
@@ -553,7 +553,6 @@ impl GetCachedAdmins for Chat {
             .build_get_chat_member(self.get_id(), user)
             .build()
             .await?;
-
         let key = get_chat_admin_cache_key(self.get_id());
         let cm = RedisStr::new(&mamber)?;
         REDIS.sq(|q| q.hset(&key, user, cm)).await?;
