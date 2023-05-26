@@ -475,13 +475,15 @@ pub async fn update_self_admin(update: &UpdateExt) -> Result<()> {
             ChatMember::ChatMemberAdministrator(ref admin) => {
                 log::info!("bot updated to admin");
                 let user_id = admin.get_user().get_id();
+                let admin = ChatMember::ChatMemberAdministrator(admin.to_owned());
                 let admin = RedisStr::new(&admin)?;
                 REDIS.sq(|q| q.hset(&key, user_id, admin)).await?;
             }
             ChatMember::ChatMemberOwner(ref owner) => {
                 log::info!("Im soemhow the owner. What?");
                 let user_id = owner.get_user().get_id();
-                let admin = RedisStr::new(&owner)?;
+                let admin = ChatMember::ChatMemberOwner(owner.to_owned());
+                let admin = RedisStr::new(&admin)?;
                 REDIS.sq(|q| q.hset(&key, user_id, admin)).await?;
             }
             mamber => {
