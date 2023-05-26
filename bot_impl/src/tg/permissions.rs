@@ -125,14 +125,17 @@ impl NamedPermission {
         Self(vec![NamedPermissionContent::new(name, val)])
     }
 
+    /// Returns true if all permissions are granted
     fn is_granted(&self) -> bool {
         self.0.iter().all(|v| v.val)
     }
 
+    /// Gets the human readable name, including combined permissions
     fn get_name(&self) -> String {
         self.0.iter().map(|v| v.name).join(" and ")
     }
 
+    /// Combine two permissions to make a compound permisssion
     pub fn and(mut self, new_perm: Self) -> Self {
         self.0.extend(new_perm.0);
         self

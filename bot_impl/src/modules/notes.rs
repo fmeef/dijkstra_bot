@@ -13,7 +13,7 @@ use lazy_static::__Deref;
 use sea_orm::EntityTrait;
 
 use crate::util::error::{BotError, Result};
-use botapi::gen_types::{Message, UpdateExt};
+use botapi::gen_types::{Chat, Message, UpdateExt};
 
 use crate::persist::core::media::*;
 
@@ -169,27 +169,14 @@ async fn get<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
         _ => None,
     };
     if let Some(name) = name {
-        let key = format!("note:{}:{}", message.get_chat().get_id(), name);
-        log::info!("get key: {}", key);
-        let chat = message.get_chat().get_id();
-        let name = (*name).to_owned();
-        let note = default_cache_query(
-            move |_, _| async move {
-                let res = entities::notes::Entity::find_by_id((name, chat))
-                    .one(DB.deref().deref())
-                    .await?;
-                Ok(res)
-            },
-            Duration::days(1),
-        )
-        .query(&key, &())
-        .await?;
-
-        if let Some(note) = note {
+        if let Some(note) = get_note_by_name((*name).to_owned(), message.get_chat_ref()).await? {
             print_note(message, note).await?;
             Ok(())
         } else {
-            Err(BotError::speak("note not found", chat))
+            Err(BotError::speak(
+                "note not found",
+                message.get_chat_ref().get_id(),
+            ))
         }
     } else {
         Err(BotError::speak(
@@ -197,6 +184,25 @@ async fn get<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
             message.get_chat().get_id(),
         ))
     }
+}
+
+async fn get_note_by_name(name: String, chat: &Chat) -> Result<Option<entities::notes::Model>> {
+    let key = format!("note:{}:{}", chat.get_id(), name);
+    log::info!("get key: {}", key);
+    let chat = chat.get_id();
+    let note = default_cache_query(
+        move |_, _| async move {
+            let res = entities::notes::Entity::find_by_id((name, chat))
+                .one(DB.deref().deref())
+                .await?;
+            Ok(res)
+        },
+        Duration::days(1),
+    )
+    .query(&key, &())
+    .await?;
+
+    Ok(note)
 }
 
 async fn delete<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
@@ -212,6 +218,7 @@ async fn delete<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
     message.speak(format!("Deleted note {}", name)).await?;
     Ok(())
 }
+
 async fn save<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
     is_group_or_die(message.get_chat_ref()).await?;
 
@@ -238,6 +245,9 @@ async fn save<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
 
 pub async fn handle_update<'a>(_: &UpdateExt, cmd: &Option<Context<'a>>) -> Result<()> {
     if let Some(cmd) = cmd {
+        if let Some(text) = cmd.message.get_text_ref() {
+            if text.starts_with("#") {}
+        }
         handle_command(cmd).await?;
     }
     Ok(())
