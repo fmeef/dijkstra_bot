@@ -3,7 +3,9 @@
 //! a builder api for manually generating formatted text
 
 use botapi::gen_methods::CallSendMessage;
-use botapi::gen_types::{MessageEntity, MessageEntityBuilder, User};
+use botapi::gen_types::{
+    InlineKeyboardButtonBuilder, InlineKeyboardMarkup, MessageEntity, MessageEntityBuilder, User,
+};
 use markdown::{Block, ListItem, Span};
 
 use crate::statics::TG;
@@ -43,6 +45,7 @@ pub enum TgSpan {
     Link(Vec<TgSpan>, String),
     Raw(String),
     Filling(String),
+    Button(String, String),
 }
 
 lazy_static! {
@@ -87,11 +90,13 @@ pomelo! {
     word      ::= LSBracket Underscore main(R) RSBracket { super::TgSpan::Italic(R) }
     word      ::= LSBracket DoubleUnderscore main(R) RSBracket { super::TgSpan::Underline(R) }
     word      ::= LSBracket DoubleBar main(R) RSBracket { super::TgSpan::Spoiler(R) }
+    word      ::= LTBracket raw(W) RTBracket LParen raw(L) RParen { super::TgSpan::Button(W, L) }
 }
 
 use parser::{Parser, Token};
 
 use super::admin_helpers::ChatUser;
+use super::button::InlineKeyboardBuilder;
 use super::user::Username;
 
 /// Lexer to get murkdown tokens
@@ -132,6 +137,8 @@ impl<'a> Lexer<'a> {
                 ')' => Some(Token::RParen),
                 '{' => Some(Token::LCurly),
                 '}' => Some(Token::RCurly),
+                '<' => Some(Token::LTBracket),
+                '>' => Some(Token::RTBracket),
                 _ => Some(Token::RawChar(char)),
             }
         } else {
@@ -143,6 +150,7 @@ impl<'a> Lexer<'a> {
 #[derive(Clone)]
 pub struct MarkupBuilder {
     entities: Vec<MessageEntity>,
+    buttons: InlineKeyboardBuilder,
     offset: i64,
     text: String,
 }
@@ -157,6 +165,7 @@ impl MarkupBuilder {
             entities: Vec::new(),
             offset: 0,
             text: String::new(),
+            buttons: InlineKeyboardBuilder::default(),
         }
     }
 
@@ -195,6 +204,17 @@ impl MarkupBuilder {
                     let (s, e) = self.parse_tgspan(s, message);
                     size += e;
                     self.manual("spoiler", s, e);
+                }
+                (TgSpan::Button(hint, button), _) => {
+                    log::info!("BUTTON!! {}", hint);
+                    if button.starts_with("#") && button.len() > 1 {
+                        //TODO: note buttons
+                    } else {
+                        let button = InlineKeyboardButtonBuilder::new(hint)
+                            .set_url(button)
+                            .build();
+                        self.buttons.button(button);
+                    }
                 }
                 (TgSpan::Link(hint, link), _) => {
                     let (s, e) = self.parse_tgspan(hint, message);
@@ -581,8 +601,8 @@ impl MarkupBuilder {
     }
 
     /// Consume this builder and return owned text and MessageEntities in Vec form
-    pub fn build_owned(self) -> (String, Vec<MessageEntity>) {
-        (self.text, self.entities)
+    pub fn build_owned(self) -> (String, Vec<MessageEntity>, InlineKeyboardMarkup) {
+        (self.text, self.entities, self.buttons.build())
     }
 }
 
@@ -724,6 +744,17 @@ mod test {
         }
 
         parser.end_of_input().unwrap()
+    }
+
+    #[test]
+    fn button() {
+        let mut tokenizer = Lexer::new("<button>(https://example.com)");
+        let mut parser = Parser::new();
+        while let Some(token) = tokenizer.next_token() {
+            parser.parse(token).unwrap();
+        }
+
+        parser.end_of_input().unwrap();
     }
 
     #[test]

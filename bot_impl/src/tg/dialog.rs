@@ -418,13 +418,14 @@ impl Conversation {
                         }
                         b
                     })
-                    .fold(InlineKeyboardBuilder::default(), |builder, st| {
+                    .fold(&mut InlineKeyboardBuilder::default(), |builder, st| {
                         if builder.row_len() < row_limit {
                             builder.button(st)
                         } else {
                             builder.newline().button(st)
                         }
                     })
+                    .to_owned()
                     .build();
             Ok(markup)
         }

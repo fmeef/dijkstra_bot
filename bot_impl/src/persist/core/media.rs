@@ -11,7 +11,7 @@ use crate::{
         string::should_ignore_chat,
     },
 };
-use botapi::gen_types::{Chat, FileData, Message, User};
+use botapi::gen_types::{Chat, FileData, InlineKeyboardMarkup, Message, User};
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 #[derive(EnumIter, DeriveActiveEnum, Serialize, Deserialize, Clone, PartialEq, Debug)]
@@ -111,14 +111,17 @@ pub async fn send_media_reply_chatuser(
                 chat: Cow::Borrowed(current_chat),
                 user: Cow::Borrowed(v),
             });
-            let (text, entities) =
+            let (text, entities, buttons) =
                 if let Ok(md) = MarkupBuilder::from_murkdown_chatuser(&text, chatuser.as_ref()) {
                     md.build_owned()
                 } else {
-                    (text, Vec::new())
+                    (text, Vec::new(), InlineKeyboardMarkup::default())
                 };
             TG.client()
                 .build_send_message(chat, &text)
+                .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
+                    buttons,
+                ))
                 .entities(&entities)
                 .build()
                 .await
@@ -188,16 +191,19 @@ pub async fn send_media_reply(
         }
         MediaType::Text => {
             let text = text.ok_or_else(|| BotError::speak("invalid text", chat))?;
-            let (text, entities) = if let Ok(md) =
+            let (text, entities, buttons) = if let Ok(md) =
                 MarkupBuilder::from_murkdown_chatuser(&text, message.get_chatuser().as_ref())
             {
                 md.build_owned()
             } else {
-                (text, Vec::new())
+                (text, Vec::new(), InlineKeyboardMarkup::default())
             };
             TG.client()
                 .build_send_message(chat, &text)
                 .reply_to_message_id(message.get_message_id())
+                .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
+                    buttons,
+                ))
                 .entities(&entities)
                 .build()
                 .await

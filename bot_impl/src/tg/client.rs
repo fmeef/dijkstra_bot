@@ -119,15 +119,16 @@ pub async fn show_help<'a>(message: &Message, helps: Arc<MetadataCollection>) ->
                 .await?;
         } else {
             let url = get_url("help")?;
+            let mut button = InlineKeyboardBuilder::default();
+
+            button.button(
+                InlineKeyboardButtonBuilder::new("Inbix!".to_owned())
+                    .set_url(url)
+                    .build(),
+            );
             message_fmt!(lang, message.get_chat().get_id(), "dmhelp")
                 .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
-                    InlineKeyboardBuilder::default()
-                        .button(
-                            InlineKeyboardButtonBuilder::new("Inbix!".to_owned())
-                                .set_url(url)
-                                .build(),
-                        )
-                        .build(),
+                    button.build(),
                 ))
                 .build()
                 .await?;

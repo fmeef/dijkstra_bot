@@ -395,14 +395,12 @@ async fn button_captcha(unmute_chat: &Chat) -> Result<()> {
         }
         Ok(())
     });
+    let mut button = InlineKeyboardBuilder::default();
+    button.button(unmute_button);
     let m = TG
         .client()
         .build_send_message(unmute_chat.get_id(), "Push the button to unmute yourself")
-        .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(
-            InlineKeyboardBuilder::default()
-                .button(unmute_button)
-                .build(),
-        ))
+        .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(button.build()))
         .build()
         .await?;
     m.delete_after_time(Duration::minutes(5));
@@ -411,18 +409,17 @@ async fn button_captcha(unmute_chat: &Chat) -> Result<()> {
 
 async fn send_captcha_chooser(user: &User, chat: &Chat) -> Result<()> {
     let url = get_captcha_url(chat, user).await?;
+    let mut button = InlineKeyboardBuilder::default();
+    button.button(
+        InlineKeyboardButtonBuilder::new("Captcha".to_owned())
+            .set_url(url)
+            .build(),
+    );
+
     let nm = TG
         .client()
         .build_send_message(chat.get_id(), "Solve this captcha to continue")
-        .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(
-            InlineKeyboardBuilder::default()
-                .button(
-                    InlineKeyboardButtonBuilder::new("Captcha".to_owned())
-                        .set_url(url)
-                        .build(),
-                )
-                .build(),
-        ))
+        .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(button.build()))
         .build()
         .await?;
     nm.delete_after_time(Duration::minutes(5));
@@ -552,13 +549,15 @@ fn get_choices(
     correct_button.on_push(move |callback| async move {
         if let Some(message) = callback.get_message() {
             if let Some(link) = get_invite_link(&unmute_chat).await? {
-                let button = InlineKeyboardBuilder::default()
-                    .button(
-                        InlineKeyboardButtonBuilder::new("Back to chat".to_owned())
-                            .set_url(link)
-                            .build(),
-                    )
-                    .build();
+                let mut button = InlineKeyboardBuilder::default();
+
+                button.button(
+                    InlineKeyboardButtonBuilder::new("Back to chat".to_owned())
+                        .set_url(link)
+                        .build(),
+                );
+
+                let button = button.build();
 
                 TG.client()
                     .build_edit_message_caption()
@@ -618,10 +617,10 @@ async fn send_captcha(message: &Message, unmute_chat: Chat) -> Result<()> {
         .into_iter()
         .enumerate()
     {
-        builder = builder.button(choice);
+        builder.button(choice);
 
         if i % 3 == 2 {
-            builder = builder.newline();
+            builder.newline();
         }
     }
     TG.client()

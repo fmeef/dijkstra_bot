@@ -12,6 +12,7 @@ use futures::Future;
 const MAX_BUTTONS: usize = 8;
 
 /// Builds an inline keyboard with buttons for attaching to a message
+#[derive(Clone)]
 pub struct InlineKeyboardBuilder(Vec<Vec<InlineKeyboardButton>>);
 
 impl Default for InlineKeyboardBuilder {
@@ -32,10 +33,9 @@ pub fn get_url<T: AsRef<str>>(param: T) -> Result<String> {
     Ok(url)
 }
 
-#[allow(dead_code)]
 impl InlineKeyboardBuilder {
     /// Adds a new button to the inline keyboard row, autowrapping if needed
-    pub fn button(mut self, button: InlineKeyboardButton) -> Self {
+    pub fn button(&mut self, button: InlineKeyboardButton) -> &mut Self {
         if let Some(v) = self.0.last_mut() {
             if v.len() < MAX_BUTTONS {
                 v.push(button);
@@ -54,7 +54,7 @@ impl InlineKeyboardBuilder {
     }
 
     /// Adds a button that sends a command to the current chat
-    pub fn command_button(self, caption: String, command: String) -> Self {
+    pub fn command_button(&mut self, caption: String, command: String) -> &mut Self {
         let b = InlineKeyboardButtonBuilder::new(caption)
             .set_switch_inline_query_current_chat(command)
             .build();
@@ -62,7 +62,7 @@ impl InlineKeyboardBuilder {
     }
 
     /// Moves the current line to the next line without adding a new button
-    pub fn newline(mut self) -> Self {
+    pub fn newline(&mut self) -> &mut Self {
         self.0.push(vec![]);
         self
     }
