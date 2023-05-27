@@ -111,12 +111,13 @@ pub async fn send_media_reply_chatuser(
                 chat: Cow::Borrowed(current_chat),
                 user: Cow::Borrowed(v),
             });
-            let (text, entities, buttons) =
-                if let Ok(md) = MarkupBuilder::from_murkdown_chatuser(&text, chatuser.as_ref()) {
-                    md.build_owned()
-                } else {
-                    (text, Vec::new(), InlineKeyboardMarkup::default())
-                };
+            let (text, entities, buttons) = if let Ok(md) =
+                MarkupBuilder::from_murkdown_chatuser(&text, chatuser.as_ref()).await
+            {
+                md.build_owned()
+            } else {
+                (text, Vec::new(), InlineKeyboardMarkup::default())
+            };
             TG.client()
                 .build_send_message(chat, &text)
                 .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
@@ -192,7 +193,7 @@ pub async fn send_media_reply(
         MediaType::Text => {
             let text = text.ok_or_else(|| BotError::speak("invalid text", chat))?;
             let (text, entities, buttons) = if let Ok(md) =
-                MarkupBuilder::from_murkdown_chatuser(&text, message.get_chatuser().as_ref())
+                MarkupBuilder::from_murkdown_chatuser(&text, message.get_chatuser().as_ref()).await
             {
                 md.build_owned()
             } else {

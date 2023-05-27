@@ -2,10 +2,13 @@ use crate::metadata::metadata;
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache};
 use crate::statics::{DB, REDIS};
 use crate::tg::admin_helpers::is_group_or_die;
-use crate::tg::command::{get_content, Context, InputType, TextArg, TextArgs};
 
+use crate::tg::command::{get_content, handle_deep_link, Context, InputType, TextArg, TextArgs};
+
+use crate::tg::markdown::button_deeplink_key;
 use crate::util::string::Speak;
 use ::sea_orm_migration::prelude::*;
+
 use chrono::Duration;
 use redis::AsyncCommands;
 
@@ -13,10 +16,9 @@ use lazy_static::__Deref;
 use sea_orm::EntityTrait;
 
 use crate::util::error::{BotError, Result};
-use botapi::gen_types::{Chat, Message, UpdateExt};
+use botapi::gen_types::{Message, UpdateExt};
 
 use crate::persist::core::media::*;
-
 metadata!("Notes",
     r#"
     Easily store and retrive text, media, and other content by keywords. 
@@ -150,6 +152,14 @@ async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
             "save" => save(message, &args).await,
             "get" => get(message, &args).await,
             "delete" => delete(message, args).await,
+            "start" => {
+                let note: Option<(i64, String)> =
+                    handle_deep_link(ctx, |k| button_deeplink_key(k)).await?;
+                if let Some((chat, note)) = note {
+                    print_chat(message, note, chat).await?;
+                }
+                Ok(())
+            }
             _ => Ok(()),
         }?;
     }
@@ -161,8 +171,12 @@ async fn print_note(message: &Message, note: entities::notes::Model) -> Result<(
     Ok(())
 }
 
-async fn print<'a>(message: &Message, name: &'a str) -> Result<()> {
-    if let Some(note) = get_note_by_name((*name).to_owned(), message.get_chat_ref()).await? {
+async fn print(message: &Message, name: String) -> Result<()> {
+    print_chat(message, name, message.get_chat_ref().get_id()).await
+}
+
+async fn print_chat(message: &Message, name: String, chat: i64) -> Result<()> {
+    if let Some(note) = get_note_by_name(name, chat).await? {
         print_note(message, note).await?;
         Ok(())
     } else {
@@ -181,7 +195,7 @@ async fn get<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
         _ => None,
     };
     if let Some(name) = name {
-        print(message, name).await
+        print(message, (*name).to_owned()).await
     } else {
         Err(BotError::speak(
             "missing note name, try again weenie",
@@ -190,10 +204,9 @@ async fn get<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
     }
 }
 
-async fn get_note_by_name(name: String, chat: &Chat) -> Result<Option<entities::notes::Model>> {
-    let key = format!("note:{}:{}", chat.get_id(), name);
+async fn get_note_by_name(name: String, chat: i64) -> Result<Option<entities::notes::Model>> {
+    let key = format!("note:{}:{}", chat, name);
     log::info!("get key: {}", key);
-    let chat = chat.get_id();
     let note = default_cache_query(
         move |_, _| async move {
             let res = entities::notes::Entity::find_by_id((name, chat))
@@ -252,7 +265,7 @@ pub async fn handle_update<'a>(_: &UpdateExt, cmd: &Option<Context<'a>>) -> Resu
         if let Some(text) = cmd.message.get_text_ref() {
             if text.starts_with("#") && text.len() > 1 {
                 let tail = &text[1..];
-                print(&cmd.message, tail).await?;
+                print(&cmd.message, tail.to_owned()).await?;
             }
         }
         handle_command(cmd).await?;

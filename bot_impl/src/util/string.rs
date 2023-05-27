@@ -130,7 +130,9 @@ impl Speak for Message {
             match MarkupBuilder::from_murkdown_chatuser(
                 message.as_ref(),
                 self.get_chatuser().as_ref(),
-            ) {
+            )
+            .await
+            {
                 Ok(md) => {
                     let (text, entities) = md.build();
                     let m = TG
@@ -198,7 +200,9 @@ impl Speak for Message {
             match MarkupBuilder::from_murkdown_chatuser(
                 message.as_ref(),
                 self.get_chatuser().as_ref(),
-            ) {
+            )
+            .await
+            {
                 Ok(md) => {
                     let (text, entities) = md.build();
                     let m = TG

@@ -357,6 +357,7 @@ impl Conversation {
             let n = self.get_current_markup(row_limit).await?;
             if let Ok(builder) =
                 MarkupBuilder::from_murkdown_chatuser(&content, message.get_chatuser().as_ref())
+                    .await
             {
                 let (content, entities) = builder.build();
                 TG.client()

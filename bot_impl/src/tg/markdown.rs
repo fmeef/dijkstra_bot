@@ -6,10 +6,12 @@ use botapi::gen_methods::CallSendMessage;
 use botapi::gen_types::{
     InlineKeyboardButtonBuilder, InlineKeyboardMarkup, MessageEntity, MessageEntityBuilder, User,
 };
+use futures::future::BoxFuture;
+use futures::FutureExt;
 use markdown::{Block, ListItem, Span};
 
 use crate::statics::TG;
-use crate::util::error::Result;
+use crate::util::error::{BotError, Result};
 use lazy_static::lazy_static;
 use pomelo::pomelo;
 use regex::Regex;
@@ -99,6 +101,7 @@ use parser::{Parser, Token};
 
 use super::admin_helpers::ChatUser;
 use super::button::InlineKeyboardBuilder;
+use super::command::post_deep_link;
 use super::user::Username;
 
 /// Lexer to get murkdown tokens
@@ -157,6 +160,10 @@ pub struct MarkupBuilder {
     text: String,
 }
 
+pub fn button_deeplink_key(key: &str) -> String {
+    format!("bdlk:{}", key)
+}
+
 /// Builder for MessageEntity formatting. Generates MessageEntities from either murkdown
 /// or manually
 #[allow(dead_code)]
@@ -171,126 +178,139 @@ impl MarkupBuilder {
         }
     }
 
-    fn button(&mut self, hint: String, button: String) {
-        if button.starts_with("#") && button.len() > 1 {
-            //TODO: note buttons
+    async fn button<'a>(
+        &'a mut self,
+        hint: String,
+        button: String,
+        chatuser: Option<&ChatUser<'a>>,
+    ) -> Result<()> {
+        let url = if button.starts_with("#") && button.len() > 1 {
+            let chat = chatuser.ok_or_else(|| BotError::Generic("missing chatuser".to_owned()))?;
+            let chat = chat.chat.get_id();
+            let tail = &button[1..];
+            post_deep_link((chat, tail), |v| button_deeplink_key(v)).await?
         } else {
-            let button = InlineKeyboardButtonBuilder::new(hint)
-                .set_url(button)
-                .build();
-            self.buttons.button(button);
-        }
+            button
+        };
+
+        let button = InlineKeyboardButtonBuilder::new(hint).set_url(url).build();
+        self.buttons.button(button);
+
+        Ok(())
     }
 
     fn parse_tgspan<'a>(
-        &mut self,
+        &'a mut self,
         span: Vec<TgSpan>,
-        message: Option<&ChatUser<'a>>,
-    ) -> (i64, i64) {
-        let mut size = 0;
-        for span in span {
-            match (span, message) {
-                (TgSpan::Code(code), _) => {
-                    self.code(&code);
-                }
-                (TgSpan::Italic(s), _) => {
-                    let (s, e) = self.parse_tgspan(s, message);
-                    size += e;
-                    self.manual("italic", s, e);
-                }
-                (TgSpan::Bold(s), _) => {
-                    let (s, e) = self.parse_tgspan(s, message);
-                    size += e;
-                    self.manual("bold", s, e);
-                }
-                (TgSpan::Strikethrough(s), _) => {
-                    let (s, e) = self.parse_tgspan(s, message);
-                    size += e;
-                    self.manual("strikethrough", s, e);
-                }
-                (TgSpan::Underline(s), _) => {
-                    let (s, e) = self.parse_tgspan(s, message);
-                    size += e;
-                    self.manual("underline", s, e);
-                }
-                (TgSpan::Spoiler(s), _) => {
-                    let (s, e) = self.parse_tgspan(s, message);
-                    size += e;
-                    self.manual("spoiler", s, e);
-                }
-                (TgSpan::Button(hint, button), _) => {
-                    self.button(hint, button);
-                }
-                (TgSpan::NewlineButton(hint, button), _) => {
-                    self.buttons.newline();
-                    self.button(hint, button);
-                }
-                (TgSpan::Link(hint, link), _) => {
-                    let (s, e) = self.parse_tgspan(hint, message);
-                    size += e;
-                    let entity = MessageEntityBuilder::new(s, e)
-                        .set_type("text_link".to_owned())
-                        .set_url(link)
-                        .build();
-                    self.entities.push(entity);
-                }
-                (TgSpan::Raw(s), _) => {
-                    size += s.encode_utf16().count() as i64;
-                    self.text(s);
-                }
-                (TgSpan::Filling(filling), Some(chatuser)) => match filling.as_str() {
-                    "username" => {
-                        let user = chatuser.user.as_ref().to_owned();
-                        let name = user.name_humanreadable();
-                        size += name.encode_utf16().count() as i64;
-                        self.text_mention(name, user, None);
+        message: Option<&'a ChatUser<'a>>,
+    ) -> BoxFuture<Result<(i64, i64)>> {
+        async move {
+            let mut size = 0;
+            for span in span {
+                match (span, message) {
+                    (TgSpan::Code(code), _) => {
+                        self.code(&code);
                     }
-                    "first" => {
-                        let first = chatuser.user.get_first_name();
-                        size += first.encode_utf16().count() as i64;
-                        self.text(first);
+                    (TgSpan::Italic(s), _) => {
+                        let (s, e) = self.parse_tgspan(s, message).await?;
+                        size += e;
+                        self.manual("italic", s, e);
                     }
-                    "last" => {
-                        let last = chatuser
-                            .user
-                            .get_last_name()
-                            .map(|v| v.into_owned())
-                            .unwrap_or_else(|| "".to_owned());
-                        size += last.encode_utf16().count() as i64;
-                        self.text(last);
+                    (TgSpan::Bold(s), _) => {
+                        let (s, e) = self.parse_tgspan(s, message).await?;
+                        size += e;
+                        self.manual("bold", s, e);
                     }
-                    "mention" => {
-                        let user = chatuser.user.as_ref().to_owned();
-                        let first = user.get_first_name().into_owned();
-                        size += first.encode_utf16().count() as i64;
-                        self.text_mention(first, user, None);
+                    (TgSpan::Strikethrough(s), _) => {
+                        let (s, e) = self.parse_tgspan(s, message).await?;
+                        size += e;
+                        self.manual("strikethrough", s, e);
                     }
-                    "chatname" => {
-                        let chat = chatuser.chat.name_humanreadable();
-                        size += chat.encode_utf16().count() as i64;
-                        self.text(chat);
+                    (TgSpan::Underline(s), _) => {
+                        let (s, e) = self.parse_tgspan(s, message).await?;
+                        size += e;
+                        self.manual("underline", s, e);
                     }
-                    "id" => {
-                        let id = chatuser.user.get_id().to_string();
-                        size += id.encode_utf16().count() as i64;
-                        self.text(id);
+                    (TgSpan::Spoiler(s), _) => {
+                        let (s, e) = self.parse_tgspan(s, message).await?;
+                        size += e;
+                        self.manual("spoiler", s, e);
                     }
-                    s => {
-                        let s = format!("{{{}}}", s);
+                    (TgSpan::Button(hint, button), _) => {
+                        self.button(hint, button, message).await?;
+                    }
+                    (TgSpan::NewlineButton(hint, button), _) => {
+                        self.buttons.newline();
+                        self.button(hint, button, message).await?;
+                    }
+                    (TgSpan::Link(hint, link), _) => {
+                        let (s, e) = self.parse_tgspan(hint, message).await?;
+                        size += e;
+                        let entity = MessageEntityBuilder::new(s, e)
+                            .set_type("text_link".to_owned())
+                            .set_url(link)
+                            .build();
+                        self.entities.push(entity);
+                    }
+                    (TgSpan::Raw(s), _) => {
                         size += s.encode_utf16().count() as i64;
                         self.text(s);
                     }
-                },
+                    (TgSpan::Filling(filling), Some(chatuser)) => match filling.as_str() {
+                        "username" => {
+                            let user = chatuser.user.as_ref().to_owned();
+                            let name = user.name_humanreadable();
+                            size += name.encode_utf16().count() as i64;
+                            self.text_mention(name, user, None);
+                        }
+                        "first" => {
+                            let first = chatuser.user.get_first_name();
+                            size += first.encode_utf16().count() as i64;
+                            self.text(first);
+                        }
+                        "last" => {
+                            let last = chatuser
+                                .user
+                                .get_last_name()
+                                .map(|v| v.into_owned())
+                                .unwrap_or_else(|| "".to_owned());
+                            size += last.encode_utf16().count() as i64;
+                            self.text(last);
+                        }
+                        "mention" => {
+                            let user = chatuser.user.as_ref().to_owned();
+                            let first = user.get_first_name().into_owned();
+                            size += first.encode_utf16().count() as i64;
+                            self.text_mention(first, user, None);
+                        }
+                        "chatname" => {
+                            let chat = chatuser.chat.name_humanreadable();
+                            size += chat.encode_utf16().count() as i64;
+                            self.text(chat);
+                        }
+                        "id" => {
+                            let id = chatuser.user.get_id().to_string();
+                            size += id.encode_utf16().count() as i64;
+                            self.text(id);
+                        }
+                        s => {
+                            let s = format!("{{{}}}", s);
+                            size += s.encode_utf16().count() as i64;
+                            self.text(s);
+                        }
+                    },
 
-                (TgSpan::Filling(filling), _) => {
-                    let s = format!("{{{}}}", filling);
-                    size += s.encode_utf16().count() as i64;
-                    self.text(s);
-                }
-            };
+                    (TgSpan::Filling(filling), _) => {
+                        let s = format!("{{{}}}", filling);
+                        size += s.encode_utf16().count() as i64;
+                        self.text(s);
+                    }
+                };
+            }
+            let offset = self.offset - size;
+            Ok((offset, size))
         }
-        let offset = self.offset - size;
-        (offset, size)
+        .boxed()
     }
 
     fn parse_listitem(&mut self, list_item: ListItem) {
@@ -389,20 +409,20 @@ impl MarkupBuilder {
 
     /// Parses murkdown and constructs a builder with the corresponding text and
     /// entities
-    pub fn from_murkdown<T: AsRef<str>>(text: T) -> Result<Self> {
-        Self::from_murkdown_internal(text, None)
+    pub async fn from_murkdown<T: AsRef<str>>(text: T) -> Result<Self> {
+        Self::from_murkdown_internal(text, None).await
     }
 
     /// Parses murkdown and constructs a builder with the corresponding text and
     /// entities. The provided ChatUser value is used to perform automated formfilling
-    pub fn from_murkdown_chatuser<'b, T: AsRef<str>>(
+    pub async fn from_murkdown_chatuser<'b, T: AsRef<str>>(
         text: T,
         chatuser: Option<&ChatUser<'b>>,
     ) -> Result<Self> {
-        Self::from_murkdown_internal(text, chatuser)
+        Self::from_murkdown_internal(text, chatuser).await
     }
 
-    fn from_murkdown_internal<'b, T: AsRef<str>>(
+    async fn from_murkdown_internal<'b, T: AsRef<str>>(
         text: T,
         chatuser: Option<&ChatUser<'b>>,
     ) -> Result<Self> {
@@ -414,7 +434,7 @@ impl MarkupBuilder {
             parser.parse(token)?;
         }
         let res = parser.end_of_input()?;
-        s.parse_tgspan(res, chatuser);
+        s.parse_tgspan(res, chatuser).await?;
         Ok(s)
     }
 

@@ -6,13 +6,23 @@
 
 use std::{borrow::Cow, collections::VecDeque};
 
-use crate::util::{
-    error::{BotError, Result},
-    string::{get_chat_lang, Lang},
+use crate::{
+    persist::redis::RedisStr,
+    statics::{CONFIG, REDIS},
+    util::{
+        error::{BotError, Result},
+        string::{get_chat_lang, Lang},
+    },
 };
+use base64::{engine::general_purpose, Engine};
 use botapi::gen_types::{Chat, Message, MessageEntity, UpdateExt, User};
 use lazy_static::lazy_static;
+use redis::AsyncCommands;
 use regex::Regex;
+use serde::{de::DeserializeOwned, Serialize};
+use uuid::Uuid;
+
+use super::button::get_url;
 
 lazy_static! {
     static ref COMMOND: Regex = Regex::new(r#"^(!|/)\w+(@\w)?\s+.*"#).unwrap();
@@ -287,4 +297,39 @@ pub fn parse_cmd<'a>(message: &'a Message) -> Option<(&'a str, TextArgs<'a>, Ent
     } else {
         None
     }
+}
+
+pub async fn post_deep_link<T, F>(value: T, key_func: F) -> Result<String>
+where
+    T: Serialize,
+    F: FnOnce(&str) -> String,
+{
+    let ser = RedisStr::new(&value)?;
+    let r = Uuid::new_v4();
+    let key = key_func(&r.to_string());
+    REDIS
+        .pipe(|q| q.set(&key, ser).expire(&key, CONFIG.timing.cache_timeout))
+        .await?;
+    let bs = general_purpose::URL_SAFE_NO_PAD.encode(r.into_bytes());
+    let bs = get_url(bs)?;
+    Ok(bs)
+}
+
+pub async fn handle_deep_link<'a, F, R>(ctx: &Context<'a>, key_func: F) -> Result<Option<R>>
+where
+    F: FnOnce(&str) -> String,
+    R: DeserializeOwned,
+{
+    if let Some((_, _, args, _, _)) = ctx.cmd() {
+        if let Some(u) = args.args.first().map(|a| a.get_text()) {
+            let base = general_purpose::URL_SAFE_NO_PAD.decode(u)?;
+            let base = Uuid::from_slice(base.as_slice())?;
+            let key = key_func(&base.to_string());
+            let base: Option<RedisStr> = REDIS.sq(|q| q.get(&key)).await?;
+            if let Some(base) = base {
+                return Ok(Some(base.get()?));
+            }
+        }
+    }
+    Ok(None)
 }
