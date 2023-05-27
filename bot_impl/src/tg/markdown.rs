@@ -46,6 +46,7 @@ pub enum TgSpan {
     Raw(String),
     Filling(String),
     Button(String, String),
+    NewlineButton(String, String),
 }
 
 lazy_static! {
@@ -91,6 +92,7 @@ pomelo! {
     word      ::= LSBracket DoubleUnderscore main(R) RSBracket { super::TgSpan::Underline(R) }
     word      ::= LSBracket DoubleBar main(R) RSBracket { super::TgSpan::Spoiler(R) }
     word      ::= LTBracket raw(W) RTBracket LParen raw(L) RParen { super::TgSpan::Button(W, L) }
+    word      ::= LTBracket LTBracket raw(W) RTBracket RTBracket LParen raw(L) RParen { super::TgSpan::NewlineButton(W, L) }
 }
 
 use parser::{Parser, Token};
@@ -169,6 +171,17 @@ impl MarkupBuilder {
         }
     }
 
+    fn button(&mut self, hint: String, button: String) {
+        if button.starts_with("#") && button.len() > 1 {
+            //TODO: note buttons
+        } else {
+            let button = InlineKeyboardButtonBuilder::new(hint)
+                .set_url(button)
+                .build();
+            self.buttons.button(button);
+        }
+    }
+
     fn parse_tgspan<'a>(
         &mut self,
         span: Vec<TgSpan>,
@@ -206,15 +219,11 @@ impl MarkupBuilder {
                     self.manual("spoiler", s, e);
                 }
                 (TgSpan::Button(hint, button), _) => {
-                    log::info!("BUTTON!! {}", hint);
-                    if button.starts_with("#") && button.len() > 1 {
-                        //TODO: note buttons
-                    } else {
-                        let button = InlineKeyboardButtonBuilder::new(hint)
-                            .set_url(button)
-                            .build();
-                        self.buttons.button(button);
-                    }
+                    self.button(hint, button);
+                }
+                (TgSpan::NewlineButton(hint, button), _) => {
+                    self.buttons.newline();
+                    self.button(hint, button);
                 }
                 (TgSpan::Link(hint, link), _) => {
                     let (s, e) = self.parse_tgspan(hint, message);
@@ -707,7 +716,6 @@ impl EntityMessage {
     pub fn builder<'a>(&'a mut self) -> &'a mut MarkupBuilder {
         &mut self.0
     }
-
     pub fn call<'a>(&'a mut self, chat: i64) -> CallSendMessage<'a> {
         let (text, entities) = self.0.build();
         TG.client.build_send_message(chat, text).entities(entities)
