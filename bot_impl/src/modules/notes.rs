@@ -161,6 +161,18 @@ async fn print_note(message: &Message, note: entities::notes::Model) -> Result<(
     Ok(())
 }
 
+async fn print<'a>(message: &Message, name: &'a str) -> Result<()> {
+    if let Some(note) = get_note_by_name((*name).to_owned(), message.get_chat_ref()).await? {
+        print_note(message, note).await?;
+        Ok(())
+    } else {
+        Err(BotError::speak(
+            "note not found",
+            message.get_chat_ref().get_id(),
+        ))
+    }
+}
+
 async fn get<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
     is_group_or_die(message.get_chat_ref()).await?;
     let name = match args.args.first() {
@@ -169,15 +181,7 @@ async fn get<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
         _ => None,
     };
     if let Some(name) = name {
-        if let Some(note) = get_note_by_name((*name).to_owned(), message.get_chat_ref()).await? {
-            print_note(message, note).await?;
-            Ok(())
-        } else {
-            Err(BotError::speak(
-                "note not found",
-                message.get_chat_ref().get_id(),
-            ))
-        }
+        print(message, name).await
     } else {
         Err(BotError::speak(
             "missing note name, try again weenie",
@@ -246,7 +250,10 @@ async fn save<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
 pub async fn handle_update<'a>(_: &UpdateExt, cmd: &Option<Context<'a>>) -> Result<()> {
     if let Some(cmd) = cmd {
         if let Some(text) = cmd.message.get_text_ref() {
-            if text.starts_with("#") {}
+            if text.starts_with("#") && text.len() > 1 {
+                let tail = &text[1..];
+                print(&cmd.message, tail).await?;
+            }
         }
         handle_command(cmd).await?;
     }
