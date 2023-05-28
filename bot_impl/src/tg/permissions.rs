@@ -500,9 +500,6 @@ pub async fn update_self_admin(update: &UpdateExt) -> Result<()> {
 #[async_trait]
 impl GetCachedAdmins for Chat {
     async fn get_cached_admins(&self) -> Result<HashMap<i64, ChatMember>> {
-        if !is_self_admin(self).await? {
-            return Ok(HashMap::new());
-        }
         let key = get_chat_admin_cache_key(self.get_id());
         let admins: Option<HashMap<i64, RedisStr>> = REDIS.sq(|q| q.hgetall(&key)).await?;
         if let Some(admins) = admins {
@@ -539,7 +536,6 @@ impl GetCachedAdmins for Chat {
     }
 
     async fn promote(&self, user: i64) -> Result<()> {
-        self_admin_or_die(self).await?;
         TG.client()
             .build_promote_chat_member(self.get_id(), user)
             .can_manage_chat(true)
@@ -567,7 +563,6 @@ impl GetCachedAdmins for Chat {
     }
 
     async fn demote(&self, user: i64) -> Result<()> {
-        self_admin_or_die(self).await?;
         TG.client()
             .build_promote_chat_member(self.get_id(), user)
             .can_manage_chat(false)
@@ -589,10 +584,6 @@ impl GetCachedAdmins for Chat {
 
     async fn refresh_cached_admins(&self) -> Result<HashMap<i64, ChatMember>> {
         if let Err(_) = is_group_or_die(self).await {
-            return Ok(HashMap::new());
-        }
-
-        if !is_self_admin(self).await? {
             return Ok(HashMap::new());
         }
 
