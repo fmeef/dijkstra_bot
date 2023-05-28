@@ -24,6 +24,7 @@ use crate::util::string::Speak;
 use botapi::gen_types::{Message, UpdateExt};
 use chrono::Duration;
 use entities::{filters, triggers};
+use futures::FutureExt;
 use itertools::Itertools;
 use lazy_static::__Deref;
 use macros::entity_fmt;
@@ -470,7 +471,10 @@ async fn command_filter<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang)
 async fn handle_trigger(message: &Message) -> Result<()> {
     if let Some(text) = message.get_text() {
         if let Some(res) = search_cache(message, &text).await? {
-            send_media_reply(message, res.media_type, res.text, res.media_id).await?;
+            send_media_reply(message, res.media_type, res.text, res.media_id, |_, _| {
+                async move { Ok(()) }.boxed()
+            })
+            .await?;
         }
     }
     Ok(())

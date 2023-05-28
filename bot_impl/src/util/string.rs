@@ -15,6 +15,7 @@ use botapi::bot::Part;
 use botapi::gen_methods::CallSendMessage;
 use botapi::gen_types::{Chat, FileData, Message};
 use chrono::Duration;
+use futures::FutureExt;
 use lazy_static::__Deref;
 use macros::get_langs;
 get_langs!();

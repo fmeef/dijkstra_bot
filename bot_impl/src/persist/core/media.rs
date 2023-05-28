@@ -11,7 +11,11 @@ use crate::{
         string::should_ignore_chat,
     },
 };
-use botapi::gen_types::{Chat, FileData, InlineKeyboardMarkup, Message, User};
+use botapi::gen_types::{
+    Chat, EReplyMarkup, FileData, InlineKeyboardButton, InlineKeyboardMarkup, InputFile,
+    InputMedia, InputMediaDocument, InputMediaPhoto, InputMediaVideo, Message, User,
+};
+use futures::future::BoxFuture;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 #[derive(EnumIter, DeriveActiveEnum, Serialize, Deserialize, Clone, PartialEq, Debug)]
@@ -49,17 +53,35 @@ pub fn get_media_type<'a>(message: &'a Message) -> Result<(Option<String>, Media
     }
 }
 
-pub async fn send_media_reply_chatuser(
+pub async fn send_media_reply_chatuser<F>(
     current_chat: &Chat,
     media_type: MediaType,
     text: Option<String>,
     media_id: Option<String>,
     user: Option<&User>,
-) -> Result<()> {
+    callback: F,
+) -> Result<()>
+where
+    F: for<'b> Fn(String, &'b InlineKeyboardButton) -> BoxFuture<'b, Result<()>> + Send + Sync,
+{
     let chat = current_chat.get_id();
     if should_ignore_chat(chat).await? {
         return Ok(());
     }
+
+    let text = text.unwrap_or_else(|| "".to_owned());
+
+    let chatuser = user.map(|v| ChatUser {
+        chat: Cow::Borrowed(current_chat),
+        user: Cow::Borrowed(v),
+    });
+    let (text, entities, buttons) = if let Ok(md) =
+        MarkupBuilder::from_murkdown_button(&text, chatuser.as_ref(), callback).await
+    {
+        md.build_owned()
+    } else {
+        (text, Vec::new(), InlineKeyboardMarkup::default())
+    };
     match media_type {
         MediaType::Sticker => {
             TG.client()
@@ -106,18 +128,6 @@ pub async fn send_media_reply_chatuser(
                 .await
         }
         MediaType::Text => {
-            let text = text.ok_or_else(|| BotError::speak("invalid text", chat))?;
-            let chatuser = user.map(|v| ChatUser {
-                chat: Cow::Borrowed(current_chat),
-                user: Cow::Borrowed(v),
-            });
-            let (text, entities, buttons) = if let Ok(md) =
-                MarkupBuilder::from_murkdown_chatuser(&text, chatuser.as_ref()).await
-            {
-                md.build_owned()
-            } else {
-                (text, Vec::new(), InlineKeyboardMarkup::default())
-            };
             TG.client()
                 .build_send_message(chat, &text)
                 .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
@@ -131,16 +141,140 @@ pub async fn send_media_reply_chatuser(
     Ok(())
 }
 
-pub async fn send_media_reply(
+pub async fn edit_media_reply_chatuser<F>(
+    current_message: &Message,
+    media_type: MediaType,
+    text: Option<String>,
+    media_id: Option<String>,
+    callback: F,
+) -> Result<()>
+where
+    F: for<'b> Fn(String, &'b InlineKeyboardButton) -> BoxFuture<'b, Result<()>> + Send + Sync,
+{
+    let chat = current_message.get_chat().get_id();
+    if should_ignore_chat(chat).await? {
+        return Ok(());
+    }
+
+    if current_message.get_text().is_some() != (media_type == MediaType::Text) {
+        TG.client
+            .build_delete_message(
+                current_message.get_chat().get_id(),
+                current_message.get_message_id(),
+            )
+            .build()
+            .await?;
+        return send_media_reply_chatuser(
+            current_message.get_chat_ref(),
+            media_type,
+            text,
+            media_id,
+            current_message.get_from_ref(),
+            callback,
+        )
+        .await;
+    }
+
+    let text = text.unwrap_or_else(|| "".to_owned());
+    let (text, entities, buttons) = if let Ok(md) = MarkupBuilder::from_murkdown_button(
+        &text,
+        current_message.get_chatuser().as_ref(),
+        callback,
+    )
+    .await
+    {
+        md.build_owned()
+    } else {
+        (text, Vec::new(), InlineKeyboardMarkup::default())
+    };
+
+    let input_media = match media_type {
+        MediaType::Sticker => {
+            TG.client
+                .build_delete_message(chat, current_message.get_message_id())
+                .build()
+                .await?;
+            TG.client()
+                .build_send_sticker(
+                    chat,
+                    FileData::String(
+                        media_id.ok_or_else(|| BotError::speak("invalid media", chat))?,
+                    ),
+                )
+                .build()
+                .await?;
+            None
+        }
+        MediaType::Photo => Some(InputMedia::InputMediaPhoto(InputMediaPhoto::new(Some(
+            InputFile::String(media_id.ok_or_else(|| BotError::speak("invalid media", chat))?),
+        )))),
+        MediaType::Document => Some(InputMedia::InputMediaDocument(InputMediaDocument::new(
+            Some(InputFile::String(
+                media_id.ok_or_else(|| BotError::speak("invalid media", chat))?,
+            )),
+        ))),
+        MediaType::Video => Some(InputMedia::InputMediaVideo(InputMediaVideo::new(Some(
+            InputFile::String(media_id.ok_or_else(|| BotError::speak("invalid media", chat))?),
+        )))),
+        MediaType::Text => {
+            TG.client
+                .build_edit_message_text(&text)
+                .message_id(current_message.get_message_id())
+                .chat_id(current_message.get_chat().get_id())
+                .entities(&entities)
+                .reply_markup(&buttons)
+                .build()
+                .await?;
+            None
+        }
+    };
+
+    if let Some(input_media) = input_media {
+        TG.client
+            .build_edit_message_media(&input_media)
+            .message_id(current_message.get_message_id())
+            .chat_id(current_message.get_chat().get_id())
+            .build()
+            .await?;
+
+        TG.client
+            .build_edit_message_caption()
+            .message_id(current_message.get_message_id())
+            .chat_id(current_message.get_chat().get_id())
+            .caption(&text)
+            .caption_entities(&entities)
+            .reply_markup(&buttons)
+            .build()
+            .await?;
+    }
+    Ok(())
+}
+pub async fn send_media_reply<F>(
     message: &Message,
     media_type: MediaType,
     text: Option<String>,
     media_id: Option<String>,
-) -> Result<()> {
+    callback: F,
+) -> Result<()>
+where
+    F: for<'b> Fn(String, &'b InlineKeyboardButton) -> BoxFuture<'b, Result<()>> + Send + Sync,
+{
     let chat = message.get_chat().get_id();
     if should_ignore_chat(chat).await? {
         return Ok(());
     }
+
+    let text = text.unwrap_or_else(|| "".to_owned());
+    let (text, entities, buttons) = if let Ok(md) =
+        MarkupBuilder::from_murkdown_button(&text, message.get_chatuser().as_ref(), callback).await
+    {
+        md.build_owned()
+    } else {
+        (text, Vec::new(), InlineKeyboardMarkup::default())
+    };
+
+    let buttons = EReplyMarkup::InlineKeyboardMarkup(buttons);
+
     match media_type {
         MediaType::Sticker => {
             TG.client()
@@ -162,6 +296,9 @@ pub async fn send_media_reply(
                         media_id.ok_or_else(|| BotError::speak("invalid media", chat))?,
                     ),
                 )
+                .caption(&text)
+                .caption_entities(&entities)
+                .reply_markup(&buttons)
                 .reply_to_message_id(message.get_message_id())
                 .build()
                 .await
@@ -174,6 +311,9 @@ pub async fn send_media_reply(
                         media_id.ok_or_else(|| BotError::speak("invalid media", chat))?,
                     ),
                 )
+                .reply_markup(&buttons)
+                .caption_entities(&entities)
+                .caption(&text)
                 .reply_to_message_id(message.get_message_id())
                 .build()
                 .await
@@ -187,24 +327,17 @@ pub async fn send_media_reply(
                     ),
                 )
                 .reply_to_message_id(message.get_message_id())
+                .caption(&text)
+                .reply_markup(&buttons)
+                .caption_entities(&entities)
                 .build()
                 .await
         }
         MediaType::Text => {
-            let text = text.ok_or_else(|| BotError::speak("invalid text", chat))?;
-            let (text, entities, buttons) = if let Ok(md) =
-                MarkupBuilder::from_murkdown_chatuser(&text, message.get_chatuser().as_ref()).await
-            {
-                md.build_owned()
-            } else {
-                (text, Vec::new(), InlineKeyboardMarkup::default())
-            };
             TG.client()
                 .build_send_message(chat, &text)
                 .reply_to_message_id(message.get_message_id())
-                .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
-                    buttons,
-                ))
+                .reply_markup(&buttons)
                 .entities(&entities)
                 .build()
                 .await

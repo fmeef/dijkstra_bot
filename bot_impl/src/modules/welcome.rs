@@ -10,6 +10,7 @@ use crate::util::string::Lang;
 use crate::{metadata::metadata, util::string::Speak};
 use botapi::gen_types::{Chat, ChatMemberUpdated, Message, UpdateExt};
 use chrono::Duration;
+use futures::FutureExt;
 use lazy_static::__Deref;
 
 use macros::lang_fmt;
@@ -312,6 +313,7 @@ async fn welcome_mambers(
         Some(text),
         model.media_id,
         Some(upd.get_from_ref()),
+        |_, _| async move { Ok(()) }.boxed(),
     )
     .await?;
 
@@ -334,6 +336,7 @@ async fn goodbye_mambers(
         Some(text),
         model.goodbye_media_id,
         Some(upd.get_from_ref()),
+        |_, _| async move { Ok(()) }.boxed(),
     )
     .await?;
     Ok(())

@@ -4,11 +4,13 @@
 
 use botapi::gen_methods::CallSendMessage;
 use botapi::gen_types::{
-    InlineKeyboardButtonBuilder, InlineKeyboardMarkup, MessageEntity, MessageEntityBuilder, User,
+    InlineKeyboardButton, InlineKeyboardButtonBuilder, InlineKeyboardMarkup, MessageEntity,
+    MessageEntityBuilder, User,
 };
 use futures::future::BoxFuture;
-use futures::FutureExt;
+use futures::{Future, FutureExt};
 use markdown::{Block, ListItem, Span};
+use uuid::Uuid;
 
 use crate::statics::TG;
 use crate::util::error::{BotError, Result};
@@ -178,32 +180,47 @@ impl MarkupBuilder {
         }
     }
 
-    async fn button<'a>(
+    async fn button<'a, F>(
         &'a mut self,
         hint: String,
         button: String,
-        chatuser: Option<&ChatUser<'a>>,
-    ) -> Result<()> {
-        let url = if button.starts_with("#") && button.len() > 1 {
+        chatuser: Option<&'a ChatUser<'a>>,
+        callback: &'a F,
+    ) -> Result<()>
+    where
+        F: for<'b> Fn(String, &'b InlineKeyboardButton) -> BoxFuture<'b, Result<()>> + Send + Sync,
+    {
+        let button = if button.starts_with("#") && button.len() > 1 {
             let chat = chatuser.ok_or_else(|| BotError::Generic("missing chatuser".to_owned()))?;
             let chat = chat.chat.get_id();
             let tail = &button[1..];
-            post_deep_link((chat, tail), |v| button_deeplink_key(v)).await?
-        } else {
+
+            let button = InlineKeyboardButtonBuilder::new(hint)
+                .set_callback_data(Uuid::new_v4().to_string())
+                .build();
+            callback(tail.to_owned(), &button).await?;
+            post_deep_link((chat, tail), |v| button_deeplink_key(v)).await?;
             button
+        } else {
+            InlineKeyboardButtonBuilder::new(hint)
+                .set_url(button)
+                .build()
         };
 
-        let button = InlineKeyboardButtonBuilder::new(hint).set_url(url).build();
         self.buttons.button(button);
 
         Ok(())
     }
 
-    fn parse_tgspan<'a>(
+    fn parse_tgspan<'a, F>(
         &'a mut self,
         span: Vec<TgSpan>,
         message: Option<&'a ChatUser<'a>>,
-    ) -> BoxFuture<Result<(i64, i64)>> {
+        callback: &'a F,
+    ) -> BoxFuture<Result<(i64, i64)>>
+    where
+        F: for<'b> Fn(String, &'b InlineKeyboardButton) -> BoxFuture<'b, Result<()>> + Send + Sync,
+    {
         async move {
             let mut size = 0;
             for span in span {
@@ -212,39 +229,39 @@ impl MarkupBuilder {
                         self.code(&code);
                     }
                     (TgSpan::Italic(s), _) => {
-                        let (s, e) = self.parse_tgspan(s, message).await?;
+                        let (s, e) = self.parse_tgspan(s, message, callback).await?;
                         size += e;
                         self.manual("italic", s, e);
                     }
                     (TgSpan::Bold(s), _) => {
-                        let (s, e) = self.parse_tgspan(s, message).await?;
+                        let (s, e) = self.parse_tgspan(s, message, callback).await?;
                         size += e;
                         self.manual("bold", s, e);
                     }
                     (TgSpan::Strikethrough(s), _) => {
-                        let (s, e) = self.parse_tgspan(s, message).await?;
+                        let (s, e) = self.parse_tgspan(s, message, callback).await?;
                         size += e;
                         self.manual("strikethrough", s, e);
                     }
                     (TgSpan::Underline(s), _) => {
-                        let (s, e) = self.parse_tgspan(s, message).await?;
+                        let (s, e) = self.parse_tgspan(s, message, callback).await?;
                         size += e;
                         self.manual("underline", s, e);
                     }
                     (TgSpan::Spoiler(s), _) => {
-                        let (s, e) = self.parse_tgspan(s, message).await?;
+                        let (s, e) = self.parse_tgspan(s, message, callback).await?;
                         size += e;
                         self.manual("spoiler", s, e);
                     }
                     (TgSpan::Button(hint, button), _) => {
-                        self.button(hint, button, message).await?;
+                        self.button(hint, button, message, callback).await?;
                     }
                     (TgSpan::NewlineButton(hint, button), _) => {
                         self.buttons.newline();
-                        self.button(hint, button, message).await?;
+                        self.button(hint, button, message, callback).await?;
                     }
                     (TgSpan::Link(hint, link), _) => {
-                        let (s, e) = self.parse_tgspan(hint, message).await?;
+                        let (s, e) = self.parse_tgspan(hint, message, callback).await?;
                         size += e;
                         let entity = MessageEntityBuilder::new(s, e)
                             .set_type("text_link".to_owned())
@@ -409,23 +426,47 @@ impl MarkupBuilder {
 
     /// Parses murkdown and constructs a builder with the corresponding text and
     /// entities
-    pub async fn from_murkdown<T: AsRef<str>>(text: T) -> Result<Self> {
-        Self::from_murkdown_internal(text, None).await
+    pub async fn from_murkdown<T>(text: T) -> Result<Self>
+    where
+        T: AsRef<str>,
+    {
+        Self::from_murkdown_internal(text, None, |_, _| async move { Ok(()) }.boxed()).await
     }
 
     /// Parses murkdown and constructs a builder with the corresponding text and
     /// entities. The provided ChatUser value is used to perform automated formfilling
-    pub async fn from_murkdown_chatuser<'b, T: AsRef<str>>(
+    pub async fn from_murkdown_chatuser<'a, T>(
         text: T,
-        chatuser: Option<&ChatUser<'b>>,
-    ) -> Result<Self> {
-        Self::from_murkdown_internal(text, chatuser).await
+        chatuser: Option<&'a ChatUser<'a>>,
+    ) -> Result<Self>
+    where
+        T: AsRef<str>,
+    {
+        Self::from_murkdown_internal(text, chatuser, |_, _| async move { Ok(()) }.boxed()).await
     }
 
-    async fn from_murkdown_internal<'b, T: AsRef<str>>(
+    /// parses murkdown with a callback called on every button requiring a callback
+    pub async fn from_murkdown_button<'a, T, F>(
         text: T,
-        chatuser: Option<&ChatUser<'b>>,
-    ) -> Result<Self> {
+        chatuser: Option<&'a ChatUser<'a>>,
+        callback: F,
+    ) -> Result<Self>
+    where
+        T: AsRef<str>,
+        F: for<'b> Fn(String, &'b InlineKeyboardButton) -> BoxFuture<'b, Result<()>> + Send + Sync,
+    {
+        Self::from_murkdown_internal(text, chatuser, callback).await
+    }
+
+    async fn from_murkdown_internal<'a, T, F>(
+        text: T,
+        chatuser: Option<&'a ChatUser<'a>>,
+        callback: F,
+    ) -> Result<Self>
+    where
+        T: AsRef<str>,
+        F: for<'b> Fn(String, &'b InlineKeyboardButton) -> BoxFuture<'b, Result<()>> + Send + Sync,
+    {
         let text = text.as_ref();
         let mut s = Self::new();
         let mut parser = Parser::new();
@@ -434,7 +475,7 @@ impl MarkupBuilder {
             parser.parse(token)?;
         }
         let res = parser.end_of_input()?;
-        s.parse_tgspan(res, chatuser).await?;
+        s.parse_tgspan(res, chatuser, &callback).await?;
         Ok(s)
     }
 
@@ -871,7 +912,7 @@ mod test {
     fn markup_builder() {
         let p = test_parse(MARKDOWN_TEST);
         let mut b = MarkupBuilder::new();
-        b.parse_tgspan(p, None);
+        b.parse_tgspan(p, None, &|_, _| async move { Ok(()) });
         assert_eq!(b.entities.len(), 2);
         println!("{}", b.text);
     }
