@@ -50,7 +50,7 @@ metadata!("Sticker Organizer",
     "#,
     { command = "upload", help = "Uploads a sticker" },
     { command = "list", help = "Lists available stickers"},
-    { command = "delete", help = "Deletes a sticker by uuid"}
+    { command = "deletesticker", help = "Deletes a sticker by uuid"}
 );
 
 fn upload_sticker_conversation(message: &Message) -> Result<Conversation> {
@@ -320,7 +320,7 @@ async fn handle_command<'a>(message: &'a Message, cmd: Option<&Command<'a>>) -> 
         match cmd {
             "upload" => upload(message).await,
             "list" => list_stickers(message).await,
-            "delete" => delete_sticker(message, &args.args).await,
+            "deletesticker" => delete_sticker(message, &args.args).await,
             _ => Ok(()),
         }?;
     };
