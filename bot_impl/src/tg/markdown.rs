@@ -8,7 +8,7 @@ use botapi::gen_types::{
     MessageEntityBuilder, User,
 };
 use futures::future::BoxFuture;
-use futures::{Future, FutureExt};
+use futures::FutureExt;
 use markdown::{Block, ListItem, Span};
 use uuid::Uuid;
 
@@ -101,7 +101,7 @@ pomelo! {
 
 use parser::{Parser, Token};
 
-use super::admin_helpers::ChatUser;
+use super::admin_helpers::{is_dm, ChatUser};
 use super::button::InlineKeyboardBuilder;
 use super::command::post_deep_link;
 use super::user::Username;
@@ -168,7 +168,6 @@ pub fn button_deeplink_key(key: &str) -> String {
 
 /// Builder for MessageEntity formatting. Generates MessageEntities from either murkdown
 /// or manually
-#[allow(dead_code)]
 impl MarkupBuilder {
     /// Constructs a new empty builder for manual formatting
     pub fn new() -> Self {
@@ -190,7 +189,9 @@ impl MarkupBuilder {
     where
         F: for<'b> Fn(String, &'b InlineKeyboardButton) -> BoxFuture<'b, Result<()>> + Send + Sync,
     {
-        let button = if button.starts_with("#") && button.len() > 1 {
+        let button = if button.starts_with("#") && button.len() > 1
+            || chatuser.map(|v| !is_dm(&v.chat)).unwrap_or(true)
+        {
             let chat = chatuser.ok_or_else(|| BotError::Generic("missing chatuser".to_owned()))?;
             let chat = chat.chat.get_id();
             let tail = &button[1..];

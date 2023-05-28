@@ -9,6 +9,7 @@ use crate::tg::command::{get_content, handle_deep_link, Context, InputType, Text
 use crate::tg::markdown::button_deeplink_key;
 use crate::util::string::Speak;
 use ::sea_orm_migration::prelude::*;
+use futures::future::BoxFuture;
 use futures::FutureExt;
 
 use chrono::Duration;
@@ -18,7 +19,7 @@ use lazy_static::__Deref;
 use sea_orm::EntityTrait;
 
 use crate::util::error::{BotError, Result};
-use botapi::gen_types::{InlineKeyboardButton, Message, UpdateExt};
+use botapi::gen_types::{CallbackQuery, Message, UpdateExt};
 
 use crate::persist::core::media::*;
 metadata!("Notes",
@@ -168,6 +169,34 @@ async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
     Ok(())
 }
 
+fn handle_transition<'a>(b: CallbackQuery, chat: i64, note: String) -> BoxFuture<'a, Result<()>> {
+    async move {
+        if let (Some(note), Some(message)) = (get_note_by_name(note, chat).await?, b.get_message())
+        {
+            edit_media_reply_chatuser(
+                &message,
+                note.media_type,
+                note.text,
+                note.media_id,
+                |note, button| {
+                    async move {
+                        button.on_push(move |b| async move {
+                            handle_transition(b, chat, note).await?;
+                            Ok(())
+                        });
+                        Ok(())
+                    }
+                    .boxed()
+                },
+            )
+            .await?;
+        }
+
+        Ok(())
+    }
+    .boxed()
+}
+
 async fn print_note(message: &Message, note: entities::notes::Model) -> Result<()> {
     let chat = message.get_chat().get_id();
     send_media_reply(
@@ -177,20 +206,8 @@ async fn print_note(message: &Message, note: entities::notes::Model) -> Result<(
         note.media_id,
         |note, button| {
             async move {
-                log::info!("setting onpush");
                 button.on_push(move |b| async move {
-                    if let (Some(note), Some(message)) =
-                        (get_note_by_name(note, chat).await?, b.get_message())
-                    {
-                        edit_media_reply_chatuser(
-                            &message,
-                            note.media_type,
-                            note.text,
-                            note.media_id,
-                            |_, _| async move { Ok(()) }.boxed(),
-                        )
-                        .await?;
-                    }
+                    handle_transition(b, chat, note).await?;
                     Ok(())
                 });
                 Ok(())
