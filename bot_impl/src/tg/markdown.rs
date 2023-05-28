@@ -189,6 +189,13 @@ impl MarkupBuilder {
     where
         F: for<'b> Fn(String, &'b InlineKeyboardButton) -> BoxFuture<'b, Result<()>> + Send + Sync,
     {
+        if let Some(ref chatuser) = chatuser {
+            log::info!(
+                "building button for note: {} with chat {}",
+                button,
+                chatuser.chat.name_humanreadable()
+            );
+        }
         let is_dm = chatuser.map(|v| is_dm(&v.chat)).unwrap_or(true);
         let button = if button.starts_with("#") && button.len() > 1 && is_dm {
             let tail = &button[1..];
@@ -436,7 +443,7 @@ impl MarkupBuilder {
     where
         T: AsRef<str>,
     {
-        Self::from_murkdown_internal(text, None, |_, _| async move { Ok(()) }.boxed()).await
+        Self::from_murkdown_internal(text, None, &|_, _| async move { Ok(()) }.boxed()).await
     }
 
     /// Parses murkdown and constructs a builder with the corresponding text and
@@ -448,14 +455,14 @@ impl MarkupBuilder {
     where
         T: AsRef<str>,
     {
-        Self::from_murkdown_internal(text, chatuser, |_, _| async move { Ok(()) }.boxed()).await
+        Self::from_murkdown_internal(text, chatuser, &|_, _| async move { Ok(()) }.boxed()).await
     }
 
     /// parses murkdown with a callback called on every button requiring a callback
     pub async fn from_murkdown_button<'a, T, F>(
         text: T,
         chatuser: Option<&'a ChatUser<'a>>,
-        callback: F,
+        callback: &F,
     ) -> Result<Self>
     where
         T: AsRef<str>,
@@ -467,7 +474,7 @@ impl MarkupBuilder {
     async fn from_murkdown_internal<'a, T, F>(
         text: T,
         chatuser: Option<&'a ChatUser<'a>>,
-        callback: F,
+        callback: &F,
     ) -> Result<Self>
     where
         T: AsRef<str>,

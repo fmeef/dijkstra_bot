@@ -171,6 +171,7 @@ async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
 
 fn handle_transition<'a>(b: CallbackQuery, chat: i64, note: String) -> BoxFuture<'a, Result<()>> {
     async move {
+        log::info!("current note: {}", note);
         if let (Some(note), Some(message)) = (get_note_by_name(note, chat).await?, b.get_message())
         {
             edit_media_reply_chatuser(
@@ -180,6 +181,7 @@ fn handle_transition<'a>(b: CallbackQuery, chat: i64, note: String) -> BoxFuture
                 note.media_id,
                 |note, button| {
                     async move {
+                        log::info!("next notes: {}", note);
                         button.on_push(move |b| async move {
                             TG.client
                                 .build_answer_callback_query(b.get_id_ref())
@@ -195,6 +197,8 @@ fn handle_transition<'a>(b: CallbackQuery, chat: i64, note: String) -> BoxFuture
                 },
             )
             .await?;
+        } else {
+            log::warn!("note missing!");
         }
 
         Ok(())
@@ -202,8 +206,7 @@ fn handle_transition<'a>(b: CallbackQuery, chat: i64, note: String) -> BoxFuture
     .boxed()
 }
 
-async fn print_note(message: &Message, note: entities::notes::Model) -> Result<()> {
-    let chat = message.get_chat().get_id();
+async fn print_note(message: &Message, note: entities::notes::Model, note_chat: i64) -> Result<()> {
     send_media_reply(
         message,
         note.media_type,
@@ -216,7 +219,7 @@ async fn print_note(message: &Message, note: entities::notes::Model) -> Result<(
                         .build_answer_callback_query(b.get_id_ref())
                         .build()
                         .await?;
-                    handle_transition(b, chat, note).await?;
+                    handle_transition(b, note_chat, note).await?;
                     Ok(())
                 });
                 Ok(())
@@ -234,7 +237,7 @@ async fn print(message: &Message, name: String) -> Result<()> {
 
 async fn print_chat(message: &Message, name: String, chat: i64) -> Result<()> {
     if let Some(note) = get_note_by_name(name, chat).await? {
-        print_note(message, note).await?;
+        print_note(message, note, chat).await?;
         Ok(())
     } else {
         Err(BotError::speak(

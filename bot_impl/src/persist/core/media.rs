@@ -76,7 +76,7 @@ where
         user: Cow::Borrowed(v),
     });
     let (text, entities, buttons) = if let Ok(md) =
-        MarkupBuilder::from_murkdown_button(&text, chatuser.as_ref(), callback).await
+        MarkupBuilder::from_murkdown_button(&text, chatuser.as_ref(), &callback).await
     {
         md.build_owned()
     } else {
@@ -156,6 +156,19 @@ where
         return Ok(());
     }
 
+    let text = text.unwrap_or_else(|| "".to_owned());
+    let (text, entities, buttons) = if let Ok(md) = MarkupBuilder::from_murkdown_button(
+        &text,
+        current_message.get_chatuser().as_ref(),
+        &callback,
+    )
+    .await
+    {
+        md.build_owned()
+    } else {
+        (text, Vec::new(), InlineKeyboardMarkup::default())
+    };
+
     if current_message.get_text().is_some() != (media_type == MediaType::Text) {
         TG.client
             .build_delete_message(
@@ -167,26 +180,13 @@ where
         return send_media_reply_chatuser(
             current_message.get_chat_ref(),
             media_type,
-            text,
+            Some(text),
             media_id,
             current_message.get_from_ref(),
             callback,
         )
         .await;
     }
-
-    let text = text.unwrap_or_else(|| "".to_owned());
-    let (text, entities, buttons) = if let Ok(md) = MarkupBuilder::from_murkdown_button(
-        &text,
-        current_message.get_chatuser().as_ref(),
-        callback,
-    )
-    .await
-    {
-        md.build_owned()
-    } else {
-        (text, Vec::new(), InlineKeyboardMarkup::default())
-    };
 
     let input_media = match media_type {
         MediaType::Sticker => {
@@ -266,7 +266,7 @@ where
 
     let text = text.unwrap_or_else(|| "".to_owned());
     let (text, entities, buttons) = if let Ok(md) =
-        MarkupBuilder::from_murkdown_button(&text, message.get_chatuser().as_ref(), callback).await
+        MarkupBuilder::from_murkdown_button(&text, message.get_chatuser().as_ref(), &callback).await
     {
         md.build_owned()
     } else {
