@@ -1,6 +1,6 @@
 use crate::metadata::metadata;
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache};
-use crate::statics::{DB, REDIS};
+use crate::statics::{DB, REDIS, TG};
 use crate::tg::admin_helpers::is_group_or_die;
 
 use crate::tg::button::OnPush;
@@ -181,6 +181,11 @@ fn handle_transition<'a>(b: CallbackQuery, chat: i64, note: String) -> BoxFuture
                 |note, button| {
                     async move {
                         button.on_push(move |b| async move {
+                            TG.client
+                                .build_answer_callback_query(b.get_id_ref())
+                                .build()
+                                .await?;
+
                             handle_transition(b, chat, note).await?;
                             Ok(())
                         });
@@ -207,6 +212,10 @@ async fn print_note(message: &Message, note: entities::notes::Model) -> Result<(
         |note, button| {
             async move {
                 button.on_push(move |b| async move {
+                    TG.client
+                        .build_answer_callback_query(b.get_id_ref())
+                        .build()
+                        .await?;
                     handle_transition(b, chat, note).await?;
                     Ok(())
                 });

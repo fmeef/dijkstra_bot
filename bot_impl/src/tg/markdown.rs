@@ -189,19 +189,24 @@ impl MarkupBuilder {
     where
         F: for<'b> Fn(String, &'b InlineKeyboardButton) -> BoxFuture<'b, Result<()>> + Send + Sync,
     {
-        let button = if button.starts_with("#") && button.len() > 1
-            || chatuser.map(|v| !is_dm(&v.chat)).unwrap_or(true)
-        {
-            let chat = chatuser.ok_or_else(|| BotError::Generic("missing chatuser".to_owned()))?;
-            let chat = chat.chat.get_id();
+        let is_dm = chatuser.map(|v| is_dm(&v.chat)).unwrap_or(true);
+        let button = if button.starts_with("#") && button.len() > 1 && is_dm {
             let tail = &button[1..];
 
             let button = InlineKeyboardButtonBuilder::new(hint)
                 .set_callback_data(Uuid::new_v4().to_string())
                 .build();
+
             callback(tail.to_owned(), &button).await?;
-            post_deep_link((chat, tail), |v| button_deeplink_key(v)).await?;
             button
+        } else if !is_dm && button.starts_with("#") && button.len() > 1 {
+            let chat = chatuser.ok_or_else(|| BotError::Generic("missing chatuser".to_owned()))?;
+            let chat = chat.chat.get_id();
+            let tail = &button[1..];
+
+            let url = post_deep_link((chat, tail), |v| button_deeplink_key(v)).await?;
+
+            InlineKeyboardButtonBuilder::new(hint).set_url(url).build()
         } else {
             InlineKeyboardButtonBuilder::new(hint)
                 .set_url(button)
