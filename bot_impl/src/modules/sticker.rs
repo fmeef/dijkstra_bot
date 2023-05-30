@@ -25,7 +25,7 @@ use botapi::gen_types::{
 };
 use lazy_static::__Deref;
 use log::info;
-use r::{default_cached_query_vec, scope_key_by_chatuser, CachedQueryTrait, RedisStr};
+use r::{scope_key_by_chatuser, RedisStr};
 // redis keys
 const KEY_TYPE_TAG: &str = "wc:tag";
 const KEY_TYPE_STICKER_ID: &str = "wc:stickerid";
@@ -245,7 +245,6 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
 async fn handle_inline(query: &InlineQuery) -> Result<()> {
     let id = query.get_from().get_id();
     let key = query.get_query().to_owned();
-    let rkey = format!("{}:{}", id, key);
 
     let cached = query.get_from().get_id().get_cached_user().await?;
     if let Some(cached) = cached {
@@ -253,23 +252,18 @@ async fn handle_inline(query: &InlineQuery) -> Result<()> {
             log::info!("query! owner: {} tag: {}", owner, query.get_query());
         }
     }
-    let stickers = default_cached_query_vec(move |_, key| async move {
-        let key = format!("%{}%", key);
-        let stickers = entities::stickers::Entity::find()
-            .join(
-                sea_orm::JoinType::InnerJoin,
-                entities::stickers::Relation::Tags.def(),
-            )
-            .group_by(entities::stickers::Column::UniqueId)
-            .filter(entities::stickers::Column::OwnerId.eq(id))
-            .filter(entities::tags::Column::Tag.like(&key))
-            .limit(10)
-            .all(DB.deref())
-            .await?;
-        Ok(stickers)
-    })
-    .query(&rkey, &key)
-    .await?;
+    let key = format!("%{}%", key);
+    let stickers = entities::stickers::Entity::find()
+        .join(
+            sea_orm::JoinType::InnerJoin,
+            entities::stickers::Relation::Tags.def(),
+        )
+        .group_by(entities::stickers::Column::UniqueId)
+        .filter(entities::stickers::Column::OwnerId.eq(id))
+        .filter(entities::tags::Column::Tag.like(&key))
+        .limit(10)
+        .all(DB.deref())
+        .await?;
     let stickers = stickers
         .into_iter()
         .map(|s| {
