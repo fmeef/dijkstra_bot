@@ -333,17 +333,12 @@ async fn get_note_by_name(name: String, chat: i64) -> Result<Option<entities::no
                 .await?;
 
             let res = if let Some(key) = key {
-                let key = key.get()?;
-                if exists {
-                    key
-                } else {
-                    None
-                }
+                Some(key.get()?)
             } else {
                 None
             };
 
-            Ok(Some(res))
+            Ok((exists, res))
         },
         |_, value| async move {
             refresh_notes(chat).await?;

@@ -44,16 +44,16 @@ pub const KEY_TYPE_VAL: &str = "wc:typeval";
 pub const KEY_UUID: &str = "wc:uuid";
 
 /// helper function for getting a list of deserialized values from redis
-async fn redis_query_vec<'a, R, P>(key: &'a str, _: &'a P) -> Result<Option<Vec<R>>>
+async fn redis_query_vec<'a, R, P>(key: &'a str, _: &'a P) -> Result<(bool, Vec<R>)>
 where
     R: DeserializeOwned + DeserializeOwned + Sync + Send + 'a,
     P: Send + Sync,
 {
     let res: Vec<R> = REDIS.drain_list(key).await?;
     if res.len() == 0 {
-        Ok(None)
+        Ok((false, vec![]))
     } else {
-        Ok(Some(res))
+        Ok((true, res))
     }
 }
 
@@ -67,7 +67,7 @@ where
 }
 
 /// default sql query caching query operation
-pub async fn redis_query<'a, R, P>(key: &'a str, _: &'a P) -> Result<Option<R>>
+pub async fn redis_query<'a, R, P>(key: &'a str, _: &'a P) -> Result<(bool, Option<R>)>
 where
     R: DeserializeOwned + Sync + Send + 'a,
     P: Send + Sync + 'a,
@@ -83,7 +83,7 @@ where
         .await?;
 
     let res = res.map(|v| v.get::<R>().ok()).flatten();
-    Ok(res)
+    Ok((res.is_some(), res))
 }
 
 /// Default sql query cachin miss operation for a single value
@@ -109,7 +109,7 @@ pub struct CachedQuery<'r, T, R, S, M, P>
 where
     T: Serialize + DeserializeOwned + Send + Sync,
     P: Send + Sync + 'r,
-    R: CacheCallback<'r, Option<T>, P> + Send + Sync,
+    R: CacheCallback<'r, (bool, T), P> + Send + Sync,
     S: CacheCallback<'r, T, P> + Send + Sync,
     M: CacheMissCallback<'r, T> + Send + Sync,
 {
@@ -146,11 +146,11 @@ where
 pub fn default_cache_query<'r, T, S, P>(
     sql_query: S,
     expire: Duration,
-) -> impl CachedQueryTrait<'r, T, P>
+) -> impl CachedQueryTrait<'r, Option<T>, P>
 where
     T: Serialize + DeserializeOwned + Send + Sync + 'r,
     P: Send + Sync + 'r,
-    S: CacheCallback<'r, T, P> + Send + Sync,
+    S: CacheCallback<'r, Option<T>, P> + Send + Sync,
 {
     CachedQuery::new(sql_query, redis_query, move |key, val| async move {
         redis_miss(key, val, expire).await
@@ -161,7 +161,7 @@ impl<'r, T, R, S, M, P> CachedQuery<'r, T, R, S, M, P>
 where
     T: Serialize + DeserializeOwned + Send + Sync,
     P: Send + Sync + 'r,
-    R: CacheCallback<'r, Option<T>, P> + Send + Sync,
+    R: CacheCallback<'r, (bool, T), P> + Send + Sync,
     S: CacheCallback<'r, T, P> + Send + Sync,
     M: CacheMissCallback<'r, T> + Send + Sync,
 {
@@ -181,12 +181,13 @@ impl<'r, T, R, S, M, P> CachedQueryTrait<'r, T, P> for CachedQuery<'r, T, R, S, 
 where
     T: Serialize + DeserializeOwned + Send + Sync,
     P: Send + Sync,
-    R: CacheCallback<'r, Option<T>, P> + Send + Sync,
+    R: CacheCallback<'r, (bool, T), P> + Send + Sync,
     S: CacheCallback<'r, T, P> + Send + Sync,
     M: CacheMissCallback<'r, T> + Send + Sync,
 {
     async fn query(self, key: &'r str, param: &'r P) -> Result<T> {
-        if let Some(val) = self.redis_query.cb(key, param).await? {
+        let (hit, val) = self.redis_query.cb(key, param).await?;
+        if hit {
             Ok(val)
         } else {
             let val = self.sql_query.cb(key, param).await?;

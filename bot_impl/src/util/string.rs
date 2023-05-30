@@ -27,22 +27,6 @@ use sea_orm::{EntityTrait, IntoActiveModel};
 
 use crate::persist::core::dialogs;
 
-/// this is just here as an example of a cached query returned from a function
-#[allow(dead_code)]
-fn get_query<'r>() -> impl CachedQueryTrait<'r, Lang, i64> {
-    default_cache_query(
-        |_, chat| async move {
-            let chat: &i64 = chat;
-            Ok(dialogs::Entity::find_by_id(*chat)
-                .one(DB.deref())
-                .await?
-                .map(|v| v.language)
-                .unwrap_or_else(|| Lang::En))
-        },
-        Duration::hours(12),
-    )
-}
-
 /// Returns false if ratelimiting is triggered. This function should be called before
 /// every attempt to send a messsage in a chat, as calling it determines ratelimiting
 pub async fn should_ignore_chat(chat: i64) -> Result<bool> {
@@ -287,13 +271,13 @@ pub async fn get_chat_lang(chat: i64) -> Result<Lang> {
             Ok(dialogs::Entity::find_by_id(chat)
                 .one(DB.deref())
                 .await?
-                .map(|v| v.language)
-                .unwrap_or_else(|| Lang::En))
+                .map(|v| v.language))
         },
         Duration::hours(12),
     )
     .query(&key, &())
-    .await?;
+    .await?
+    .unwrap_or_else(|| Lang::En);
     Ok(res)
 }
 

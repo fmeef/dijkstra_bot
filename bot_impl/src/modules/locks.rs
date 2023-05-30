@@ -477,12 +477,13 @@ async fn get_default_settings(chat: &Chat) -> Result<default_locks::Model> {
                     )
                     .exec_with_returning(DB.deref())
                     .await?;
-            Ok(model)
+            Ok(Some(model))
         },
         Duration::seconds(CONFIG.timing.cache_timeout as i64),
     )
     .query(&key, &())
     .await
+    .map(|v| v.expect("this should't happen"))
 }
 
 async fn set_default_action(chat: &Chat, lock_action: ActionType) -> Result<()> {

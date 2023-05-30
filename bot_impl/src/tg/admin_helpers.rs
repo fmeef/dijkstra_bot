@@ -640,17 +640,15 @@ pub async fn get_warns(message: &Message, user: &User) -> Result<Vec<warns::Mode
             Ok(count)
         },
         |key, _| async move {
-            let count: Vec<RedisStr> = REDIS.sq(|q| q.smembers(&key)).await?;
-            if count.len() > 0 {
-                Ok(Some(
-                    count
-                        .into_iter()
-                        .filter_map(|v| v.get::<warns::Model>().ok())
-                        .collect(),
-                ))
-            } else {
-                Ok(None)
-            }
+            let (exists, count): (bool, Vec<RedisStr>) =
+                REDIS.pipe(|q| q.exists(&key).smembers(&key)).await?;
+            Ok((
+                exists,
+                count
+                    .into_iter()
+                    .filter_map(|v| v.get::<warns::Model>().ok())
+                    .collect(),
+            ))
         },
         |key, warns| async move {
             REDIS
@@ -707,8 +705,9 @@ pub async fn get_warns_count(message: &Message, user: &User) -> Result<i32> {
                 Ok(count)
             },
             |key, _| async move {
-                let count: Option<u64> = REDIS.sq(|q| q.llen(&key)).await?;
-                Ok(count)
+                let (exists, count): (bool, u64) =
+                    REDIS.pipe(|q| q.exists(&key).llen(&key)).await?;
+                Ok((exists, count))
             },
             |_, v| async move { Ok(v) },
         )
