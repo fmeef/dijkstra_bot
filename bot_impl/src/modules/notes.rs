@@ -366,9 +366,9 @@ async fn delete<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
 async fn list_notes(message: &Message) -> Result<()> {
     is_group_or_die(message.get_chat_ref()).await?;
     let notes = refresh_notes(message.get_chat().get_id()).await?;
-    let m = notes
-        .iter()
-        .map(|(n, _)| format!("- {}", n))
+    let m = [String::from("Notes for {chatname}")]
+        .into_iter()
+        .chain(notes.iter().map(|(n, _)| format!("- {}", n)))
         .collect::<Vec<String>>()
         .join("\n");
     message.reply(m).await?;
