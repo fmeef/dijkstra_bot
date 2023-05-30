@@ -313,12 +313,11 @@ async fn refresh_notes(chat: i64) -> Result<BTreeMap<String, entities::notes::Mo
 }
 
 async fn get_note_by_name(name: String, chat: i64) -> Result<Option<entities::notes::Model>> {
-    let key = format!("note:{}:{}", chat, name);
-    log::info!("get key: {}", key);
     let hash_key = get_hash_key(chat);
+    let n = name.clone();
     let note = CachedQuery::new(
         |_, _| async move {
-            let res = entities::notes::Entity::find_by_id((name, chat))
+            let res = entities::notes::Entity::find_by_id((n, chat))
                 .one(DB.deref().deref())
                 .await?;
 
@@ -351,7 +350,7 @@ async fn get_note_by_name(name: String, chat: i64) -> Result<Option<entities::no
             Ok(value)
         },
     )
-    .query(&key, &())
+    .query(&name, &())
     .await?;
     Ok(note)
 }
@@ -359,10 +358,9 @@ async fn get_note_by_name(name: String, chat: i64) -> Result<Option<entities::no
 async fn delete<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
     is_group_or_die(message.get_chat_ref()).await?;
     let model = get_model(message, args)?;
-    let key = format!("note:{}:{}", message.get_chat().get_id(), model.name);
-    log::info!("delete key: {}", key);
     let name = model.name.clone();
-    REDIS.sq(|q| q.del(&key)).await?;
+    let hash_key = get_hash_key(message.get_chat().get_id());
+    REDIS.sq(|q| q.hdel(&hash_key, &model.name)).await?;
     entities::notes::Entity::delete_by_id((model.name, message.get_chat().get_id()))
         .exec(DB.deref().deref())
         .await?;
