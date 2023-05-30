@@ -30,7 +30,8 @@ metadata!("Notes",
     "#,
     { command = "save", help = "Saves a note" },
     { command = "get", help = "Get a note" },
-    { command = "delete", help = "Delete a note" }
+    { command = "delete", help = "Delete a note" },
+    { command = "notes", help = "List all notes for the current chat"}
 );
 
 struct Migration;
@@ -156,6 +157,7 @@ async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
             "save" => save(message, &args).await,
             "get" => get(message, &args).await,
             "delete" => delete(message, args).await,
+            "notes" => list_notes(message).await,
             "start" => {
                 let note: Option<(i64, String)> =
                     handle_deep_link(ctx, |k| button_deeplink_key(k)).await?;
@@ -272,8 +274,6 @@ fn get_hash_key(chat: i64) -> String {
 
 async fn refresh_notes(chat: i64) -> Result<HashMap<String, entities::notes::Model>> {
     let hash_key = get_hash_key(chat);
-
-    let hash_key = get_hash_key(chat);
     let (exists, notes): (bool, HashMap<String, RedisStr>) = REDIS
         .pipe(|q| q.exists(&hash_key).hgetall(&hash_key))
         .await?;
@@ -325,7 +325,7 @@ async fn get_note_by_name(name: String, chat: i64) -> Result<Option<entities::no
             Ok(res)
         },
         |key, _| async move {
-            let (exists, key): (bool, Option<RedisStr>) = REDIS
+            let (exists, key, _): (bool, Option<RedisStr>, ()) = REDIS
                 .pipe(|q| {
                     q.exists(&hash_key)
                         .hget(&hash_key, key)
@@ -347,32 +347,7 @@ async fn get_note_by_name(name: String, chat: i64) -> Result<Option<entities::no
             Ok(Some(res))
         },
         |_, value| async move {
-            let hash_key = get_hash_key(chat);
-            let exists: bool = REDIS.sq(|q| q.exists(&hash_key)).await?;
-
-            if !exists {
-                let notes = entities::notes::Entity::find()
-                    .filter(entities::notes::Column::Chat.eq(chat))
-                    .all(DB.deref())
-                    .await?;
-                let notes = notes
-                    .into_iter()
-                    .filter_map(|v| {
-                        if let Some(s) = RedisStr::new(&v).ok() {
-                            Some((v.name, s))
-                        } else {
-                            None
-                        }
-                    })
-                    .collect_vec();
-                REDIS
-                    .pipe(|q| {
-                        q.hset_multiple(&hash_key, notes.as_slice())
-                            .expire(&hash_key, CONFIG.timing.cache_timeout)
-                    })
-                    .await?;
-            }
-
+            refresh_notes(chat).await?;
             Ok(value)
         },
     )
@@ -396,10 +371,14 @@ async fn delete<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
 }
 
 async fn list_notes(message: &Message) -> Result<()> {
-    let hash_key = get_hash_key(message.get_chat().get_id());
-    let (exists, notes): (bool, Option<HashMap<String, RedisStr>>) = REDIS
-        .pipe(|q| q.exists(&hash_key).hgetall(&hash_key))
-        .await?;
+    is_group_or_die(message.get_chat_ref()).await?;
+    let notes = refresh_notes(message.get_chat().get_id()).await?;
+    let m = notes
+        .iter()
+        .map(|(n, _)| format!("- {}", n))
+        .collect::<Vec<String>>()
+        .join("\n");
+    message.reply(m).await?;
     Ok(())
 }
 
@@ -411,7 +390,7 @@ async fn save<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
     log::info!("save key: {}", key);
     let hash_key = get_hash_key(message.get_chat().get_id());
     let rs = RedisStr::new(&model)?;
-    REDIS.sq(|q| q.hset(&hash_key, &key, rs)).await?;
+    REDIS.sq(|q| q.hset(&hash_key, &model.name, rs)).await?;
     let name = model.name.clone();
     entities::notes::Entity::insert(model.cache(key).await?)
         .on_conflict(
