@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use crate::metadata::metadata;
 use crate::persist::redis::{CachedQuery, CachedQueryTrait, RedisCache, RedisStr};
@@ -272,9 +272,9 @@ fn get_hash_key(chat: i64) -> String {
     format!("ncch:{}", chat)
 }
 
-async fn refresh_notes(chat: i64) -> Result<HashMap<String, entities::notes::Model>> {
+async fn refresh_notes(chat: i64) -> Result<BTreeMap<String, entities::notes::Model>> {
     let hash_key = get_hash_key(chat);
-    let (exists, notes): (bool, HashMap<String, RedisStr>) = REDIS
+    let (exists, notes): (bool, BTreeMap<String, RedisStr>) = REDIS
         .pipe(|q| q.exists(&hash_key).hgetall(&hash_key))
         .await?;
 
@@ -303,7 +303,7 @@ async fn refresh_notes(chat: i64) -> Result<HashMap<String, entities::notes::Mod
         Ok(notes
             .into_iter()
             .map(|v| (v.name.clone(), v))
-            .collect::<HashMap<String, entities::notes::Model>>())
+            .collect::<BTreeMap<String, entities::notes::Model>>())
     } else {
         Ok(notes
             .into_iter()
