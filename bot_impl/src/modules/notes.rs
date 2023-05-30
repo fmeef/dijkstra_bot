@@ -1,6 +1,8 @@
+use std::collections::HashMap;
+
 use crate::metadata::metadata;
-use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache};
-use crate::statics::{DB, REDIS, TG};
+use crate::persist::redis::{CachedQuery, CachedQueryTrait, RedisCache, RedisStr};
+use crate::statics::{CONFIG, DB, REDIS, TG};
 use crate::tg::admin_helpers::is_group_or_die;
 
 use crate::tg::button::OnPush;
@@ -11,12 +13,11 @@ use crate::util::string::Speak;
 use ::sea_orm_migration::prelude::*;
 use futures::future::BoxFuture;
 use futures::FutureExt;
-
-use chrono::Duration;
+use itertools::Itertools;
 use redis::AsyncCommands;
 
 use lazy_static::__Deref;
-use sea_orm::EntityTrait;
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
 use crate::util::error::{BotError, Result};
 use botapi::gen_types::{CallbackQuery, Message, UpdateExt};
@@ -264,21 +265,119 @@ async fn get<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
     }
 }
 
+#[inline(always)]
+fn get_hash_key(chat: i64) -> String {
+    format!("ncch:{}", chat)
+}
+
+async fn refresh_notes(chat: i64) -> Result<HashMap<String, entities::notes::Model>> {
+    let hash_key = get_hash_key(chat);
+
+    let hash_key = get_hash_key(chat);
+    let (exists, notes): (bool, HashMap<String, RedisStr>) = REDIS
+        .pipe(|q| q.exists(&hash_key).hgetall(&hash_key))
+        .await?;
+
+    if !exists {
+        let notes = entities::notes::Entity::find()
+            .filter(entities::notes::Column::Chat.eq(chat))
+            .all(DB.deref())
+            .await?;
+        let st = notes
+            .iter()
+            .filter_map(|v| {
+                if let Some(s) = RedisStr::new(&v).ok() {
+                    Some((v.name.clone(), s))
+                } else {
+                    None
+                }
+            })
+            .collect_vec();
+        REDIS
+            .pipe(|q| {
+                q.hset_multiple(&hash_key, st.as_slice())
+                    .expire(&hash_key, CONFIG.timing.cache_timeout)
+            })
+            .await?;
+
+        Ok(notes
+            .into_iter()
+            .map(|v| (v.name.clone(), v))
+            .collect::<HashMap<String, entities::notes::Model>>())
+    } else {
+        Ok(notes
+            .into_iter()
+            .filter_map(|(n, v)| v.get().ok().map(|v| (n, v)))
+            .collect())
+    }
+}
+
 async fn get_note_by_name(name: String, chat: i64) -> Result<Option<entities::notes::Model>> {
     let key = format!("note:{}:{}", chat, name);
     log::info!("get key: {}", key);
-    let note = default_cache_query(
-        move |_, _| async move {
+    let hash_key = get_hash_key(chat);
+    let note = CachedQuery::new(
+        |_, _| async move {
             let res = entities::notes::Entity::find_by_id((name, chat))
                 .one(DB.deref().deref())
                 .await?;
+
             Ok(res)
         },
-        Duration::days(1),
+        |key, _| async move {
+            let (exists, key): (bool, Option<RedisStr>) = REDIS
+                .pipe(|q| {
+                    q.exists(&hash_key)
+                        .hget(&hash_key, key)
+                        .expire(&hash_key, CONFIG.timing.cache_timeout)
+                })
+                .await?;
+
+            let res = if let Some(key) = key {
+                let key = key.get()?;
+                if exists {
+                    key
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            Ok(Some(res))
+        },
+        |_, value| async move {
+            let hash_key = get_hash_key(chat);
+            let exists: bool = REDIS.sq(|q| q.exists(&hash_key)).await?;
+
+            if !exists {
+                let notes = entities::notes::Entity::find()
+                    .filter(entities::notes::Column::Chat.eq(chat))
+                    .all(DB.deref())
+                    .await?;
+                let notes = notes
+                    .into_iter()
+                    .filter_map(|v| {
+                        if let Some(s) = RedisStr::new(&v).ok() {
+                            Some((v.name, s))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect_vec();
+                REDIS
+                    .pipe(|q| {
+                        q.hset_multiple(&hash_key, notes.as_slice())
+                            .expire(&hash_key, CONFIG.timing.cache_timeout)
+                    })
+                    .await?;
+            }
+
+            Ok(value)
+        },
     )
     .query(&key, &())
     .await?;
-
     Ok(note)
 }
 
@@ -296,12 +395,23 @@ async fn delete<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
     Ok(())
 }
 
+async fn list_notes(message: &Message) -> Result<()> {
+    let hash_key = get_hash_key(message.get_chat().get_id());
+    let (exists, notes): (bool, Option<HashMap<String, RedisStr>>) = REDIS
+        .pipe(|q| q.exists(&hash_key).hgetall(&hash_key))
+        .await?;
+    Ok(())
+}
+
 async fn save<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
     is_group_or_die(message.get_chat_ref()).await?;
 
     let model = get_model(message, args)?;
     let key = format!("note:{}:{}", message.get_chat().get_id(), model.name);
     log::info!("save key: {}", key);
+    let hash_key = get_hash_key(message.get_chat().get_id());
+    let rs = RedisStr::new(&model)?;
+    REDIS.sq(|q| q.hset(&hash_key, &key, rs)).await?;
     let name = model.name.clone();
     entities::notes::Entity::insert(model.cache(key).await?)
         .on_conflict(
@@ -316,6 +426,7 @@ async fn save<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
         )
         .exec(DB.deref().deref())
         .await?;
+
     message.speak(format!("Saved note {}", name)).await?;
     Ok(())
 }
