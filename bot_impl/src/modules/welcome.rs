@@ -6,7 +6,7 @@ use crate::tg::command::{Context, TextArgs};
 use crate::tg::permissions::*;
 use crate::util::error::{BotError, Result};
 
-use crate::util::string::Lang;
+use crate::util::string::{get_chat_lang, Lang};
 use crate::{metadata::metadata, util::string::Speak};
 use botapi::gen_types::{Chat, ChatMemberUpdated, Message, UpdateExt};
 use chrono::Duration;
@@ -344,21 +344,19 @@ async fn goodbye_mambers(
 
 pub async fn handle_update<'a>(update: &UpdateExt, cmd: &Option<Context<'a>>) -> Result<()> {
     if let Some(cmd) = cmd {
-        if let Some(userchanged) = update.user_event() {
-            if let Some(model) = should_welcome(userchanged.get_chat()).await? {
-                if model.enabled {
-                    match userchanged {
-                        UserChanged::UserJoined(member) => {
-                            welcome_mambers(member, model, &cmd.lang).await?
-                        }
-                        UserChanged::UserLeft(member) => {
-                            goodbye_mambers(member, model, &cmd.lang).await?
-                        }
+        handle_command(cmd).await?;
+    } else if let Some(userchanged) = update.user_event() {
+        let lang = get_chat_lang(userchanged.get_chat().get_id()).await?;
+        if let Some(model) = should_welcome(userchanged.get_chat()).await? {
+            if model.enabled {
+                match userchanged {
+                    UserChanged::UserJoined(member) => {
+                        welcome_mambers(member, model, &lang).await?
                     }
+                    UserChanged::UserLeft(member) => goodbye_mambers(member, model, &lang).await?,
                 }
             }
         }
-        handle_command(cmd).await?;
     }
 
     Ok(())
