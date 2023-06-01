@@ -435,7 +435,7 @@ pub async fn warn_with_action(
 }
 
 /// Sets the duration after which warns expire for the provided chat
-pub async fn set_warn_time(chat: &Chat, time: i64) -> Result<()> {
+pub async fn set_warn_time(chat: &Chat, time: Option<i64>) -> Result<()> {
     let chat_id = chat.get_id();
 
     let model = dialogs::ActiveModel {
@@ -444,7 +444,7 @@ pub async fn set_warn_time(chat: &Chat, time: i64) -> Result<()> {
         chat_type: Set(chat.get_tg_type().into_owned()),
         warn_limit: NotSet,
         action_type: NotSet,
-        warn_time: Set(Some(time)),
+        warn_time: Set(time),
         can_send_messages: NotSet,
         can_send_audio: NotSet,
         can_send_video: NotSet,

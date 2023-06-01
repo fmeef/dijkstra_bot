@@ -22,6 +22,16 @@ metadata!("Bans",
     a turing-complete language \(known to be a dangerous piracy tool\) or downloaded a
     yellow terrorist app? This module is the solution!  
     Mute or ban users, punish blue-texters with /kickme, etc
+
+    Ban and mute commands take an optional time parameter \(5m, 1d, etc\) and can either take a user
+    parameter by mention or @handle or by replying to the user's message.
+
+    [*Examples]  
+    [_bans a user for 5 minutes]  
+    /ban @username 5m
+
+    [_mutes a user forever]  
+    /mute @username
     "#,
     { command = "kickme", help = "Send a free course on termux hacking"},
     { command = "mute", help = "Mute a user"},

@@ -12,6 +12,7 @@ use botapi::{
         CallbackQuery, InlineKeyboardButton, InlineKeyboardButtonBuilder, Message, UpdateExt,
     },
 };
+use convert_case::Casing;
 use dashmap::DashMap;
 use macros::{lang_fmt, message_fmt};
 
@@ -23,13 +24,14 @@ use super::{
     user::RecordUser,
 };
 use crate::{
-    metadata::Metadata,
+    metadata::{markdownify, Metadata},
     modules,
     statics::ME,
+    tg::{admin_helpers::IntoChatUser, markdown::MarkupBuilder},
     util::{
         callback::{MultiCallback, MultiCb, SingleCallback, SingleCb},
         error::BotError,
-        string::should_ignore_chat,
+        string::{should_ignore_chat, Speak},
     },
 };
 use crate::{
@@ -37,6 +39,7 @@ use crate::{
     util::error::Result,
     util::string::get_chat_lang,
 };
+use convert_case::Case;
 use futures::{Future, StreamExt};
 use std::sync::Arc;
 
@@ -55,15 +58,24 @@ impl MetadataCollection {
                 let helps = v
                     .commands
                     .iter()
-                    .map(|(c, h)| format!("/{}: {}", c, h))
+                    .map(|(c, h)| format!("/{}: {}", c, markdownify(h)))
                     .collect::<Vec<String>>()
                     .join("\n");
-                format!("[*{}]:\n{}\n\nCommands:\n{}", v.name, v.description, helps)
+
+                if v.commands.len() > 0 {
+                    format!("[*{}]:\n{}\n\nCommands:\n{}", v.name, v.description, helps)
+                } else {
+                    format!("[*{}]\n{}", v.name, v.description)
+                }
             })
             .unwrap_or_else(|| INVALID.to_owned())
     }
 
-    pub async fn get_conversation(&self, message: &Message) -> Result<Conversation> {
+    pub async fn get_conversation(
+        &self,
+        message: &Message,
+        current: Option<String>,
+    ) -> Result<Conversation> {
         let me = ME.get().unwrap();
 
         let lang = get_chat_lang(message.get_chat().get_id()).await?;
@@ -80,12 +92,20 @@ impl MetadataCollection {
         let start = state.get_start()?.state_id;
         self.modules.iter().for_each(|(_, n)| {
             let s = state.add_state(self.get_module_text(&n.name));
-            state.add_transition(start, s, n.name.clone());
-            state.add_transition(s, start, "Back");
+            state.add_transition(start, s, n.name.to_lowercase(), n.name.to_case(Case::Title));
+            state.add_transition(s, start, "back", "Back");
+            n.sections.iter().for_each(|(sub, content)| {
+                let sb = state.add_state(content);
+                state.add_transition(s, sb, sub.to_lowercase(), sub.to_case(Case::Title));
+                state.add_transition(sb, s, "back", "Back");
+            });
         });
 
         let conversation = state.build();
         conversation.write_self().await?;
+        if let Some(current) = current {
+            conversation.transition(current).await?;
+        }
         Ok(conversation)
     }
 }
@@ -97,28 +117,59 @@ pub struct TgClient {
     pub button_repeat: Arc<DashMap<String, MultiCb<CallbackQuery, Result<bool>>>>,
 }
 
-pub async fn show_help<'a>(message: &Message, helps: Arc<MetadataCollection>) -> Result<bool> {
+pub async fn show_help<'a>(
+    message: &Message,
+    helps: Arc<MetadataCollection>,
+    args: Option<&'a str>,
+) -> Result<bool> {
     if !should_ignore_chat(message.get_chat().get_id()).await? {
         let lang = get_chat_lang(message.get_chat().get_id()).await?;
         if is_dm(message.get_chat_ref()) {
             let me = ME.get().unwrap();
-            TG.client()
-                .build_send_message(
-                    message.get_chat().get_id(),
-                    &lang_fmt!(lang, "welcome", me.get_first_name()),
-                )
-                .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
-                    helps
-                        .get_conversation(&message)
-                        .await?
-                        .get_current_markup(3)
-                        .await?,
-                ))
-                .reply_to_message_id(message.get_message_id())
-                .build()
-                .await?;
+            let param = args.map(|v| v.to_lowercase());
+            log::info!("custom help {:?}", param);
+            let conv = match helps.get_conversation(&message, param).await {
+                Ok(v) => v,
+                Err(_) => {
+                    message
+                        .speak(lang_fmt!(lang, "invalid_help", args.unwrap_or("default")))
+                        .await?;
+                    return Ok(false);
+                }
+            };
+            let current = conv.get_current().await?;
+            let m = if current.state_id == conv.get_start()?.state_id {
+                lang_fmt!(lang, "welcome", me.get_first_name())
+            } else {
+                current.content.clone()
+            };
+
+            match MarkupBuilder::from_murkdown_chatuser(&m, message.get_chatuser().as_ref()).await {
+                Ok(md) => {
+                    let (text, entities) = md.build();
+                    TG.client()
+                        .build_send_message(message.get_chat().get_id(), text)
+                        .entities(&entities)
+                        .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
+                            conv.get_current_markup(3).await?,
+                        ))
+                        .reply_to_message_id(message.get_message_id())
+                        .build()
+                        .await?;
+                }
+                Err(_) => {
+                    TG.client()
+                        .build_send_message(message.get_chat().get_id(), &m)
+                        .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
+                            conv.get_current_markup(3).await?,
+                        ))
+                        .reply_to_message_id(message.get_message_id())
+                        .build()
+                        .await?;
+                }
+            }
         } else {
-            let url = get_url("help")?;
+            let url = get_url(format!("help{}", args.unwrap_or("")))?;
             let mut button = InlineKeyboardBuilder::default();
 
             button.button(
@@ -147,7 +198,7 @@ impl TgClient {
         Fut: Future<Output = Result<()>> + Send + 'static,
     {
         if let Some(data) = button.get_callback_data() {
-            log::info!("registering button callback with data {}", data);
+            //            log::info!("registering button callback with data {}", data);
             self.button_events
                 .insert(data.into_owned(), SingleCb::new(func));
         }
@@ -161,7 +212,7 @@ impl TgClient {
         Fut: Future<Output = Result<bool>> + Send + 'static,
     {
         if let Some(data) = button.get_callback_data() {
-            log::info!("registering button callback with data {}", data);
+            //            log::info!("registering button callback with data {}", data);
             self.button_repeat
                 .insert(data.into_owned(), MultiCb::new(func));
         }

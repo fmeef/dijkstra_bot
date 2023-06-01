@@ -22,27 +22,27 @@ pub type Result<T> = std::result::Result<T, BotError>;
 #[async_trait]
 pub trait SpeakErr<T: Send> {
     /// Maps the error to BotError::Speak, calling to_string() for the message
-    async fn speak_err(self, chat: &Chat) -> Result<()>;
+    async fn speak_err(self, chat: &Chat) -> Result<T>;
 
     /// Maps the error to BotError::Speak using a custom function to derive error message
-    async fn speak_err_fmt<F>(self, chat: &Chat, func: F) -> Result<()>
+    async fn speak_err_fmt<F>(self, chat: &Chat, func: F) -> Result<T>
     where
         F: for<'b> FnOnce(&'b str) -> String + Send;
 }
 
 #[async_trait]
 impl<T: Send> SpeakErr<T> for Result<T> {
-    async fn speak_err(self, chat: &Chat) -> Result<()> {
+    async fn speak_err(self, chat: &Chat) -> Result<T> {
         self.speak_err_fmt(chat, |m| format!("Telegram error: {}", m))
             .await
     }
 
-    async fn speak_err_fmt<F>(self, chat: &Chat, func: F) -> Result<()>
+    async fn speak_err_fmt<F>(self, chat: &Chat, func: F) -> Result<T>
     where
         F: for<'b> FnOnce(&'b str) -> String + Send,
     {
-        if let Err(err) = self {
-            match err {
+        match self {
+            Err(err) => match err {
                 BotError::ApiError(_) => {
                     let message = err.get_tg_error();
                     let err = func(message);
@@ -54,9 +54,8 @@ impl<T: Send> SpeakErr<T> for Result<T> {
                     let err = func(&message);
                     Err(BotError::speak(err, chat.get_id()))
                 }
-            }
-        } else {
-            Ok(())
+            },
+            Ok(v) => Ok(v),
         }
     }
 }

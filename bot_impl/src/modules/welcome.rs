@@ -31,7 +31,7 @@ metadata!("Welcome",
     /setwelcome Hi there \{mention\}, welcome to \{chatname\}
     
     "#,
-    { command = "welcome", help = "Usage: welcome <on/off>. Enables or disables welcome" },
+    { command = "welcome", help = "Usage: welcome \\<on/off\\>. Enables or disables welcome" },
     { command = "setwelcome", help = "Sets the welcome text. Reply to a message or media to set"},
     { command = "setgoodbye", help = "Sets the goodbye message for when a user leaves"},
     { command = "resetwelcome", help = "Resets welcome and goodbye messages to default" }

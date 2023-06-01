@@ -66,7 +66,7 @@ async fn get_lang_conversation(message: &Message, current: &Lang) -> Result<Conv
     let start = state.get_start()?.state_id;
     get_langs().iter().for_each(|lang| {
         let success = state.add_state(lang_fmt!(lang, "setlang"));
-        state.add_transition(start, success, lang.into_code());
+        state.add_transition(start, success, lang.into_code(), lang.into_code());
     });
     message.get_chat().record_chat().await?;
     let id = message.get_chat().get_id();

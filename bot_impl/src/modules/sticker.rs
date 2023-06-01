@@ -70,11 +70,21 @@ fn upload_sticker_conversation(message: &Message) -> Result<Conversation> {
     let state_tags = conversation.add_state(STATE_TAGS);
     let state_done = conversation.add_state(STATE_DONE);
 
-    conversation.add_transition(start_state, upload_state, TRANSITION_UPLOAD);
-    conversation.add_transition(upload_state, name_state, TRANSITION_NAME);
-    conversation.add_transition(name_state, state_tags, TRANSITION_TAG);
-    conversation.add_transition(state_tags, state_tags, TRANSITION_MORETAG);
-    conversation.add_transition(state_tags, state_done, TRANSITION_DONE);
+    conversation.add_transition(
+        start_state,
+        upload_state,
+        TRANSITION_UPLOAD,
+        TRANSITION_UPLOAD,
+    );
+    conversation.add_transition(upload_state, name_state, TRANSITION_NAME, TRANSITION_NAME);
+    conversation.add_transition(name_state, state_tags, TRANSITION_TAG, TRANSITION_TAG);
+    conversation.add_transition(
+        state_tags,
+        state_tags,
+        TRANSITION_MORETAG,
+        TRANSITION_MORETAG,
+    );
+    conversation.add_transition(state_tags, state_done, TRANSITION_DONE, TRANSITION_DONE);
 
     Ok(conversation.build())
 }

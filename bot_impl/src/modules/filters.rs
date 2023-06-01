@@ -43,7 +43,7 @@ metadata!("Filters",
     Respond to keywords with canned messages. This module is guaranteed to cause spam in the support chat
     about how the bot is "alive" or an "AI"
     "#,
-    { command = "filter", help = "<trigger> <reply>: Trigger a reply when soemone says something" },
+    { command = "filter", help = "\\<trigger\\> \\<reply\\>: Trigger a reply when soemone says something" },
     { command = "filters", help = "List all filters" },
     { command = "stop", help = "Stop a filter" },
     { command = "stopall", help = "Stop all filters" }

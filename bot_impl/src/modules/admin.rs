@@ -12,7 +12,16 @@ use macros::{entity_fmt, lang_fmt};
 use sea_orm_migration::MigrationTrait;
 metadata!("Admin",
     r#"
-    Manage admins using the bot. Promote or demote users without having to google how to do it on iOS
+    Manage admins using the bot. Promote or demote users without having to google how to do it on iOS.
+
+    The promote and demote command either take a username/mention as a parameter or allow replying to
+    a message from the user that you want to interact with. Users promoted in this way can only have the
+    same permissions as the bot. The bot cannot demote users that have been promoted by another bot or
+    admin.
+
+    The /admincache command is used to refresh the cached admin list if the admins of a group were
+    changed recently. This is to avoid spamming the telegram api. Use this command if the bot
+    does not correctly recognize an admin
     "#,
     { command = "admincache", help = "Refresh the cached list of admins" },
     { command = "admins", help = "Get a list of admins" },

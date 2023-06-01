@@ -28,6 +28,7 @@ metadata!("Notes",
     Easily store and retrive text, media, and other content by keywords. 
     Useful for storing answers to often asked questions or searching uploaded media.     
     "#,
+    { sub = "Examples", content = r#"teset"# },
     { command = "save", help = "Saves a note" },
     { command = "get", help = "Get a note" },
     { command = "delete", help = "Delete a note" },

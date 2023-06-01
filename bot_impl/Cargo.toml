@@ -53,6 +53,9 @@ glob = "0.3.1"
 llama-rs = { path = "./llama-rs/llama-rs" }
 rusty_pool = "0.7.0"
 seq-macro = "0.3.3"
+convert_case = "0.6.0"
+unicase = "2.6.0"
+unicase_serde = "0.1.0"
 
 
 [build-dependencies]

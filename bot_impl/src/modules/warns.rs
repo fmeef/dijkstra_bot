@@ -20,12 +20,19 @@ use sea_orm_migration::MigrationTrait;
 metadata!("Warns",
     r#"
     Keep your users in line with warnings! Good for pressuring people not to say the word "bro"
+
+    Use the /warn command by either passing a mention/username or by replying to a user to warn.  
+    After a user gets a set amount of warnings \(default 3\) the action specified by the /warnmode will
+    be applied. The default action is to mute the user.
+ 
     "#,
     { command = "warn", help = "Warns a user"},
     { command = "warns", help = "Get warn count of a user"},
     { command = "clearwarns", help = "Delete all warns for a user"},
-    { command = "warntime", help = "Sets time before warns expire. Usage: /warntime 6m for 6 minutes"},
-    { command = "warnmode", help = "Set the action when max warns are reached. Can be 'mute', 'ban' or 'shame'"}
+    { command = "warntime", help = "Sets time before warns expire. Usage: /warntime 6m for 6 minutes.
+        Use /warntime clear to never expire"},
+    { command = "warnmode", help = "Set the action when max warns are reached. Can be 'mute', 'ban' or 'shame'"},
+    { command = "warnlimit", help = "Sets the number of warns before an action is taken." }
 );
 
 pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
@@ -127,10 +134,13 @@ async fn set_time<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
     message
         .check_permissions(|p| p.can_restrict_members)
         .await?;
-    if let Some(time) = parse_duration(&Some(args.as_slice()), message.get_chat().get_id())? {
-        set_warn_time(message.get_chat_ref(), time.num_seconds()).await?;
+    if let Ok(Some(time)) = parse_duration(&Some(args.as_slice()), message.get_chat().get_id()) {
+        set_warn_time(message.get_chat_ref(), Some(time.num_seconds())).await?;
         let time = format_duration(time.to_std()?);
         message.reply(format!("Set warn time to {}", time)).await?;
+    } else if args.text.trim() == "clear" {
+        set_warn_time(message.get_chat_ref(), None).await?;
+        message.reply("Cleared warn time").await?;
     } else {
         message.reply("Specify a time").await?;
     }
@@ -148,6 +158,28 @@ async fn cmd_warn_mode<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()>
     Ok(())
 }
 
+async fn cmd_warn_limit<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
+    message
+        .check_permissions(|p| p.can_restrict_members)
+        .await?;
+    match i32::from_str_radix(args.text.trim(), 10) {
+        Ok(num) => {
+            if num > 0 {
+                set_warn_limit(message.get_chat_ref(), num).await?;
+                message.reply(format!("set warn limit to {}", num)).await?;
+            } else {
+                message
+                    .reply("Negative warn limits don't make sense")
+                    .await?;
+            }
+        }
+        Err(_) => {
+            message.speak("Enter a number").await?;
+        }
+    }
+    Ok(())
+}
+
 async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
     if let Some((cmd, entities, args, message, lang)) = ctx.cmd() {
         match cmd {
@@ -156,6 +188,7 @@ async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
             "clearwarns" => clear(message, &entities).await,
             "warntime" => set_time(message, args).await,
             "warnmode" => cmd_warn_mode(message, args).await,
+            "warnlimit" => cmd_warn_limit(message, args).await,
             _ => Ok(()),
         }?;
     }

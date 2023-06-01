@@ -159,6 +159,7 @@ pub struct FSMTransition {
     pub transition_id: Uuid,
     pub start_state: Uuid,
     pub end_state: Uuid,
+    pub name: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -186,13 +187,14 @@ impl FSMState {
 
 impl FSMTransition {
     /// Create a new transition associated with a state id
-    fn new(start_state: Uuid, end_state: Uuid) -> Self {
+    fn new(start_state: Uuid, end_state: Uuid, name: String) -> Self {
         let id = Uuid::new_v4();
 
         FSMTransition {
             transition_id: id,
             start_state,
             end_state,
+            name,
         }
     }
 }
@@ -205,8 +207,9 @@ impl ConversationState {
         start: Uuid,
         end: Uuid,
         triggerphrase: S,
+        name: S,
     ) -> Uuid {
-        let transition = FSMTransition::new(start, end);
+        let transition = FSMTransition::new(start, end, name.into());
         let uuid = transition.transition_id;
         self.transitions
             .insert((start, triggerphrase.into()), transition);
@@ -399,8 +402,8 @@ impl Conversation {
                 me.0.transitions
                     .iter()
                     .filter(|(_, t)| t.start_state == state.state_id)
-                    .map(|((_, n), t)| {
-                        let b = InlineKeyboardButtonBuilder::new(n.to_owned())
+                    .map(|((_, _), t)| {
+                        let b = InlineKeyboardButtonBuilder::new(t.name.clone())
                             .set_callback_data(Uuid::new_v4().to_string())
                             .build();
                         let trans = t.end_state.to_owned();
