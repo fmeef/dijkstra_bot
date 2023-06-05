@@ -9,6 +9,7 @@ use crate::tg::button::OnPush;
 use crate::tg::command::{get_content, handle_deep_link, Context, InputType, TextArg, TextArgs};
 
 use crate::tg::markdown::button_deeplink_key;
+use crate::tg::permissions::IsGroupAdmin;
 use crate::util::string::Speak;
 use ::sea_orm_migration::prelude::*;
 use futures::future::BoxFuture;
@@ -352,7 +353,7 @@ async fn get_note_by_name(name: String, chat: i64) -> Result<Option<entities::no
 }
 
 async fn delete<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
-    is_group_or_die(message.get_chat_ref()).await?;
+    message.check_permissions(|p| p.can_change_info).await?;
     let model = get_model(message, args)?;
     let name = model.name.clone();
     let hash_key = get_hash_key(message.get_chat().get_id());
@@ -365,7 +366,7 @@ async fn delete<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
 }
 
 async fn list_notes(message: &Message) -> Result<()> {
-    is_group_or_die(message.get_chat_ref()).await?;
+    message.check_permissions(|p| p.can_manage_chat).await?;
     let notes = refresh_notes(message.get_chat().get_id()).await?;
     let m = [String::from("Notes for {chatname}")]
         .into_iter()
@@ -377,8 +378,7 @@ async fn list_notes(message: &Message) -> Result<()> {
 }
 
 async fn save<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
-    is_group_or_die(message.get_chat_ref()).await?;
-
+    message.check_permissions(|p| p.can_change_info).await?;
     let model = get_model(message, args)?;
     let key = format!("note:{}:{}", message.get_chat().get_id(), model.name);
     log::info!("save key: {}", key);

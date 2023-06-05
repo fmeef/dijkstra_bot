@@ -4,7 +4,7 @@ use crate::tg::command::{Context, Entities, TextArgs};
 use crate::tg::permissions::*;
 
 use crate::tg::markdown::{MarkupBuilder, MarkupType};
-use crate::tg::user::{get_user, Username};
+use crate::tg::user::{get_user, GetUser, Username};
 use crate::util::error::Result;
 
 use crate::metadata::metadata;
@@ -39,16 +39,18 @@ async fn cmd_approve<'a>(
         .await?;
     action_message(message, entities, Some(args), |message, user, _| {
         async move {
-            approve(message.get_chat_ref(), user).await?;
-            let name = user.name_humanreadable();
-            message
-                .speak_fmt(entity_fmt!(
-                    lang,
-                    message.get_chat().get_id(),
-                    "approved",
-                    MarkupType::TextMention(user.clone()).text(&name)
-                ))
-                .await?;
+            if let Some(user) = user.get_cached_user().await? {
+                approve(message.get_chat_ref(), &user).await?;
+                let name = user.name_humanreadable();
+                message
+                    .speak_fmt(entity_fmt!(
+                        lang,
+                        message.get_chat().get_id(),
+                        "approved",
+                        MarkupType::TextMention(user.clone()).text(&name)
+                    ))
+                    .await?;
+            }
             Ok(())
         }
         .boxed()
@@ -69,13 +71,13 @@ async fn cmd_unapprove<'a>(
     action_message(message, entities, Some(args), |message, user, _| {
         async move {
             unapprove(message.get_chat_ref(), user).await?;
-            let name = user.name_humanreadable();
+            let name = user.mention().await?;
             message
                 .speak_fmt(entity_fmt!(
                     lang,
                     message.get_chat().get_id(),
                     "unapproved",
-                    MarkupType::TextMention(user.clone()).text(&name)
+                    name
                 ))
                 .await?;
             Ok(())

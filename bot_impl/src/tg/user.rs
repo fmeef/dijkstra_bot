@@ -11,6 +11,8 @@ use async_trait::async_trait;
 use botapi::gen_types::{Chat, UpdateExt, User};
 use redis::AsyncCommands;
 
+use super::markdown::{Markup, MarkupType};
+
 fn get_user_cache_key(user: i64) -> String {
     format!("usrc:{}", user)
 }
@@ -175,6 +177,10 @@ pub trait RecordUser {
 pub trait GetUser {
     /// Get the user's full information from redis cache
     async fn get_cached_user(&self) -> Result<Option<User>>;
+
+    async fn cached_name(&self) -> Result<String>;
+
+    async fn mention(&self) -> Result<Markup<String>>;
 }
 
 impl Username for User {
@@ -215,6 +221,25 @@ impl RecordChat for Chat {
 impl GetUser for i64 {
     async fn get_cached_user(&self) -> Result<Option<User>> {
         get_user(*self).await
+    }
+
+    async fn cached_name(&self) -> Result<String> {
+        let res = if let Some(user) = self.get_cached_user().await? {
+            user.name_humanreadable()
+        } else {
+            self.to_string()
+        };
+        Ok(res)
+    }
+
+    async fn mention(&self) -> Result<Markup<String>> {
+        let res = if let Some(user) = self.get_cached_user().await? {
+            let name = user.name_humanreadable();
+            MarkupType::TextMention(user).text(name)
+        } else {
+            MarkupType::Text.text(self.to_string())
+        };
+        Ok(res)
     }
 }
 

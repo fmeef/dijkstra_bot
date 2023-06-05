@@ -1,7 +1,8 @@
 use crate::tg::permissions::*;
+use crate::tg::user::GetUser;
 use crate::{
     metadata::metadata,
-    tg::{admin_helpers::*, command::Context, markdown::MarkupType, user::Username},
+    tg::{admin_helpers::*, command::Context},
     util::error::Result,
     util::string::{get_chat_lang, Speak},
 };
@@ -38,10 +39,8 @@ async fn promote<'a>(context: &'a Context<'a>) -> Result<()> {
         let lang = context.lang.clone();
         action_message(message, &command.entities, None, |message, user, _| {
             async move {
-                message.get_chat().promote(user.get_id()).await?;
-
-                let name = user.name_humanreadable();
-                let mention = MarkupType::TextMention(user.to_owned()).text(&name);
+                message.get_chat().promote(user).await?;
+                let mention = user.mention().await?;
                 message
                     .speak_fmt(entity_fmt!(
                         lang,
@@ -66,15 +65,14 @@ async fn demote<'a>(context: &'a Context<'a>) -> Result<()> {
 
         action_message(message, &command.entities, None, |message, user, _| {
             async move {
-                match message.get_chat().demote(user.get_id()).await {
+                match message.get_chat().demote(user).await {
                     Err(err) => {
                         message
                             .reply(format!("failed to demote user: {}", err.get_tg_error()))
                             .await?;
                     }
                     Ok(_) => {
-                        let name = user.name_humanreadable();
-                        let mention = MarkupType::TextMention(user.to_owned()).text(&name);
+                        let mention = user.mention().await?;
                         message
                             .speak_fmt(entity_fmt!(
                                 lang,

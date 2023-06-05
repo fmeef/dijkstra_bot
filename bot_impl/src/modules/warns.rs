@@ -1,5 +1,6 @@
 use crate::tg::command::Context;
-use crate::tg::user::Username;
+use crate::tg::markdown::MarkupType;
+use crate::tg::user::GetUser;
 use crate::util::error::BotError;
 use crate::util::string::Lang;
 use crate::{
@@ -14,7 +15,7 @@ use botapi::gen_types::{Message, UpdateExt};
 
 use futures::FutureExt;
 use humantime::format_duration;
-use macros::lang_fmt;
+use macros::{entity_fmt, lang_fmt};
 use sea_orm_migration::MigrationTrait;
 
 metadata!("Warns",
@@ -93,8 +94,17 @@ pub async fn warns<'a>(message: &Message, entities: &Entities<'a>, lang: Lang) -
                 })
                 .collect::<Vec<String>>()
                 .join("\n");
+
+            let list = MarkupType::Text.text(&list);
+            let mention = user.mention().await?;
             message
-                .reply(lang_fmt!(lang, "warns", user.name_humanreadable(), list))
+                .reply_fmt(entity_fmt!(
+                    lang,
+                    message.get_chat().get_id(),
+                    "warns",
+                    mention,
+                    list
+                ))
                 .await?;
             Ok(())
         }
@@ -115,9 +125,8 @@ pub async fn clear<'a>(message: &Message, entities: &Entities<'a>) -> Result<()>
         async move {
             clear_warns(message.get_chat_ref(), user).await?;
 
-            let name = user
-                .get_username()
-                .unwrap_or_else(|| std::borrow::Cow::Owned(user.get_id().to_string()));
+            let name = user.cached_name().await?;
+
             message
                 .reply(format!("Cleared warns for user {}", name))
                 .await?;

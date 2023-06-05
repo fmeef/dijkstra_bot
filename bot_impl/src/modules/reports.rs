@@ -1,8 +1,8 @@
 use crate::statics::TG;
 use crate::tg::command::Context;
-use crate::tg::markdown::MarkupType;
+
 use crate::tg::permissions::*;
-use crate::tg::user::Username;
+use crate::tg::user::GetUser;
 use crate::util::error::BotError;
 use crate::util::string::{should_ignore_chat, Lang};
 use crate::{metadata::metadata, tg::admin_helpers::*, tg::command::Entities, util::error::Result};
@@ -53,8 +53,7 @@ pub async fn report<'a>(message: &Message, entities: &Entities<'a>, lang: Lang) 
                 })
                 .collect::<Vec<MessageEntity>>();
 
-            let name = user.name_humanreadable();
-            let mention = MarkupType::TextMention(user.to_owned()).text(&name);
+            let mention = user.mention().await?;
             let te = textentity_fmt!(lang, "reported", mention);
             let (text, entities) = te.textentities();
             admins.extend_from_slice(entities.as_slice());

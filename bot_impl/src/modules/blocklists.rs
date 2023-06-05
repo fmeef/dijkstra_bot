@@ -523,7 +523,7 @@ async fn warn(message: &Message, user: &User, reason: Option<String>) -> Result<
     let time = dialog.warn_time.map(|t| Duration::seconds(t));
     warn_with_action(
         message,
-        user,
+        user.get_id(),
         reason.clone().as_ref().map(|v| v.as_str()),
         time,
     )
@@ -559,7 +559,7 @@ async fn handle_trigger(message: &Message) -> Result<()> {
                     .unwrap_or_else(|| format!(""));
                 match res.action {
                     ActionType::Mute => {
-                        mute(message.get_chat_ref(), &user, duration).await?;
+                        mute(message.get_chat_ref(), user.get_id(), duration).await?;
                         message
                             .reply(format!(
                                 "User said a banned word. Action: Muted{}\n{}",
@@ -568,7 +568,7 @@ async fn handle_trigger(message: &Message) -> Result<()> {
                             .await?;
                     }
                     ActionType::Ban => {
-                        ban(message, &user, duration).await?;
+                        ban(message, user.get_id(), duration).await?;
                         message
                             .reply(format!(
                                 "User said a banned word. Action: Ban{}\n{}",

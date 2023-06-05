@@ -280,7 +280,7 @@ async fn authorize_user(user: &User, unmumte_chat: &Chat) -> Result<()> {
             .on_conflict(OnConflict::new().do_nothing().to_owned())
             .exec(DB.deref())
             .await?;
-        unmute(unmumte_chat, user).await?;
+        unmute(unmumte_chat, user.get_id()).await?;
     }
     Ok(())
 }
@@ -650,7 +650,7 @@ async fn check_mambers<'a>(
     }
     let chat = message.get_chat();
     if !user_is_authorized(chat.get_id(), user.get_id()).await? {
-        mute(&chat, &user, None).await?;
+        mute(&chat, user.get_id(), None).await?;
         if let Some(kicktime) = config.kick_time {
             let chatid = chat.get_id();
             let userid = user.get_id();

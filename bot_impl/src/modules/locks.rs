@@ -746,7 +746,7 @@ async fn handle_user_event(update: &UpdateExt, lang: &Lang) -> Result<()> {
                         } else if let Some(user) = message.get_from() {
                             warn_with_action(
                                 message,
-                                &user,
+                                user.get_id(),
                                 Some(&reasons),
                                 default.duration.map(|v| Duration::seconds(v)),
                             )

@@ -11,6 +11,12 @@ commandnotfound: "Command not found"
 refreshac: "Successfully refreshed admin cache"
 foundadmins: "Found {} admins"
 kickadmin: "I am not going to kick an admin"
+failban: |
+  Failed to ban user, I haven't interacted with them in the last 48 hours. Please forward me one of their messages
+  in order to allow me to interact with them
+failmute: |
+  Failed to change this user's permissions. I haven't interacted with them in the last 48 hours.
+  Please forward me one of their messages in order to allow me to interact with them
 notdm: "This command can only be used in dm"
 specifyuser: "You need to specify a user"
 usernotfound: "User not found. Only users that have been seen recently can be interacted with"

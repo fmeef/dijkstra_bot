@@ -2,14 +2,13 @@ use crate::{
     metadata::metadata,
     statics::TG,
     tg::admin_helpers::*,
-    tg::permissions::*,
-    tg::{
-        command::{Context, Entities, TextArgs},
-        markdown::MarkupType,
-        user::Username,
-    },
-    util::error::Result,
+    tg::command::{Context, Entities, TextArgs},
+    tg::{permissions::*, user::GetUser},
     util::string::{Lang, Speak},
+    util::{
+        error::{Result, SpeakErr},
+        string::get_chat_lang,
+    },
 };
 use botapi::gen_types::{ChatPermissionsBuilder, Message, UpdateExt};
 use futures::FutureExt;
@@ -56,8 +55,8 @@ pub async fn unban_cmd<'a>(
     action_message(message, entities, None, |message, user, _| {
         async move {
             unban(message, user).await?;
-            let name = user.name_humanreadable();
-            let entity = MarkupType::TextMention(user.to_owned()).text(&name);
+
+            let entity = user.mention().await?;
             message
                 .speak_fmt(entity_fmt!(
                     lang,
@@ -82,10 +81,14 @@ pub async fn ban_cmd<'a>(
     message
         .check_permissions(|p| p.can_restrict_members)
         .await?;
+    let lang = get_chat_lang(message.get_chat_ref().get_id()).await?;
     action_message(message, entities, Some(args), |message, user, args| {
         async move {
             let duration = parse_duration(&args, message.get_chat().get_id())?;
-            ban(message, user, duration).await?;
+            ban(message, user, duration)
+                .await
+                .speak_err(message.get_chat_ref(), 400, |_| lang_fmt!(lang, "failban"))
+                .await?;
             Ok(())
         }
         .boxed()
@@ -100,9 +103,8 @@ pub async fn kick_cmd<'a>(message: &'a Message, entities: &Entities<'a>, lang: L
         .await?;
     action_message(message, entities, None, |message, user, _| {
         async move {
-            kick(user.get_id(), message.get_chat().get_id()).await?;
-            let name = user.name_humanreadable();
-            let entity = MarkupType::TextMention(user.clone()).text(&name);
+            kick(user, message.get_chat().get_id()).await?;
+            let entity = user.mention().await?;
             message
                 .speak_fmt(entity_fmt!(
                     lang,
@@ -139,10 +141,11 @@ pub async fn mute_cmd<'a>(
         .set_can_send_voice_notes(false)
         .set_can_send_other_messages(false)
         .build();
-    let user = change_permissions_message(message, &entities, permissions, args).await?;
-    let name = user.name_humanreadable();
-    let mention = MarkupType::TextMention(user).text(&name);
-
+    let user = change_permissions_message(message, &entities, permissions, args)
+        .await
+        .speak_err(message.get_chat_ref(), 400, |_| lang_fmt!(lang, "failmute"))
+        .await?;
+    let mention = user.mention().await?;
     message
         .speak_fmt(entity_fmt!(
             lang,
@@ -178,10 +181,11 @@ pub async fn unmute_cmd<'a>(
         .set_can_send_other_messages(true)
         .build();
 
-    let user = change_permissions_message(message, &entities, permissions, args).await?;
-
-    let name = user.name_humanreadable();
-    let mention = MarkupType::TextMention(user).text(&name);
+    let user = change_permissions_message(message, &entities, permissions, args)
+        .await
+        .speak_err(message.get_chat_ref(), 400, |_| lang_fmt!(lang, "failmute"))
+        .await?;
+    let mention = user.mention().await?;
     message
         .speak_fmt(entity_fmt!(
             lang,

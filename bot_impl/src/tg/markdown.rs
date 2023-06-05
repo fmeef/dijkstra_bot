@@ -691,9 +691,9 @@ impl MarkupBuilder {
 
 /// Represents metadata for a single MessageEntity. Useful when programatically
 /// constructing formatted text using MarkupBuilder
-pub struct Markup<'a, T: AsRef<str>> {
+pub struct Markup<T: AsRef<str>> {
     markup_type: MarkupType,
-    text: &'a T,
+    text: T,
     advance: Option<i64>,
 }
 
@@ -720,7 +720,7 @@ pub enum MarkupType {
 
 impl MarkupType {
     /// Adds text to an existing MarkupType, preserving current formatting
-    pub fn text<'a, T: AsRef<str>>(self, text: &'a T) -> Markup<'a, T> {
+    pub fn text<T: AsRef<str>>(self, text: T) -> Markup<T> {
         Markup {
             markup_type: self,
             text,
@@ -729,7 +729,7 @@ impl MarkupType {
     }
 }
 
-impl<'a, T> Markup<'a, T>
+impl<T> Markup<T>
 where
     T: AsRef<str>,
 {
@@ -757,7 +757,7 @@ where
     }
 
     /// gets the unformatted text for this markup
-    fn get_text(&'a self) -> &'a str {
+    fn get_text<'a>(&'a self) -> &'a str {
         self.text.as_ref()
     }
 
@@ -766,15 +766,6 @@ where
     pub fn advance(mut self, advance: i64) -> Self {
         self.advance = Some(advance);
         self
-    }
-}
-
-impl<'a, T> From<&'a T> for Markup<'a, T>
-where
-    T: AsRef<str>,
-{
-    fn from(value: &'a T) -> Self {
-        MarkupType::Text.text(&value)
     }
 }
 
