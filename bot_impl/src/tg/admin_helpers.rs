@@ -21,8 +21,8 @@ use crate::{
 };
 
 use botapi::gen_types::{
-    Chat, ChatMember, ChatMemberUpdated, ChatPermissions, ChatPermissionsBuilder, Message,
-    UpdateExt, User,
+    Chat, ChatMember, ChatMemberUpdated, ChatPermissions, ChatPermissionsBuilder,
+    InlineKeyboardButtonBuilder, Message, UpdateExt, User,
 };
 use chrono::{DateTime, Duration, Utc};
 use futures::{future::BoxFuture, FutureExt};
@@ -35,8 +35,10 @@ use sea_orm::{
     sea_query::OnConflict, ActiveValue::NotSet, ActiveValue::Set, ColumnTrait, EntityTrait,
     IntoActiveModel, ModelTrait, PaginatorTrait, QueryFilter,
 };
+use uuid::Uuid;
 
 use super::{
+    button::{InlineKeyboardBuilder, OnPush},
     command::{ArgSlice, Entities, EntityArg, TextArgs},
     dialog::{dialog_or_default, get_dialog_key},
     markdown::MarkupType,
@@ -433,28 +435,77 @@ pub async fn warn_with_action(
     let dialog = dialog_or_default(message.get_chat_ref()).await?;
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
     let time = dialog.warn_time.map(|t| Duration::seconds(t));
-    let count = warn_user(message, user, reason.map(|v| v.to_owned()), &time).await?;
+    let (count, model) = warn_user(message, user, reason.map(|v| v.to_owned()), &time).await?;
     let name = if let Some(user) = user.get_cached_user().await? {
         user.name_humanreadable()
     } else {
         user.to_string()
     };
-    if let Some(reason) = reason {
-        message
-            .reply(lang_fmt!(
-                lang,
-                "warnreason",
-                name,
-                count,
-                dialog.warn_limit,
-                reason
-            ))
-            .await?;
+    let text = if let Some(reason) = reason {
+        lang_fmt!(lang, "warnreason", name, count, dialog.warn_limit, reason)
     } else {
-        message
-            .reply(lang_fmt!(lang, "warn", name, count, dialog.warn_limit))
-            .await?;
-    }
+        lang_fmt!(lang, "warn", name, count, dialog.warn_limit)
+    };
+
+    let button_text = lang_fmt!(lang, "removewarn");
+
+    let mut builder = InlineKeyboardBuilder::default();
+
+    let button = InlineKeyboardButtonBuilder::new(button_text)
+        .set_callback_data(Uuid::new_v4().to_string())
+        .build();
+    let model = model.id;
+    button.on_push_multi(move |cb| async move {
+        if let Some(message) = cb.get_message_ref() {
+            let chat = message.get_chat_ref();
+            if cb.get_from().is_admin(chat).await? {
+                let key = get_warns_key(user, chat.get_id());
+                if let Some(res) = warns::Entity::find_by_id(model).one(DB.deref()).await? {
+                    let st = RedisStr::new(&res)?;
+                    res.delete(DB.deref()).await?;
+                    REDIS.sq(|q| q.srem(&key, st)).await?;
+                }
+                TG.client
+                    .build_edit_message_reply_markup()
+                    .message_id(message.get_message_id())
+                    .chat_id(chat.get_id())
+                    .build()
+                    .await?;
+                TG.client
+                    .build_edit_message_text("Warn removed")
+                    .message_id(message.get_message_id())
+                    .chat_id(chat.get_id())
+                    .build()
+                    .await?;
+                TG.client
+                    .build_answer_callback_query(cb.get_id_ref())
+                    .build()
+                    .await?;
+
+                Ok(true)
+            } else {
+                TG.client
+                    .build_answer_callback_query(cb.get_id_ref())
+                    .show_alert(true)
+                    .text("User is not admin")
+                    .build()
+                    .await?;
+                Ok(false)
+            }
+        } else {
+            Ok(true)
+        }
+    });
+    builder.button(button);
+    let markup = builder.build();
+
+    let markup = botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(markup);
+    let m = TG
+        .client
+        .build_send_message(message.get_chat().get_id(), &text)
+        .reply_markup(&markup);
+
+    message.reply_fmt(m).await?;
 
     if count >= dialog.warn_limit {
         match dialog.action_type {
@@ -1084,7 +1135,7 @@ pub async fn warn_user(
     user: i64,
     reason: Option<String>,
     duration: &Option<Duration>,
-) -> Result<i32> {
+) -> Result<(i32, warns::Model)> {
     let chat_id = message.get_chat().get_id();
     let duration = duration.map(|v| Utc::now().checked_add_signed(v)).flatten();
     let model = warns::ActiveModel {
@@ -1097,17 +1148,17 @@ pub async fn warn_user(
     let model = warns::Entity::insert(model)
         .exec_with_returning(DB.deref().deref())
         .await?;
-    let model = RedisStr::new(&model)?;
+    let m = RedisStr::new(&model)?;
     let key = get_warns_key(user, chat_id);
     let (_, _, count): ((), (), usize) = REDIS
         .pipe(|p| {
-            p.sadd(&key, model)
+            p.sadd(&key, m)
                 .expire(&key, CONFIG.timing.cache_timeout)
                 .scard(&key)
         })
         .await?;
 
-    Ok(count as i32)
+    Ok((count as i32, model))
 }
 
 /// Updates the current stored action with a user, either banning or unbanning.

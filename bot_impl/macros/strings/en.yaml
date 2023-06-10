@@ -80,3 +80,4 @@ lockban: |
   [*Reason:]
   {}
 invalid_help: "Invalid help page {}"
+removewarn: "Remove warn"
