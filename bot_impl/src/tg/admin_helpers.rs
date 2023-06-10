@@ -41,7 +41,7 @@ use super::{
     button::{InlineKeyboardBuilder, OnPush},
     command::{ArgSlice, Entities, EntityArg, TextArgs},
     dialog::{dialog_or_default, get_dialog_key},
-    markdown::MarkupType,
+    markdown::{MarkupBuilder, MarkupType},
     permissions::{GetCachedAdmins, IsAdmin},
     user::{get_user_username, GetUser, Username},
 };
@@ -500,9 +500,15 @@ pub async fn warn_with_action(
     let markup = builder.build();
 
     let markup = botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(markup);
+
+    let md = MarkupBuilder::from_murkdown_chatuser(text, message.get_chatuser().as_ref()).await?;
+
+    let (text, entities) = md.build();
+
     let m = TG
         .client
         .build_send_message(message.get_chat().get_id(), &text)
+        .entities(entities)
         .reply_markup(&markup);
 
     message.reply_fmt(m).await?;
