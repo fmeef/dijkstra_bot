@@ -82,12 +82,12 @@ where
         })
         .await?;
 
-    let res = res.map(|v| v.get::<R>().ok()).flatten();
-    Ok((res.is_some(), res))
+    let res = res.map(|v| v.get::<Option<R>>().ok()).flatten();
+    Ok((res.is_some(), res.flatten()))
 }
 
 /// Default sql query cachin miss operation for a single value
-pub async fn redis_miss<'a, V>(key: &'a str, val: V, expire: Duration) -> Result<V>
+pub async fn redis_miss<'a, V>(key: &'a str, val: Option<V>, expire: Duration) -> Result<Option<V>>
 where
     V: Serialize + 'a,
 {
