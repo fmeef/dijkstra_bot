@@ -237,32 +237,29 @@ pub async fn change_permissions(
 ) -> Result<()> {
     let me = ME.get().unwrap();
     let lang = get_chat_lang(chat.get_id()).await?;
-    if user.is_admin(chat).await? {
+    if user == me.get_id() {
+        Err(BotError::speak(
+            lang_fmt!(lang, "mutemyself"),
+            chat.get_id(),
+        ))
+    } else if user.is_admin(chat).await? {
         Err(BotError::speak(lang_fmt!(lang, "muteadmin"), chat.get_id()))
     } else {
-        if user == me.get_id() {
-            chat.speak(lang_fmt!(lang, "mutemyself")).await?;
-            Err(BotError::speak(
-                lang_fmt!(lang, "mutemyself"),
-                chat.get_id(),
-            ))
+        if let Some(time) = time.map(|t| Utc::now().checked_add_signed(t)).flatten() {
+            TG.client()
+                .build_restrict_chat_member(chat.get_id(), user, permissions)
+                .until_date(time.timestamp())
+                .build()
+                .await?;
         } else {
-            if let Some(time) = time.map(|t| Utc::now().checked_add_signed(t)).flatten() {
-                TG.client()
-                    .build_restrict_chat_member(chat.get_id(), user, permissions)
-                    .until_date(time.timestamp())
-                    .build()
-                    .await?;
-            } else {
-                TG.client()
-                    .build_restrict_chat_member(chat.get_id(), user, permissions)
-                    .build()
-                    .await?;
-            }
-            let time = time.map(|t| Utc::now().checked_add_signed(t)).flatten();
-            update_actions_permissions(user, chat, permissions, time).await?;
-            Ok(())
+            TG.client()
+                .build_restrict_chat_member(chat.get_id(), user, permissions)
+                .build()
+                .await?;
         }
+        let time = time.map(|t| Utc::now().checked_add_signed(t)).flatten();
+        update_actions_permissions(user, chat, permissions, time).await?;
+        Ok(())
     }
 }
 
@@ -1103,7 +1100,15 @@ pub async fn ban(message: &Message, user: i64, duration: Option<Duration>) -> Re
             message.speak(lang_fmt!(lang, "banchat", name)).await?;
         }
     }
-    if user.is_admin(message.get_chat_ref()).await? {
+
+    let me = ME.get().unwrap();
+
+    if user == me.get_id() {
+        return Err(BotError::speak(
+            lang_fmt!(lang, "banmyself"),
+            message.get_chat().get_id(),
+        ));
+    } else if user.is_admin(message.get_chat_ref()).await? {
         let banadmin = lang_fmt!(lang, "banadmin");
         return Err(BotError::speak(banadmin, message.get_chat().get_id()));
     } else {

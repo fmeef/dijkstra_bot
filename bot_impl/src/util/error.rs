@@ -34,6 +34,8 @@ pub trait SpeakErr<T: Send> {
     async fn speak_err<F>(self, chat: &Chat, code: i64, func: F) -> Result<T>
     where
         F: for<'b> FnOnce(&'b Response) -> String + Send;
+
+    async fn silent(self) -> Result<T>;
 }
 
 #[async_trait]
@@ -89,6 +91,14 @@ impl<T: Send> SpeakErr<T> for Result<T> {
             }
         }
         self
+    }
+
+    async fn silent(self) -> Result<T> {
+        match self {
+            Err(BotError::Speak { err: Some(err), .. }) => Err(*err),
+            Err(BotError::Speak { say, err: None, .. }) => Err(BotError::Generic(say)),
+            v => v,
+        }
     }
 }
 
