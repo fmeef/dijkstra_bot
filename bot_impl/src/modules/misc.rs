@@ -4,7 +4,6 @@ use crate::tg::markdown::MarkupBuilder;
 use crate::util::error::Result;
 use crate::{metadata::metadata, util::string::Speak};
 
-use futures::FutureExt;
 use sea_orm_migration::MigrationTrait;
 
 metadata!("Misc",
@@ -19,24 +18,21 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
 }
 
 async fn get_id(ctx: &Context) -> Result<()> {
-    ctx.action_message(|ctx, user, _| {
-        async move {
-            if let Some(chat) = ctx.chat() {
-                let mut builder = MarkupBuilder::new();
+    ctx.action_message(|ctx, user, _| async move {
+        if let Some(chat) = ctx.chat() {
+            let mut builder = MarkupBuilder::new();
 
-                builder.code(user.to_string());
-                let (text, entities) = builder.build();
-                ctx.message()?
-                    .reply_fmt(
-                        TG.client
-                            .build_send_message(chat.get_id(), text)
-                            .entities(entities),
-                    )
-                    .await?;
-            }
-            Ok(())
+            builder.code(user.to_string());
+            let (text, entities) = builder.build();
+            ctx.message()?
+                .reply_fmt(
+                    TG.client
+                        .build_send_message(chat.get_id(), text)
+                        .entities(entities),
+                )
+                .await?;
         }
-        .boxed()
+        Ok(())
     })
     .await?;
     Ok(())

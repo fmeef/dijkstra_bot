@@ -7,7 +7,7 @@ use crate::{
     util::string::{get_chat_lang, Speak},
 };
 use botapi::gen_types::Message;
-use futures::FutureExt;
+
 use itertools::Itertools;
 use macros::{entity_fmt, lang_fmt};
 use sea_orm_migration::MigrationTrait;
@@ -37,24 +37,21 @@ async fn promote(context: &Context) -> Result<()> {
     let message = context.message()?;
     message.check_permissions(|v| v.can_promote_members).await?;
     context
-        .action_message(move |ctx, user, _| {
-            async move {
-                let message = ctx.message()?;
-                if let Some(chat) = ctx.chat() {
-                    chat.promote(user).await?;
-                    let mention = user.mention().await?;
-                    message
-                        .speak_fmt(entity_fmt!(
-                            ctx.try_get()?.lang,
-                            message.get_chat().get_id(),
-                            "promote",
-                            mention
-                        ))
-                        .await?;
-                }
-                Ok(())
+        .action_message(move |ctx, user, _| async move {
+            let message = ctx.message()?;
+            if let Some(chat) = ctx.chat() {
+                chat.promote(user).await?;
+                let mention = user.mention().await?;
+                message
+                    .speak_fmt(entity_fmt!(
+                        ctx.try_get()?.lang,
+                        message.get_chat().get_id(),
+                        "promote",
+                        mention
+                    ))
+                    .await?;
             }
-            .boxed()
+            Ok(())
         })
         .await?;
 
@@ -65,32 +62,29 @@ async fn demote<'a>(context: &'a Context) -> Result<()> {
     let message = context.message()?;
     message.check_permissions(|p| p.can_promote_members).await?;
     context
-        .action_message(|ctx, user, _| {
-            async move {
-                if let Some(chat) = ctx.chat() {
-                    match chat.demote(user).await {
-                        Err(err) => {
-                            ctx.message()?
-                                .reply(format!("failed to demote user: {}", err.get_tg_error()))
-                                .await?;
-                        }
-                        Ok(_) => {
-                            let mention = user.mention().await?;
-                            ctx.message()?
-                                .speak_fmt(entity_fmt!(
-                                    ctx.try_get()?.lang,
-                                    ctx.try_get()?.chat.get_id(),
-                                    "demote",
-                                    mention
-                                ))
-                                .await?;
-                        }
+        .action_message(|ctx, user, _| async move {
+            if let Some(chat) = ctx.chat() {
+                match chat.demote(user).await {
+                    Err(err) => {
+                        ctx.message()?
+                            .reply(format!("failed to demote user: {}", err.get_tg_error()))
+                            .await?;
+                    }
+                    Ok(_) => {
+                        let mention = user.mention().await?;
+                        ctx.message()?
+                            .speak_fmt(entity_fmt!(
+                                ctx.try_get()?.lang,
+                                ctx.try_get()?.chat.get_id(),
+                                "demote",
+                                mention
+                            ))
+                            .await?;
                     }
                 }
-
-                Ok(())
             }
-            .boxed()
+
+            Ok(())
         })
         .await?;
 

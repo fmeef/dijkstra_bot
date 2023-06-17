@@ -7,7 +7,7 @@ use crate::util::error::BotError;
 use crate::util::string::should_ignore_chat;
 use crate::{metadata::metadata, tg::admin_helpers::*, util::error::Result};
 use botapi::gen_types::{MessageEntity, MessageEntityBuilder};
-use futures::FutureExt;
+
 use macros::textentity_fmt;
 use sea_orm_migration::MigrationTrait;
 
@@ -39,43 +39,40 @@ pub async fn report(ctx: &Context) -> Result<()> {
             return Err(BotError::Generic("Admins can't warn".into()));
         }
 
-        ctx.action_message(|ctx, user, _| {
-            async move {
-                if let Some(chat) = ctx.chat() {
-                    if user.is_admin(chat).await? {
-                        return Err(BotError::speak(
-                            "I am not going to report an admin, what the FLOOP",
-                            chat.get_id(),
-                        ));
-                    }
-                    let mut admins = ctx
-                        .message()?
-                        .get_chat()
-                        .get_cached_admins()
-                        .await?
-                        .values()
-                        .map(|a| {
-                            MessageEntityBuilder::new(0, 0)
-                                .set_type("text_mention".to_owned())
-                                .set_user(a.get_user().into_owned())
-                                .build()
-                        })
-                        .collect::<Vec<MessageEntity>>();
-
-                    let mention = user.mention().await?;
-                    let te = textentity_fmt!(ctx.try_get()?.lang, "reported", mention);
-                    let (text, entities) = te.textentities();
-                    admins.extend_from_slice(entities.as_slice());
-                    TG.client()
-                        .build_send_message(chat.get_id(), text)
-                        .reply_to_message_id(ctx.message()?.get_message_id())
-                        .entities(&admins)
-                        .build()
-                        .await?;
+        ctx.action_message(|ctx, user, _| async move {
+            if let Some(chat) = ctx.chat() {
+                if user.is_admin(chat).await? {
+                    return Err(BotError::speak(
+                        "I am not going to report an admin, what the FLOOP",
+                        chat.get_id(),
+                    ));
                 }
-                Ok(())
+                let mut admins = ctx
+                    .message()?
+                    .get_chat()
+                    .get_cached_admins()
+                    .await?
+                    .values()
+                    .map(|a| {
+                        MessageEntityBuilder::new(0, 0)
+                            .set_type("text_mention".to_owned())
+                            .set_user(a.get_user().into_owned())
+                            .build()
+                    })
+                    .collect::<Vec<MessageEntity>>();
+
+                let mention = user.mention().await?;
+                let te = textentity_fmt!(ctx.try_get()?.lang, "reported", mention);
+                let (text, entities) = te.textentities();
+                admins.extend_from_slice(entities.as_slice());
+                TG.client()
+                    .build_send_message(chat.get_id(), text)
+                    .reply_to_message_id(ctx.message()?.get_message_id())
+                    .entities(&admins)
+                    .build()
+                    .await?;
             }
-            .boxed()
+            Ok(())
         })
         .await?;
     }

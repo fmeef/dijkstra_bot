@@ -25,7 +25,7 @@ use botapi::gen_types::{
     InlineKeyboardButtonBuilder, Message, UpdateExt, User,
 };
 use chrono::{DateTime, Duration, Utc};
-use futures::{future::BoxFuture, FutureExt};
+use futures::Future;
 
 use lazy_static::__Deref;
 use macros::{entity_fmt, lang_fmt};
@@ -426,9 +426,9 @@ pub async fn warn_shame(message: &Message, _user: i64, _count: i32) -> Result<()
 }
 
 /// Gets a list of all warns for the current user in the given chat (from message)
-pub async fn get_warns(message: &Message, user_id: i64) -> Result<Vec<warns::Model>> {
-    let chat_id = message.get_chat().get_id();
-    let key = get_warns_key(user_id, message.get_chat().get_id());
+pub async fn get_warns(chat: &Chat, user_id: i64) -> Result<Vec<warns::Model>> {
+    let chat_id = chat.get_id();
+    let key = get_warns_key(user_id, chat_id);
     let r = CachedQuery::new(
         |_, _| async move {
             let count = warns::Entity::find()
@@ -920,14 +920,11 @@ impl Context {
     /// Persistantly change the permission of a user by using action_message syntax
     pub async fn change_permissions_message(&self, permissions: ChatPermissions) -> Result<i64> {
         let me = self.clone();
-        self.action_message(|ctx, user, args| {
-            async move {
-                let duration = parse_duration(&args, ctx.try_get()?.chat.get_id())?;
-                me.change_permissions(user, &permissions, duration).await?;
+        self.action_message(|ctx, user, args| async move {
+            let duration = parse_duration(&args, ctx.try_get()?.chat.get_id())?;
+            me.change_permissions(user, &permissions, duration).await?;
 
-                Ok(())
-            }
-            .boxed()
+            Ok(())
         })
         .await
     }
@@ -937,9 +934,10 @@ impl Context {
     /// using either mentioning a user via an @ handle or text mention or by replying to a message.
     /// The user mentioned OR the sender of the message that is replied to is passed to the callback
     /// function along with the remaining args and the message itself
-    pub async fn action_message<F>(&self, action: F) -> Result<i64>
+    pub async fn action_message<'a, F, Fut>(&'a self, action: F) -> Result<i64>
     where
-        for<'b> F: FnOnce(&'b Context, i64, Option<ArgSlice<'b>>) -> BoxFuture<'b, Result<()>>,
+        F: FnOnce(&'a Context, i64, Option<ArgSlice<'a>>) -> Fut,
+        Fut: Future<Output = Result<()>>,
     {
         let message = self.message()?;
         let args = self.try_get()?.command.as_ref().map(|a| &a.args);

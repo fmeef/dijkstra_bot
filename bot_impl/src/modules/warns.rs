@@ -9,7 +9,6 @@ use crate::{
 };
 use botapi::gen_types::Message;
 
-use futures::FutureExt;
 use humantime::format_duration;
 use macros::{entity_fmt, lang_fmt};
 use sea_orm_migration::MigrationTrait;
@@ -42,29 +41,26 @@ pub async fn warn(context: &Context) -> Result<()> {
         .await?;
 
     context
-        .action_message(|ctx, user, args| {
-            async move {
-                if user.is_admin(ctx.message()?.get_chat_ref()).await? {
-                    return Err(BotError::speak(
-                        &lang_fmt!(ctx.try_get()?.lang, "warnadmin"),
-                        ctx.message()?.get_chat().get_id(),
-                    ));
-                }
-
-                let reason = args
-                    .map(|a| {
-                        if a.args.len() > 0 {
-                            Some(a.text.trim())
-                        } else {
-                            None
-                        }
-                    })
-                    .flatten();
-
-                ctx.warn_with_action(user, reason, None).await?;
-                Ok(())
+        .action_message(|ctx, user, args| async move {
+            if user.is_admin(ctx.message()?.get_chat_ref()).await? {
+                return Err(BotError::speak(
+                    &lang_fmt!(ctx.try_get()?.lang, "warnadmin"),
+                    ctx.message()?.get_chat().get_id(),
+                ));
             }
-            .boxed()
+
+            let reason = args
+                .map(|a| {
+                    if a.args.len() > 0 {
+                        Some(a.text.trim())
+                    } else {
+                        None
+                    }
+                })
+                .flatten();
+
+            ctx.warn_with_action(user, reason, None).await?;
+            Ok(())
         })
         .await?;
     Ok(())
@@ -76,28 +72,25 @@ pub async fn warns(context: &Context, lang: Lang) -> Result<()> {
         self_admin_or_die(&chat).await?;
         let chat_id = chat.get_id();
         context
-            .action_message(|ctx, user, _| {
-                async move {
-                    let warns = get_warns(ctx.message()?, user).await?;
-                    let list = warns
-                        .into_iter()
-                        .map(|w| {
-                            format!(
-                                "Reason: {}",
-                                w.reason.unwrap_or_else(|| lang_fmt!(lang, "noreason"))
-                            )
-                        })
-                        .collect::<Vec<String>>()
-                        .join("\n");
+            .action_message(|ctx, user, _| async move {
+                let warns = get_warns(ctx.try_get()?.chat, user).await?;
+                let list = warns
+                    .into_iter()
+                    .map(|w| {
+                        format!(
+                            "Reason: {}",
+                            w.reason.unwrap_or_else(|| lang_fmt!(lang, "noreason"))
+                        )
+                    })
+                    .collect::<Vec<String>>()
+                    .join("\n");
 
-                    let list = MarkupType::Text.text(&list);
-                    let mention = user.mention().await?;
-                    ctx.message()?
-                        .reply_fmt(entity_fmt!(lang, chat_id, "warns", mention, list))
-                        .await?;
-                    Ok(())
-                }
-                .boxed()
+                let list = MarkupType::Text.text(&list);
+                let mention = user.mention().await?;
+                ctx.message()?
+                    .reply_fmt(entity_fmt!(lang, chat_id, "warns", mention, list))
+                    .await?;
+                Ok(())
             })
             .await?;
     }
@@ -112,18 +105,15 @@ pub async fn clear<'a>(ctx: &Context) -> Result<()> {
         .get_from()
         .admin_or_die(message.get_chat_ref())
         .await?;
-    ctx.action_message(|ctx, user, _| {
-        async move {
-            clear_warns(ctx.message()?.get_chat_ref(), user).await?;
+    ctx.action_message(|ctx, user, _| async move {
+        clear_warns(ctx.message()?.get_chat_ref(), user).await?;
 
-            let name = user.cached_name().await?;
+        let name = user.cached_name().await?;
 
-            ctx.message()?
-                .reply(format!("Cleared warns for user {}", name))
-                .await?;
-            Ok(())
-        }
-        .boxed()
+        ctx.message()?
+            .reply(format!("Cleared warns for user {}", name))
+            .await?;
+        Ok(())
     })
     .await?;
 

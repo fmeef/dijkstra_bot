@@ -11,8 +11,6 @@ use crate::metadata::metadata;
 use crate::util::string::Speak;
 use botapi::gen_types::UserBuilder;
 
-use futures::FutureExt;
-
 use macros::entity_fmt;
 use sea_orm_migration::MigrationTrait;
 metadata!("Approvals",
@@ -32,23 +30,20 @@ async fn cmd_approve<'a>(ctx: &Context) -> Result<()> {
     ctx.message()?
         .check_permissions(|p| p.can_restrict_members)
         .await?;
-    ctx.action_message(|ctx, user, _| {
-        async move {
-            if let (Some(user), Some(chat)) = (user.get_cached_user().await?, ctx.chat()) {
-                approve(ctx.message()?.get_chat_ref(), &user).await?;
-                let name = user.name_humanreadable();
-                ctx.message()?
-                    .speak_fmt(entity_fmt!(
-                        ctx.try_get()?.lang,
-                        chat.get_id(),
-                        "approved",
-                        MarkupType::TextMention(user.clone()).text(&name)
-                    ))
-                    .await?;
-            }
-            Ok(())
+    ctx.action_message(|ctx, user, _| async move {
+        if let (Some(user), Some(chat)) = (user.get_cached_user().await?, ctx.chat()) {
+            approve(ctx.message()?.get_chat_ref(), &user).await?;
+            let name = user.name_humanreadable();
+            ctx.message()?
+                .speak_fmt(entity_fmt!(
+                    ctx.try_get()?.lang,
+                    chat.get_id(),
+                    "approved",
+                    MarkupType::TextMention(user.clone()).text(&name)
+                ))
+                .await?;
         }
-        .boxed()
+        Ok(())
     })
     .await?;
     Ok(())
@@ -58,23 +53,20 @@ async fn cmd_unapprove(ctx: &Context) -> Result<()> {
     ctx.message()?
         .check_permissions(|p| p.can_restrict_members)
         .await?;
-    ctx.action_message(|ctx, user, _| {
-        async move {
-            if let Some(chat) = ctx.chat() {
-                unapprove(ctx.message()?.get_chat_ref(), user).await?;
-                let name = user.mention().await?;
-                ctx.message()?
-                    .speak_fmt(entity_fmt!(
-                        ctx.try_get()?.lang,
-                        chat.get_id(),
-                        "unapproved",
-                        name
-                    ))
-                    .await?;
-            }
-            Ok(())
+    ctx.action_message(|ctx, user, _| async move {
+        if let Some(chat) = ctx.chat() {
+            unapprove(ctx.message()?.get_chat_ref(), user).await?;
+            let name = user.mention().await?;
+            ctx.message()?
+                .speak_fmt(entity_fmt!(
+                    ctx.try_get()?.lang,
+                    chat.get_id(),
+                    "unapproved",
+                    name
+                ))
+                .await?;
         }
-        .boxed()
+        Ok(())
     })
     .await?;
     Ok(())
