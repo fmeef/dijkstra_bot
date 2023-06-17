@@ -292,20 +292,20 @@ async fn handle_inline(query: &InlineQuery) -> Result<()> {
     Ok(())
 }
 
-async fn handle_message<'a>(ctx: &Context<'a>) -> Result<()> {
-    let cmd = ctx.command.as_ref();
-    handle_command(&ctx.message, cmd).await?;
-    handle_conversation(&ctx.message).await?;
+async fn handle_message(ctx: &Context) -> Result<()> {
+    let cmd = ctx.try_get()?.command.as_ref();
+    handle_command(ctx.message()?, cmd).await?;
+    handle_conversation(ctx.message()?).await?;
 
     Ok(())
 }
 
-pub async fn handle_update<'a>(update: &UpdateExt, cmd: &Option<Context<'a>>) -> Result<()> {
+pub async fn handle_update(cmd: &Context) -> Result<()> {
+    let update = cmd.update();
     let _ = match update {
         UpdateExt::Message(ref message) => {
-            if let Some(cmd) = cmd {
-                handle_message(cmd).await?;
-            }
+            handle_message(cmd).await?;
+
             let id = message.get_chat().get_id();
             Some(id)
         }

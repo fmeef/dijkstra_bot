@@ -5,9 +5,7 @@ use self::entities::captchastate::{self, CaptchaType};
 use crate::metadata::metadata;
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache, RedisStr};
 use crate::statics::{CONFIG, DB, ME, REDIS, TG};
-use crate::tg::admin_helpers::{
-    kick, mute, parse_duration, unmute, DeleteAfterTime, UpdateHelpers, UserChanged,
-};
+use crate::tg::admin_helpers::{kick, parse_duration, DeleteAfterTime, UpdateHelpers, UserChanged};
 use crate::tg::button::{get_url, InlineKeyboardBuilder, OnPush};
 use crate::tg::command::{ArgSlice, Context, TextArgs};
 use crate::tg::permissions::*;
@@ -19,7 +17,7 @@ use base64::engine::general_purpose;
 use base64::Engine;
 use botapi::gen_types::{
     CallbackQuery, Chat, ChatMemberUpdated, EReplyMarkup, InlineKeyboardButton,
-    InlineKeyboardButtonBuilder, Message, UpdateExt, User,
+    InlineKeyboardButtonBuilder, Message, User,
 };
 use captcha::gen;
 use chrono::Duration;
@@ -263,24 +261,26 @@ async fn user_is_authorized(chat: i64, user: i64) -> Result<bool> {
     REDIS.sq(|q| q.sismember(&key, user)).await
 }
 
-async fn authorize_user(user: &User, unmumte_chat: &Chat) -> Result<()> {
-    let key = auth_key(unmumte_chat.get_id());
-    let (r, _): (i64, ()) = REDIS
-        .pipe(|q| {
-            q.sadd(&key, user.get_id())
-                .expire(&key, CONFIG.timing.cache_timeout)
-        })
-        .await?;
-    if r == 1 {
-        let model = authorized::Model {
-            chat: unmumte_chat.get_id(),
-            user: user.get_id(),
-        };
-        authorized::Entity::insert(model.into_active_model())
-            .on_conflict(OnConflict::new().do_nothing().to_owned())
-            .exec(DB.deref())
+async fn authorize_user<'a>(user: &User, ctx: &Context) -> Result<()> {
+    if let Some(unmute_chat) = ctx.chat() {
+        let key = auth_key(unmute_chat.get_id());
+        let (r, _): (i64, ()) = REDIS
+            .pipe(|q| {
+                q.sadd(&key, user.get_id())
+                    .expire(&key, CONFIG.timing.cache_timeout)
+            })
             .await?;
-        unmute(unmumte_chat, user.get_id()).await?;
+        if r == 1 {
+            let model = authorized::Model {
+                chat: unmute_chat.get_id(),
+                user: user.get_id(),
+            };
+            authorized::Entity::insert(model.into_active_model())
+                .on_conflict(OnConflict::new().do_nothing().to_owned())
+                .exec(DB.deref())
+                .await?;
+            ctx.unmute(user.get_id()).await?;
+        }
     }
     Ok(())
 }
@@ -380,30 +380,33 @@ pub async fn get_captcha_url(chat: &Chat, user: &User) -> Result<String> {
     Ok(bs)
 }
 
-async fn button_captcha(unmute_chat: &Chat) -> Result<()> {
-    let chat = unmute_chat.clone();
+async fn button_captcha<'a>(ctx: &'a Context) -> Result<()> {
     let unmute_button = InlineKeyboardButtonBuilder::new("Press me to unmute".to_owned())
         .set_callback_data(Uuid::new_v4().to_string())
         .build();
+    let bctx = ctx.clone();
     unmute_button.on_push(|callback| async move {
-        authorize_user(callback.get_from_ref(), &chat).await?;
+        authorize_user(callback.get_from_ref(), &bctx).await?;
         if let Some(message) = callback.get_message() {
             message
                 .speak("User unmuted!")
                 .await?
                 .delete_after_time(Duration::minutes(5));
         }
+
         Ok(())
     });
     let mut button = InlineKeyboardBuilder::default();
     button.button(unmute_button);
-    let m = TG
-        .client()
-        .build_send_message(unmute_chat.get_id(), "Push the button to unmute yourself")
-        .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(button.build()))
-        .build()
-        .await?;
-    m.delete_after_time(Duration::minutes(5));
+    if let Some(chat) = ctx.chat() {
+        let m = TG
+            .client()
+            .build_send_message(chat.get_id(), "Push the button to unmute yourself")
+            .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(button.build()))
+            .build()
+            .await?;
+        m.delete_after_time(Duration::minutes(5));
+    }
     Ok(())
 }
 
@@ -522,11 +525,12 @@ async fn get_invite_link<'a>(chat: &'a Chat) -> Result<Option<String>> {
     Ok(unmute_chat.get_invite_link().map(|v| v.into_owned()))
 }
 
-fn get_choices(
+fn get_choices<'a>(
     correct: String,
     supported: &Vec<char>,
     times: usize,
     unmute_chat: Chat,
+    ctx: &Context,
 ) -> Vec<InlineKeyboardButton> {
     let mut rng = thread_rng();
     let mut res = Vec::<InlineKeyboardButton>::with_capacity(times);
@@ -545,7 +549,7 @@ fn get_choices(
     let correct_button = InlineKeyboardButtonBuilder::new(correct.clone())
         .set_callback_data(Uuid::new_v4().to_string())
         .build();
-
+    let ctx = ctx.clone();
     correct_button.on_push(move |callback| async move {
         if let Some(message) = callback.get_message() {
             if let Some(link) = get_invite_link(&unmute_chat).await? {
@@ -576,7 +580,7 @@ fn get_choices(
                     .build()
                     .await?;
             }
-            authorize_user(&callback.get_from(), &unmute_chat).await?;
+            authorize_user(&callback.get_from(), &ctx).await?;
             reset_incorrect_tries(&callback.get_from(), unmute_chat.get_id()).await?;
         }
         TG.client()
@@ -610,10 +614,10 @@ fn build_captcha_sync() -> (String, Vec<u8>, Vec<char>) {
     )
 }
 
-async fn send_captcha(message: &Message, unmute_chat: Chat) -> Result<()> {
+async fn send_captcha<'a>(message: &Message, unmute_chat: Chat, ctx: &Context) -> Result<()> {
     let (correct, bytes, supported) = build_captcha_sync();
     let mut builder = InlineKeyboardBuilder::default();
-    for (i, choice) in get_choices(correct, &supported, 9, unmute_chat)
+    for (i, choice) in get_choices(correct, &supported, 9, unmute_chat, ctx)
         .into_iter()
         .enumerate()
     {
@@ -641,6 +645,7 @@ async fn send_captcha(message: &Message, unmute_chat: Chat) -> Result<()> {
 
 async fn check_mambers<'a>(
     message: &ChatMemberUpdated,
+    ctx: &Context,
     config: &captchastate::Model,
 ) -> Result<()> {
     let me = ME.get().unwrap();
@@ -650,7 +655,7 @@ async fn check_mambers<'a>(
     }
     let chat = message.get_chat();
     if !user_is_authorized(chat.get_id(), user.get_id()).await? {
-        mute(&chat, user.get_id(), None).await?;
+        ctx.mute(user.get_id(), None).await?;
         if let Some(kicktime) = config.kick_time {
             let chatid = chat.get_id();
             let userid = user.get_id();
@@ -665,20 +670,20 @@ async fn check_mambers<'a>(
         }
         match config.captcha_type {
             CaptchaType::Text => send_captcha_chooser(&user, &chat).await?,
-            CaptchaType::Button => button_captcha(&chat).await?,
+            CaptchaType::Button => button_captcha(ctx).await?,
         }
     }
 
     Ok(())
 }
-async fn handle_user_action(message: &ChatMemberUpdated) -> Result<()> {
+async fn handle_user_action<'a>(ctx: &Context, message: &ChatMemberUpdated) -> Result<()> {
     if let Some(config) = get_captcha_config(message).await? {
-        check_mambers(message, &config).await?;
+        check_mambers(message, ctx, &config).await?;
     }
     Ok(())
 }
 
-async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
+async fn handle_command<'a>(ctx: &Context) -> Result<()> {
     if let Some((cmd, _, args, message, _)) = ctx.cmd() {
         match cmd {
             "captchakick" => {
@@ -713,7 +718,7 @@ async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
                         let (cchat, cuser): (Chat, User) = base.get()?;
                         log::info!("chat {}", cchat.name_humanreadable());
                         if cuser.get_id() == user.get_id() {
-                            send_captcha(message, cchat).await?;
+                            send_captcha(message, cchat, ctx).await?;
                         }
                     }
                 }
@@ -724,13 +729,13 @@ async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
     Ok(())
 }
 
-#[allow(dead_code)]
-pub async fn handle_update<'a>(update: &UpdateExt, cmd: &Option<Context<'a>>) -> Result<()> {
+pub async fn handle_update<'a>(cmd: &Context) -> Result<()> {
+    let update = &cmd.get_static().update;
     if let Some(UserChanged::UserJoined(ref member)) = update.user_event() {
-        handle_user_action(member).await?;
+        handle_user_action(cmd, member).await?;
     }
-    if let Some(cmd) = cmd {
-        handle_command(cmd).await?;
-    }
+
+    handle_command(cmd).await?;
+
     Ok(())
 }

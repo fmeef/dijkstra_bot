@@ -8,7 +8,7 @@ use crate::util::error::{BotError, Result};
 
 use crate::util::string::{get_chat_lang, Lang};
 use crate::{metadata::metadata, util::string::Speak};
-use botapi::gen_types::{Chat, ChatMemberUpdated, Message, UpdateExt};
+use botapi::gen_types::{Chat, ChatMemberUpdated, Message};
 use chrono::Duration;
 use futures::FutureExt;
 use lazy_static::__Deref;
@@ -271,7 +271,7 @@ async fn set_welcome<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang) ->
     Ok(())
 }
 
-async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
+async fn handle_command(ctx: &Context) -> Result<()> {
     if let Some((cmd, _, args, message, lang)) = ctx.cmd() {
         match cmd {
             "setwelcome" => set_welcome(message, args, lang).await?,
@@ -342,10 +342,10 @@ async fn goodbye_mambers(
     Ok(())
 }
 
-pub async fn handle_update<'a>(update: &UpdateExt, cmd: &Option<Context<'a>>) -> Result<()> {
-    if let Some(cmd) = cmd {
-        handle_command(cmd).await?;
-    } else if let Some(userchanged) = update.user_event() {
+pub async fn handle_update<'a>(cmd: &Context) -> Result<()> {
+    handle_command(cmd).await?;
+    let update = cmd.update();
+    if let Some(userchanged) = update.user_event() {
         let lang = get_chat_lang(userchanged.get_chat().get_id()).await?;
         if let Some(model) = should_welcome(userchanged.get_chat()).await? {
             if model.enabled {

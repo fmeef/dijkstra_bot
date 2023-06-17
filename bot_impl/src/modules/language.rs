@@ -11,7 +11,7 @@ use crate::{
     util::string::get_langs,
 };
 
-use botapi::gen_types::{Message, UpdateExt};
+use botapi::gen_types::Message;
 use macros::{inline_lang, lang_fmt};
 use sea_orm_migration::MigrationTrait;
 use uuid::Uuid;
@@ -85,7 +85,7 @@ async fn get_lang_conversation(message: &Message, current: &Lang) -> Result<Conv
     Ok(state)
 }
 
-async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
+async fn handle_command(ctx: &Context) -> Result<()> {
     if let Some((cmd, _, _, message, lang)) = ctx.cmd() {
         match cmd {
             "setlang" => {
@@ -112,9 +112,8 @@ async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
 }
 
 #[allow(dead_code)]
-pub async fn handle_update<'a>(_: &UpdateExt, cmd: &Option<Context<'a>>) -> Result<()> {
-    if let Some(cmd) = cmd {
-        handle_command(cmd).await?;
-    }
+pub async fn handle_update<'a>(cmd: &Context) -> Result<()> {
+    handle_command(cmd).await?;
+
     Ok(())
 }

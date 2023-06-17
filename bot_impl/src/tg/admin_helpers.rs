@@ -4,7 +4,7 @@
 //! this module depends on the `static` module for access to the database, redis,
 //! and telegram client.
 
-use std::{borrow::Cow, collections::VecDeque};
+use std::borrow::Cow;
 
 use crate::{
     persist::{
@@ -39,7 +39,7 @@ use uuid::Uuid;
 
 use super::{
     button::{InlineKeyboardBuilder, OnPush},
-    command::{ArgSlice, Entities, EntityArg, TextArgs},
+    command::{ArgSlice, Context, EntityArg},
     dialog::{dialog_or_default, get_dialog_key},
     markdown::{MarkupBuilder, MarkupType},
     permissions::{GetCachedAdmins, IsAdmin},
@@ -226,124 +226,6 @@ pub async fn kick_message(message: &Message) -> Result<()> {
     Ok(())
 }
 
-/// Restrict a given user in a given chat for the provided duration.
-/// If the user is not currently in the chat the permission change is
-/// queued until the user joins
-pub async fn change_permissions(
-    chat: &Chat,
-    user: i64,
-    permissions: &ChatPermissions,
-    time: Option<Duration>,
-) -> Result<()> {
-    let me = ME.get().unwrap();
-    let lang = get_chat_lang(chat.get_id()).await?;
-    if user == me.get_id() {
-        Err(BotError::speak(
-            lang_fmt!(lang, "mutemyself"),
-            chat.get_id(),
-        ))
-    } else if user.is_admin(chat).await? {
-        Err(BotError::speak(lang_fmt!(lang, "muteadmin"), chat.get_id()))
-    } else {
-        if let Some(time) = time.map(|t| Utc::now().checked_add_signed(t)).flatten() {
-            TG.client()
-                .build_restrict_chat_member(chat.get_id(), user, permissions)
-                .until_date(time.timestamp())
-                .build()
-                .await?;
-        } else {
-            TG.client()
-                .build_restrict_chat_member(chat.get_id(), user, permissions)
-                .build()
-                .await?;
-        }
-        let time = time.map(|t| Utc::now().checked_add_signed(t)).flatten();
-        update_actions_permissions(user, chat, permissions, time).await?;
-        Ok(())
-    }
-}
-
-/// Runs the provided function with parameters specifying a user and message parsed from the
-/// arguments of a command. This is used to allows users to specify messages to interact with
-/// using either mentioning a user via an @ handle or text mention or by replying to a message.
-/// The user mentioned OR the sender of the message that is replied to is passed to the callback
-/// function along with the remaining args and the message itself
-pub async fn action_message<'a, F>(
-    message: &'a Message,
-    entities: &Entities<'a>,
-    args: Option<&'a TextArgs<'a>>,
-    action: F,
-) -> Result<i64>
-where
-    for<'b> F: FnOnce(&'b Message, i64, Option<ArgSlice<'b>>) -> BoxFuture<'b, Result<()>>,
-{
-    let lang = get_chat_lang(message.get_chat().get_id()).await?;
-
-    if let Some(user) = message
-        .get_reply_to_message_ref()
-        .map(|v| v.get_from())
-        .flatten()
-    {
-        action(&message, user.get_id(), args.map(|a| a.as_slice())).await?;
-        Ok(user.get_id())
-    } else {
-        match entities.front() {
-            Some(EntityArg::Mention(name)) => {
-                if let Some(user) = get_user_username(name).await? {
-                    action(
-                        message,
-                        user.get_id(),
-                        args.map(|a| a.pop_slice()).flatten(),
-                    )
-                    .await?;
-                    Ok(user.get_id())
-                } else {
-                    return Err(BotError::speak(
-                        lang_fmt!(lang, "usernotfound"),
-                        message.get_chat().get_id(),
-                    ));
-                }
-            }
-            Some(EntityArg::TextMention(user)) => {
-                action(
-                    message,
-                    user.get_id(),
-                    args.map(|a| a.pop_slice()).flatten(),
-                )
-                .await?;
-                Ok(user.get_id())
-            }
-            _ => {
-                match args
-                    .map(|v| {
-                        v.args
-                            .first()
-                            .map(|v| i64::from_str_radix(v.get_text(), 10))
-                    })
-                    .flatten()
-                {
-                    Some(Ok(v)) => {
-                        action(message, v, args.map(|a| a.pop_slice()).flatten()).await?;
-                        Ok(v)
-                    }
-                    Some(Err(_)) => {
-                        return Err(BotError::speak(
-                            lang_fmt!(lang, "specifyuser"),
-                            message.get_chat().get_id(),
-                        ));
-                    }
-                    None => {
-                        return Err(BotError::speak(
-                            lang_fmt!(lang, "specifyuser"),
-                            message.get_chat().get_id(),
-                        ));
-                    }
-                }
-            }
-        }
-    }
-}
-
 /// Parse a std::chrono::Duration from a human readable string (5m, 4d, etc)
 pub fn parse_duration_str(arg: &str, chat: i64) -> Result<Option<Duration>> {
     let head = &arg[0..arg.len() - 1];
@@ -400,126 +282,6 @@ pub fn parse_duration<'a>(args: &Option<ArgSlice<'a>>, chat: i64) -> Result<Opti
     } else {
         Ok(None)
     }
-}
-
-/// Persistantly change the permission of a user by using action_message syntax
-pub async fn change_permissions_message<'a>(
-    message: &Message,
-    entities: &VecDeque<EntityArg<'a>>,
-    permissions: ChatPermissions,
-    args: &'a TextArgs<'a>,
-) -> Result<i64> {
-    action_message(message, entities, Some(args), |message, user, args| {
-        async move {
-            let duration = parse_duration(&args, message.get_chat().get_id())?;
-            change_permissions(message.get_chat_ref(), user, &permissions, duration).await?;
-
-            Ok(())
-        }
-        .boxed()
-    })
-    .await
-}
-
-/// Issue a warning to a user, speaking in the chat as required. If the warn count
-/// exceeds the currently configured count fetch the configured action and apply it
-pub async fn warn_with_action(
-    message: &Message,
-    user: i64,
-    reason: Option<&str>,
-    duration: Option<Duration>,
-) -> Result<(i32, i32)> {
-    let dialog = dialog_or_default(message.get_chat_ref()).await?;
-    let lang = get_chat_lang(message.get_chat().get_id()).await?;
-    let time = dialog.warn_time.map(|t| Duration::seconds(t));
-    let (count, model) = warn_user(message, user, reason.map(|v| v.to_owned()), &time).await?;
-    let name = if let Some(user) = user.get_cached_user().await? {
-        user.name_humanreadable()
-    } else {
-        user.to_string()
-    };
-    let text = if let Some(reason) = reason {
-        lang_fmt!(lang, "warnreason", name, count, dialog.warn_limit, reason)
-    } else {
-        lang_fmt!(lang, "warn", name, count, dialog.warn_limit)
-    };
-
-    let button_text = lang_fmt!(lang, "removewarn");
-
-    let mut builder = InlineKeyboardBuilder::default();
-
-    let button = InlineKeyboardButtonBuilder::new(button_text)
-        .set_callback_data(Uuid::new_v4().to_string())
-        .build();
-    let model = model.id;
-    button.on_push_multi(move |cb| async move {
-        if let Some(message) = cb.get_message_ref() {
-            let chat = message.get_chat_ref();
-            if cb.get_from().is_admin(chat).await? {
-                let key = get_warns_key(user, chat.get_id());
-                if let Some(res) = warns::Entity::find_by_id(model).one(DB.deref()).await? {
-                    let st = RedisStr::new(&res)?;
-                    res.delete(DB.deref()).await?;
-                    REDIS.sq(|q| q.srem(&key, st)).await?;
-                }
-                TG.client
-                    .build_edit_message_reply_markup()
-                    .message_id(message.get_message_id())
-                    .chat_id(chat.get_id())
-                    .build()
-                    .await?;
-                TG.client
-                    .build_edit_message_text("Warn removed")
-                    .message_id(message.get_message_id())
-                    .chat_id(chat.get_id())
-                    .build()
-                    .await?;
-                TG.client
-                    .build_answer_callback_query(cb.get_id_ref())
-                    .build()
-                    .await?;
-
-                Ok(true)
-            } else {
-                TG.client
-                    .build_answer_callback_query(cb.get_id_ref())
-                    .show_alert(true)
-                    .text("User is not admin")
-                    .build()
-                    .await?;
-                Ok(false)
-            }
-        } else {
-            Ok(true)
-        }
-    });
-    builder.button(button);
-    let markup = builder.build();
-
-    let markup = botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(markup);
-
-    let md = MarkupBuilder::from_murkdown_chatuser(text, message.get_chatuser().as_ref()).await?;
-
-    let (text, entities) = md.build();
-
-    let m = TG
-        .client
-        .build_send_message(message.get_chat().get_id(), &text)
-        .entities(entities)
-        .reply_markup(&markup);
-
-    message.reply_fmt(m).await?;
-
-    if count >= dialog.warn_limit {
-        match dialog.action_type {
-            actions::ActionType::Mute => warn_mute(message, user, count, duration).await,
-            actions::ActionType::Ban => warn_ban(message, user, count, duration).await,
-            actions::ActionType::Shame => warn_shame(message, user, count).await,
-            actions::ActionType::Warn => Ok(()),
-            actions::ActionType::Delete => Ok(()),
-        }?;
-    }
-    Ok((count, dialog.warn_limit))
 }
 
 /// Sets the duration after which warns expire for the provided chat
@@ -657,53 +419,6 @@ pub async fn get_action(chat: &Chat, user: &User) -> Result<Option<actions::Mode
     Ok(res)
 }
 
-/// Helper function to handle a ban action after warn limit is exceeded.
-/// Automatically sends localized string
-pub async fn warn_ban(
-    message: &Message,
-    user: i64,
-    count: i32,
-    duration: Option<Duration>,
-) -> Result<()> {
-    let lang = get_chat_lang(message.get_chat().get_id()).await?;
-    ban(message, user, duration).await?;
-    message
-        .reply_fmt(entity_fmt!(
-            lang,
-            message.get_chat().get_id(),
-            "warnban",
-            MarkupType::Text.text(&count.to_string()),
-            user.mention().await?,
-        ))
-        .await?;
-    Ok(())
-}
-
-/// Helper function to handle a mute action after warn limit is exceeded.
-/// Automatically sends localized string
-pub async fn warn_mute(
-    message: &Message,
-    user: i64,
-    count: i32,
-    duration: Option<Duration>,
-) -> Result<()> {
-    let lang = get_chat_lang(message.get_chat().get_id()).await?;
-    mute(message.get_chat_ref(), user, duration).await?;
-
-    let mention = user.mention().await?;
-    message
-        .reply_fmt(entity_fmt!(
-            lang,
-            message.get_chat().get_id(),
-            "warnmute",
-            MarkupType::Text.text(&count.to_string()),
-            mention
-        ))
-        .await?;
-
-    Ok(())
-}
-
 pub async fn warn_shame(message: &Message, _user: i64, _count: i32) -> Result<()> {
     message.speak("shaming not implemented").await?;
 
@@ -816,56 +531,6 @@ pub async fn clear_warns(chat: &Chat, user: i64) -> Result<()> {
         )
         .exec(DB.deref().deref())
         .await?;
-    Ok(())
-}
-
-/// Removes all restrictions on a user in a chat. This is persistent and
-/// if the user is not present the changes will be applied on joining
-pub async fn unmute(chat: &Chat, user: i64) -> Result<()> {
-    let old = TG.client.get_chat(chat.get_id()).await?;
-    let old = old.get_permissions().ok_or_else(|| {
-        BotError::speak(
-            "cannot unmute user, failed to get permissions",
-            chat.get_id(),
-        )
-    })?;
-    let mut new = ChatPermissionsBuilder::new();
-    let permissions = ChatPermissionsBuilder::new()
-        .set_can_send_messages(true)
-        .set_can_send_audios(true)
-        .set_can_send_documents(true)
-        .set_can_send_photos(true)
-        .set_can_send_videos(true)
-        .set_can_send_video_notes(true)
-        .set_can_send_polls(true)
-        .set_can_send_voice_notes(true)
-        .set_can_send_other_messages(true)
-        .build();
-
-    new = merge_permissions(&permissions, new);
-    new = merge_permissions(&old, new);
-
-    change_permissions(chat, user, &new.build(), None).await?;
-    Ok(())
-}
-
-/// Restricts a user in a given chat. If the user not present the restriction will be
-/// applied when they join. If a duration is specified the restrictions will be removed
-/// after the duration
-pub async fn mute(chat: &Chat, user: i64, duration: Option<Duration>) -> Result<()> {
-    let permissions = ChatPermissionsBuilder::new()
-        .set_can_send_messages(false)
-        .set_can_send_audios(false)
-        .set_can_send_documents(false)
-        .set_can_send_photos(false)
-        .set_can_send_videos(false)
-        .set_can_send_video_notes(false)
-        .set_can_send_polls(false)
-        .set_can_send_voice_notes(false)
-        .set_can_send_other_messages(false)
-        .build();
-
-    change_permissions(chat, user, &permissions, duration).await?;
     Ok(())
 }
 
@@ -1076,66 +741,453 @@ pub async fn ban_message(message: &Message, duration: Option<Duration>) -> Resul
     Ok(())
 }
 
-/// Bans a user in the given chat (from message), transparently handling anonymous channels.
-/// if a duration is specified. the ban will be lifted
-pub async fn ban(message: &Message, user: i64, duration: Option<Duration>) -> Result<()> {
-    let lang = get_chat_lang(message.get_chat().get_id()).await?;
-    if let Some(senderchat) = message.get_sender_chat() {
-        TG.client()
-            .build_ban_chat_sender_chat(message.get_chat().get_id(), senderchat.get_id())
-            .build()
+impl Context {
+    /// Helper function to handle a mute action after warn limit is exceeded.
+    /// Automatically sends localized string
+    pub async fn warn_mute(&self, user: i64, count: i32, duration: Option<Duration>) -> Result<()> {
+        let message = self.message()?;
+        self.mute(user, duration).await?;
+
+        let mention = user.mention().await?;
+        message
+            .reply_fmt(entity_fmt!(
+                self.try_get()?.lang,
+                message.get_chat().get_id(),
+                "warnmute",
+                MarkupType::Text.text(&count.to_string()),
+                mention
+            ))
             .await?;
-        let name = senderchat.name_humanreadable();
-        if let Some(user) = user.get_cached_user().await? {
-            let mention = MarkupType::TextMention(user).text(&name);
+
+        Ok(())
+    }
+
+    /// Checks if the provided user has a pending action, and applies it if needed.
+    /// afterwards, the pending flag is cleared
+    pub async fn handle_pending_action(&self, user: &User) -> Result<()> {
+        let chat = self.try_get()?.chat;
+        if !is_self_admin(&chat).await? {
+            return Ok(());
+        }
+        if let Some(action) = get_action(&chat, &user).await? {
+            log::info!("handling pending action user {}", user.name_humanreadable());
+            let time = Utc::now();
+            if let Some(expire) = action.expires {
+                if expire < time {
+                    log::info!("expired action!");
+                    if action.is_banned {
+                        TG.client()
+                            .build_unban_chat_member(chat.get_id(), user.get_id())
+                            .build()
+                            .await?;
+                    }
+
+                    self.unmute(user.get_id()).await?;
+                    action.delete(DB.deref()).await?;
+                    return Ok(());
+                }
+            }
+            if action.pending {
+                let lang = get_chat_lang(chat.get_id()).await?;
+
+                let name = user.name_humanreadable();
+                if action.is_banned {
+                    TG.client()
+                        .build_ban_chat_member(chat.get_id(), user.get_id())
+                        .build()
+                        .await?;
+
+                    let mention = MarkupType::TextMention(user.to_owned()).text(&name);
+                    chat.speak_fmt(entity_fmt!(lang, chat.get_id(), "banned", mention))
+                        .await?;
+                } else {
+                    let permissions = ChatPermissionsBuilder::new()
+                        .set_can_send_messages(action.can_send_messages)
+                        .set_can_send_polls(action.can_send_poll)
+                        .set_can_send_other_messages(action.can_send_other)
+                        .set_can_send_audios(action.can_send_audio)
+                        .set_can_send_documents(action.can_send_document)
+                        .set_can_send_photos(action.can_send_photo)
+                        .set_can_send_videos(action.can_send_video)
+                        .set_can_send_video_notes(action.can_send_video_note)
+                        .set_can_send_voice_notes(action.can_send_voice_note)
+                        .build();
+                    TG.client()
+                        .build_restrict_chat_member(chat.get_id(), user.get_id(), &permissions)
+                        .build()
+                        .await?;
+                }
+
+                update_actions_pending(&chat, &user, false).await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Removes all restrictions on a user in a chat. This is persistent and
+    /// if the user is not present the changes will be applied on joining
+    pub async fn unmute(&self, user: i64) -> Result<()> {
+        let chat = self.try_get()?.chat;
+        let old = TG.client.get_chat(chat.get_id()).await?;
+        let old = old.get_permissions().ok_or_else(|| {
+            BotError::speak(
+                "cannot unmute user, failed to get permissions",
+                chat.get_id(),
+            )
+        })?;
+        let mut new = ChatPermissionsBuilder::new();
+        let permissions = ChatPermissionsBuilder::new()
+            .set_can_send_messages(true)
+            .set_can_send_audios(true)
+            .set_can_send_documents(true)
+            .set_can_send_photos(true)
+            .set_can_send_videos(true)
+            .set_can_send_video_notes(true)
+            .set_can_send_polls(true)
+            .set_can_send_voice_notes(true)
+            .set_can_send_other_messages(true)
+            .build();
+
+        new = merge_permissions(&permissions, new);
+        new = merge_permissions(&old, new);
+
+        self.change_permissions(user, &new.build(), None).await?;
+        Ok(())
+    }
+
+    /// Restricts a user in a given chat. If the user not present the restriction will be
+    /// applied when they join. If a duration is specified the restrictions will be removed
+    /// after the duration
+    pub async fn mute(&self, user: i64, duration: Option<Duration>) -> Result<()> {
+        let permissions = ChatPermissionsBuilder::new()
+            .set_can_send_messages(false)
+            .set_can_send_audios(false)
+            .set_can_send_documents(false)
+            .set_can_send_photos(false)
+            .set_can_send_videos(false)
+            .set_can_send_video_notes(false)
+            .set_can_send_polls(false)
+            .set_can_send_voice_notes(false)
+            .set_can_send_other_messages(false)
+            .build();
+
+        self.change_permissions(user, &permissions, duration)
+            .await?;
+        Ok(())
+    }
+
+    /// Restrict a given user in a given chat for the provided duration.
+    /// If the user is not currently in the chat the permission change is
+    /// queued until the user joins
+    pub async fn change_permissions(
+        &self,
+        user: i64,
+        permissions: &ChatPermissions,
+        time: Option<Duration>,
+    ) -> Result<()> {
+        let me = ME.get().unwrap();
+        let chat = self.try_get()?.chat;
+        if user == me.get_id() {
+            Err(BotError::speak(
+                lang_fmt!(self.try_get()?.lang, "mutemyself"),
+                chat.get_id(),
+            ))
+        } else if user.is_admin(chat).await? {
+            Err(BotError::speak(
+                lang_fmt!(self.try_get()?.lang, "muteadmin"),
+                chat.get_id(),
+            ))
+        } else {
+            if let Some(time) = time.map(|t| Utc::now().checked_add_signed(t)).flatten() {
+                TG.client()
+                    .build_restrict_chat_member(chat.get_id(), user, permissions)
+                    .until_date(time.timestamp())
+                    .build()
+                    .await?;
+            } else {
+                TG.client()
+                    .build_restrict_chat_member(chat.get_id(), user, permissions)
+                    .build()
+                    .await?;
+            }
+            let time = time.map(|t| Utc::now().checked_add_signed(t)).flatten();
+            update_actions_permissions(user, chat, permissions, time).await?;
+            Ok(())
+        }
+    }
+
+    /// Persistantly change the permission of a user by using action_message syntax
+    pub async fn change_permissions_message(&self, permissions: ChatPermissions) -> Result<i64> {
+        let me = self.clone();
+        self.action_message(|ctx, user, args| {
+            async move {
+                let duration = parse_duration(&args, ctx.try_get()?.chat.get_id())?;
+                me.change_permissions(user, &permissions, duration).await?;
+
+                Ok(())
+            }
+            .boxed()
+        })
+        .await
+    }
+
+    /// Runs the provided function with parameters specifying a user and message parsed from the
+    /// arguments of a command. This is used to allows users to specify messages to interact with
+    /// using either mentioning a user via an @ handle or text mention or by replying to a message.
+    /// The user mentioned OR the sender of the message that is replied to is passed to the callback
+    /// function along with the remaining args and the message itself
+    pub async fn action_message<F>(&self, action: F) -> Result<i64>
+    where
+        for<'b> F: FnOnce(&'b Context, i64, Option<ArgSlice<'b>>) -> BoxFuture<'b, Result<()>>,
+    {
+        let message = self.message()?;
+        let args = self.try_get()?.command.as_ref().map(|a| &a.args);
+        let entities = self
+            .try_get()?
+            .command
+            .as_ref()
+            .map(|e| &e.entities)
+            .ok_or_else(|| BotError::Generic("no entities".to_owned()))?;
+        let lang = self.try_get()?.lang;
+        if let Some(user) = message
+            .get_reply_to_message_ref()
+            .map(|v| v.get_from())
+            .flatten()
+        {
+            action(self, user.get_id(), args.map(|a| a.as_slice())).await?;
+            Ok(user.get_id())
+        } else {
+            match entities.front() {
+                Some(EntityArg::Mention(name)) => {
+                    if let Some(user) = get_user_username(name).await? {
+                        action(self, user.get_id(), args.map(|a| a.pop_slice()).flatten()).await?;
+                        Ok(user.get_id())
+                    } else {
+                        return Err(BotError::speak(
+                            lang_fmt!(self.try_get()?.lang, "usernotfound"),
+                            message.get_chat().get_id(),
+                        ));
+                    }
+                }
+                Some(EntityArg::TextMention(user)) => {
+                    action(self, user.get_id(), args.map(|a| a.pop_slice()).flatten()).await?;
+                    Ok(user.get_id())
+                }
+                _ => {
+                    match args
+                        .map(|v| {
+                            v.args
+                                .first()
+                                .map(|v| i64::from_str_radix(v.get_text(), 10))
+                        })
+                        .flatten()
+                    {
+                        Some(Ok(v)) => {
+                            action(self, v, args.map(|a| a.pop_slice()).flatten()).await?;
+                            Ok(v)
+                        }
+                        Some(Err(_)) => {
+                            return Err(BotError::speak(
+                                lang_fmt!(lang, "specifyuser"),
+                                message.get_chat().get_id(),
+                            ));
+                        }
+                        None => {
+                            return Err(BotError::speak(
+                                lang_fmt!(lang, "specifyuser"),
+                                message.get_chat().get_id(),
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Issue a warning to a user, speaking in the chat as required. If the warn count
+    /// exceeds the currently configured count fetch the configured action and apply it
+    pub async fn warn_with_action(
+        &self,
+        user: i64,
+        reason: Option<&str>,
+        duration: Option<Duration>,
+    ) -> Result<(i32, i32)> {
+        let message = self.message()?;
+        let dialog = dialog_or_default(message.get_chat_ref()).await?;
+        let lang = get_chat_lang(message.get_chat().get_id()).await?;
+        let time = dialog.warn_time.map(|t| Duration::seconds(t));
+        let (count, model) = warn_user(message, user, reason.map(|v| v.to_owned()), &time).await?;
+        let name = if let Some(user) = user.get_cached_user().await? {
+            user.name_humanreadable()
+        } else {
+            user.to_string()
+        };
+        let text = if let Some(reason) = reason {
+            lang_fmt!(lang, "warnreason", name, count, dialog.warn_limit, reason)
+        } else {
+            lang_fmt!(lang, "warn", name, count, dialog.warn_limit)
+        };
+
+        let button_text = lang_fmt!(lang, "removewarn");
+
+        let mut builder = InlineKeyboardBuilder::default();
+
+        let button = InlineKeyboardButtonBuilder::new(button_text)
+            .set_callback_data(Uuid::new_v4().to_string())
+            .build();
+        let model = model.id;
+        button.on_push_multi(move |cb| async move {
+            if let Some(message) = cb.get_message_ref() {
+                let chat = message.get_chat_ref();
+                if cb.get_from().is_admin(chat).await? {
+                    let key = get_warns_key(user, chat.get_id());
+                    if let Some(res) = warns::Entity::find_by_id(model).one(DB.deref()).await? {
+                        let st = RedisStr::new(&res)?;
+                        res.delete(DB.deref()).await?;
+                        REDIS.sq(|q| q.srem(&key, st)).await?;
+                    }
+                    TG.client
+                        .build_edit_message_reply_markup()
+                        .message_id(message.get_message_id())
+                        .chat_id(chat.get_id())
+                        .build()
+                        .await?;
+                    TG.client
+                        .build_edit_message_text("Warn removed")
+                        .message_id(message.get_message_id())
+                        .chat_id(chat.get_id())
+                        .build()
+                        .await?;
+                    TG.client
+                        .build_answer_callback_query(cb.get_id_ref())
+                        .build()
+                        .await?;
+
+                    Ok(true)
+                } else {
+                    TG.client
+                        .build_answer_callback_query(cb.get_id_ref())
+                        .show_alert(true)
+                        .text("User is not admin")
+                        .build()
+                        .await?;
+                    Ok(false)
+                }
+            } else {
+                Ok(true)
+            }
+        });
+        builder.button(button);
+        let markup = builder.build();
+
+        let markup = botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(markup);
+
+        let md =
+            MarkupBuilder::from_murkdown_chatuser(text, message.get_chatuser().as_ref()).await?;
+
+        let (text, entities) = md.build();
+
+        let m = TG
+            .client
+            .build_send_message(message.get_chat().get_id(), &text)
+            .entities(entities)
+            .reply_markup(&markup);
+
+        message.reply_fmt(m).await?;
+
+        if count >= dialog.warn_limit {
+            match dialog.action_type {
+                actions::ActionType::Mute => self.warn_mute(user, count, duration).await,
+                actions::ActionType::Ban => self.warn_ban(user, count, duration).await,
+                actions::ActionType::Shame => warn_shame(message, user, count).await,
+                actions::ActionType::Warn => Ok(()),
+                actions::ActionType::Delete => Ok(()),
+            }?;
+        }
+        Ok((count, dialog.warn_limit))
+    }
+
+    /// Helper function to handle a ban action after warn limit is exceeded.
+    /// Automatically sends localized string
+    pub async fn warn_ban(&self, user: i64, count: i32, duration: Option<Duration>) -> Result<()> {
+        let message = self.message()?;
+        let lang = get_chat_lang(message.get_chat().get_id()).await?;
+        self.ban(user, duration).await?;
+        message
+            .reply_fmt(entity_fmt!(
+                lang,
+                message.get_chat().get_id(),
+                "warnban",
+                MarkupType::Text.text(&count.to_string()),
+                user.mention().await?,
+            ))
+            .await?;
+        Ok(())
+    }
+
+    /// Bans a user in the given chat (from message), transparently handling anonymous channels.
+    /// if a duration is specified. the ban will be lifted
+    pub async fn ban(&self, user: i64, duration: Option<Duration>) -> Result<()> {
+        let message = self.message()?;
+        let lang = get_chat_lang(message.get_chat().get_id()).await?;
+        if let Some(senderchat) = message.get_sender_chat() {
+            TG.client()
+                .build_ban_chat_sender_chat(message.get_chat().get_id(), senderchat.get_id())
+                .build()
+                .await?;
+            let name = senderchat.name_humanreadable();
+            if let Some(user) = user.get_cached_user().await? {
+                let mention = MarkupType::TextMention(user).text(&name);
+                message
+                    .speak_fmt(entity_fmt!(
+                        lang,
+                        message.get_chat().get_id(),
+                        "banchat",
+                        mention
+                    ))
+                    .await?;
+            } else {
+                message.speak(lang_fmt!(lang, "banchat", name)).await?;
+            }
+        }
+
+        let me = ME.get().unwrap();
+
+        if user == me.get_id() {
+            return Err(BotError::speak(
+                lang_fmt!(lang, "banmyself"),
+                message.get_chat().get_id(),
+            ));
+        } else if user.is_admin(message.get_chat_ref()).await? {
+            let banadmin = lang_fmt!(lang, "banadmin");
+            return Err(BotError::speak(banadmin, message.get_chat().get_id()));
+        } else {
+            if let Some(duration) = duration.map(|v| Utc::now().checked_add_signed(v)).flatten() {
+                TG.client()
+                    .build_ban_chat_member(message.get_chat().get_id(), user)
+                    .until_date(duration.timestamp())
+                    .build()
+                    .await?;
+            } else {
+                TG.client()
+                    .build_ban_chat_member(message.get_chat().get_id(), user)
+                    .build()
+                    .await?;
+            }
+
+            let mention = user.mention().await?;
             message
                 .speak_fmt(entity_fmt!(
                     lang,
                     message.get_chat().get_id(),
-                    "banchat",
+                    "banned",
                     mention
                 ))
                 .await?;
-        } else {
-            message.speak(lang_fmt!(lang, "banchat", name)).await?;
         }
+        Ok(())
     }
-
-    let me = ME.get().unwrap();
-
-    if user == me.get_id() {
-        return Err(BotError::speak(
-            lang_fmt!(lang, "banmyself"),
-            message.get_chat().get_id(),
-        ));
-    } else if user.is_admin(message.get_chat_ref()).await? {
-        let banadmin = lang_fmt!(lang, "banadmin");
-        return Err(BotError::speak(banadmin, message.get_chat().get_id()));
-    } else {
-        if let Some(duration) = duration.map(|v| Utc::now().checked_add_signed(v)).flatten() {
-            TG.client()
-                .build_ban_chat_member(message.get_chat().get_id(), user)
-                .until_date(duration.timestamp())
-                .build()
-                .await?;
-        } else {
-            TG.client()
-                .build_ban_chat_member(message.get_chat().get_id(), user)
-                .build()
-                .await?;
-        }
-
-        let mention = user.mention().await?;
-        message
-            .speak_fmt(entity_fmt!(
-                lang,
-                message.get_chat().get_id(),
-                "banned",
-                mention
-            ))
-            .await?;
-    }
-    Ok(())
 }
 
 /// Warns a user in the given chat, incrementing and returning the warn count.
@@ -1336,79 +1388,17 @@ pub async fn update_actions_permissions(
 
 /// Checks an update for user interactions and applies the current action for the user
 /// if it is pending. clearing the pending flag in the process
-pub async fn handle_pending_action(update: &UpdateExt) -> Result<()> {
+pub async fn handle_pending_action<'a>(update: &UpdateExt, ctx: &Context) -> Result<()> {
     match update {
         UpdateExt::Message(ref message) => {
             if !is_dm(&message.get_chat()) {
                 if let Some(user) = message.get_from_ref() {
-                    handle_pending_action_user(user, message.get_chat_ref()).await?;
+                    ctx.handle_pending_action(user).await?;
                 }
             }
         }
         _ => (),
     };
-
-    Ok(())
-}
-
-/// Checks if the provided user has a pending action, and applies it if needed.
-/// afterwards, the pending flag is cleared
-pub async fn handle_pending_action_user(user: &User, chat: &Chat) -> Result<()> {
-    if !is_self_admin(&chat).await? {
-        return Ok(());
-    }
-    if let Some(action) = get_action(&chat, &user).await? {
-        log::info!("handling pending action user {}", user.name_humanreadable());
-        let time = Utc::now();
-        if let Some(expire) = action.expires {
-            if expire < time {
-                log::info!("expired action!");
-                if action.is_banned {
-                    TG.client()
-                        .build_unban_chat_member(chat.get_id(), user.get_id())
-                        .build()
-                        .await?;
-                }
-
-                unmute(&chat, user.get_id()).await?;
-                action.delete(DB.deref()).await?;
-                return Ok(());
-            }
-        }
-        if action.pending {
-            let lang = get_chat_lang(chat.get_id()).await?;
-
-            let name = user.name_humanreadable();
-            if action.is_banned {
-                TG.client()
-                    .build_ban_chat_member(chat.get_id(), user.get_id())
-                    .build()
-                    .await?;
-
-                let mention = MarkupType::TextMention(user.to_owned()).text(&name);
-                chat.speak_fmt(entity_fmt!(lang, chat.get_id(), "banned", mention))
-                    .await?;
-            } else {
-                let permissions = ChatPermissionsBuilder::new()
-                    .set_can_send_messages(action.can_send_messages)
-                    .set_can_send_polls(action.can_send_poll)
-                    .set_can_send_other_messages(action.can_send_other)
-                    .set_can_send_audios(action.can_send_audio)
-                    .set_can_send_documents(action.can_send_document)
-                    .set_can_send_photos(action.can_send_photo)
-                    .set_can_send_videos(action.can_send_video)
-                    .set_can_send_video_notes(action.can_send_video_note)
-                    .set_can_send_voice_notes(action.can_send_voice_note)
-                    .build();
-                TG.client()
-                    .build_restrict_chat_member(chat.get_id(), user.get_id(), &permissions)
-                    .build()
-                    .await?;
-            }
-
-            update_actions_pending(&chat, &user, false).await?;
-        }
-    }
 
     Ok(())
 }

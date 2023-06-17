@@ -4,8 +4,6 @@
 //! different character, currently "!". Command arguments are parsed using regex currently
 //! but in the near future will be switched to a context-free grammar
 
-use std::{borrow::Cow, collections::VecDeque};
-
 use crate::{
     persist::redis::RedisStr,
     statics::{CONFIG, REDIS},
@@ -20,7 +18,10 @@ use lazy_static::lazy_static;
 use redis::AsyncCommands;
 use regex::Regex;
 use serde::{de::DeserializeOwned, Serialize};
+use std::sync::Arc;
+use std::{borrow::Cow, collections::VecDeque};
 use uuid::Uuid;
+use yoke::{Yoke, Yokeable};
 
 use super::button::get_url;
 
@@ -75,6 +76,7 @@ pub type Args<'a> = Vec<TextArg<'a>>;
 
 /// Contains references to both the unparsed text of a command (not including the /command)
 /// and the same text parsed into and argument list for convienience
+#[derive(Clone)]
 pub struct TextArgs<'a> {
     pub text: &'a str,
     pub args: Args<'a>,
@@ -89,6 +91,7 @@ pub struct ArgSlice<'a> {
 
 /// A single argument, could be either raw text separated by whitespace or a quoted
 /// text block
+#[derive(Clone)]
 pub enum TextArg<'a> {
     Arg(&'a str),
     Quote(&'a str),
@@ -105,6 +108,7 @@ impl<'a> TextArg<'a> {
 }
 
 /// Helper for wrapping supported MessageEntities in arguments without cloning or owning
+#[derive(Clone)]
 pub enum EntityArg<'a> {
     Command(&'a str),
     Quote(&'a str),
@@ -169,54 +173,157 @@ pub fn single_arg<'a>(s: &'a str) -> Option<(TextArg<'a>, usize, usize)> {
 
 /// A full command including the /command or !command, the argument list, and any
 /// MessageEntities
+#[derive(Clone)]
 pub struct Command<'a> {
     pub cmd: &'a str,
     pub args: TextArgs<'a>,
     pub entities: Entities<'a>,
 }
 
-/// Everything needed to interact with user messages. Contains command and arguments, the message
-/// API type itself, the current language, and the chat
-pub struct Context<'a> {
-    pub message: &'a Message,
-    pub command: Option<Command<'a>>,
-    pub chat: &'a Chat,
+pub struct StaticContext {
+    pub update: UpdateExt,
     pub lang: Lang,
 }
 
-impl<'a> Context<'a> {
+/// Everything needed to interact with user messages. Contains command and arguments, the message
+/// API type itself, the current language, and the chat
+pub struct Context(
+    Yoke<(&'static StaticContext, Option<ContextYoke<'static>>), Arc<StaticContext>>,
+);
+
+#[derive(Yokeable, Clone)]
+pub struct ContextYoke<'a> {
+    pub update: &'a UpdateExt,
+    pub command: Option<Command<'a>>,
+    pub chat: &'a Chat,
+    pub lang: &'a Lang,
+}
+
+impl Clone for Context {
+    fn clone(&self) -> Self {
+        Self(Yoke::clone(&self.0))
+    }
+}
+
+impl StaticContext {
+    pub fn yoke(self: Arc<Self>) -> Context {
+        let v = Yoke::attach_to_cart(self, |v| {
+            (
+                v,
+                if let Some(chat) = v.chat() {
+                    Some(ContextYoke {
+                        update: v.update(),
+                        chat,
+                        lang: v.lang(),
+                        command: v.parse_cmd(),
+                    })
+                } else {
+                    None
+                },
+            )
+        });
+        Context(v)
+    }
+
+    pub fn parse_cmd<'a>(&'a self) -> Option<Command<'a>> {
+        if let UpdateExt::Message(ref m) = self.update {
+            parse_cmd_struct(m)
+        } else {
+            None
+        }
+    }
+
+    pub fn chat_ok<'a>(&'a self) -> Result<&'a Chat> {
+        let c = self
+            .chat()
+            .ok_or_else(|| BotError::Generic("no chat".to_owned()))?;
+        Ok(c)
+    }
+
+    pub fn message<'a>(&'a self) -> Result<&'a Message> {
+        if let UpdateExt::Message(ref message) = self.update {
+            Ok(message)
+        } else {
+            Err(BotError::Generic("update is not a message".to_owned()))
+        }
+    }
+
+    pub fn update<'a>(&'a self) -> &'a UpdateExt {
+        &self.update
+    }
+
+    pub fn lang<'a>(&'a self) -> &'a Lang {
+        &self.lang
+    }
+
+    pub fn chat<'a>(&'a self) -> Option<&'a Chat> {
+        match self.update {
+            UpdateExt::Message(ref m) => Some(m.get_chat_ref()),
+            UpdateExt::EditedMessage(ref m) => Some(m.get_chat_ref()),
+            UpdateExt::CallbackQuery(ref m) => m.get_message_ref().map(|m| m.get_chat_ref()),
+            UpdateExt::ChatMember(ref m) => Some(m.get_chat_ref()),
+            _ => None,
+        }
+    }
+
     /// Get a context from an update. Returns none if one or more fields aren't present
     /// Currently only Message updates return Some
-    pub async fn get_context(update: &'a UpdateExt) -> Result<Option<Context<'a>>> {
-        let message = match update {
-            UpdateExt::Message(message) => message,
-            _ => return Ok(None),
-        };
-
-        let command = parse_cmd_struct(&message);
-        let chat = match update {
-            UpdateExt::Message(m) => Some(m.get_chat_ref()),
-            UpdateExt::EditedMessage(m) => Some(m.get_chat_ref()),
-            UpdateExt::CallbackQuery(m) => m.get_message_ref().map(|m| m.get_chat_ref()),
-            UpdateExt::ChatMember(m) => Some(m.get_chat_ref()),
+    pub async fn get_context(update: UpdateExt) -> Result<Arc<Self>> {
+        let lang = if let Some(chat) = match update {
+            UpdateExt::Message(ref m) => Some(m.get_chat_ref().get_id()),
+            UpdateExt::EditedMessage(ref m) => Some(m.get_chat_ref().get_id()),
+            UpdateExt::CallbackQuery(ref m) => {
+                m.get_message_ref().map(|m| m.get_chat_ref().get_id())
+            }
+            UpdateExt::ChatMember(ref m) => Some(m.get_chat_ref().get_id()),
             _ => None,
-        };
-
-        if let Some(chat) = chat {
-            let lang = get_chat_lang(chat.get_id()).await?;
-            Ok(Some(Self {
-                message,
-                command,
-                chat,
-                lang,
-            }))
+        } {
+            get_chat_lang(chat).await?
         } else {
-            Ok(None)
+            Lang::En
+        };
+        Ok(Arc::new(Self { update, lang }))
+    }
+}
+
+impl Context {
+    pub fn update<'a>(&'a self) -> &'a UpdateExt {
+        &self.0.get().0.update
+    }
+    pub fn get<'a>(&'a self) -> &'a Option<ContextYoke<'a>> {
+        &self.0.get().1
+    }
+
+    pub fn get_static<'a>(&'a self) -> &'a StaticContext {
+        &self.0.get().0
+    }
+
+    pub fn try_get<'a>(&'a self) -> Result<&'a ContextYoke<'a>> {
+        self.get()
+            .as_ref()
+            .ok_or_else(|| BotError::Generic("Not a chat context".to_owned()))
+    }
+
+    pub fn chat<'a>(&'a self) -> Option<&'a Chat> {
+        match self.get().as_ref().map(|v| v.update) {
+            Some(UpdateExt::Message(ref m)) => Some(m.get_chat_ref()),
+            Some(UpdateExt::EditedMessage(ref m)) => Some(m.get_chat_ref()),
+            Some(UpdateExt::CallbackQuery(ref m)) => m.get_message_ref().map(|m| m.get_chat_ref()),
+            Some(UpdateExt::ChatMember(ref m)) => Some(m.get_chat_ref()),
+            _ => None,
+        }
+    }
+
+    pub fn message<'a>(&'a self) -> Result<&'a Message> {
+        if let Some(UpdateExt::Message(ref message)) = self.get().as_ref().map(|v| v.update) {
+            Ok(message)
+        } else {
+            Err(BotError::Generic("update is not a message".to_owned()))
         }
     }
 
     /// Makes accessing command related fields more ergonomic
-    pub fn cmd(
+    pub fn cmd<'a>(
         &'a self,
     ) -> Option<(
         &'a str,
@@ -225,14 +332,18 @@ impl<'a> Context<'a> {
         &'a Message,
         &'a Lang,
     )> {
-        if let (message, Some(command)) = (self.message, &self.command) {
-            Some((
-                command.cmd,
-                &command.entities,
-                &command.args,
-                message,
-                &self.lang,
-            ))
+        if let Some(ctx) = self.get() {
+            if let (UpdateExt::Message(message), Some(command)) = (ctx.update, &ctx.command) {
+                Some((
+                    command.cmd,
+                    &command.entities,
+                    &command.args,
+                    &message,
+                    &ctx.lang,
+                ))
+            } else {
+                None
+            }
         } else {
             None
         }
@@ -315,7 +426,7 @@ where
     Ok(bs)
 }
 
-pub async fn handle_deep_link<'a, F, R>(ctx: &Context<'a>, key_func: F) -> Result<Option<R>>
+pub async fn handle_deep_link<F, R>(ctx: &Context, key_func: F) -> Result<Option<R>>
 where
     F: FnOnce(&str) -> String,
     R: DeserializeOwned,

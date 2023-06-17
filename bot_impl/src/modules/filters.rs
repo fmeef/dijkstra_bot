@@ -21,7 +21,7 @@ use crate::util::filter::Lexer;
 use crate::util::filter::Parser;
 use crate::util::string::Lang;
 use crate::util::string::Speak;
-use botapi::gen_types::{Message, UpdateExt};
+use botapi::gen_types::Message;
 use chrono::Duration;
 use entities::{filters, triggers};
 use futures::FutureExt;
@@ -510,7 +510,7 @@ async fn stopall(message: &Message) -> Result<()> {
     Ok(())
 }
 
-async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
+async fn handle_command(ctx: &Context) -> Result<()> {
     if let Some((cmd, _, args, message, lang)) = ctx.cmd() {
         match cmd {
             "filter" => command_filter(message, &args, &lang).await?,
@@ -519,17 +519,16 @@ async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
             "stopall" => stopall(message).await?,
             _ => handle_trigger(message).await?,
         };
-    } else {
-        handle_trigger(&ctx.message).await?;
+    } else if let Ok(message) = ctx.message() {
+        handle_trigger(message).await?;
     }
 
     Ok(())
 }
 
-pub async fn handle_update<'a>(_: &UpdateExt, cmd: &Option<Context<'a>>) -> Result<()> {
-    if let Some(cmd) = cmd {
-        handle_command(cmd).await?;
-    }
+pub async fn handle_update(cmd: &Context) -> Result<()> {
+    handle_command(cmd).await?;
+
     Ok(())
 }
 

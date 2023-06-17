@@ -165,10 +165,15 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
             update: ::botapi::gen_types::UpdateExt,
             helps: ::std::sync::Arc<crate::tg::client::MetadataCollection>
             ) -> crate::util::error::Result<()> {
-            match crate::tg::command::Context::get_context(&update).await {
+            match crate::tg::command::StaticContext::get_context(update).await.map(|v| v.yoke()) {
                 Ok(cmd) => {
 
-                    let help = if let Some((cmd, _, args, message, lang)) = cmd.as_ref().map(|v| v.cmd()).flatten() {
+                    if let Err(err) = crate::tg::admin_helpers::handle_pending_action(cmd.update(), &cmd).await {
+                        log::error!("failed to handle pending action: {}", err);
+                        err.record_stats();
+                    }
+
+                    let help = if let Some((cmd, _, args, message, lang)) = cmd.cmd() {
                          match cmd {
                             "help" => crate::tg::client::show_help(message, helps, args.args.first().map(|a| a.get_text())).await,
                             "start" => match args.args.first().map(|a| a.get_text()) {
@@ -198,7 +203,7 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
                     };
                     match help {
                         Ok(false) => {#(
-                            if let Err(err) = #updates::handle_update(&update, &cmd).await {
+                            if let Err(err) = #updates::handle_update(&cmd).await {
                                 err.record_stats();
                                 match err.get_message().await {
                                     Err(err) => {
@@ -206,11 +211,12 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
                                         err.record_stats();
                                     }
                                     Ok(v) => if ! v {
-                                        if let Some(cmd) = &cmd {
-                                            if let Err(err) = cmd.message.speak(err.to_string()).await {
+                                        if let Some(chat) = cmd.chat() {
+                                            if let Err(err) = chat.speak(err.to_string()).await {
                                                 log::error!("triple fault! {}", err);
                                             }
                                         }
+
                                         log::error!("handle_update {} error: {}", #updates::METADATA.name, err);
                                     }
                                 }

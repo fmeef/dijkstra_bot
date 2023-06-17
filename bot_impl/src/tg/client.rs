@@ -17,7 +17,7 @@ use dashmap::DashMap;
 use macros::{lang_fmt, message_fmt};
 
 use super::{
-    admin_helpers::{handle_pending_action, is_dm},
+    admin_helpers::is_dm,
     button::{get_url, InlineKeyboardBuilder},
     dialog::{Conversation, ConversationState},
     permissions::*,
@@ -285,10 +285,7 @@ impl TgClient {
                         log::error!("failed to update admin change: {}", err);
                         err.record_stats();
                     }
-                    if let Err(err) = handle_pending_action(&update).await {
-                        log::error!("failed to handle pending action: {}", err);
-                        err.record_stats();
-                    }
+
                     if let Err(err) = update.record_user().await {
                         log::error!("failed to record_user: {}", err);
                         err.record_stats();

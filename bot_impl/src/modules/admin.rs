@@ -6,7 +6,7 @@ use crate::{
     util::error::Result,
     util::string::{get_chat_lang, Speak},
 };
-use botapi::gen_types::{Message, UpdateExt};
+use botapi::gen_types::Message;
 use futures::FutureExt;
 use itertools::Itertools;
 use macros::{entity_fmt, lang_fmt};
@@ -33,54 +33,58 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![]
 }
 
-async fn promote<'a>(context: &'a Context<'a>) -> Result<()> {
-    if let (Some(command), message) = (context.command.as_ref(), context.message) {
-        message.check_permissions(|v| v.can_promote_members).await?;
-        let lang = context.lang.clone();
-        action_message(message, &command.entities, None, |message, user, _| {
+async fn promote(context: &Context) -> Result<()> {
+    let message = context.message()?;
+    message.check_permissions(|v| v.can_promote_members).await?;
+    context
+        .action_message(move |ctx, user, _| {
             async move {
-                message.get_chat().promote(user).await?;
-                let mention = user.mention().await?;
-                message
-                    .speak_fmt(entity_fmt!(
-                        lang,
-                        message.get_chat().get_id(),
-                        "promote",
-                        mention
-                    ))
-                    .await?;
+                let message = ctx.message()?;
+                if let Some(chat) = ctx.chat() {
+                    chat.promote(user).await?;
+                    let mention = user.mention().await?;
+                    message
+                        .speak_fmt(entity_fmt!(
+                            ctx.try_get()?.lang,
+                            message.get_chat().get_id(),
+                            "promote",
+                            mention
+                        ))
+                        .await?;
+                }
                 Ok(())
             }
             .boxed()
         })
         .await?;
-    }
+
     Ok(())
 }
 
-async fn demote<'a>(context: &'a Context<'a>) -> Result<()> {
-    if let (Some(command), message) = (context.command.as_ref(), context.message) {
-        message.check_permissions(|p| p.can_promote_members).await?;
-        let lang = context.lang.clone();
-
-        action_message(message, &command.entities, None, |message, user, _| {
+async fn demote<'a>(context: &'a Context) -> Result<()> {
+    let message = context.message()?;
+    message.check_permissions(|p| p.can_promote_members).await?;
+    context
+        .action_message(|ctx, user, _| {
             async move {
-                match message.get_chat().demote(user).await {
-                    Err(err) => {
-                        message
-                            .reply(format!("failed to demote user: {}", err.get_tg_error()))
-                            .await?;
-                    }
-                    Ok(_) => {
-                        let mention = user.mention().await?;
-                        message
-                            .speak_fmt(entity_fmt!(
-                                lang,
-                                message.get_chat().get_id(),
-                                "demote",
-                                mention
-                            ))
-                            .await?;
+                if let Some(chat) = ctx.chat() {
+                    match chat.demote(user).await {
+                        Err(err) => {
+                            ctx.message()?
+                                .reply(format!("failed to demote user: {}", err.get_tg_error()))
+                                .await?;
+                        }
+                        Ok(_) => {
+                            let mention = user.mention().await?;
+                            ctx.message()?
+                                .speak_fmt(entity_fmt!(
+                                    ctx.try_get()?.lang,
+                                    ctx.try_get()?.chat.get_id(),
+                                    "demote",
+                                    mention
+                                ))
+                                .await?;
+                        }
                     }
                 }
 
@@ -89,7 +93,7 @@ async fn demote<'a>(context: &'a Context<'a>) -> Result<()> {
             .boxed()
         })
         .await?;
-    }
+
     Ok(())
 }
 
@@ -118,13 +122,11 @@ async fn admincache(message: &Message) -> Result<()> {
     message.speak(lang_fmt!(lang, "refreshac")).await?;
     Ok(())
 }
-pub async fn handle_update<'a>(_: &UpdateExt, cmd: &Option<Context<'a>>) -> Result<()> {
-    if let Some(cmd) = cmd {
-        handle_command(cmd).await?;
-    }
+pub async fn handle_update<'a>(cmd: &Context) -> Result<()> {
+    handle_command(cmd).await?;
     Ok(())
 }
-async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
+async fn handle_command<'a>(ctx: &Context) -> Result<()> {
     if let Some((cmd, _, _, message, _)) = ctx.cmd() {
         match cmd {
             "admincache" => admincache(message).await,

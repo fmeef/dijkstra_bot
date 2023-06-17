@@ -4,14 +4,10 @@ use crate::tg::user::GetUser;
 use crate::util::error::BotError;
 use crate::util::string::Lang;
 use crate::{
-    metadata::metadata,
-    tg::admin_helpers::*,
-    tg::command::{Entities, TextArgs},
-    tg::permissions::*,
-    util::error::Result,
-    util::string::Speak,
+    metadata::metadata, tg::admin_helpers::*, tg::command::TextArgs, tg::permissions::*,
+    util::error::Result, util::string::Speak,
 };
-use botapi::gen_types::{Message, UpdateExt};
+use botapi::gen_types::Message;
 
 use futures::FutureExt;
 use humantime::format_duration;
@@ -39,95 +35,90 @@ metadata!("Warns",
 pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![]
 }
-pub async fn warn<'a>(
-    message: &Message,
-    entities: &Entities<'a>,
-    args: &TextArgs<'a>,
-    lang: Lang,
-) -> Result<()> {
+pub async fn warn(context: &Context) -> Result<()> {
+    let message = context.message()?;
     message
         .check_permissions(|p| p.can_restrict_members)
         .await?;
 
-    action_message(message, entities, Some(args), |message, user, args| {
-        async move {
-            if user.is_admin(message.get_chat_ref()).await? {
-                return Err(BotError::speak(
-                    &lang_fmt!(lang, "warnadmin"),
-                    message.get_chat().get_id(),
-                ));
+    context
+        .action_message(|ctx, user, args| {
+            async move {
+                if user.is_admin(ctx.message()?.get_chat_ref()).await? {
+                    return Err(BotError::speak(
+                        &lang_fmt!(ctx.try_get()?.lang, "warnadmin"),
+                        ctx.message()?.get_chat().get_id(),
+                    ));
+                }
+
+                let reason = args
+                    .map(|a| {
+                        if a.args.len() > 0 {
+                            Some(a.text.trim())
+                        } else {
+                            None
+                        }
+                    })
+                    .flatten();
+
+                ctx.warn_with_action(user, reason, None).await?;
+                Ok(())
             }
-
-            let reason = args
-                .map(|a| {
-                    if a.args.len() > 0 {
-                        Some(a.text.trim())
-                    } else {
-                        None
-                    }
-                })
-                .flatten();
-
-            warn_with_action(message, user, reason, None).await?;
-            Ok(())
-        }
-        .boxed()
-    })
-    .await?;
+            .boxed()
+        })
+        .await?;
     Ok(())
 }
 
-pub async fn warns<'a>(message: &Message, entities: &Entities<'a>, lang: Lang) -> Result<()> {
-    is_group_or_die(&message.get_chat()).await?;
-    self_admin_or_die(&message.get_chat()).await?;
+pub async fn warns(context: &Context, lang: Lang) -> Result<()> {
+    if let Some(chat) = context.chat() {
+        is_group_or_die(&chat).await?;
+        self_admin_or_die(&chat).await?;
+        let chat_id = chat.get_id();
+        context
+            .action_message(|ctx, user, _| {
+                async move {
+                    let warns = get_warns(ctx.message()?, user).await?;
+                    let list = warns
+                        .into_iter()
+                        .map(|w| {
+                            format!(
+                                "Reason: {}",
+                                w.reason.unwrap_or_else(|| lang_fmt!(lang, "noreason"))
+                            )
+                        })
+                        .collect::<Vec<String>>()
+                        .join("\n");
 
-    action_message(message, entities, None, |message, user, _| {
-        async move {
-            let warns = get_warns(message, user).await?;
-            let list = warns
-                .into_iter()
-                .map(|w| {
-                    format!(
-                        "Reason: {}",
-                        w.reason.unwrap_or_else(|| lang_fmt!(lang, "noreason"))
-                    )
-                })
-                .collect::<Vec<String>>()
-                .join("\n");
-
-            let list = MarkupType::Text.text(&list);
-            let mention = user.mention().await?;
-            message
-                .reply_fmt(entity_fmt!(
-                    lang,
-                    message.get_chat().get_id(),
-                    "warns",
-                    mention,
-                    list
-                ))
-                .await?;
-            Ok(())
-        }
-        .boxed()
-    })
-    .await?;
+                    let list = MarkupType::Text.text(&list);
+                    let mention = user.mention().await?;
+                    ctx.message()?
+                        .reply_fmt(entity_fmt!(lang, chat_id, "warns", mention, list))
+                        .await?;
+                    Ok(())
+                }
+                .boxed()
+            })
+            .await?;
+    }
     Ok(())
 }
 
-pub async fn clear<'a>(message: &Message, entities: &Entities<'a>) -> Result<()> {
+pub async fn clear<'a>(ctx: &Context) -> Result<()> {
+    let message = ctx.message()?;
     is_group_or_die(&message.get_chat()).await?;
     self_admin_or_die(&message.get_chat()).await?;
     message
         .get_from()
         .admin_or_die(message.get_chat_ref())
         .await?;
-    action_message(message, entities, None, |message, user, _| {
+    ctx.action_message(|ctx, user, _| {
         async move {
-            clear_warns(message.get_chat_ref(), user).await?;
+            clear_warns(ctx.message()?.get_chat_ref(), user).await?;
 
             let name = user.cached_name().await?;
 
-            message
+            ctx.message()?
                 .reply(format!("Cleared warns for user {}", name))
                 .await?;
             Ok(())
@@ -189,12 +180,12 @@ async fn cmd_warn_limit<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()
     Ok(())
 }
 
-async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
-    if let Some((cmd, entities, args, message, lang)) = ctx.cmd() {
+async fn handle_command<'a>(ctx: &Context) -> Result<()> {
+    if let Some((cmd, _, args, message, lang)) = ctx.cmd() {
         match cmd {
-            "warn" => warn(message, &entities, args, lang.clone()).await,
-            "warns" => warns(message, &entities, lang.clone()).await,
-            "clearwarns" => clear(message, &entities).await,
+            "warn" => warn(ctx).await,
+            "warns" => warns(ctx, lang.clone()).await,
+            "clearwarns" => clear(ctx).await,
             "warntime" => set_time(message, args).await,
             "warnmode" => cmd_warn_mode(message, args).await,
             "warnlimit" => cmd_warn_limit(message, args).await,
@@ -204,9 +195,8 @@ async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
     Ok(())
 }
 
-pub async fn handle_update<'a>(_: &UpdateExt, cmd: &Option<Context<'a>>) -> Result<()> {
-    if let Some(cmd) = cmd {
-        handle_command(cmd).await?;
-    }
+pub async fn handle_update<'a>(cmd: &Context) -> Result<()> {
+    handle_command(cmd).await?;
+
     Ok(())
 }

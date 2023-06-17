@@ -56,6 +56,7 @@ seq-macro = "0.3.3"
 convert_case = "0.6.0"
 unicase = "2.6.0"
 unicase_serde = "0.1.0"
+yoke = { version = "0.7.1", features = ["derive", "serde"] }
 
 
 [build-dependencies]

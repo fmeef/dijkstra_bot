@@ -3,7 +3,7 @@ use crate::persist::admin::actions::ActionType;
 use crate::persist::admin::approvals;
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache};
 use crate::statics::{CONFIG, DB, REDIS};
-use crate::tg::admin_helpers::{ban_message, warn_with_action};
+use crate::tg::admin_helpers::ban_message;
 use crate::tg::command::{Command, Context, TextArg, TextArgs};
 use crate::tg::permissions::*;
 use crate::tg::user::Username;
@@ -643,7 +643,7 @@ async fn is_approved(chat: &Chat, user: &User) -> Result<bool> {
     Ok(res)
 }
 
-async fn cmd_available<'a>(ctx: &Context<'a>) -> Result<()> {
+async fn cmd_available(ctx: &Context) -> Result<()> {
     let available = ["[*Available locks]:".to_owned()]
         .into_iter()
         .chain(
@@ -653,13 +653,13 @@ async fn cmd_available<'a>(ctx: &Context<'a>) -> Result<()> {
         )
         .collect::<Vec<String>>()
         .join("\n");
-    ctx.message.speak(available).await?;
+    ctx.message()?.speak(available).await?;
     Ok(())
 }
 
-async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
+async fn handle_command(ctx: &Context) -> Result<()> {
     if let Some((cmd, _, args, message, lang)) = ctx.cmd() {
-        let command = ctx.command.as_ref();
+        let command = ctx.try_get()?.command.as_ref();
         if let Some(user) = message.get_from() {
             match cmd {
                 "lock" => handle_lock(message, &command, &user, lang).await?,
@@ -708,7 +708,7 @@ where
     Ok(())
 }
 
-async fn handle_user_event(update: &UpdateExt, lang: &Lang) -> Result<()> {
+async fn handle_user_event(update: &UpdateExt, ctx: &Context) -> Result<()> {
     if let (Some(action), locks) = action_from_update(update).await? {
         match update {
             UpdateExt::Message(ref message) => {
@@ -721,6 +721,7 @@ async fn handle_user_event(update: &UpdateExt, lang: &Lang) -> Result<()> {
                     return Ok(());
                 }
                 let default = get_default_settings(message.get_chat_ref()).await?;
+                let lang = ctx.try_get()?.lang;
                 let reasons = locks
                     .into_iter()
                     .map(|v| lang_fmt!(lang, "lockedinchat", v.get_name()))
@@ -744,8 +745,7 @@ async fn handle_user_event(update: &UpdateExt, lang: &Lang) -> Result<()> {
                                 .build()
                                 .await?;
                         } else if let Some(user) = message.get_from() {
-                            warn_with_action(
-                                message,
+                            ctx.warn_with_action(
                                 user.get_id(),
                                 Some(&reasons),
                                 default.duration.map(|v| Duration::seconds(v)),
@@ -767,10 +767,9 @@ async fn handle_user_event(update: &UpdateExt, lang: &Lang) -> Result<()> {
     Ok(())
 }
 
-pub async fn handle_update<'a>(update: &UpdateExt, cmd: &Option<Context<'a>>) -> Result<()> {
-    if let Some(cmd) = cmd {
-        handle_user_event(update, &cmd.lang).await?;
-        handle_command(cmd).await?;
-    }
+pub async fn handle_update<'a>(cmd: &Context) -> Result<()> {
+    handle_user_event(&cmd.get_static().update, cmd).await?;
+    handle_command(cmd).await?;
+
     Ok(())
 }

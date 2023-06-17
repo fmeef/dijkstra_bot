@@ -21,7 +21,7 @@ use lazy_static::__Deref;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
 use crate::util::error::{BotError, Result};
-use botapi::gen_types::{CallbackQuery, Message, UpdateExt};
+use botapi::gen_types::{CallbackQuery, Message};
 
 use crate::persist::core::media::*;
 metadata!("Notes",
@@ -153,7 +153,7 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![Box::new(Migration)]
 }
 
-async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
+async fn handle_command<'a>(ctx: &Context) -> Result<()> {
     if let Some((cmd, _, args, message, _)) = ctx.cmd() {
         match cmd {
             "save" => save(message, &args).await,
@@ -404,15 +404,16 @@ async fn save<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
     Ok(())
 }
 
-pub async fn handle_update<'a>(_: &UpdateExt, cmd: &Option<Context<'a>>) -> Result<()> {
-    if let Some(cmd) = cmd {
-        if let Some(text) = cmd.message.get_text_ref() {
+pub async fn handle_update<'a>(cmd: &Context) -> Result<()> {
+    if let Ok(message) = cmd.message() {
+        if let Some(text) = message.get_text_ref() {
             if text.starts_with("#") && text.len() > 1 {
                 let tail = &text[1..];
-                print(&cmd.message, tail.to_owned()).await?;
+                print(message, tail.to_owned()).await?;
             }
         }
-        handle_command(cmd).await?;
     }
+    handle_command(cmd).await?;
+
     Ok(())
 }

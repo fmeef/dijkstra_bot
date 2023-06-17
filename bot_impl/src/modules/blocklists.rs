@@ -9,12 +9,9 @@ use crate::statics::CONFIG;
 use crate::statics::DB;
 use crate::statics::REDIS;
 use crate::statics::TG;
-use crate::tg::admin_helpers::ban;
 use crate::tg::admin_helpers::is_approved;
 use crate::tg::admin_helpers::is_dm;
-use crate::tg::admin_helpers::mute;
 use crate::tg::admin_helpers::parse_duration_str;
-use crate::tg::admin_helpers::warn_with_action;
 use crate::tg::command::Context;
 use crate::tg::command::TextArgs;
 use crate::tg::markdown::MarkupType;
@@ -33,8 +30,8 @@ use crate::util::filter::Parser;
 use crate::util::glob::WildMatch;
 use crate::util::string::Lang;
 use crate::util::string::Speak;
+use botapi::gen_types::Message;
 use botapi::gen_types::User;
-use botapi::gen_types::{Message, UpdateExt};
 use chrono::Duration;
 use entities::{blocklists, triggers};
 use humantime::format_duration;
@@ -517,12 +514,11 @@ async fn delete(message: &Message) -> Result<()> {
     Ok(())
 }
 
-async fn warn(message: &Message, user: &User, reason: Option<String>) -> Result<()> {
-    let dialog = dialog_or_default(message.get_chat_ref()).await?;
+async fn warn(ctx: &Context, user: &User, reason: Option<String>) -> Result<()> {
+    let dialog = dialog_or_default(ctx.message()?.get_chat_ref()).await?;
 
     let time = dialog.warn_time.map(|t| Duration::seconds(t));
-    warn_with_action(
-        message,
+    ctx.warn_with_action(
         user.get_id(),
         reason.clone().as_ref().map(|v| v.as_str()),
         time,
@@ -531,58 +527,60 @@ async fn warn(message: &Message, user: &User, reason: Option<String>) -> Result<
     Ok(())
 }
 
-async fn handle_trigger(message: &Message) -> Result<()> {
-    if let Some(user) = message.get_from() {
-        if message.get_from().is_admin(message.get_chat_ref()).await?
-            || is_dm(message.get_chat_ref())
-            || is_approved(message.get_chat_ref(), &user).await?
-        {
-            log::info!(
-                "skipping trigger {}",
-                message.get_from().is_admin(message.get_chat_ref()).await?
-            );
-            return Ok(());
-        }
+async fn handle_trigger(ctx: &Context) -> Result<()> {
+    if let Ok(message) = ctx.message() {
+        if let Some(user) = message.get_from() {
+            if message.get_from().is_admin(message.get_chat_ref()).await?
+                || is_dm(message.get_chat_ref())
+                || is_approved(message.get_chat_ref(), &user).await?
+            {
+                log::info!(
+                    "skipping trigger {}",
+                    message.get_from().is_admin(message.get_chat_ref()).await?
+                );
+                return Ok(());
+            }
 
-        if let Some(text) = message.get_text() {
-            if let Some(res) = search_cache(message, &text).await? {
-                let duration = res.duration.map(|v| Duration::seconds(v));
-                let duration_str = if let Some(duration) = duration {
-                    format!(" for {}", format_duration(duration.to_std()?))
-                } else {
-                    format!("")
-                };
-                let reason_str = res
-                    .reason
-                    .as_ref()
-                    .map(|v| format!("Reason: {}", v))
-                    .unwrap_or_else(|| format!(""));
-                match res.action {
-                    ActionType::Mute => {
-                        mute(message.get_chat_ref(), user.get_id(), duration).await?;
-                        message
-                            .reply(format!(
-                                "User said a banned word. Action: Muted{}\n{}",
-                                duration_str, reason_str
-                            ))
-                            .await?;
+            if let Some(text) = message.get_text() {
+                if let Some(res) = search_cache(message, &text).await? {
+                    let duration = res.duration.map(|v| Duration::seconds(v));
+                    let duration_str = if let Some(duration) = duration {
+                        format!(" for {}", format_duration(duration.to_std()?))
+                    } else {
+                        format!("")
+                    };
+                    let reason_str = res
+                        .reason
+                        .as_ref()
+                        .map(|v| format!("Reason: {}", v))
+                        .unwrap_or_else(|| format!(""));
+                    match res.action {
+                        ActionType::Mute => {
+                            ctx.mute(user.get_id(), duration).await?;
+                            message
+                                .reply(format!(
+                                    "User said a banned word. Action: Muted{}\n{}",
+                                    duration_str, reason_str
+                                ))
+                                .await?;
+                        }
+                        ActionType::Ban => {
+                            ctx.ban(user.get_id(), duration).await?;
+                            message
+                                .reply(format!(
+                                    "User said a banned word. Action: Ban{}\n{}",
+                                    duration_str, reason_str
+                                ))
+                                .await?;
+                        }
+                        ActionType::Warn => {
+                            warn(ctx, &user, res.reason).await?;
+                        }
+                        ActionType::Shame => (),
+                        ActionType::Delete => (),
                     }
-                    ActionType::Ban => {
-                        ban(message, user.get_id(), duration).await?;
-                        message
-                            .reply(format!(
-                                "User said a banned word. Action: Ban{}\n{}",
-                                duration_str, reason_str
-                            ))
-                            .await?;
-                    }
-                    ActionType::Warn => {
-                        warn(message, &user, res.reason).await?;
-                    }
-                    ActionType::Shame => (),
-                    ActionType::Delete => (),
+                    delete(message).await?;
                 }
-                delete(message).await?;
             }
         }
     }
@@ -622,25 +620,24 @@ async fn stopall(message: &Message) -> Result<()> {
     Ok(())
 }
 
-async fn handle_command<'a>(ctx: &Context<'a>) -> Result<()> {
+async fn handle_command<'a>(ctx: &Context) -> Result<()> {
     if let Some((cmd, _, args, message, lang)) = ctx.cmd() {
         match cmd {
             "addblocklist" => command_blocklist(message, &args, &lang).await?,
             "rmblocklist" => delete_trigger(message, args.text).await?,
             "blocklist" => list_triggers(message).await?,
             "rmallblocklists" => stopall(message).await?,
-            _ => handle_trigger(message).await?,
+            _ => handle_trigger(ctx).await?,
         };
     }
 
-    handle_trigger(&ctx.message).await?;
+    handle_trigger(&ctx).await?;
 
     Ok(())
 }
 
-pub async fn handle_update<'a>(_: &UpdateExt, cmd: &Option<Context<'a>>) -> Result<()> {
-    if let Some(cmd) = cmd {
-        handle_command(cmd).await?;
-    }
+pub async fn handle_update<'a>(cmd: &Context) -> Result<()> {
+    handle_command(cmd).await?;
+
     Ok(())
 }
