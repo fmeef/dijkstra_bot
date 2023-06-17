@@ -23,7 +23,7 @@ use std::{borrow::Cow, collections::VecDeque};
 use uuid::Uuid;
 use yoke::{Yoke, Yokeable};
 
-use super::button::get_url;
+use super::{admin_helpers::UpdateHelpers, button::get_url};
 
 lazy_static! {
     static ref COMMOND: Regex = Regex::new(r#"^(!|/)\w+(@\w)?\s+.*"#).unwrap();
@@ -347,6 +347,12 @@ impl Context {
         } else {
             None
         }
+    }
+}
+
+impl UpdateHelpers for Context {
+    fn user_event<'a>(&'a self) -> Option<super::admin_helpers::UserChanged<'a>> {
+        self.update().user_event()
     }
 }
 

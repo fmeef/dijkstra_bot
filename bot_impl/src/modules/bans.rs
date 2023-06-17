@@ -50,7 +50,7 @@ pub async fn unban_cmd(ctx: &Context) -> Result<()> {
         .await?;
     ctx.action_message(|ctx, user, _| async move {
         if let Some(chat) = ctx.chat() {
-            unban(ctx.message()?, user).await?;
+            ctx.unban(user).await?;
 
             let entity = user.mention().await?;
             ctx.message()?

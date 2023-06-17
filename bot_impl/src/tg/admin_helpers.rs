@@ -698,22 +698,6 @@ pub async fn change_chat_permissions(chat: &Chat, permissions: &ChatPermissions)
     Ok(())
 }
 
-/// Unbans a user, transparently handling anonymous channels
-pub async fn unban(message: &Message, user: i64) -> Result<()> {
-    if let Some(senderchat) = message.get_sender_chat() {
-        TG.client()
-            .build_unban_chat_sender_chat(message.get_chat().get_id(), senderchat.get_id())
-            .build()
-            .await?;
-    } else {
-        TG.client()
-            .build_unban_chat_member(message.get_chat().get_id(), user)
-            .build()
-            .await?;
-    }
-    Ok(())
-}
-
 /// Bans the sender of a message, transparently handling anonymous channels.
 /// if a duration is provided, the ban will be lifted after the duration
 pub async fn ban_message(message: &Message, duration: Option<Duration>) -> Result<()> {
@@ -742,6 +726,22 @@ pub async fn ban_message(message: &Message, duration: Option<Duration>) -> Resul
 }
 
 impl Context {
+    /// Unbans a user, transparently handling anonymous channels
+    pub async fn unban(&self, user: i64) -> Result<()> {
+        if let Some(senderchat) = self.message()?.get_sender_chat() {
+            TG.client()
+                .build_unban_chat_sender_chat(self.try_get()?.chat.get_id(), senderchat.get_id())
+                .build()
+                .await?;
+        } else {
+            TG.client()
+                .build_unban_chat_member(self.try_get()?.chat.get_id(), user)
+                .build()
+                .await?;
+        }
+        Ok(())
+    }
+
     /// Helper function to handle a mute action after warn limit is exceeded.
     /// Automatically sends localized string
     pub async fn warn_mute(&self, user: i64, count: i32, duration: Option<Duration>) -> Result<()> {
