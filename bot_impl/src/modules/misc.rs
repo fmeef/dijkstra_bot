@@ -24,13 +24,12 @@ async fn get_id(ctx: &Context) -> Result<()> {
 
             builder.code(user.to_string());
             let (text, entities) = builder.build();
-            ctx.message()?
-                .reply_fmt(
-                    TG.client
-                        .build_send_message(chat.get_id(), text)
-                        .entities(entities),
-                )
-                .await?;
+            ctx.reply_fmt(
+                TG.client
+                    .build_send_message(chat.get_id(), text)
+                    .entities(entities),
+            )
+            .await?;
         }
         Ok(())
     })

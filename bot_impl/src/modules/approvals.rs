@@ -27,21 +27,18 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
 }
 
 async fn cmd_approve<'a>(ctx: &Context) -> Result<()> {
-    ctx.message()?
-        .check_permissions(|p| p.can_restrict_members)
-        .await?;
+    ctx.check_permissions(|p| p.can_restrict_members).await?;
     ctx.action_message(|ctx, user, _| async move {
         if let (Some(user), Some(chat)) = (user.get_cached_user().await?, ctx.chat()) {
             approve(ctx.message()?.get_chat_ref(), &user).await?;
             let name = user.name_humanreadable();
-            ctx.message()?
-                .speak_fmt(entity_fmt!(
-                    ctx.try_get()?.lang,
-                    chat.get_id(),
-                    "approved",
-                    MarkupType::TextMention(user.clone()).text(&name)
-                ))
-                .await?;
+            ctx.speak_fmt(entity_fmt!(
+                ctx.try_get()?.lang,
+                chat.get_id(),
+                "approved",
+                MarkupType::TextMention(user.clone()).text(&name)
+            ))
+            .await?;
         }
         Ok(())
     })
@@ -50,21 +47,18 @@ async fn cmd_approve<'a>(ctx: &Context) -> Result<()> {
 }
 
 async fn cmd_unapprove(ctx: &Context) -> Result<()> {
-    ctx.message()?
-        .check_permissions(|p| p.can_restrict_members)
-        .await?;
+    ctx.check_permissions(|p| p.can_restrict_members).await?;
     ctx.action_message(|ctx, user, _| async move {
         if let Some(chat) = ctx.chat() {
             unapprove(ctx.message()?.get_chat_ref(), user).await?;
             let name = user.mention().await?;
-            ctx.message()?
-                .speak_fmt(entity_fmt!(
-                    ctx.try_get()?.lang,
-                    chat.get_id(),
-                    "unapproved",
-                    name
-                ))
-                .await?;
+            ctx.speak_fmt(entity_fmt!(
+                ctx.try_get()?.lang,
+                chat.get_id(),
+                "unapproved",
+                name
+            ))
+            .await?;
         }
         Ok(())
     })
@@ -73,10 +67,7 @@ async fn cmd_unapprove(ctx: &Context) -> Result<()> {
 }
 
 async fn command_list<'a>(context: &Context) -> Result<()> {
-    context
-        .message()?
-        .check_permissions(|p| p.can_manage_chat)
-        .await?;
+    context.check_permissions(|p| p.can_manage_chat).await?;
 
     if let Some(chat) = context.chat() {
         let mut res = MarkupBuilder::new();
@@ -99,7 +90,7 @@ async fn command_list<'a>(context: &Context) -> Result<()> {
             .build_send_message(chat.get_id(), msg)
             .entities(entities);
 
-        context.message()?.reply_fmt(msg).await?;
+        context.reply_fmt(msg).await?;
     }
 
     Ok(())

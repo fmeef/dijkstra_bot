@@ -87,8 +87,7 @@ pub async fn warns(context: &Context, lang: Lang) -> Result<()> {
 
                 let list = MarkupType::Text.text(&list);
                 let mention = user.mention().await?;
-                ctx.message()?
-                    .reply_fmt(entity_fmt!(lang, chat_id, "warns", mention, list))
+                ctx.reply_fmt(entity_fmt!(lang, chat_id, "warns", mention, list))
                     .await?;
                 Ok(())
             })
@@ -110,8 +109,7 @@ pub async fn clear<'a>(ctx: &Context) -> Result<()> {
 
         let name = user.cached_name().await?;
 
-        ctx.message()?
-            .reply(format!("Cleared warns for user {}", name))
+        ctx.reply(format!("Cleared warns for user {}", name))
             .await?;
         Ok(())
     })

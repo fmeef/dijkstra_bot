@@ -66,20 +66,18 @@ async fn demote<'a>(context: &'a Context) -> Result<()> {
             if let Some(chat) = ctx.chat() {
                 match chat.demote(user).await {
                     Err(err) => {
-                        ctx.message()?
-                            .reply(format!("failed to demote user: {}", err.get_tg_error()))
+                        ctx.reply(format!("failed to demote user: {}", err.get_tg_error()))
                             .await?;
                     }
                     Ok(_) => {
                         let mention = user.mention().await?;
-                        ctx.message()?
-                            .speak_fmt(entity_fmt!(
-                                ctx.try_get()?.lang,
-                                ctx.try_get()?.chat.get_id(),
-                                "demote",
-                                mention
-                            ))
-                            .await?;
+                        ctx.speak_fmt(entity_fmt!(
+                            ctx.try_get()?.lang,
+                            ctx.try_get()?.chat.get_id(),
+                            "demote",
+                            mention
+                        ))
+                        .await?;
                     }
                 }
             }

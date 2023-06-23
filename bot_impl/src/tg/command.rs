@@ -9,11 +9,15 @@ use crate::{
     statics::{CONFIG, REDIS},
     util::{
         error::{BotError, Result},
-        string::{get_chat_lang, Lang},
+        string::{get_chat_lang, Lang, Speak},
     },
 };
+use async_trait::async_trait;
 use base64::{engine::general_purpose, Engine};
-use botapi::gen_types::{Chat, Message, MessageEntity, UpdateExt, User};
+use botapi::{
+    gen_methods::CallSendMessage,
+    gen_types::{Chat, Message, MessageEntity, UpdateExt, User},
+};
 use lazy_static::lazy_static;
 use redis::AsyncCommands;
 use regex::Regex;
@@ -23,7 +27,11 @@ use std::{borrow::Cow, collections::VecDeque};
 use uuid::Uuid;
 use yoke::{Yoke, Yokeable};
 
-use super::{admin_helpers::UpdateHelpers, button::get_url};
+use super::{
+    admin_helpers::UpdateHelpers,
+    button::get_url,
+    permissions::{BotPermissions, IsGroupAdmin, NamedBotPermissions, NamedPermission},
+};
 
 lazy_static! {
     static ref COMMOND: Regex = Regex::new(r#"^(!|/)\w+(@\w)?\s+.*"#).unwrap();
@@ -347,6 +355,58 @@ impl Context {
         } else {
             None
         }
+    }
+}
+
+#[async_trait]
+impl IsGroupAdmin for Context {
+    /// If the user is not admin or the group is not a supergroup, return a printable error
+    async fn legacy_check_permissions(&self) -> Result<()> {
+        self.message()?.legacy_check_permissions().await
+    }
+
+    /// return true if the group is a supergroup and the user is an admin
+    async fn is_group_admin(&self) -> Result<bool> {
+        self.message()?.is_group_admin().await
+    }
+
+    /// get the permissions for a user
+    async fn get_permissions(&self) -> Result<BotPermissions> {
+        self.message()?.get_permissions().await
+    }
+
+    /// Apply the mapper function to the permissions, if it returns false NamedPermissions,
+    /// return with error
+    async fn check_permissions<F>(&self, func: F) -> Result<()>
+    where
+        F: FnOnce(NamedBotPermissions) -> NamedPermission + Send,
+    {
+        self.message()?.check_permissions(func).await
+    }
+}
+
+#[async_trait]
+impl Speak for Context {
+    async fn speak<T>(&self, message: T) -> Result<Option<Message>>
+    where
+        T: AsRef<str> + Send + Sync,
+    {
+        self.message()?.speak(message).await
+    }
+
+    async fn speak_fmt<'a>(&self, messsage: CallSendMessage<'a>) -> Result<Option<Message>> {
+        self.message()?.speak_fmt(messsage).await
+    }
+
+    async fn reply_fmt<'a>(&self, messsage: CallSendMessage<'a>) -> Result<Option<Message>> {
+        self.message()?.reply_fmt(messsage).await
+    }
+
+    async fn reply<T>(&self, message: T) -> Result<Option<Message>>
+    where
+        T: AsRef<str> + Send + Sync,
+    {
+        self.message()?.reply(message).await
     }
 }
 
