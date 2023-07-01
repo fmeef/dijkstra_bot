@@ -2,15 +2,12 @@ use crate::{
     metadata::metadata,
     statics::TG,
     tg::admin_helpers::*,
-    tg::command::Context,
+    tg::command::{Cmd, Context},
     tg::{permissions::*, user::GetUser},
-    util::string::{Lang, Speak},
-    util::{
-        error::{Result, SpeakErr},
-        string::get_chat_lang,
-    },
+    util::error::{Result, SpeakErr},
+    util::string::Speak,
 };
-use botapi::gen_types::{ChatPermissionsBuilder, Message};
+use botapi::gen_types::ChatPermissionsBuilder;
 
 use macros::{entity_fmt, lang_fmt};
 use sea_orm_migration::MigrationTrait;
@@ -45,22 +42,19 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
 }
 
 pub async fn unban_cmd(ctx: &Context) -> Result<()> {
-    ctx.message()?
-        .check_permissions(|p| p.can_restrict_members)
-        .await?;
+    ctx.check_permissions(|p| p.can_restrict_members).await?;
     ctx.action_message(|ctx, user, _| async move {
         if let Some(chat) = ctx.chat() {
             ctx.unban(user).await?;
 
             let entity = user.mention().await?;
-            ctx.message()?
-                .speak_fmt(entity_fmt!(
-                    ctx.try_get()?.lang,
-                    chat.get_id(),
-                    "unbanned",
-                    entity
-                ))
-                .await?;
+            ctx.speak_fmt(entity_fmt!(
+                ctx.try_get()?.lang,
+                chat.get_id(),
+                "unbanned",
+                entity
+            ))
+            .await?;
         }
         Ok(())
     })
@@ -69,20 +63,17 @@ pub async fn unban_cmd(ctx: &Context) -> Result<()> {
 }
 
 pub async fn ban_cmd(ctx: &Context) -> Result<()> {
-    ctx.message()?
-        .check_permissions(|p| p.can_restrict_members)
-        .await?;
-    let lang = get_chat_lang(ctx.message()?.get_chat_ref().get_id()).await?;
+    ctx.check_permissions(|p| p.can_restrict_members).await?;
+    let lang = ctx.try_get()?.lang;
     ctx.action_message(|ctx, user, args| async move {
-        if let Some(chat) = ctx.chat() {
-            let duration = parse_duration(&args, chat.get_id())?;
-            ctx.ban(user, duration)
-                .await
-                .speak_err(ctx.message()?.get_chat_ref(), 400, |_| {
-                    lang_fmt!(lang, "failban")
-                })
-                .await?;
-        }
+        let duration = ctx.parse_duration(&args)?;
+        ctx.ban(user, duration)
+            .await
+            .speak_err(ctx.message()?.get_chat_ref(), 400, |_| {
+                lang_fmt!(lang, "failban")
+            })
+            .await?;
+
         Ok(())
     })
     .await?;
@@ -90,9 +81,7 @@ pub async fn ban_cmd(ctx: &Context) -> Result<()> {
 }
 
 pub async fn kick_cmd<'a>(ctx: &Context) -> Result<()> {
-    ctx.message()?
-        .check_permissions(|p| p.can_restrict_members)
-        .await?;
+    ctx.check_permissions(|p| p.can_restrict_members).await?;
     ctx.action_message(|ctx, user, _| async move {
         if let Some(chat) = ctx.chat() {
             kick(user, chat.get_id()).await?;
@@ -113,9 +102,7 @@ pub async fn kick_cmd<'a>(ctx: &Context) -> Result<()> {
 }
 
 pub async fn mute_cmd<'a>(ctx: &Context) -> Result<()> {
-    ctx.message()?
-        .check_permissions(|p| p.can_restrict_members)
-        .await?;
+    ctx.check_permissions(|p| p.can_restrict_members).await?;
     let permissions = ChatPermissionsBuilder::new()
         .set_can_send_messages(false)
         .set_can_send_audios(false)
@@ -155,9 +142,7 @@ pub async fn mute_cmd<'a>(ctx: &Context) -> Result<()> {
 
 pub async fn unmute_cmd<'a>(ctx: &Context) -> Result<()> {
     let message = ctx.message()?;
-    message
-        .check_permissions(|p| p.can_restrict_members)
-        .await?;
+    ctx.check_permissions(|p| p.can_restrict_members).await?;
 
     let permissions = ChatPermissionsBuilder::new()
         .set_can_send_messages(true)
@@ -190,11 +175,13 @@ pub async fn unmute_cmd<'a>(ctx: &Context) -> Result<()> {
     Ok(())
 }
 
-async fn kickme(message: &Message, lang: &Lang) -> Result<()> {
-    is_group_or_die(&message.get_chat()).await?;
+async fn kickme(ctx: &Context) -> Result<()> {
+    ctx.is_group_or_die().await?;
+    let message = ctx.message()?;
+    let v = ctx.try_get()?;
     self_admin_or_die(&message.get_chat()).await?;
     if message.get_from().is_admin(&message.get_chat()).await? {
-        message.speak(lang_fmt!(lang, "kickadmin")).await?;
+        message.speak(lang_fmt!(v.lang, "kickadmin")).await?;
     } else {
         if let Some(from) = message.get_from() {
             TG.client()
@@ -205,7 +192,7 @@ async fn kickme(message: &Message, lang: &Lang) -> Result<()> {
                 .build_unban_chat_member(message.get_chat().get_id(), from.get_id())
                 .build()
                 .await?;
-            message.speak(lang_fmt!(lang, "kickme")).await?;
+            message.speak(lang_fmt!(v.lang, "kickme")).await?;
         }
     }
 
@@ -213,9 +200,9 @@ async fn kickme(message: &Message, lang: &Lang) -> Result<()> {
 }
 
 async fn handle_command<'a>(ctx: &Context) -> Result<()> {
-    if let Some((cmd, _, _, message, lang)) = ctx.cmd() {
+    if let Some(&Cmd { cmd, .. }) = ctx.cmd() {
         match cmd {
-            "kickme" => kickme(message, lang).await,
+            "kickme" => kickme(ctx).await,
             "mute" => mute_cmd(ctx).await,
             "unmute" => unmute_cmd(ctx).await,
             "ban" => ban_cmd(ctx).await,

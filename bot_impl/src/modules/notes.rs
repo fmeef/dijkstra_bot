@@ -3,10 +3,11 @@ use std::collections::BTreeMap;
 use crate::metadata::metadata;
 use crate::persist::redis::{CachedQuery, CachedQueryTrait, RedisCache, RedisStr};
 use crate::statics::{CONFIG, DB, REDIS, TG};
-use crate::tg::admin_helpers::is_group_or_die;
 
 use crate::tg::button::OnPush;
-use crate::tg::command::{get_content, handle_deep_link, Context, InputType, TextArg, TextArgs};
+use crate::tg::command::{
+    get_content, handle_deep_link, Cmd, Context, InputType, TextArg, TextArgs,
+};
 
 use crate::tg::markdown::button_deeplink_key;
 use crate::tg::permissions::IsGroupAdmin;
@@ -154,10 +155,16 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
 }
 
 async fn handle_command<'a>(ctx: &Context) -> Result<()> {
-    if let Some((cmd, _, args, message, _)) = ctx.cmd() {
+    if let Some(&Cmd {
+        cmd,
+        ref args,
+        message,
+        ..
+    }) = ctx.cmd()
+    {
         match cmd {
             "save" => save(message, &args).await,
-            "get" => get(message, &args).await,
+            "get" => get(ctx).await,
             "delete" => delete(message, args).await,
             "notes" => list_notes(message).await,
             "start" => {
@@ -252,20 +259,25 @@ async fn print_chat(message: &Message, name: String, chat: i64) -> Result<()> {
     }
 }
 
-async fn get<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
-    is_group_or_die(message.get_chat_ref()).await?;
-    let name = match args.args.first() {
-        Some(TextArg::Arg(name)) => Some(name),
-        Some(TextArg::Quote(name)) => Some(name),
-        _ => None,
-    };
-    if let Some(name) = name {
-        print(message, (*name).to_owned()).await
+async fn get<'a>(ctx: &Context) -> Result<()> {
+    ctx.is_group_or_die().await?;
+    let message = ctx.message()?;
+    if let Some(&Cmd { ref args, .. }) = ctx.cmd() {
+        let name = match args.args.first() {
+            Some(TextArg::Arg(name)) => Some(name),
+            Some(TextArg::Quote(name)) => Some(name),
+            _ => None,
+        };
+        if let Some(name) = name {
+            print(message, (*name).to_owned()).await
+        } else {
+            Err(BotError::speak(
+                "missing note name, try again weenie",
+                message.get_chat().get_id(),
+            ))
+        }
     } else {
-        Err(BotError::speak(
-            "missing note name, try again weenie",
-            message.get_chat().get_id(),
-        ))
+        Err(BotError::Generic("not a command".to_owned()))
     }
 }
 

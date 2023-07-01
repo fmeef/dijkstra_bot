@@ -168,12 +168,12 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
             match crate::tg::command::StaticContext::get_context(update).await.map(|v| v.yoke()) {
                 Ok(cmd) => {
 
-                    if let Err(err) = crate::tg::admin_helpers::handle_pending_action(cmd.update(), &cmd).await {
+                    if let Err(err) = cmd.handle_pending_action_update().await {
                         log::error!("failed to handle pending action: {}", err);
                         err.record_stats();
                     }
 
-                    let help = if let Some((cmd, _, args, message, lang)) = cmd.cmd() {
+                    let help = if let Some(&crate::tg::command::Cmd{cmd, ref args, message, lang, ..}) = cmd.cmd() {
                          match cmd {
                             "help" => crate::tg::client::show_help(message, helps, args.args.first().map(|a| a.get_text())).await,
                             "start" => match args.args.first().map(|a| a.get_text()) {

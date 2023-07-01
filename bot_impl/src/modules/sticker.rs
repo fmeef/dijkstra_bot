@@ -7,7 +7,7 @@ use crate::statics::{DB, REDIS, TG};
 use crate::tg::admin_helpers::is_dm;
 use crate::tg::admin_helpers::is_dm_or_die;
 use crate::tg::command::TextArg;
-use crate::tg::command::{Command, Context};
+use crate::tg::command::{Cmd, Context};
 use crate::tg::dialog::ConversationState;
 use crate::tg::dialog::{drop_converstaion, Conversation};
 use crate::tg::dialog::{get_conversation, replace_conversation};
@@ -319,8 +319,8 @@ pub async fn handle_update(cmd: &Context) -> Result<()> {
     Ok(())
 }
 
-async fn handle_command<'a>(message: &'a Message, cmd: Option<&Command<'a>>) -> Result<()> {
-    if let Some(&Command { cmd, ref args, .. }) = cmd {
+async fn handle_command<'a>(message: &'a Message, cmd: Option<&Cmd<'a>>) -> Result<()> {
+    if let Some(&Cmd { cmd, ref args, .. }) = cmd {
         match cmd {
             "upload" => upload(message).await,
             "list" => list_stickers(message).await,

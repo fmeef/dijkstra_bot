@@ -1,13 +1,12 @@
-use crate::tg::command::Context;
+use crate::tg::command::{Cmd, Context};
 use crate::tg::markdown::MarkupType;
 use crate::tg::user::GetUser;
 use crate::util::error::BotError;
-use crate::util::string::Lang;
+
 use crate::{
     metadata::metadata, tg::admin_helpers::*, tg::command::TextArgs, tg::permissions::*,
     util::error::Result, util::string::Speak,
 };
-use botapi::gen_types::Message;
 
 use humantime::format_duration;
 use macros::{entity_fmt, lang_fmt};
@@ -35,8 +34,7 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![]
 }
 pub async fn warn(context: &Context) -> Result<()> {
-    let message = context.message()?;
-    message
+    context
         .check_permissions(|p| p.can_restrict_members)
         .await?;
 
@@ -66,9 +64,11 @@ pub async fn warn(context: &Context) -> Result<()> {
     Ok(())
 }
 
-pub async fn warns(context: &Context, lang: Lang) -> Result<()> {
-    if let Some(chat) = context.chat() {
-        is_group_or_die(&chat).await?;
+pub async fn warns(context: &Context) -> Result<()> {
+    if let Some(v) = context.get() {
+        context.is_group_or_die().await?;
+        let chat = v.chat;
+        let lang = v.lang;
         self_admin_or_die(&chat).await?;
         let chat_id = chat.get_id();
         context
@@ -98,7 +98,7 @@ pub async fn warns(context: &Context, lang: Lang) -> Result<()> {
 
 pub async fn clear<'a>(ctx: &Context) -> Result<()> {
     let message = ctx.message()?;
-    is_group_or_die(&message.get_chat()).await?;
+    ctx.is_group_or_die().await?;
     self_admin_or_die(&message.get_chat()).await?;
     message
         .get_from()
@@ -118,11 +118,10 @@ pub async fn clear<'a>(ctx: &Context) -> Result<()> {
     Ok(())
 }
 
-async fn set_time<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
-    message
-        .check_permissions(|p| p.can_restrict_members)
-        .await?;
-    if let Ok(Some(time)) = parse_duration(&Some(args.as_slice()), message.get_chat().get_id()) {
+async fn set_time<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
+    ctx.check_permissions(|p| p.can_restrict_members).await?;
+    let message = ctx.message()?;
+    if let Ok(Some(time)) = ctx.parse_duration(&Some(args.as_slice())) {
         set_warn_time(message.get_chat_ref(), Some(time.num_seconds())).await?;
         let time = format_duration(time.to_std()?);
         message.reply(format!("Set warn time to {}", time)).await?;
@@ -135,10 +134,9 @@ async fn set_time<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
     Ok(())
 }
 
-async fn cmd_warn_mode<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
-    message
-        .check_permissions(|p| p.can_restrict_members)
-        .await?;
+async fn cmd_warn_mode<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
+    ctx.check_permissions(|p| p.can_restrict_members).await?;
+    let message = ctx.message()?;
     set_warn_mode(message.get_chat_ref(), args.text).await?;
     message
         .reply(format!("Set warn mode {}", args.text))
@@ -146,10 +144,9 @@ async fn cmd_warn_mode<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()>
     Ok(())
 }
 
-async fn cmd_warn_limit<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
-    message
-        .check_permissions(|p| p.can_restrict_members)
-        .await?;
+async fn cmd_warn_limit<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
+    ctx.check_permissions(|p| p.can_restrict_members).await?;
+    let message = ctx.message()?;
     match i32::from_str_radix(args.text.trim(), 10) {
         Ok(num) => {
             if num > 0 {
@@ -169,14 +166,14 @@ async fn cmd_warn_limit<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()
 }
 
 async fn handle_command<'a>(ctx: &Context) -> Result<()> {
-    if let Some((cmd, _, args, message, lang)) = ctx.cmd() {
+    if let Some(&Cmd { cmd, ref args, .. }) = ctx.cmd() {
         match cmd {
             "warn" => warn(ctx).await,
-            "warns" => warns(ctx, lang.clone()).await,
+            "warns" => warns(ctx).await,
             "clearwarns" => clear(ctx).await,
-            "warntime" => set_time(message, args).await,
-            "warnmode" => cmd_warn_mode(message, args).await,
-            "warnlimit" => cmd_warn_limit(message, args).await,
+            "warntime" => set_time(ctx, args).await,
+            "warnmode" => cmd_warn_mode(ctx, args).await,
+            "warnlimit" => cmd_warn_limit(ctx, args).await,
             _ => Ok(()),
         }?;
     }

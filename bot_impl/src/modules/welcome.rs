@@ -2,7 +2,7 @@ use crate::persist::core::media::{get_media_type, send_media_reply_chatuser, Med
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache};
 use crate::statics::{CONFIG, DB, REDIS};
 use crate::tg::admin_helpers::{UpdateHelpers, UserChanged};
-use crate::tg::command::{Context, TextArgs};
+use crate::tg::command::{Cmd, Context, TextArgs};
 use crate::tg::permissions::*;
 use crate::util::error::{BotError, Result};
 
@@ -272,7 +272,14 @@ async fn set_welcome<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang) ->
 }
 
 async fn handle_command(ctx: &Context) -> Result<()> {
-    if let Some((cmd, _, args, message, lang)) = ctx.cmd() {
+    if let Some(&Cmd {
+        cmd,
+        ref args,
+        message,
+        lang,
+        ..
+    }) = ctx.cmd()
+    {
         match cmd {
             "setwelcome" => set_welcome(message, args, lang).await?,
             "setgoodbye" => set_goodbye(message, args, lang).await?,

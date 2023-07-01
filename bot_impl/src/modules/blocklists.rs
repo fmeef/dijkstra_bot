@@ -12,6 +12,7 @@ use crate::statics::TG;
 use crate::tg::admin_helpers::is_approved;
 use crate::tg::admin_helpers::is_dm;
 use crate::tg::admin_helpers::parse_duration_str;
+use crate::tg::command::Cmd;
 use crate::tg::command::Context;
 use crate::tg::command::TextArgs;
 use crate::tg::markdown::MarkupType;
@@ -621,7 +622,14 @@ async fn stopall(message: &Message) -> Result<()> {
 }
 
 async fn handle_command<'a>(ctx: &Context) -> Result<()> {
-    if let Some((cmd, _, args, message, lang)) = ctx.cmd() {
+    if let Some(&Cmd {
+        cmd,
+        ref args,
+        message,
+        lang,
+        ..
+    }) = ctx.cmd()
+    {
         match cmd {
             "addblocklist" => command_blocklist(message, &args, &lang).await?,
             "rmblocklist" => delete_trigger(message, args.text).await?,

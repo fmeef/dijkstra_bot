@@ -4,7 +4,7 @@ use crate::persist::admin::approvals;
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache};
 use crate::statics::{CONFIG, DB, REDIS};
 use crate::tg::admin_helpers::ban_message;
-use crate::tg::command::{Command, Context, TextArg, TextArgs};
+use crate::tg::command::{Cmd, Context, TextArg, TextArgs};
 use crate::tg::permissions::*;
 use crate::tg::user::Username;
 use crate::util::error::{BotError, Result};
@@ -322,10 +322,10 @@ macro_rules! locks {
 
 
         fn locktype_from_args<'a>(
-            cmd: &Option<&'a Command<'a>>,
+            cmd: &Option<&'a Cmd<'a>>,
             chat: i64,
         ) -> (Option<LockType>, Option<ActionType>) {
-            if let Some(&Command { ref args, .. }) = cmd {
+            if let Some(&Cmd { ref args, .. }) = cmd {
                 let action = args
                     .args
                     .get(1)
@@ -529,7 +529,7 @@ async fn set_lock_action(
 
 async fn handle_lock<'a>(
     message: &Message,
-    cmd: &Option<&Command<'a>>,
+    cmd: &Option<&Cmd<'a>>,
     user: &User,
     lang: &Lang,
 ) -> Result<()> {
@@ -562,7 +562,7 @@ async fn handle_lock<'a>(
     Ok(())
 }
 
-async fn handle_unlock<'a>(message: &Message, cmd: &Option<&Command<'a>>) -> Result<()> {
+async fn handle_unlock<'a>(message: &Message, cmd: &Option<&Cmd<'a>>) -> Result<()> {
     message
         .check_permissions(|p| p.can_restrict_members)
         .await?;
@@ -658,7 +658,14 @@ async fn cmd_available(ctx: &Context) -> Result<()> {
 }
 
 async fn handle_command(ctx: &Context) -> Result<()> {
-    if let Some((cmd, _, args, message, lang)) = ctx.cmd() {
+    if let Some(&Cmd {
+        cmd,
+        ref args,
+        message,
+        lang,
+        ..
+    }) = ctx.cmd()
+    {
         let command = ctx.try_get()?.command.as_ref();
         if let Some(user) = message.get_from() {
             match cmd {

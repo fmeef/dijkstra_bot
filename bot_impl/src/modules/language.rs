@@ -1,5 +1,5 @@
 use crate::statics::TG;
-use crate::tg::command::Context;
+use crate::tg::command::{Cmd, Context};
 
 use crate::tg::user::{GetChat, RecordChat};
 use crate::util::error::BotError;
@@ -86,7 +86,10 @@ async fn get_lang_conversation(message: &Message, current: &Lang) -> Result<Conv
 }
 
 async fn handle_command(ctx: &Context) -> Result<()> {
-    if let Some((cmd, _, _, message, lang)) = ctx.cmd() {
+    if let Some(&Cmd {
+        cmd, message, lang, ..
+    }) = ctx.cmd()
+    {
         match cmd {
             "setlang" => {
                 let conv = get_lang_conversation(message, lang).await?;

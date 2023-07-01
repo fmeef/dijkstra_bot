@@ -182,10 +182,12 @@ pub fn single_arg<'a>(s: &'a str) -> Option<(TextArg<'a>, usize, usize)> {
 /// A full command including the /command or !command, the argument list, and any
 /// MessageEntities
 #[derive(Clone)]
-pub struct Command<'a> {
+pub struct Cmd<'a> {
     pub cmd: &'a str,
     pub args: TextArgs<'a>,
     pub entities: Entities<'a>,
+    pub message: &'a Message,
+    pub lang: &'a Lang,
 }
 
 pub struct StaticContext {
@@ -202,7 +204,7 @@ pub struct Context(
 #[derive(Yokeable, Clone)]
 pub struct ContextYoke<'a> {
     pub update: &'a UpdateExt,
-    pub command: Option<Command<'a>>,
+    pub command: Option<Cmd<'a>>,
     pub chat: &'a Chat,
     pub lang: &'a Lang,
 }
@@ -223,7 +225,7 @@ impl StaticContext {
                         update: v.update(),
                         chat,
                         lang: v.lang(),
-                        command: v.parse_cmd(),
+                        command: v.parse_cmd_struct(),
                     })
                 } else {
                     None
@@ -233,9 +235,67 @@ impl StaticContext {
         Context(v)
     }
 
-    pub fn parse_cmd<'a>(&'a self) -> Option<Command<'a>> {
-        if let UpdateExt::Message(ref m) = self.update {
-            parse_cmd_struct(m)
+    /// Parse a command from a message. Returns none if the message isn't a /command or !command
+    pub fn parse_cmd_struct<'a>(&'a self) -> Option<Cmd<'a>> {
+        self.parse_cmd().map(|(cmd, args, entities)| Cmd {
+            cmd,
+            args,
+            entities,
+            message: self.message().unwrap(), //note this is safe trust me
+            lang: &self.lang,
+        })
+    }
+
+    /// Parse individual components of a /command or !command
+    pub fn parse_cmd<'a>(&'a self) -> Option<(&'a str, TextArgs<'a>, Entities<'a>)> {
+        if let Ok(message) = self.message() {
+            if let Some(Cow::Borrowed(cmd)) = message.get_text() {
+                if let Some(head) = COMMOND_HEAD.find(&cmd) {
+                    let entities = if let Some(Cow::Borrowed(entities)) = message.get_entities() {
+                        let mut entities = entities
+                            .iter()
+                            .filter(|p| match p.get_tg_type().as_ref() {
+                                "hashtag" => true,
+                                "mention" => true,
+                                "url" => true,
+                                "text_mention" => true,
+                                "text_link" => true,
+                                _ => false,
+                            })
+                            .collect::<Vec<&MessageEntity>>();
+                        entities.sort_by(|o, n| n.get_offset().cmp(&o.get_offset()));
+                        entities
+                    } else {
+                        vec![]
+                    };
+                    let tail = &cmd[head.end()..].trim_start();
+
+                    let args = entities.iter().filter_map(|v| get_arg_type(message, v));
+
+                    let raw_args = ARGS
+                        .find_iter(tail)
+                        .map(|v| {
+                            if QUOTE.is_match(v.as_str()) {
+                                TextArg::Quote(v.as_str())
+                            } else {
+                                TextArg::Arg(v.as_str())
+                            }
+                        })
+                        .collect();
+                    Some((
+                        &head.as_str()[1..head.end()],
+                        TextArgs {
+                            text: &tail,
+                            args: raw_args,
+                        },
+                        args.collect(),
+                    ))
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
         } else {
             None
         }
@@ -331,30 +391,8 @@ impl Context {
     }
 
     /// Makes accessing command related fields more ergonomic
-    pub fn cmd<'a>(
-        &'a self,
-    ) -> Option<(
-        &'a str,
-        &'a Entities<'a>,
-        &'a TextArgs<'a>,
-        &'a Message,
-        &'a Lang,
-    )> {
-        if let Some(ctx) = self.get() {
-            if let (UpdateExt::Message(message), Some(command)) = (ctx.update, &ctx.command) {
-                Some((
-                    command.cmd,
-                    &command.entities,
-                    &command.args,
-                    &message,
-                    &ctx.lang,
-                ))
-            } else {
-                None
-            }
-        } else {
-            None
-        }
+    pub fn cmd<'a>(&'a self) -> Option<&'a Cmd<'a>> {
+        self.get().as_ref().map(|v| v.command.as_ref()).flatten()
     }
 }
 
@@ -382,6 +420,18 @@ impl IsGroupAdmin for Context {
         F: FnOnce(NamedBotPermissions) -> NamedPermission + Send,
     {
         self.message()?.check_permissions(func).await
+    }
+}
+
+impl Context {
+    /// Parse a command from a message. Returns none if the message isn't a /command or !command
+    pub fn parse_cmd_struct<'a>(&'a self) -> Option<Cmd<'a>> {
+        self.get_static().parse_cmd_struct()
+    }
+
+    /// Parse individual components of a /command or !command
+    pub fn parse_cmd<'a>(&'a self) -> Option<(&'a str, TextArgs<'a>, Entities<'a>)> {
+        self.get_static().parse_cmd()
     }
 }
 
@@ -415,67 +465,6 @@ impl UpdateHelpers for Context {
         self.update().user_event()
     }
 }
-
-/// Parse a command from a message. Returns none if the message isn't a /command or !command
-pub fn parse_cmd_struct<'a>(message: &'a Message) -> Option<Command<'a>> {
-    parse_cmd(message).map(|(cmd, args, entities)| Command {
-        cmd,
-        args,
-        entities,
-    })
-}
-
-/// Parse individual components of a /command or !command
-pub fn parse_cmd<'a>(message: &'a Message) -> Option<(&'a str, TextArgs<'a>, Entities<'a>)> {
-    if let Some(Cow::Borrowed(cmd)) = message.get_text() {
-        if let Some(head) = COMMOND_HEAD.find(&cmd) {
-            let entities = if let Some(Cow::Borrowed(entities)) = message.get_entities() {
-                let mut entities = entities
-                    .iter()
-                    .filter(|p| match p.get_tg_type().as_ref() {
-                        "hashtag" => true,
-                        "mention" => true,
-                        "url" => true,
-                        "text_mention" => true,
-                        "text_link" => true,
-                        _ => false,
-                    })
-                    .collect::<Vec<&MessageEntity>>();
-                entities.sort_by(|o, n| n.get_offset().cmp(&o.get_offset()));
-                entities
-            } else {
-                vec![]
-            };
-            let tail = &cmd[head.end()..].trim_start();
-
-            let args = entities.iter().filter_map(|v| get_arg_type(message, v));
-
-            let raw_args = ARGS
-                .find_iter(tail)
-                .map(|v| {
-                    if QUOTE.is_match(v.as_str()) {
-                        TextArg::Quote(v.as_str())
-                    } else {
-                        TextArg::Arg(v.as_str())
-                    }
-                })
-                .collect();
-            Some((
-                &head.as_str()[1..head.end()],
-                TextArgs {
-                    text: &tail,
-                    args: raw_args,
-                },
-                args.collect(),
-            ))
-        } else {
-            None
-        }
-    } else {
-        None
-    }
-}
-
 pub async fn post_deep_link<T, F>(value: T, key_func: F) -> Result<String>
 where
     T: Serialize,
@@ -497,7 +486,7 @@ where
     F: FnOnce(&str) -> String,
     R: DeserializeOwned,
 {
-    if let Some((_, _, args, _, _)) = ctx.cmd() {
+    if let Some(&Cmd { ref args, .. }) = ctx.cmd() {
         if let Some(u) = args.args.first().map(|a| a.get_text()) {
             let base = general_purpose::URL_SAFE_NO_PAD.decode(u)?;
             let base = Uuid::from_slice(base.as_slice())?;

@@ -39,7 +39,7 @@ use uuid::Uuid;
 
 use super::{
     button::{InlineKeyboardBuilder, OnPush},
-    command::{ArgSlice, Context, EntityArg},
+    command::{ArgSlice, Cmd, Context, EntityArg},
     dialog::{dialog_or_default, get_dialog_key},
     markdown::{MarkupBuilder, MarkupType},
     permissions::{GetCachedAdmins, IsAdmin},
@@ -250,40 +250,6 @@ pub fn parse_duration_str(arg: &str, chat: i64) -> Result<Option<Duration>> {
 
     Ok(Some(res))
 }
-
-/// Parse an std::chrono::Duration from a argument list
-pub fn parse_duration<'a>(args: &Option<ArgSlice<'a>>, chat: i64) -> Result<Option<Duration>> {
-    if let Some(args) = args {
-        if let Some(thing) = args.args.first() {
-            let head = &thing.get_text()[0..thing.get_text().len() - 1];
-            let tail = &thing.get_text()[thing.get_text().len() - 1..];
-            log::info!("head {} tail {}", head, tail);
-            let head = match str::parse::<i64>(head) {
-                Err(_) => return Err(BotError::speak("Enter a number", chat)),
-                Ok(res) => res,
-            };
-            let res = match tail {
-                "m" => Duration::minutes(head),
-                "h" => Duration::hours(head),
-                "d" => Duration::days(head),
-                _ => return Err(BotError::speak("Invalid time spec", chat)),
-            };
-
-            let res = if res.num_seconds() < 30 {
-                Duration::seconds(30)
-            } else {
-                res
-            };
-
-            Ok(Some(res))
-        } else {
-            Ok(None)
-        }
-    } else {
-        Ok(None)
-    }
-}
-
 /// Sets the duration after which warns expire for the provided chat
 pub async fn set_warn_time(chat: &Chat, time: Option<i64>) -> Result<()> {
     let chat_id = chat.get_id();
@@ -725,7 +691,106 @@ pub async fn ban_message(message: &Message, duration: Option<Duration>) -> Resul
     Ok(())
 }
 
+/// If the current chat is a group or supergroup (i.e. not a dm)
+/// Warn the user and return Err
+pub async fn is_dm_or_die(chat: &Chat) -> Result<()> {
+    let lang = get_chat_lang(chat.get_id()).await?;
+    if !is_dm(chat) {
+        Err(BotError::speak(lang_fmt!(lang, "notdm"), chat.get_id()))
+    } else {
+        Ok(())
+    }
+}
+
+/// Check if the group is a supergroup, and warn the user while returning error if it is not
+pub async fn is_group_or_die(chat: &Chat) -> Result<()> {
+    let lang = get_chat_lang(chat.get_id()).await?;
+    match chat.get_tg_type().as_ref() {
+        "private" => Err(BotError::speak(lang_fmt!(lang, "baddm"), chat.get_id())),
+        "group" => Err(BotError::speak(
+            lang_fmt!(lang, "notsupergroup"),
+            chat.get_id(),
+        )),
+        _ => Ok(()),
+    }
+}
+
 impl Context {
+    /// Checks an update for user interactions and applies the current action for the user
+    /// if it is pending. clearing the pending flag in the process
+    pub async fn handle_pending_action_update<'a>(&self) -> Result<()> {
+        match self.update() {
+            UpdateExt::Message(ref message) => {
+                if !is_dm(&message.get_chat()) {
+                    if let Some(user) = message.get_from_ref() {
+                        self.handle_pending_action(user).await?;
+                    }
+                }
+            }
+            _ => (),
+        };
+
+        Ok(())
+    }
+
+    /// Parse an std::chrono::Duration from a argument list
+    pub fn parse_duration<'a>(&self, args: &Option<ArgSlice<'a>>) -> Result<Option<Duration>> {
+        if let (Some(args), Some(&Cmd { message, .. })) = (args, self.cmd()) {
+            let chat = message.get_chat().get_id();
+            if let Some(thing) = args.args.first() {
+                let head = &thing.get_text()[0..thing.get_text().len() - 1];
+                let tail = &thing.get_text()[thing.get_text().len() - 1..];
+                log::info!("head {} tail {}", head, tail);
+                let head = match str::parse::<i64>(head) {
+                    Err(_) => return Err(BotError::speak("Enter a number", chat)),
+                    Ok(res) => res,
+                };
+                let res = match tail {
+                    "m" => Duration::minutes(head),
+                    "h" => Duration::hours(head),
+                    "d" => Duration::days(head),
+                    _ => return Err(BotError::speak("Invalid time spec", chat)),
+                };
+
+                let res = if res.num_seconds() < 30 {
+                    Duration::seconds(30)
+                } else {
+                    res
+                };
+
+                Ok(Some(res))
+            } else {
+                Ok(None)
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// If the current chat is a group or supergroup (i.e. not a dm)
+    /// Warn the user and return Err
+    pub async fn is_dm_or_die(&self) -> Result<()> {
+        if let Some(v) = self.get() {
+            if !is_dm(v.chat) {
+                Err(BotError::speak(lang_fmt!(v.lang, "notdm"), v.chat.get_id()))
+            } else {
+                Ok(())
+            }
+        } else {
+            Err(BotError::Generic("not a chat".to_owned()))
+        }
+    }
+
+    /// Check if the group is a supergroup, and warn the user while returning error if it is not
+    pub async fn is_group_or_die(&self) -> Result<()> {
+        if let Some(v) = self.get() {
+            let chat = v.chat;
+            is_group_or_die(chat).await
+        } else {
+            Err(BotError::Generic("not a chgt".to_owned()))
+        }
+    }
+
     /// Unbans a user, transparently handling anonymous channels
     pub async fn unban(&self, user: i64) -> Result<()> {
         if let Some(senderchat) = self.message()?.get_sender_chat() {
@@ -921,7 +986,7 @@ impl Context {
     pub async fn change_permissions_message(&self, permissions: ChatPermissions) -> Result<i64> {
         let me = self.clone();
         self.action_message(|ctx, user, args| async move {
-            let duration = parse_duration(&args, ctx.try_get()?.chat.get_id())?;
+            let duration = ctx.parse_duration(&args)?;
             me.change_permissions(user, &permissions, duration).await?;
 
             Ok(())
@@ -1384,23 +1449,6 @@ pub async fn update_actions_permissions(
     Ok(())
 }
 
-/// Checks an update for user interactions and applies the current action for the user
-/// if it is pending. clearing the pending flag in the process
-pub async fn handle_pending_action<'a>(update: &UpdateExt, ctx: &Context) -> Result<()> {
-    match update {
-        UpdateExt::Message(ref message) => {
-            if !is_dm(&message.get_chat()) {
-                if let Some(user) = message.get_from_ref() {
-                    ctx.handle_pending_action(user).await?;
-                }
-            }
-        }
-        _ => (),
-    };
-
-    Ok(())
-}
-
 /// Updates the current actions with a raw ORM model
 pub async fn update_actions(actions: actions::Model) -> Result<()> {
     let key = get_action_key(actions.user_id, actions.chat_id);
@@ -1426,28 +1474,4 @@ pub async fn update_actions(actions: actions::Model) -> Result<()> {
         .exec(DB.deref().deref())
         .await?;
     Ok(())
-}
-
-/// If the current chat is a group or supergroup (i.e. not a dm)
-/// Warn the user and return Err
-pub async fn is_dm_or_die(chat: &Chat) -> Result<()> {
-    let lang = get_chat_lang(chat.get_id()).await?;
-    if !is_dm(chat) {
-        Err(BotError::speak(lang_fmt!(lang, "notdm"), chat.get_id()))
-    } else {
-        Ok(())
-    }
-}
-
-/// Check if the group is a supergroup, and warn the user while returning error if it is not
-pub async fn is_group_or_die(chat: &Chat) -> Result<()> {
-    let lang = get_chat_lang(chat.get_id()).await?;
-    match chat.get_tg_type().as_ref() {
-        "private" => Err(BotError::speak(lang_fmt!(lang, "baddm"), chat.get_id())),
-        "group" => Err(BotError::speak(
-            lang_fmt!(lang, "notsupergroup"),
-            chat.get_id(),
-        )),
-        _ => Ok(()),
-    }
 }

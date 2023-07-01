@@ -5,9 +5,9 @@ use self::entities::captchastate::{self, CaptchaType};
 use crate::metadata::metadata;
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache, RedisStr};
 use crate::statics::{CONFIG, DB, ME, REDIS, TG};
-use crate::tg::admin_helpers::{kick, parse_duration, DeleteAfterTime, UpdateHelpers, UserChanged};
+use crate::tg::admin_helpers::{kick, DeleteAfterTime, UpdateHelpers, UserChanged};
 use crate::tg::button::{get_url, InlineKeyboardBuilder, OnPush};
-use crate::tg::command::{ArgSlice, Context, TextArgs};
+use crate::tg::command::{ArgSlice, Cmd, Context, TextArgs};
 use crate::tg::permissions::*;
 use crate::tg::user::Username;
 use crate::util::error::BotError;
@@ -321,17 +321,17 @@ async fn captchamode(message: &Message, mode: CaptchaType) -> Result<()> {
     Ok(())
 }
 
-async fn captchakick_cmd<'a>(message: &Message, args: &'a TextArgs<'a>) -> Result<()> {
-    message
-        .check_permissions(|p| p.can_change_info.and(p.can_restrict_members))
+async fn captchakick_cmd<'a>(ctx: &Context, args: &'a TextArgs<'a>) -> Result<()> {
+    ctx.check_permissions(|p| p.can_change_info.and(p.can_restrict_members))
         .await?;
+    let message = ctx.message()?;
     match args.as_slice() {
         ArgSlice { text: "off", .. } => {
             captchakick(message, None).await?;
             message.reply("Disabled captcha kick").await?;
         }
         slice => {
-            if let Some(time) = parse_duration(&Some(slice), message.get_chat().get_id())? {
+            if let Some(time) = ctx.parse_duration(&Some(slice))? {
                 captchakick(message, Some(time.num_seconds())).await?;
                 message.reply("Enabled captcha kick").await?;
             } else {
@@ -684,10 +684,16 @@ async fn handle_user_action<'a>(ctx: &Context, message: &ChatMemberUpdated) -> R
 }
 
 async fn handle_command<'a>(ctx: &Context) -> Result<()> {
-    if let Some((cmd, _, args, message, _)) = ctx.cmd() {
+    if let Some(&Cmd {
+        cmd,
+        ref args,
+        ref message,
+        ..
+    }) = ctx.cmd()
+    {
         match cmd {
             "captchakick" => {
-                captchakick_cmd(message, args).await?;
+                captchakick_cmd(ctx, args).await?;
             }
             "captchamode" => {
                 let t = CaptchaType::from_str(

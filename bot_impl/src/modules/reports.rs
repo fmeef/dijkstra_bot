@@ -1,11 +1,11 @@
 use crate::statics::TG;
-use crate::tg::command::Context;
+use crate::tg::command::{Cmd, Context};
 
 use crate::tg::permissions::*;
 use crate::tg::user::GetUser;
 use crate::util::error::BotError;
 use crate::util::string::should_ignore_chat;
-use crate::{metadata::metadata, tg::admin_helpers::*, util::error::Result};
+use crate::{metadata::metadata, util::error::Result};
 use botapi::gen_types::{MessageEntity, MessageEntityBuilder};
 
 use macros::textentity_fmt;
@@ -29,7 +29,7 @@ pub async fn report(ctx: &Context) -> Result<()> {
             return Ok(());
         }
 
-        is_group_or_die(ctx.message()?.get_chat_ref()).await?;
+        ctx.is_group_or_die().await?;
         if ctx
             .message()?
             .get_from()
@@ -80,7 +80,7 @@ pub async fn report(ctx: &Context) -> Result<()> {
 }
 
 async fn handle_command(ctx: &Context) -> Result<()> {
-    if let Some((cmd, _, _, _, _)) = ctx.cmd() {
+    if let Some(&Cmd { cmd, .. }) = ctx.cmd() {
         match cmd {
             "report" => report(ctx).await,
             _ => Ok(()),

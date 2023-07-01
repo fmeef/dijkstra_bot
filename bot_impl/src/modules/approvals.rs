@@ -1,6 +1,6 @@
 use crate::statics::TG;
 use crate::tg::admin_helpers::{approve, get_approvals, unapprove};
-use crate::tg::command::Context;
+use crate::tg::command::{Cmd, Context};
 use crate::tg::permissions::*;
 
 use crate::tg::markdown::{MarkupBuilder, MarkupType};
@@ -97,7 +97,7 @@ async fn command_list<'a>(context: &Context) -> Result<()> {
 }
 
 async fn handle_command<'a>(ctx: &Context) -> Result<()> {
-    if let Some((cmd, _, _, _, _)) = ctx.cmd() {
+    if let Some(&Cmd { cmd, .. }) = ctx.cmd() {
         match cmd {
             "approve" => cmd_approve(ctx).await?,
             "unapprove" => cmd_unapprove(ctx).await?,

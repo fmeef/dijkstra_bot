@@ -1,12 +1,12 @@
+use crate::tg::command::Cmd;
 use crate::tg::permissions::*;
 use crate::tg::user::GetUser;
 use crate::{
     metadata::metadata,
-    tg::{admin_helpers::*, command::Context},
+    tg::command::Context,
     util::error::Result,
     util::string::{get_chat_lang, Speak},
 };
-use botapi::gen_types::Message;
 
 use itertools::Itertools;
 use macros::{entity_fmt, lang_fmt};
@@ -34,8 +34,7 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
 }
 
 async fn promote(context: &Context) -> Result<()> {
-    let message = context.message()?;
-    message.check_permissions(|v| v.can_promote_members).await?;
+    context.check_permissions(|v| v.can_promote_members).await?;
     context
         .action_message(move |ctx, user, _| async move {
             let message = ctx.message()?;
@@ -59,8 +58,7 @@ async fn promote(context: &Context) -> Result<()> {
 }
 
 async fn demote<'a>(context: &'a Context) -> Result<()> {
-    let message = context.message()?;
-    message.check_permissions(|p| p.can_promote_members).await?;
+    context.check_permissions(|p| p.can_promote_members).await?;
     context
         .action_message(|ctx, user, _| async move {
             if let Some(chat) = ctx.chat() {
@@ -89,8 +87,9 @@ async fn demote<'a>(context: &'a Context) -> Result<()> {
     Ok(())
 }
 
-async fn listadmins(message: &Message) -> Result<()> {
-    is_group_or_die(message.get_chat_ref()).await?;
+async fn listadmins(ctx: &Context) -> Result<()> {
+    ctx.is_group_or_die().await?;
+    let message = ctx.message()?;
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
     let admins = message.get_chat().get_cached_admins().await?;
     let header = lang_fmt!(lang, "foundadmins", admins.len());
@@ -107,8 +106,9 @@ async fn listadmins(message: &Message) -> Result<()> {
     Ok(())
 }
 
-async fn admincache(message: &Message) -> Result<()> {
-    is_group_or_die(message.get_chat_ref()).await?;
+async fn admincache(ctx: &Context) -> Result<()> {
+    ctx.is_group_or_die().await?;
+    let message = ctx.message()?;
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
     message.get_chat().refresh_cached_admins().await?;
     message.speak(lang_fmt!(lang, "refreshac")).await?;
@@ -119,10 +119,10 @@ pub async fn handle_update<'a>(cmd: &Context) -> Result<()> {
     Ok(())
 }
 async fn handle_command<'a>(ctx: &Context) -> Result<()> {
-    if let Some((cmd, _, _, message, _)) = ctx.cmd() {
+    if let Some(&Cmd { cmd, .. }) = ctx.cmd() {
         match cmd {
-            "admincache" => admincache(message).await,
-            "admins" => listadmins(message).await,
+            "admincache" => admincache(ctx).await,
+            "admins" => listadmins(ctx).await,
             "promote" => promote(ctx).await,
             "demote" => demote(ctx).await,
             _ => Ok(()),

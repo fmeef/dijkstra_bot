@@ -1,5 +1,5 @@
 use crate::tg::admin_helpers::IntoChatUser;
-use crate::tg::command::Context;
+use crate::tg::command::{Cmd, Context};
 use crate::util::error::Result;
 use crate::{
     metadata::metadata,
@@ -89,7 +89,7 @@ async fn handle_markdown(message: &Message) -> Result<bool> {
 }
 
 async fn handle_command(ctx: &Context) -> Result<()> {
-    if let Some((cmd, _, _, message, _)) = ctx.cmd() {
+    if let Some(&Cmd { cmd, message, .. }) = ctx.cmd() {
         log::info!("piracy command {}", cmd);
         match cmd {
             //            "crash" => TG.client().close().await?,

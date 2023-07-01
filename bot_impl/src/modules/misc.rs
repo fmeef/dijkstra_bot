@@ -1,5 +1,5 @@
 use crate::statics::TG;
-use crate::tg::command::Context;
+use crate::tg::command::{Cmd, Context};
 use crate::tg::markdown::MarkupBuilder;
 use crate::util::error::Result;
 use crate::{metadata::metadata, util::string::Speak};
@@ -38,7 +38,7 @@ async fn get_id(ctx: &Context) -> Result<()> {
 }
 
 pub async fn handle_update(ctx: &Context) -> Result<()> {
-    if let Some((cmd, _, _, _, _)) = ctx.cmd() {
+    if let Some(&Cmd { cmd, .. }) = ctx.cmd() {
         match cmd {
             "id" => get_id(ctx).await?,
             _ => (),
