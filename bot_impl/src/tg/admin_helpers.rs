@@ -4,7 +4,7 @@
 //! this module depends on the `static` module for access to the database, redis,
 //! and telegram client.
 
-use std::borrow::Cow;
+use std::{borrow::Cow, collections::VecDeque};
 
 use crate::{
     persist::{
@@ -27,7 +27,7 @@ use botapi::gen_types::{
 use chrono::{DateTime, Duration, Utc};
 use futures::Future;
 
-use lazy_static::__Deref;
+use lazy_static::{__Deref, lazy_static};
 use macros::{entity_fmt, lang_fmt};
 use redis::AsyncCommands;
 
@@ -39,12 +39,16 @@ use uuid::Uuid;
 
 use super::{
     button::{InlineKeyboardBuilder, OnPush},
-    command::{ArgSlice, Cmd, Context, EntityArg},
+    command::{ArgSlice, Cmd, Context, Entities, EntityArg},
     dialog::{dialog_or_default, get_dialog_key},
     markdown::{MarkupBuilder, MarkupType},
     permissions::{GetCachedAdmins, IsAdmin},
     user::{get_user_username, GetUser, Username},
 };
+
+lazy_static! {
+    static ref VECDEQUE: Entities<'static> = VecDeque::new();
+}
 
 /// Helper type for a named pair of chat and  user api types. Used to refer to a
 /// chat member
@@ -994,14 +998,33 @@ impl Context {
         .await
     }
 
+    pub async fn action_message<'a, F, Fut>(&'a self, action: F) -> Result<i64>
+    where
+        F: FnOnce(&'a Context, i64, Option<ArgSlice<'a>>) -> Fut,
+        Fut: Future<Output = Result<()>>,
+    {
+        self.action_message_some(|ctx, user, args| async move {
+            if let Some(user) = user {
+                action(ctx, user, args).await?;
+            } else {
+                return Err(BotError::speak(
+                    lang_fmt!(ctx.try_get()?.lang, "specifyuser"),
+                    ctx.try_get()?.chat.get_id(),
+                ));
+            }
+            Ok(())
+        })
+        .await?
+        .ok_or_else(|| BotError::Generic("User not found".to_owned()))
+    }
     /// Runs the provided function with parameters specifying a user and message parsed from the
     /// arguments of a command. This is used to allows users to specify messages to interact with
     /// using either mentioning a user via an @ handle or text mention or by replying to a message.
     /// The user mentioned OR the sender of the message that is replied to is passed to the callback
     /// function along with the remaining args and the message itself
-    pub async fn action_message<'a, F, Fut>(&'a self, action: F) -> Result<i64>
+    pub async fn action_message_some<'a, F, Fut>(&'a self, action: F) -> Result<Option<i64>>
     where
-        F: FnOnce(&'a Context, i64, Option<ArgSlice<'a>>) -> Fut,
+        F: FnOnce(&'a Context, Option<i64>, Option<ArgSlice<'a>>) -> Fut,
         Fut: Future<Output = Result<()>>,
     {
         let message = self.message()?;
@@ -1011,21 +1034,26 @@ impl Context {
             .command
             .as_ref()
             .map(|e| &e.entities)
-            .ok_or_else(|| BotError::Generic("no entities".to_owned()))?;
-        let lang = self.try_get()?.lang;
+            .unwrap_or_else(|| &VECDEQUE);
+
         if let Some(user) = message
             .get_reply_to_message_ref()
             .map(|v| v.get_from())
             .flatten()
         {
-            action(self, user.get_id(), args.map(|a| a.as_slice())).await?;
-            Ok(user.get_id())
+            action(self, Some(user.get_id()), args.map(|a| a.as_slice())).await?;
+            Ok(Some(user.get_id()))
         } else {
             match entities.front() {
                 Some(EntityArg::Mention(name)) => {
                     if let Some(user) = get_user_username(name).await? {
-                        action(self, user.get_id(), args.map(|a| a.pop_slice()).flatten()).await?;
-                        Ok(user.get_id())
+                        action(
+                            self,
+                            Some(user.get_id()),
+                            args.map(|a| a.pop_slice()).flatten(),
+                        )
+                        .await?;
+                        Ok(Some(user.get_id()))
                     } else {
                         return Err(BotError::speak(
                             lang_fmt!(self.try_get()?.lang, "usernotfound"),
@@ -1034,8 +1062,13 @@ impl Context {
                     }
                 }
                 Some(EntityArg::TextMention(user)) => {
-                    action(self, user.get_id(), args.map(|a| a.pop_slice()).flatten()).await?;
-                    Ok(user.get_id())
+                    action(
+                        self,
+                        Some(user.get_id()),
+                        args.map(|a| a.pop_slice()).flatten(),
+                    )
+                    .await?;
+                    Ok(Some(user.get_id()))
                 }
                 _ => {
                     match args
@@ -1047,20 +1080,16 @@ impl Context {
                         .flatten()
                     {
                         Some(Ok(v)) => {
-                            action(self, v, args.map(|a| a.pop_slice()).flatten()).await?;
-                            Ok(v)
+                            action(self, Some(v), args.map(|a| a.pop_slice()).flatten()).await?;
+                            Ok(Some(v))
                         }
                         Some(Err(_)) => {
-                            return Err(BotError::speak(
-                                lang_fmt!(lang, "specifyuser"),
-                                message.get_chat().get_id(),
-                            ));
+                            action(self, None, args.map(|a| a.pop_slice()).flatten()).await?;
+                            Ok(None)
                         }
                         None => {
-                            return Err(BotError::speak(
-                                lang_fmt!(lang, "specifyuser"),
-                                message.get_chat().get_id(),
-                            ));
+                            action(self, None, args.map(|a| a.pop_slice()).flatten()).await?;
+                            Ok(None)
                         }
                     }
                 }
