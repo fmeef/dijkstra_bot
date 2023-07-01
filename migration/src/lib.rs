@@ -9,6 +9,7 @@ mod m20230211_202851_expires;
 mod m20230507_201523_dialog_permissions;
 mod m20230509_133432_approvals;
 mod m20230629_005040_rules;
+mod m20230629_231657_tags_idx;
 
 pub struct Migrator;
 
@@ -27,6 +28,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20230629_005040_rules::Migration),
         ];
         core_migrations.append(&mut module_migrations);
+        core_migrations.append(&mut vec![Box::new(m20230629_231657_tags_idx::Migration)]);
         core_migrations
     }
 }

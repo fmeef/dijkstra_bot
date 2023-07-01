@@ -56,6 +56,7 @@ fn rules_model(ctx: &Context) -> Result<rules::Model> {
         text,
         media_id,
         media_type,
+        button_name: "Rules".to_owned(),
     };
     Ok(model)
 }
@@ -97,6 +98,7 @@ fn default_rules(chat_id: i64, lang: &Lang) -> rules::Model {
         media_type: MediaType::Text,
         private: false,
         text: Some(lang_fmt!(lang, "norules")),
+        button_name: "Rules".to_owned(),
     }
 }
 

@@ -29,6 +29,12 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(false),
                     )
+                    .col(
+                        ColumnDef::new(rules::Column::ButtonName)
+                            .text()
+                            .not_null()
+                            .default("Rules"),
+                    )
                     .to_owned(),
             )
             .await?;

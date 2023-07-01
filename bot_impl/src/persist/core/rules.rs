@@ -17,6 +17,8 @@ pub struct Model {
     pub media_type: MediaType,
     #[sea_orm(default_value = false)]
     pub private: bool,
+    #[sea_orm(column_type = "Text", default_value = "Rules")]
+    pub button_name: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

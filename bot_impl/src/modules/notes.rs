@@ -128,7 +128,9 @@ fn get_model<'a>(message: &'a Message, args: &'a TextArgs<'a>) -> Result<entitie
             entities::notes::Model {
                 name: (*name).to_owned(),
                 chat: message.get_chat().get_id(),
-                text: text.map(|t| t.to_owned()),
+                text: text
+                    .map(|t| Some(t.to_owned()))
+                    .unwrap_or_else(|| message.get_caption().map(|c| c.into_owned())),
                 media_id,
                 media_type,
                 protect: false,
@@ -140,7 +142,9 @@ fn get_model<'a>(message: &'a Message, args: &'a TextArgs<'a>) -> Result<entitie
             entities::notes::Model {
                 name: (*name).to_owned(),
                 chat: message.get_chat().get_id(),
-                text: content.map(|t| t.to_owned()),
+                text: content
+                    .map(|t| Some(t.to_owned()))
+                    .unwrap_or_else(|| message.get_caption().map(|c| c.into_owned())),
                 media_id,
                 media_type,
                 protect: false,
@@ -309,8 +313,10 @@ async fn refresh_notes(chat: i64) -> Result<BTreeMap<String, entities::notes::Mo
             .collect_vec();
         REDIS
             .pipe(|q| {
-                q.hset_multiple(&hash_key, st.as_slice())
-                    .expire(&hash_key, CONFIG.timing.cache_timeout)
+                if st.len() > 0 {
+                    q.hset_multiple(&hash_key, &st.as_slice());
+                }
+                q.expire(&hash_key, CONFIG.timing.cache_timeout)
             })
             .await?;
 
