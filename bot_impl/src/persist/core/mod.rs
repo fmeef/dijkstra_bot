@@ -7,4 +7,5 @@ pub mod dialogs;
 pub mod media;
 pub mod module_schemas;
 pub mod prelude;
+pub mod rules;
 pub mod users;

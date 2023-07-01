@@ -7,9 +7,14 @@ needtobeadmin: "I'm sorry dave, I need to be admin to function in this group"
 lackingadminrights: "User {} lacking admin rights"
 banadmin: "I am not going to ban an admin"
 banmyself: "I am not going to ban myself"
+norules: |
+  This chat has no rules. Complete anarchy. Feel free to spam it and post pirated udemy
+  courses
+saverules: "Saved rules for chat {{chatname}}"
 welcome: "Welcome to {}, a modular group management bot written in pythonb and asynctio"
 commandnotfound: "Command not found"
 refreshac: "Successfully refreshed admin cache"
+getrules: "Get the chat rules {{rules}}"
 foundadmins: "Found {} admins"
 kickadmin: "I am not going to kick an admin"
 failban: |

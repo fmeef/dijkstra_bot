@@ -166,6 +166,11 @@ pub fn button_deeplink_key(key: &str) -> String {
     format!("bdlk:{}", key)
 }
 
+#[inline(always)]
+pub fn rules_deeplink_key(key: &str) -> String {
+    format!("dlrules:{}", key)
+}
+
 /// Builder for MessageEntity formatting. Generates MessageEntities from either murkdown
 /// or manually
 impl MarkupBuilder {
@@ -177,6 +182,18 @@ impl MarkupBuilder {
             text: String::new(),
             buttons: InlineKeyboardBuilder::default(),
         }
+    }
+
+    async fn rules<'a>(&'a mut self, chatuser: Option<&'a ChatUser<'a>>) -> Result<()> {
+        if let Some(ref chatuser) = chatuser {
+            let url = post_deep_link(chatuser.chat.get_id(), |k| rules_deeplink_key(k)).await?;
+
+            let button = InlineKeyboardButtonBuilder::new("Get rules".to_owned())
+                .set_url(url)
+                .build();
+            self.buttons.button(button);
+        }
+        Ok(())
     }
 
     async fn button<'a, F>(
@@ -322,6 +339,9 @@ impl MarkupBuilder {
                             let id = chatuser.user.get_id().to_string();
                             size += id.encode_utf16().count() as i64;
                             self.text(id);
+                        }
+                        "rules" => {
+                            self.rules(Some(chatuser)).await?;
                         }
                         s => {
                             let s = format!("{{{}}}", s);

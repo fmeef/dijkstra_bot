@@ -13,7 +13,7 @@ use crate::util::error::Result;
 use async_trait::async_trait;
 use botapi::bot::Part;
 use botapi::gen_methods::CallSendMessage;
-use botapi::gen_types::{Chat, FileData, Message};
+use botapi::gen_types::{Chat, EReplyMarkup, FileData, Message};
 use chrono::Duration;
 use lazy_static::__Deref;
 use macros::get_langs;
@@ -118,11 +118,12 @@ impl Speak for Message {
             .await
             {
                 Ok(md) => {
-                    let (text, entities) = md.build();
+                    let (text, entities, markup) = md.build_owned();
                     let m = TG
                         .client()
-                        .build_send_message(self.get_chat().get_id(), text)
+                        .build_send_message(self.get_chat().get_id(), &text)
                         .entities(&entities)
+                        .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(markup))
                         .build()
                         .await?;
 
@@ -188,11 +189,12 @@ impl Speak for Message {
             .await
             {
                 Ok(md) => {
-                    let (text, entities) = md.build();
+                    let (text, entities, markup) = md.build_owned();
                     let m = TG
                         .client()
-                        .build_send_message(self.get_chat().get_id(), text)
-                        .entities(entities)
+                        .build_send_message(self.get_chat().get_id(), &text)
+                        .entities(&entities)
+                        .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(markup))
                         .reply_to_message_id(self.get_message_id())
                         .build()
                         .await?;
