@@ -214,16 +214,6 @@ impl RedisStr {
         Ok(RedisStr(bytes))
     }
 
-    /// Create a new RedisStr from a serializable value potentially using a new thread.
-    /// this might have dubiously minor performance improvements but honestly its misguided
-    pub async fn new_async<T: Serialize + Send + 'static>(val: T) -> Result<Self> {
-        tokio::spawn(async move {
-            let v: Result<Self> = Ok(RedisStr(rmp_serde::to_vec_named(&val)?));
-            v
-        })
-        .await?
-    }
-
     /// attempt to deserialize the value
     pub fn get<T>(&self) -> Result<T>
     where

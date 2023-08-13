@@ -18,6 +18,7 @@ use log::LevelFilter;
 use sea_orm::entity::prelude::DatabaseConnection;
 use sea_orm::{ConnectOptions, Database};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use tokio::sync::OnceCell;
@@ -35,6 +36,13 @@ pub struct WebhookConfig {
 
     /// if using webhook listen on this socket
     pub listen: SocketAddr,
+}
+
+/// Administration and moderation options
+#[derive(Serialize, Deserialize)]
+pub struct Admin {
+    /// Users with special administrative access on the bot
+    pub sudo_users: HashSet<i64>,
 }
 
 /// Serializable log setup config
@@ -66,6 +74,7 @@ pub struct Config {
     pub webhook: WebhookConfig,
     pub logging: LogConfig,
     pub timing: Timing,
+    pub admin: Admin,
 }
 
 /// Serializable timing config
@@ -87,6 +96,14 @@ pub struct Timing {
 impl LogConfig {
     pub fn get_log_level(&self) -> LevelFilter {
         self.log_level.0
+    }
+}
+
+impl Default for Admin {
+    fn default() -> Self {
+        Self {
+            sudo_users: HashSet::new(),
+        }
     }
 }
 
@@ -137,6 +154,7 @@ impl Default for Config {
             logging: LogConfig::default(),
             webhook: WebhookConfig::default(),
             timing: Timing::default(),
+            admin: Admin::default(),
         }
     }
 }

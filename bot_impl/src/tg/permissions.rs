@@ -5,7 +5,7 @@ use std::{borrow::Cow, collections::HashMap};
 
 use crate::{
     persist::redis::RedisStr,
-    statics::{REDIS, TG},
+    statics::{CONFIG, REDIS, TG},
     util::error::{BotError, Result},
     util::string::get_chat_lang,
 };
@@ -32,6 +32,7 @@ pub struct NamedBotPermissions {
     pub can_change_info: NamedPermission,
     pub can_promote_members: NamedPermission,
     pub can_pin_messages: NamedPermission,
+    pub is_sudo: NamedPermission,
 }
 
 impl NamedBotPermissions {
@@ -40,7 +41,7 @@ impl NamedBotPermissions {
         if let Some(admin) = chat.is_user_admin(user.get_id()).await? {
             Ok(admin.into())
         } else {
-            Ok(BotPermissions {
+            let mut v: NamedBotPermissions = BotPermissions {
                 can_manage_chat: false,
                 can_restrict_members: false,
                 can_delete_messages: false,
@@ -48,7 +49,11 @@ impl NamedBotPermissions {
                 can_promote_members: false,
                 can_pin_messages: false,
             }
-            .into())
+            .into();
+            if CONFIG.admin.sudo_users.contains(&user.get_id()) {
+                v.is_sudo.0.iter_mut().for_each(|v| v.val = true);
+            }
+            Ok(v)
         }
     }
 
@@ -179,6 +184,7 @@ impl Into<NamedBotPermissions> for BotPermissions {
                 self.can_promote_members,
             ),
             can_pin_messages: NamedPermission::new("CanPinMessages", self.can_pin_messages),
+            is_sudo: NamedPermission::new("Sudo", false),
         }
     }
 }
@@ -302,8 +308,10 @@ impl IsGroupAdmin for Message {
         let permission = NamedBotPermissions::from_chatuser(&user, chat).await?;
         // log::info!("got permissions {:?}", permission);
 
+        let sudo = permission.is_sudo.is_granted();
         let p = func(permission);
-        if !p.is_granted() {
+
+        if !p.is_granted() && !sudo {
             Err(BotError::speak(
                 format!("Permission denied. User missing \"{}\"", p.get_name()),
                 chat.get_id(),
@@ -340,9 +348,9 @@ impl IsAdmin for User {
     {
         is_group_or_die(chat).await?;
         let permission = NamedBotPermissions::from_chatuser(self, chat).await?;
-
+        let sudo = permission.is_sudo.is_granted();
         let p = func(permission);
-        if !p.is_granted() {
+        if !p.is_granted() && !sudo {
             Err(BotError::speak(
                 format!("Permission denied. User missing \"{}\"", p.get_name()),
                 chat.get_id(),
@@ -398,9 +406,9 @@ impl<'a> IsAdmin for Option<Cow<'a, User>> {
             .as_ref()
             .ok_or_else(|| BotError::Generic("user not found".to_owned()))?;
         let permission = NamedBotPermissions::from_chatuser(&user, chat).await?;
-
+        let sudo = permission.is_sudo.is_granted();
         let p = func(permission);
-        if !p.is_granted() {
+        if !p.is_granted() && !sudo {
             Err(BotError::speak(
                 format!("Permission denied. User missing \"{}\"", p.get_name()),
                 chat.get_id(),
@@ -454,9 +462,9 @@ impl IsAdmin for i64 {
             .await?
             .ok_or_else(|| BotError::Generic("user not found".to_owned()))?;
         let permission = NamedBotPermissions::from_chatuser(&user, chat).await?;
-
+        let sudo = permission.is_sudo.is_granted();
         let p = func(permission);
-        if !p.is_granted() {
+        if !p.is_granted() && !sudo {
             Err(BotError::speak(
                 format!("Permission denied. User missing \"{}\"", p.get_name()),
                 chat.get_id(),
