@@ -13,6 +13,10 @@ use chrono::Duration;
 use clap::Parser;
 use confy::load_path;
 use futures::executor::block_on;
+use governor::clock::QuantaClock;
+use governor::middleware::NoOpMiddleware;
+use governor::state::{InMemoryState, NotKeyed};
+use governor::{Quota, RateLimiter};
 use lazy_static::lazy_static;
 use log::LevelFilter;
 use sea_orm::entity::prelude::DatabaseConnection;
@@ -20,6 +24,7 @@ use sea_orm::{ConnectOptions, Database};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::net::SocketAddr;
+use std::num::NonZeroU32;
 use std::path::PathBuf;
 use tokio::sync::OnceCell;
 
@@ -43,6 +48,7 @@ pub struct WebhookConfig {
 pub struct Admin {
     /// Users with special administrative access on the bot
     pub sudo_users: HashSet<i64>,
+    pub support_users: HashSet<i64>,
 }
 
 /// Serializable log setup config
@@ -103,6 +109,7 @@ impl Default for Admin {
     fn default() -> Self {
         Self {
             sudo_users: HashSet::new(),
+            support_users: HashSet::new(),
         }
     }
 }
@@ -196,7 +203,7 @@ lazy_static! {
 
 //db client
 lazy_static! {
-    pub static ref DB: DatabaseConnection = Runtime::new().unwrap().block_on(async move {
+    pub static ref DB: DatabaseConnection = EXEC.block_on(async move {
         let db = Database::connect(ConnectOptions::new(
             CONFIG.persistence.database_connection.to_owned(),
         ))
@@ -204,6 +211,11 @@ lazy_static! {
         .expect("failed to initialize database");
         db
     });
+}
+
+lazy_static! {
+    pub static ref BAN_GOVERNER: RateLimiter<NotKeyed, InMemoryState, QuantaClock, NoOpMiddleware> =
+        RateLimiter::direct(Quota::per_second(NonZeroU32::new(30u32).unwrap()));
 }
 
 //tg client

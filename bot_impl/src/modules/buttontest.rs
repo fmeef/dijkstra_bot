@@ -88,7 +88,7 @@ async fn handle_markdown(message: &Message) -> Result<bool> {
     Ok(false)
 }
 
-async fn handle_command(ctx: &Context) -> Result<()> {
+pub async fn handle_update(ctx: &Context) -> Result<()> {
     if let Some(&Cmd { cmd, message, .. }) = ctx.cmd() {
         log::info!("piracy command {}", cmd);
         match cmd {
@@ -110,12 +110,6 @@ async fn handle_command(ctx: &Context) -> Result<()> {
             _ => (),
         };
     }
-    Ok(())
-}
-
-#[allow(dead_code)]
-pub async fn handle_update(cmd: &Context) -> Result<()> {
-    handle_command(cmd).await?;
 
     Ok(())
 }

@@ -145,7 +145,9 @@ pub mod entities {
 
         use crate::util::error::BotError;
 
-        #[derive(EnumIter, DeriveActiveEnum, Serialize, Deserialize, Clone, PartialEq, Debug)]
+        #[derive(
+            EnumIter, DeriveActiveEnum, Serialize, Deserialize, Clone, PartialEq, Debug, DeriveIden,
+        )]
         #[sea_orm(rs_type = "i32", db_type = "Integer")]
         pub enum CaptchaType {
             #[sea_orm(num_value = 1)]

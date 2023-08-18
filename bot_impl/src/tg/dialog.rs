@@ -12,22 +12,25 @@
 
 use crate::util::error::Result;
 use ::redis::AsyncCommands;
+
 use botapi::gen_types::{
-    CallbackQuery, Chat, InlineKeyboardButtonBuilder, InlineKeyboardMarkup, Message,
+    CallbackQuery, Chat, InlineKeyboardButtonBuilder, InlineKeyboardMarkup, Message, UpdateExt,
 };
 use chrono::{DateTime, Duration, Utc};
 use futures::future::BoxFuture;
+
 use futures::FutureExt;
 use lazy_static::__Deref;
-use sea_orm::sea_query::OnConflict;
-use sea_orm::EntityTrait;
 
+use sea_orm::sea_query::OnConflict;
+use sea_orm::ActiveValue::{NotSet, Set};
+use sea_orm::{ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::str::FromStr;
 use uuid::Uuid;
 
-use crate::persist::core::dialogs;
+use crate::persist::core::{chat_members, dialogs};
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache, RedisStr};
 use crate::statics::{CONFIG, DB, REDIS, TG};
 use crate::tg::button::OnPush;
@@ -38,6 +41,7 @@ use std::sync::Arc;
 
 use super::admin_helpers::IntoChatUser;
 use super::button::InlineKeyboardBuilder;
+use super::command::Context;
 use super::markdown::MarkupBuilder;
 pub const TYPE_DIALOG: &str = "DialogDb";
 
@@ -71,9 +75,12 @@ pub async fn get_dialog(chat: &Chat) -> Result<Option<dialogs::Model>> {
 }
 
 /// Update or insert a chat settings value
-pub async fn upsert_dialog(model: dialogs::Model) -> Result<()> {
-    let key = get_dialog_key(model.chat_id);
-    dialogs::Entity::insert(model.cache(key).await?)
+pub async fn upsert_dialog(model: dialogs::ActiveModel) -> Result<()> {
+    if let Set(key) = model.chat_id {
+        let key = get_dialog_key(key);
+        REDIS.sq(|q| q.del(&key)).await?;
+    }
+    dialogs::Entity::insert(model)
         .on_conflict(
             OnConflict::column(dialogs::Column::ChatId)
                 .update_column(dialogs::Column::WarnLimit)
@@ -90,14 +97,16 @@ pub async fn dialog_or_default(chat: &Chat) -> Result<dialogs::Model> {
     let model = if let Some(model) = get_dialog(chat).await? {
         model
     } else {
-        dialogs::Entity::insert(dialogs::Model::from_chat(chat).await?.cache(key).await?)
+        let d = dialogs::Entity::insert(dialogs::Model::from_chat(chat).await?)
             .on_conflict(
                 OnConflict::column(dialogs::Column::ChatId)
                     .update_column(dialogs::Column::WarnLimit)
                     .to_owned(),
             )
             .exec_with_returning(DB.deref().deref())
-            .await?
+            .await?;
+        d.clone().cache(&key).await?; //TODO: remove this hack
+        d
     };
     Ok(model)
 }
@@ -122,6 +131,174 @@ fn get_conversation_key_message_prefix(message: &Message, prefix: &str) -> Resul
 #[inline(always)]
 fn get_conversation_key_message(message: &Message) -> Result<String> {
     get_conversation_key_message_prefix(message, "conv")
+}
+
+#[inline(always)]
+fn get_member_key(user: i64) -> String {
+    format!("mbr:{}", user)
+}
+
+pub async fn update_chat(
+    user: i64,
+) -> Result<Box<dyn Iterator<Item = chat_members::ActiveModel> + Send>> {
+    let key = get_member_key(user);
+    if !REDIS.sq(|q| q.exists(&key)).await? {
+        let members = chat_members::Entity::find()
+            .filter(chat_members::Column::UserId.eq(user))
+            .all(DB.deref())
+            .await?;
+
+        if members.len() > 0 {
+            REDIS
+                .pipe(|p| {
+                    for v in members.iter() {
+                        p.sadd(&key, v.chat_id);
+                    }
+                    p
+                })
+                .await?;
+        }
+
+        Ok(Box::new(members.into_iter().map(|v| v.into_active_model())))
+    } else {
+        let (o, _): (Vec<i64>, bool) = REDIS
+            .pipe(|p| p.smembers(&key).expire(&key, CONFIG.timing.cache_timeout))
+            .await?;
+        Ok(Box::new(o.into_iter().map(move |v| {
+            chat_members::ActiveModel {
+                user_id: Set(user),
+                chat_id: Set(v),
+                banned_by_me: NotSet,
+            }
+        })))
+    }
+}
+
+pub async fn is_chat_member(user: i64, chat: i64) -> Result<bool> {
+    let key = get_member_key(user);
+    let v = match REDIS.pipe(|p| p.exists(&key).sismember(&key, chat)).await {
+        Ok((true, v)) => Ok::<bool, BotError>(v),
+        Err(err) => Err(err.into()),
+        Ok((false, _)) => {
+            let mut v = update_chat(user).await?;
+            let model = chat_members::ActiveModel {
+                chat_id: Set(chat),
+                user_id: Set(user),
+                banned_by_me: NotSet,
+            };
+            Ok(v.find(|p| p.eq(&model)).is_some())
+        }
+    }?;
+
+    Ok(v)
+}
+
+pub async fn get_user_chats(user: i64) -> Result<impl Iterator<Item = i64> + Send> {
+    let v = update_chat(user).await?.into_iter().filter_map(|v| {
+        if let Set(id) = v.chat_id {
+            Some(id)
+        } else {
+            None
+        }
+    });
+    Ok(v)
+}
+
+pub async fn get_user_banned_chats(user: i64) -> Result<impl Iterator<Item = i64> + Send> {
+    let v = update_chat(user).await?.into_iter().filter_map(|v| {
+        if let Set(false) = v.banned_by_me {
+            None
+        } else {
+            if let Set(id) = v.chat_id {
+                Some(id)
+            } else {
+                None
+            }
+        }
+    });
+    Ok(v)
+}
+
+impl Context {
+    pub async fn record_chat_member(&self) -> Result<()> {
+        match self.update() {
+            UpdateExt::ChatMember(member) => {
+                record_chat_member(member.get_from().get_id(), member.get_chat().get_id()).await
+            }
+            UpdateExt::Message(message) => {
+                if let Some(user) = message.get_from() {
+                    record_chat_member(user.get_id(), message.get_chat().get_id()).await?;
+                }
+                Ok(())
+            }
+            _ => Ok(()),
+        }
+    }
+}
+
+pub async fn record_chat_member(user: i64, chat: i64) -> Result<()> {
+    let key = get_member_key(user);
+    let (updated, _): (i64, bool) = REDIS
+        .pipe(|q| q.sadd(&key, chat).expire(&key, CONFIG.timing.cache_timeout))
+        .await?;
+    log::info!("record_chat_member {}", updated);
+    if updated > 0 {
+        chat_members::Entity::insert(chat_members::ActiveModel {
+            chat_id: Set(chat),
+            user_id: Set(user),
+            banned_by_me: NotSet,
+        })
+        .on_conflict(
+            OnConflict::columns([chat_members::Column::ChatId, chat_members::Column::UserId])
+                .update_columns([chat_members::Column::ChatId, chat_members::Column::UserId])
+                .to_owned(),
+        )
+        .exec(DB.deref())
+        .await?;
+    }
+    Ok(())
+}
+
+pub async fn record_chat_member_banned(user: i64, chat: i64, banned: bool) -> Result<()> {
+    let key = get_member_key(user);
+    let (updated, _): (i64, bool) = REDIS
+        .pipe(|q| q.sadd(&key, chat).expire(&key, CONFIG.timing.cache_timeout))
+        .await?;
+    log::info!("record_chat_member {}", updated);
+    if updated > 0 {
+        chat_members::Entity::insert(chat_members::ActiveModel {
+            chat_id: Set(chat),
+            user_id: Set(user),
+            banned_by_me: Set(banned),
+        })
+        .on_conflict(
+            OnConflict::columns([chat_members::Column::ChatId, chat_members::Column::UserId])
+                .update_columns([
+                    chat_members::Column::ChatId,
+                    chat_members::Column::UserId,
+                    chat_members::Column::BannedByMe,
+                ])
+                .to_owned(),
+        )
+        .exec(DB.deref())
+        .await?;
+    }
+    Ok(())
+}
+
+pub async fn reset_banned_chats(user: i64) -> Result<()> {
+    let key = get_member_key(user);
+    REDIS.sq(|q| q.del(&key)).await?;
+    chat_members::Entity::update_many()
+        .filter(chat_members::Column::UserId.eq(user))
+        .set(chat_members::ActiveModel {
+            user_id: NotSet,
+            chat_id: NotSet,
+            banned_by_me: Set(false),
+        })
+        .exec(DB.deref())
+        .await?;
+    Ok(())
 }
 
 /// Internal readonly state for a converstation. Contains metadata for transitions and

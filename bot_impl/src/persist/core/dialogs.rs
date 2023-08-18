@@ -1,11 +1,11 @@
 //! ORM type for storing metadata on conversations
 //! conversations being DMs, channels, and supergroups
 
+use crate::{persist::admin::actions::ActionType, statics::TG, util::error::BotError};
 use botapi::gen_types::Chat;
 use sea_orm::entity::prelude::*;
+use sea_orm::ActiveValue::{NotSet, Set};
 use serde::{Deserialize, Serialize};
-
-use crate::{persist::admin::actions::ActionType, statics::TG, util::error::BotError};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "dialogs")]
@@ -35,40 +35,65 @@ pub struct Model {
     pub can_send_other: bool,
     pub warn_time: Option<i64>,
     pub action_type: ActionType,
+    pub federation: Option<Uuid>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {}
+pub enum Relation {
+    #[sea_orm(
+        belongs_to = "crate::persist::admin::federations::Entity",
+        from = "Column::Federation",
+        to = "crate::persist::admin::federations::Column::FedId",
+        on_update = "NoAction",
+        on_delete = "Cascade"
+    )]
+    Federation,
+    #[sea_orm(
+        belongs_to = "crate::persist::admin::fbans::Entity",
+        from = "Column::Federation",
+        to = "crate::persist::admin::fbans::Column::Federation",
+        on_update = "NoAction",
+        on_delete = "Cascade"
+    )]
+    Fbans,
+}
 
-impl Related<super::chat_members::Entity> for Entity {
+impl Related<crate::persist::admin::federations::Entity> for Entity {
     fn to() -> RelationDef {
-        panic!("no relations")
+        Relation::Federation.def()
+    }
+}
+
+impl Related<crate::persist::admin::fbans::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Fbans.def()
     }
 }
 
 impl Model {
-    pub async fn from_chat(chat: &Chat) -> crate::util::error::Result<Self> {
+    pub async fn from_chat(chat: &Chat) -> crate::util::error::Result<ActiveModel> {
         let chat = TG.client.get_chat(chat.get_id()).await?;
         let permissions = chat
             .get_permissions()
             .ok_or_else(|| BotError::speak("failed to get chat permissions", chat.get_id()))?;
 
-        let res = Self {
-            chat_id: chat.get_id(),
-            language: crate::util::string::Lang::En,
-            chat_type: chat.get_tg_type().into_owned(),
-            warn_limit: 3,
-            action_type: ActionType::Mute,
-            warn_time: None,
-            can_send_messages: permissions.get_can_send_messages().unwrap_or(true),
-            can_send_audio: permissions.get_can_send_audios().unwrap_or(true),
-            can_send_video: permissions.get_can_send_videos().unwrap_or(true),
-            can_send_photo: permissions.get_can_send_photos().unwrap_or(true),
-            can_send_document: permissions.get_can_send_documents().unwrap_or(true),
-            can_send_video_note: permissions.get_can_send_video_notes().unwrap_or(true),
-            can_send_voice_note: permissions.get_can_send_voice_notes().unwrap_or(true),
-            can_send_poll: permissions.get_can_send_polls().unwrap_or(true),
-            can_send_other: permissions.get_can_send_other_messages().unwrap_or(true),
+        let res = ActiveModel {
+            chat_id: Set(chat.get_id()),
+            language: Set(crate::util::string::Lang::En),
+            chat_type: Set(chat.get_tg_type().into_owned()),
+            warn_limit: Set(3),
+            action_type: Set(ActionType::Mute),
+            warn_time: Set(None),
+            can_send_messages: Set(permissions.get_can_send_messages().unwrap_or(true)),
+            can_send_audio: Set(permissions.get_can_send_audios().unwrap_or(true)),
+            can_send_video: Set(permissions.get_can_send_videos().unwrap_or(true)),
+            can_send_photo: Set(permissions.get_can_send_photos().unwrap_or(true)),
+            can_send_document: Set(permissions.get_can_send_documents().unwrap_or(true)),
+            can_send_video_note: Set(permissions.get_can_send_video_notes().unwrap_or(true)),
+            can_send_voice_note: Set(permissions.get_can_send_voice_notes().unwrap_or(true)),
+            can_send_poll: Set(permissions.get_can_send_polls().unwrap_or(true)),
+            can_send_other: Set(permissions.get_can_send_other_messages().unwrap_or(true)),
+            federation: NotSet,
         };
         Ok(res)
     }

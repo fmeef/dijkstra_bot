@@ -1,13 +1,14 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize, Eq, Hash)]
 #[sea_orm(table_name = "chat_members")]
 pub struct Model {
     #[sea_orm(primary_key)]
     pub chat_id: i64,
     #[sea_orm(primary_key)]
     pub user_id: i64,
+    pub banned_by_me: bool,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

@@ -33,15 +33,16 @@ pub struct NamedBotPermissions {
     pub can_promote_members: NamedPermission,
     pub can_pin_messages: NamedPermission,
     pub is_sudo: NamedPermission,
+    pub is_support: NamedPermission,
 }
 
 impl NamedBotPermissions {
     /// Use the admin cache to check a user's permissions in a group
     pub async fn from_chatuser(user: &User, chat: &Chat) -> Result<Self> {
-        if let Some(admin) = chat.is_user_admin(user.get_id()).await? {
-            Ok(admin.into())
+        let mut v = if let Some(admin) = chat.is_user_admin(user.get_id()).await? {
+            Ok::<Self, BotError>(admin.into())
         } else {
-            let mut v: NamedBotPermissions = BotPermissions {
+            let v: NamedBotPermissions = BotPermissions {
                 can_manage_chat: false,
                 can_restrict_members: false,
                 can_delete_messages: false,
@@ -50,11 +51,19 @@ impl NamedBotPermissions {
                 can_pin_messages: false,
             }
             .into();
-            if CONFIG.admin.sudo_users.contains(&user.get_id()) {
-                v.is_sudo.0.iter_mut().for_each(|v| v.val = true);
-            }
             Ok(v)
+        }?;
+
+        if CONFIG.admin.sudo_users.contains(&user.get_id()) {
+            v.is_sudo.0.iter_mut().for_each(|v| v.val = true);
+            v.is_support.0.iter_mut().for_each(|v| v.val = true);
         }
+
+        if CONFIG.admin.support_users.contains(&user.get_id()) {
+            v.is_support.0.iter_mut().for_each(|v| v.val = true);
+        }
+
+        Ok(v)
     }
 
     /// Check the permissions of a message's sender. Returns an error if the message has
@@ -185,6 +194,7 @@ impl Into<NamedBotPermissions> for BotPermissions {
             ),
             can_pin_messages: NamedPermission::new("CanPinMessages", self.can_pin_messages),
             is_sudo: NamedPermission::new("Sudo", false),
+            is_support: NamedPermission::new("Support", false),
         }
     }
 }

@@ -207,6 +207,20 @@ pub fn error_mapper(err: RedisError) -> BotError {
 // as single args. Serializes binary strings using msgpack for efficiency
 pub struct RedisStr(Vec<u8>);
 
+/// helper trait for converting types into RedisStr
+pub trait ToRedisStr {
+    fn to_redis(&self) -> Result<RedisStr>;
+}
+
+impl<T> ToRedisStr for T
+where
+    T: Serialize,
+{
+    fn to_redis(&self) -> Result<RedisStr> {
+        RedisStr::new(&self)
+    }
+}
+
 impl RedisStr {
     /// Create a new RedisStr from a serializable value
     pub fn new<T: Serialize>(val: &T) -> Result<Self> {

@@ -36,10 +36,23 @@ pub trait SpeakErr<T: Send> {
         F: for<'b> FnOnce(&'b Response) -> String + Send;
 
     async fn silent(self) -> Result<T>;
+
+    fn log(self) -> Option<T>;
 }
 
 #[async_trait]
 impl<T: Send> SpeakErr<T> for Result<T> {
+    fn log(self) -> Option<T> {
+        match self {
+            Ok(v) => Some(v),
+            Err(err) => {
+                log::error!("error {}", err);
+                err.record_stats();
+                None
+            }
+        }
+    }
+
     async fn speak_err_fmt<F>(self, chat: &Chat, func: F) -> Result<T>
     where
         F: for<'b> FnOnce(&'b str) -> String + Send,

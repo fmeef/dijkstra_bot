@@ -270,17 +270,19 @@ pub async fn get_chat_lang(chat: i64) -> Result<Lang> {
     let key = get_lang_key(chat);
     let res = default_cache_query(
         |_, _| async move {
-            Ok(dialogs::Entity::find_by_id(chat)
-                .one(DB.deref())
-                .await?
-                .map(|v| v.language))
+            Ok(Some(
+                dialogs::Entity::find_by_id(chat)
+                    .one(DB.deref())
+                    .await?
+                    .map(|v| v.language)
+                    .unwrap_or_else(|| Lang::En),
+            ))
         },
         Duration::hours(12),
     )
     .query(&key, &())
-    .await?
-    .unwrap_or_else(|| Lang::En);
-    Ok(res)
+    .await?;
+    Ok(res.unwrap_or_else(|| Lang::En))
 }
 
 /// Sets the current langauge config for the chat

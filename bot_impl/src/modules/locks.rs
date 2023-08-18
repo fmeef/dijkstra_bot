@@ -404,7 +404,7 @@ locks! {
 }
 
 pub fn get_lock_key(chat: i64, locktype: &LockType) -> String {
-    format!("lock:{}:{}", chat, locktype.to_string())
+    format!("lock:{}:{}", chat, locktype.get_name())
 }
 
 pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {

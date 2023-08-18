@@ -167,6 +167,12 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
             ) -> crate::util::error::Result<()> {
             match crate::tg::command::StaticContext::get_context(update).await.map(|v| v.yoke()) {
                 Ok(cmd) => {
+                    if let Err(err) = cmd.record_chat_member().await {
+                        log::error!("failed to record chat member {}", err);
+                        err.record_stats();
+                    }
+
+                    cmd.handle_gbans().await;
 
                     if let Err(err) = cmd.handle_pending_action_update().await {
                         log::error!("failed to handle pending action: {}", err);
@@ -227,7 +233,10 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
                     }
 
                 }
-                Err(err) => err.record_stats(),
+                Err(err) => {
+                    log::error!("error when getting context {}", err);
+                    err.record_stats()
+                },
             }
             Ok(())
         }

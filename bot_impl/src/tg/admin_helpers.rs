@@ -4,25 +4,30 @@
 //! this module depends on the `static` module for access to the database, redis,
 //! and telegram client.
 
-use std::{borrow::Cow, collections::VecDeque};
+use std::{
+    borrow::Cow,
+    collections::{HashMap, HashSet, VecDeque},
+};
 
 use crate::{
     persist::{
         admin::{
             actions::{self, ActionType},
-            approvals, warns,
+            approvals, fbans, fedadmin, federations, gbans, warns,
         },
-        core::{dialogs, users},
-        redis::{default_cache_query, CachedQuery, CachedQueryTrait, RedisCache, RedisStr},
+        core::{chat_members, dialogs, users},
+        redis::{
+            default_cache_query, CachedQuery, CachedQueryTrait, RedisCache, RedisStr, ToRedisStr,
+        },
     },
-    statics::{CONFIG, DB, ME, REDIS, TG},
-    util::error::{BotError, Result},
+    statics::{BAN_GOVERNER, CONFIG, DB, ME, REDIS, TG},
+    util::error::{BotError, Result, SpeakErr},
     util::string::{get_chat_lang, Speak},
 };
 
 use botapi::gen_types::{
-    Chat, ChatMember, ChatMemberUpdated, ChatPermissions, ChatPermissionsBuilder,
-    InlineKeyboardButtonBuilder, Message, UpdateExt, User,
+    Chat, ChatMember, ChatMemberUpdated, ChatPermissions, ChatPermissionsBuilder, EReplyMarkup,
+    InlineKeyboardButtonBuilder, InlineKeyboardMarkup, Message, UpdateExt, User,
 };
 use chrono::{DateTime, Duration, Utc};
 use futures::Future;
@@ -30,17 +35,25 @@ use futures::Future;
 use lazy_static::{__Deref, lazy_static};
 use macros::{entity_fmt, lang_fmt};
 use redis::AsyncCommands;
-
 use sea_orm::{
-    sea_query::OnConflict, ActiveValue::NotSet, ActiveValue::Set, ColumnTrait, EntityTrait,
-    IntoActiveModel, ModelTrait, PaginatorTrait, QueryFilter,
+    sea_query::OnConflict, ActiveValue::NotSet, ActiveValue::Set, ColumnTrait, ConnectionTrait,
+    EntityTrait, FromQueryResult, IntoActiveModel, JoinType, ModelTrait, PaginatorTrait,
+    QueryFilter, QuerySelect, Statement,
 };
+use sea_query::{
+    Alias, ColumnRef, CommonTableExpression, Expr, Query, QueryStatementBuilder, UnionType,
+    WithQuery,
+};
+
 use uuid::Uuid;
 
 use super::{
     button::{InlineKeyboardBuilder, OnPush},
     command::{ArgSlice, Cmd, Context, Entities, EntityArg},
-    dialog::{dialog_or_default, get_dialog_key},
+    dialog::{
+        dialog_or_default, get_dialog_key, get_user_banned_chats, record_chat_member_banned,
+        reset_banned_chats, upsert_dialog,
+    },
     markdown::{MarkupBuilder, MarkupType},
     permissions::{GetCachedAdmins, IsAdmin},
     user::{get_user_username, GetUser, Username},
@@ -180,6 +193,616 @@ impl IntoChatUser for Message {
     }
 }
 
+#[derive(FromQueryResult)]
+pub struct FbanWithChat {
+    pub fed_id: Uuid,
+    pub subscribed: Option<Uuid>,
+    pub owner: i64,
+    pub fed_name: String,
+    pub chat_id: i64,
+    pub fban_id: Option<Uuid>,
+    pub federation: Option<Uuid>,
+    pub user: Option<i64>,
+    pub user_name: Option<String>,
+    pub reason: Option<String>,
+}
+
+#[inline(always)]
+fn get_fed_key(owner: i64) -> String {
+    format!("fed:{}", owner)
+}
+
+#[inline(always)]
+fn get_fban_key(fban: &Uuid) -> String {
+    format!("fban:{}", fban.to_string())
+}
+
+#[inline(always)]
+fn get_gban_key(user: i64) -> String {
+    format!("gban:{}", user)
+}
+
+#[inline(always)]
+fn get_fed_chat_key(chat: i64) -> String {
+    format!("fbcs:{}", chat)
+}
+
+#[inline(always)]
+fn get_fban_set_key(fed: &Uuid) -> String {
+    format!("fbs:{}", fed.to_string())
+}
+
+pub async fn get_fban_for_chatmember(user: i64, chat: i64) -> Result<Option<fbans::Model>> {
+    let result = federations::Entity::find()
+        .inner_join(fbans::Entity)
+        .inner_join(dialogs::Entity)
+        .filter(dialogs::Column::ChatId.eq(chat))
+        .filter(fbans::Column::User.eq(user))
+        .column_as(dialogs::Column::ChatId, "chat")
+        .into_model::<fbans::Model>()
+        .one(DB.deref())
+        .await?;
+
+    Ok(result)
+}
+
+pub async fn get_fban_recursive_query() -> WithQuery {
+    let with = Query::with()
+        .recursive(true)
+        .cte(
+            CommonTableExpression::new()
+                .table_name(federations::Entity)
+                .columns([
+                    federations::Column::FedId,
+                    federations::Column::Subscribed,
+                    federations::Column::Owner,
+                    federations::Column::FedName,
+                ])
+                .query(
+                    Query::select()
+                        .columns([
+                            federations::Column::FedId,
+                            federations::Column::Subscribed,
+                            federations::Column::Owner,
+                            federations::Column::FedName,
+                        ])
+                        .from(federations::Entity)
+                        .cond_where(federations::Column::Owner.eq(0))
+                        .union(
+                            UnionType::All,
+                            Query::select()
+                                .columns([
+                                    federations::Column::FedId,
+                                    federations::Column::Subscribed,
+                                    federations::Column::Owner,
+                                    federations::Column::FedName,
+                                ])
+                                .from(federations::Entity)
+                                .join(
+                                    JoinType::InnerJoin,
+                                    Alias::new("feds"),
+                                    Expr::col((
+                                        Alias::new("feds"),
+                                        federations::Column::Subscribed,
+                                    ))
+                                    .equals((federations::Entity, federations::Column::FedId)),
+                                )
+                                .to_owned(),
+                        )
+                        .to_owned(),
+                )
+                .to_owned(),
+        )
+        .to_owned();
+
+    let select = Query::select()
+        .column(ColumnRef::Asterisk)
+        .from(Alias::new("feds"))
+        .to_owned();
+
+    select.with(with).to_owned()
+}
+
+pub async fn get_fbans_for_user_with_chats(user: i64) -> Result<Vec<FbanWithChat>> {
+    let with = Query::with()
+        .recursive(true)
+        .cte(
+            CommonTableExpression::new()
+                .table_name(Alias::new("feds"))
+                .columns([
+                    federations::Column::FedId,
+                    federations::Column::Subscribed,
+                    federations::Column::Owner,
+                    federations::Column::FedName,
+                ])
+                .query(
+                    Query::select()
+                        .columns([
+                            federations::Column::FedId.as_column_ref(),
+                            federations::Column::Subscribed.as_column_ref(),
+                            federations::Column::Owner.as_column_ref(),
+                            federations::Column::FedName.as_column_ref(),
+                        ])
+                        .from(federations::Entity)
+                        .union(
+                            UnionType::All,
+                            Query::select()
+                                .columns([
+                                    federations::Column::FedId.as_column_ref(),
+                                    federations::Column::Subscribed.as_column_ref(),
+                                    federations::Column::Owner.as_column_ref(),
+                                    federations::Column::FedName.as_column_ref(),
+                                ])
+                                .from(federations::Entity)
+                                .join(
+                                    JoinType::InnerJoin,
+                                    Alias::new("feds"),
+                                    Expr::col((
+                                        Alias::new("feds"),
+                                        federations::Column::Subscribed,
+                                    ))
+                                    .equals((Alias::new("feds"), federations::Column::FedId)),
+                                )
+                                .to_owned(),
+                        )
+                        .to_owned(),
+                )
+                .to_owned(),
+        )
+        .to_owned();
+
+    let select = Query::select()
+        .column(ColumnRef::Asterisk)
+        .from(Alias::new("feds"))
+        .join(
+            JoinType::InnerJoin,
+            dialogs::Entity,
+            Expr::col((Alias::new("feds"), federations::Column::FedId))
+                .equals((dialogs::Entity, dialogs::Column::Federation)),
+        )
+        .join(
+            JoinType::LeftJoin,
+            fbans::Entity,
+            Expr::col((Alias::new("feds"), federations::Column::FedId))
+                .equals((fbans::Entity, fbans::Column::Federation)),
+        )
+        .join(
+            JoinType::InnerJoin,
+            chat_members::Entity,
+            Expr::col((chat_members::Entity, chat_members::Column::ChatId))
+                .equals((dialogs::Entity, dialogs::Column::ChatId)),
+        )
+        .cond_where(Expr::col((chat_members::Entity, chat_members::Column::UserId)).eq(user))
+        .to_owned();
+
+    let query = select.with(with).to_owned();
+
+    // let result = fbans::Entity::find()
+    //     .inner_join(dialogs::Entity)
+    //     .filter(fbans::Column::User.eq(user))
+    //     .column_as(dialogs::Column::ChatId, "chat")
+    //     .find_also_related(federations::Entity)
+    //     .into_model::<FbanWithChat, federations::Model>()
+    //     .all(DB.deref())
+    //     .await?;
+    let backend = DB.get_database_backend();
+    let (query, params) = query.build_any(&*backend.get_query_builder());
+    log::info!("{}", query);
+    let result = federations::Entity::find()
+        .from_raw_sql(Statement::from_sql_and_values(backend, query, params))
+        .into_model()
+        .all(DB.deref())
+        .await?;
+    Ok(result)
+}
+
+pub async fn get_fbans_for_user(user: i64) -> Result<Vec<fbans::Model>> {
+    let result = federations::Entity::find()
+        .inner_join(fbans::Entity)
+        .inner_join(dialogs::Entity)
+        .filter(fbans::Column::User.eq(user))
+        .into_model::<fbans::Model>()
+        .all(DB.deref())
+        .await?;
+
+    Ok(result)
+}
+
+pub async fn is_user_fbanned(user: i64, chat: i64) -> Result<Option<fbans::Model>> {
+    if let Some(fed) = is_fedmember(chat).await? {
+        log::info!("chat is member of fed {}", fed);
+        let key = get_fban_set_key(&fed);
+        for _ in 0..2 {
+            let (exists, v, l): (bool, Option<RedisStr>, i64) = REDIS
+                .try_pipe(|p| Ok(p.exists(&key).hget(&key, user).hlen(&key)))
+                .await?;
+            if l == 1 {
+                log::info!("fban for user {} is emptyset", user);
+                return Ok(None);
+            } else if !exists {
+                try_update_fban_cache(user).await.unwrap();
+            } else if let Some(v) = v {
+                let key = get_fban_key(&v.get::<Uuid>()?);
+                let fb: Option<RedisStr> = REDIS.sq(|q| q.get(&key)).await?;
+                if let Some(fb) = fb {
+                    return Ok(fb.get()?);
+                }
+            } else {
+                return Ok(None);
+            }
+        }
+        Err(BotError::speak(
+            "retries exceeded for updating fban cache",
+            chat,
+        ))
+    } else {
+        Ok(None)
+    }
+}
+
+pub async fn get_feds(user: i64) -> Result<Vec<federations::Model>> {
+    let feds = federations::Entity::find()
+        .left_join(fedadmin::Entity)
+        .filter(
+            federations::Column::Owner
+                .eq(user)
+                .or(fedadmin::Column::User.eq(user)),
+        )
+        .all(DB.deref())
+        .await?;
+    Ok(feds)
+}
+
+pub async fn create_federation(ctx: &Context, federation: federations::Model) -> Result<()> {
+    let key = get_fed_key(federation.owner);
+    let c = ctx.try_get()?.chat.get_id();
+    match federations::Entity::insert(federation.into_active_model())
+        .exec_with_returning(DB.deref())
+        .await
+    {
+        Err(err) => match err {
+            sea_orm::DbErr::Query(_) => {
+                return Err(BotError::speak("Only one federation allowed per user", c).into())
+            }
+            err => return Err(err.into()),
+        },
+        Ok(v) => {
+            REDIS
+                .try_pipe(|q| {
+                    Ok(q.set(&key, Some(v).to_redis()?)
+                        .expire(&key, CONFIG.timing.cache_timeout))
+                })
+                .await?;
+        }
+    }
+    Ok(())
+}
+
+pub async fn update_fed(owner: i64, newname: String) -> Result<()> {
+    let key = get_fed_key(owner);
+    federations::Entity::update_many()
+        .set(federations::ActiveModel {
+            fed_id: NotSet,
+            subscribed: NotSet,
+            owner: Set(owner),
+            fed_name: Set(newname),
+        })
+        .filter(federations::Column::Owner.eq(owner))
+        .exec(DB.deref())
+        .await?;
+
+    REDIS.sq(|q| q.del(&key)).await?;
+    Ok(())
+}
+
+pub async fn fban_user(fban: fbans::Model, user: &User) -> Result<()> {
+    let key = get_fban_key(&fban.fban_id);
+    let setkey = get_fban_set_key(&fban.federation);
+    insert_user(user).await?;
+    let model = fbans::Entity::insert(fban.into_active_model())
+        .on_conflict(
+            OnConflict::columns([fbans::Column::Federation, fbans::Column::User])
+                .update_columns([fbans::Column::Reason, fbans::Column::UserName])
+                .to_owned(),
+        )
+        .exec_with_returning(DB.deref())
+        .await?;
+    model.cache(&key).await?;
+    REDIS.sq(|q| q.del(&setkey)).await?; //TODO: less drastic
+    Ok(())
+}
+
+pub async fn get_fed(user: i64) -> Result<Option<federations::Model>> {
+    let key = get_fed_key(user);
+    for _ in 0..4 {
+        let v: Option<RedisStr> = REDIS.sq(|q| q.get(&key)).await?;
+        if let Some(v) = v {
+            return Ok(v.get()?);
+        } else {
+            try_update_fban_cache(user).await?;
+        }
+    }
+    Ok(None)
+}
+
+pub async fn is_fedmember(chat: i64) -> Result<Option<Uuid>> {
+    let key = get_fed_chat_key(chat);
+    for _ in 0..4 {
+        let (exists, _): (Option<RedisStr>, bool) = REDIS
+            .pipe(|p| p.hget(&key, chat).expire(&key, CONFIG.timing.cache_timeout))
+            .await?;
+        match exists {
+            None => {
+                try_update_fed_cache(chat).await?;
+            }
+            Some(member) => {
+                return Ok(member.get()?);
+            }
+        };
+    }
+    Ok(None)
+}
+
+pub async fn gban_user(fban: gbans::Model, metadata: User) -> Result<()> {
+    let key = get_gban_key(fban.user);
+
+    let user = insert_user(&metadata).await?;
+    let model = gbans::Entity::insert(fban.into_active_model())
+        .on_conflict(
+            OnConflict::column(gbans::Column::User)
+                .update_column(gbans::Column::Reason)
+                .to_owned(),
+        )
+        .exec_with_returning(DB.deref())
+        .await?;
+    model.join_single(&key, Some(user)).await?;
+    Ok(())
+}
+
+async fn get_fbanned_chats(fed: &Uuid, user: i64) -> Result<impl Iterator<Item = i64>> {
+    let c = dialogs::Entity::find()
+        .inner_join(fbans::Entity)
+        .filter(
+            fbans::Column::Federation
+                .eq(*fed)
+                .and(fbans::Column::User.eq(user)),
+        )
+        .all(DB.deref())
+        .await?;
+    Ok(c.into_iter().map(|c| c.chat_id))
+}
+
+async fn iter_unfban_user(user: i64, fed: &Uuid) -> Result<()> {
+    for chat in get_fbanned_chats(fed, user).await? {
+        TG.client
+            .build_unban_chat_member(chat, user)
+            .only_if_banned(true)
+            .build()
+            .await?;
+        BAN_GOVERNER.until_ready().await;
+    }
+    reset_banned_chats(user).await?;
+    Ok(())
+}
+
+async fn iter_unban_user(user: i64) -> Result<()> {
+    for chat in get_user_banned_chats(user).await? {
+        TG.client
+            .build_unban_chat_member(chat, user)
+            .only_if_banned(true)
+            .build()
+            .await?;
+        BAN_GOVERNER.until_ready().await;
+    }
+    reset_banned_chats(user).await?;
+    Ok(())
+}
+
+pub async fn is_user_gbanned(user: i64) -> Result<Option<(gbans::Model, users::Model)>> {
+    let key = get_gban_key(user);
+    let out = default_cache_query(
+        |_, _| async move {
+            let o = gbans::Entity::find_by_id(user)
+                .find_also_related(users::Entity)
+                .one(DB.deref())
+                .await?;
+            Ok(o)
+        },
+        Duration::seconds(CONFIG.timing.cache_timeout as i64),
+    )
+    .query(&key, &())
+    .await?;
+
+    Ok(out.map(|(v, u)| {
+        let us = v.user;
+        (
+            v,
+            u.unwrap_or_else(|| users::Model {
+                user_id: us,
+                username: None,
+            }),
+        )
+    }))
+}
+
+#[inline(always)]
+fn get_fedadmin_key(fed: &Uuid) -> String {
+    format!("fad:{}", fed.to_string())
+}
+
+pub async fn fpromote(fed: Uuid, user: i64) -> Result<()> {
+    let key = get_fedadmin_key(&fed);
+    fedadmin::Entity::insert(
+        fedadmin::Model {
+            federation: fed,
+            user,
+        }
+        .into_active_model(),
+    )
+    .on_conflict(
+        OnConflict::columns([fedadmin::Column::User, fedadmin::Column::Federation])
+            .update_columns([fedadmin::Column::User, fedadmin::Column::Federation])
+            .to_owned(),
+    )
+    .exec(DB.deref())
+    .await?;
+    REDIS.sq(|q| q.del(&key)).await?;
+    Ok(())
+}
+
+pub async fn refresh_fedadmin_cache(fed: &Uuid) -> Result<()> {
+    let admins = fedadmin::Entity::find()
+        .filter(fedadmin::Column::Federation.eq(*fed))
+        .all(DB.deref())
+        .await?;
+    let key = get_fedadmin_key(fed);
+    REDIS
+        .pipe(|p| {
+            p.atomic();
+            p.del(&key);
+            for admin in admins {
+                p.sadd(&key, admin.user);
+            }
+            p
+        })
+        .await?;
+    Ok(())
+}
+
+pub async fn is_fedadmin(user: i64, fed: &Uuid) -> Result<bool> {
+    let key = get_fedadmin_key(fed);
+    for _ in 0..5 {
+        let (exists, admin): (bool, bool) =
+            REDIS.pipe(|p| p.exists(&key).sismember(&key, user)).await?;
+        if !exists {
+            refresh_fedadmin_cache(fed).await?;
+        } else {
+            return Ok(admin);
+        }
+    }
+    todo!()
+}
+
+pub async fn join_fed(chat: &Chat, fed: &Uuid) -> Result<()> {
+    let key = get_fed_chat_key(chat.get_id());
+    let mut model = dialogs::Model::from_chat(chat).await?;
+    model.federation = Set(Some(*fed));
+    REDIS.sq(|p| p.del(&key)).await?;
+    upsert_dialog(model).await?;
+    Ok(())
+}
+
+pub async fn try_update_fed_cache(chat: i64) -> Result<()> {
+    let feds = dialogs::Entity::find()
+        .filter(dialogs::Column::ChatId.eq(chat))
+        .find_also_related(federations::Entity)
+        .all(DB.deref())
+        .await?;
+    REDIS
+        .try_pipe(|p| {
+            for (chat, fed) in feds {
+                if let Some(fed) = fed {
+                    let key = get_fed_chat_key(chat.chat_id);
+                    p.hset(&key, chat.chat_id, fed.fed_id.to_redis()?)
+                        .expire(&key, CONFIG.timing.cache_timeout);
+
+                    let key = get_fed_key(fed.owner);
+                    p.set(&key, Some(fed).to_redis()?)
+                        .expire(&key, CONFIG.timing.cache_timeout);
+                }
+            }
+            Ok(p)
+        })
+        .await?;
+    Ok(())
+}
+
+pub async fn try_update_fban_cache(user: i64) -> Result<()> {
+    let fbans = get_fbans_for_user_with_chats(user).await?;
+
+    log::info!("update fban cache {}", fbans.len());
+    REDIS
+        .try_pipe(|p| {
+            p.atomic();
+
+            let mut members = HashMap::<i64, Uuid>::with_capacity(fbans.len());
+            let mut fban_cache = HashMap::<Uuid, HashSet<(i64, Uuid)>>::new();
+            let mut s = HashSet::<i64>::new();
+            for FbanWithChat {
+                fed_id,
+                subscribed,
+                owner,
+                fed_name,
+                chat_id,
+                fban_id,
+                federation,
+                user,
+                user_name,
+                reason,
+            } in fbans.into_iter()
+            {
+                let federation_model = federations::Model {
+                    fed_id,
+                    subscribed,
+                    owner,
+                    fed_name,
+                };
+
+                let fed_key = get_fed_key(federation_model.owner);
+                members.insert(chat_id, federation_model.fed_id);
+                s.insert(chat_id);
+                p.set(&fed_key, Some(&federation_model).to_redis()?)
+                    .expire(&fed_key, CONFIG.timing.cache_timeout);
+                if let (Some(fban_id), Some(federation), Some(user)) = (fban_id, federation, user) {
+                    let fbans = fbans::Model {
+                        fban_id,
+                        federation,
+                        user,
+                        user_name,
+                        reason,
+                    };
+                    let fban_key = get_fban_key(&fbans.fban_id);
+
+                    p.set(&fban_key, fbans.to_redis()?)
+                        .expire(&fban_key, CONFIG.timing.cache_timeout);
+
+                    if let Some(cache) = fban_cache.get_mut(&federation_model.fed_id) {
+                        cache.insert((user, fbans.fban_id));
+                    } else {
+                        let mut hash = HashSet::<(i64, Uuid)>::new();
+                        hash.insert((user, fbans.fban_id));
+                        fban_cache.insert(federation_model.fed_id, hash);
+                    }
+                }
+            }
+
+            for (chat, _) in members.iter() {
+                let key = get_fed_chat_key(*chat);
+                p.del(&key);
+            }
+
+            for (chat, fed) in members {
+                let key = get_fed_chat_key(chat);
+                p.hset(&key, chat, fed.to_redis()?);
+                let key = get_fban_set_key(&fed);
+                p.del(&key);
+                p.hset(&key, "", true);
+            }
+
+            for (fed, fbans) in fban_cache {
+                let key = get_fban_set_key(&fed);
+                for (user, fban) in fbans {
+                    p.hset(&key, user, fban.to_redis()?);
+                }
+            }
+
+            Ok(p)
+        })
+        .await?;
+
+    Ok(())
+}
+
 /// Returns true if the bot is admin in a chat
 pub async fn is_self_admin(chat: &Chat) -> Result<bool> {
     let me = ME.get().unwrap();
@@ -274,6 +897,7 @@ pub async fn set_warn_time(chat: &Chat, time: Option<i64>) -> Result<()> {
         can_send_voice_note: NotSet,
         can_send_poll: NotSet,
         can_send_other: NotSet,
+        federation: NotSet,
     };
 
     let key = get_dialog_key(chat_id);
@@ -310,6 +934,7 @@ pub async fn set_warn_limit(chat: &Chat, limit: i32) -> Result<()> {
         can_send_voice_note: NotSet,
         can_send_poll: NotSet,
         can_send_other: NotSet,
+        federation: NotSet,
     };
 
     let key = get_dialog_key(chat_id);
@@ -353,6 +978,7 @@ pub async fn set_warn_mode(chat: &Chat, mode: &str) -> Result<()> {
         can_send_voice_note: NotSet,
         can_send_poll: NotSet,
         can_send_other: NotSet,
+        federation: NotSet,
     };
 
     let key = get_dialog_key(chat_id);
@@ -509,8 +1135,7 @@ fn get_approval_key(chat: &Chat, user: i64) -> String {
     format!("ap:{}:{}", chat.get_id(), user)
 }
 
-/// Adds a user to an allowlist so that all future moderation actions are ignored
-pub async fn approve(chat: &Chat, user: &User) -> Result<()> {
+pub async fn insert_user(user: &User) -> Result<users::Model> {
     let testmodel = users::Entity::insert(users::ActiveModel {
         user_id: Set(user.get_id()),
         username: Set(user.get_username().map(|v| v.into_owned())),
@@ -523,6 +1148,12 @@ pub async fn approve(chat: &Chat, user: &User) -> Result<()> {
     .exec_with_returning(DB.deref())
     .await?;
 
+    Ok(testmodel)
+}
+
+/// Adds a user to an allowlist so that all future moderation actions are ignored
+pub async fn approve(chat: &Chat, user: &User) -> Result<()> {
+    let testmodel = insert_user(user).await?;
     approvals::Entity::insert(
         approvals::Model {
             chat: chat.get_id(),
@@ -720,6 +1351,195 @@ pub async fn is_group_or_die(chat: &Chat) -> Result<()> {
 }
 
 impl Context {
+    pub async fn unfban(&self, user: i64, fed: &Uuid) -> Result<()> {
+        let v = self.try_get()?;
+        let chat = v.chat;
+        let key = get_fban_set_key(&fed);
+        if let Some(fban) = is_user_fbanned(user, chat.get_id()).await? {
+            iter_unfban_user(user, &fban.federation).await?;
+            fban.delete(DB.deref()).await?;
+            REDIS.sq(|q| q.del(&key)).await?;
+            self.speak("Unfbanned user").await?;
+        } else {
+            self.speak("User not fbanned").await?;
+        }
+        Ok(())
+    }
+
+    pub async fn fpromote(&self) -> Result<()> {
+        self.action_message(|ctx, user, _| async move {
+            let c = self.try_get()?;
+
+            let lang = c.lang;
+            let chat = c.chat.get_id();
+            let me = ctx
+                .message()?
+                .get_from()
+                .ok_or_else(|| BotError::Generic("no user".to_owned()))?
+                .get_id();
+            let fed = get_fed(me)
+                .await?
+                .ok_or_else(|| BotError::speak("This user does not have a fed", chat))?;
+            let mut builder = InlineKeyboardBuilder::default();
+
+            let confirm = InlineKeyboardButtonBuilder::new("Confirm".to_owned())
+                .set_callback_data(Uuid::new_v4().to_string())
+                .build();
+
+            let cancel = InlineKeyboardButtonBuilder::new("Cancel".to_owned())
+                .set_callback_data(Uuid::new_v4().to_string())
+                .build();
+
+            confirm.on_push_multi(move |callback| async move {
+                if callback.get_from().get_id() != user {
+                    TG.client
+                        .build_answer_callback_query(&callback.get_id())
+                        .show_alert(true)
+                        .text("You are not authorized to accept this promotion")
+                        .build()
+                        .await?;
+                    return Ok(false);
+                }
+                if let Some(message) = callback.get_message() {
+                    TG.client
+                        .build_delete_message(chat, message.get_message_id())
+                        .build()
+                        .await?;
+                    match fpromote(fed.fed_id, user).await {
+                        Ok(_) => {
+                            TG.client
+                                .build_answer_callback_query(&callback.get_id())
+                                .show_alert(true)
+                                .text("You have been promoted")
+                                .build()
+                                .await
+                        }
+                        Err(err) => {
+                            TG.client
+                                .build_answer_callback_query(&callback.get_id())
+                                .show_alert(true)
+                                .text(&format!("Failed to promote user: {}", err))
+                                .build()
+                                .await
+                        }
+                    }?;
+                }
+
+                Ok(true)
+            });
+
+            cancel.on_push_multi(move |callback| async move {
+                if callback.get_from().get_id() != me {
+                    TG.client
+                        .build_answer_callback_query(&callback.get_id())
+                        .show_alert(true)
+                        .text("You are not the fed owner")
+                        .build()
+                        .await?;
+                    return Ok(false);
+                }
+                if let Some(message) = callback.get_message() {
+                    TG.client
+                        .build_edit_message_text("Fpromote has been canceled")
+                        .message_id(message.get_message_id())
+                        .chat_id(chat)
+                        .build()
+                        .await?;
+                    TG.client
+                        .build_edit_message_reply_markup()
+                        .reply_markup(&InlineKeyboardMarkup::default())
+                        .message_id(message.get_message_id())
+                        .chat_id(chat)
+                        .build()
+                        .await?;
+                }
+                TG.client
+                    .build_answer_callback_query(&callback.get_id())
+                    .build()
+                    .await?;
+
+                Ok(true)
+            });
+
+            builder.button(confirm);
+            builder.button(cancel);
+            if let Some(user) = user.get_cached_user().await? {
+                let name = user.name_humanreadable();
+                let mention = MarkupType::TextMention(user).text(&name);
+                self.speak_fmt(
+                    entity_fmt!(lang, chat, "fpromote", mention)
+                        .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(builder.build())),
+                )
+                .await?;
+            }
+            Ok(())
+        })
+        .await?;
+        Ok(())
+    }
+
+    pub async fn ungban_user(&self, user: i64) -> Result<()> {
+        let key = get_gban_key(user);
+
+        let delete = gbans::Entity::delete_by_id(user).exec(DB.deref()).await?;
+        if delete.rows_affected > 0 {
+            REDIS.sq(|q| q.del(&key)).await?;
+            tokio::spawn(async move { iter_unban_user(user).await.log() });
+
+            Ok(())
+        } else {
+            Err(BotError::speak(
+                "User is not gbanned",
+                self.try_get()?.chat.get_id(),
+            ))
+        }
+    }
+
+    pub async fn handle_gbans(&self) {
+        if let UpdateExt::Message(ref message) = self.update() {
+            if message.get_sender_chat().is_none() {
+                if let Some(user) = message.get_from() {
+                    if let Err(err) = self.single_gban(user.get_id()).await {
+                        log::error!("Failed to gban {}: {}", user.name_humanreadable(), err);
+                        err.record_stats();
+                    }
+                }
+            }
+        }
+    }
+
+    async fn single_gban(&self, user: i64) -> Result<()> {
+        let chat = self.try_get()?.chat.get_id();
+        if let Some((gban, user)) = is_user_gbanned(user).await? {
+            record_chat_member_banned(user.user_id, chat, true).await?;
+
+            TG.client
+                .build_ban_chat_member(chat, user.user_id)
+                .build()
+                .await?;
+            record_chat_member_banned(user.user_id, chat, true).await?;
+            self.speak(format!(
+                "User gbanned for {}!",
+                gban.reason.unwrap_or_else(|| "piracy".to_owned())
+            ))
+            .await?;
+        }
+
+        if let Some(model) = is_user_fbanned(user, chat).await? {
+            TG.client
+                .build_ban_chat_member(chat, model.user)
+                .build()
+                .await?;
+            record_chat_member_banned(user, chat, true).await?;
+            self.speak(format!(
+                "User fbanned for {}!",
+                model.reason.unwrap_or_else(|| "piracy".to_owned())
+            ))
+            .await?;
+        }
+        Ok(())
+    }
+
     /// Checks an update for user interactions and applies the current action for the user
     /// if it is pending. clearing the pending flag in the process
     pub async fn handle_pending_action_update<'a>(&self) -> Result<()> {

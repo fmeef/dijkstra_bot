@@ -18,3 +18,7 @@ cache_timeout = 172800
 antifloodwait_count = 80
 antifloodwait_time = 150
 ignore_chat_time = 600
+
+[admin]
+sudo_users = []
+support_users = []

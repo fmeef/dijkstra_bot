@@ -18,7 +18,7 @@ use botapi::gen_types::{
 use futures::future::BoxFuture;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
-#[derive(EnumIter, DeriveActiveEnum, Serialize, Deserialize, Clone, PartialEq, Debug)]
+#[derive(EnumIter, DeriveActiveEnum, Serialize, Deserialize, Clone, PartialEq, Debug, Iden)]
 #[sea_orm(rs_type = "i32", db_type = "Integer")]
 pub enum MediaType {
     #[sea_orm(num_value = 1)]
