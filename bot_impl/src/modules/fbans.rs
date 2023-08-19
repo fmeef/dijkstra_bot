@@ -1,6 +1,7 @@
 use crate::persist::admin::{fbans, federations};
 use crate::tg::admin_helpers::{
-    create_federation, fban_user, get_feds, is_fedadmin, is_fedmember, join_fed,
+    create_federation, fban_user, get_fed, get_feds, is_fedadmin, is_fedmember, join_fed, subfed,
+    update_fed,
 };
 use crate::tg::command::{Cmd, Context, TextArgs};
 use crate::tg::permissions::IsGroupAdmin;
@@ -107,7 +108,7 @@ async fn myfeds(ctx: &Context) -> Result<()> {
     Ok(())
 }
 
-pub async fn unfban<'a>(ctx: &Context) -> Result<()> {
+pub async fn unfban(ctx: &Context) -> Result<()> {
     ctx.action_message(|ctx, user, _| async move {
         if let Some(fed) = is_fedmember(ctx.try_get()?.chat.get_id()).await? {
             ctx.unfban(user, &fed).await?;
@@ -120,6 +121,34 @@ pub async fn unfban<'a>(ctx: &Context) -> Result<()> {
     Ok(())
 }
 
+async fn rename_fed<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
+    if let Some(owner) = ctx.message()?.get_from() {
+        let fed = update_fed(owner.get_id(), args.text.to_owned())
+            .await?
+            .fed_id;
+        ctx.reply(format!("Renamed fed {} to {}", fed.to_string(), args.text))
+            .await?;
+    }
+    Ok(())
+}
+
+async fn subfed_cmd<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
+    let chat = ctx.try_get()?.chat.get_id();
+    if let Some(user) = ctx.message()?.get_from() {
+        let sub = Uuid::parse_str(args.text)?;
+        let fed = get_fed(user.get_id())
+            .await?
+            .ok_or_else(|| BotError::speak("You currently do not have a fed", chat))?;
+        subfed(&fed.fed_id, &sub).await?;
+        ctx.reply(format!(
+            "Successfully subscribed fed {} to {}",
+            fed.fed_id, sub
+        ))
+        .await?;
+    }
+    Ok(())
+}
+
 pub async fn handle_update(ctx: &Context) -> Result<()> {
     if let Some(&Cmd { cmd, ref args, .. }) = ctx.cmd() {
         match cmd {
@@ -129,6 +158,8 @@ pub async fn handle_update(ctx: &Context) -> Result<()> {
             "myfeds" => myfeds(ctx).await,
             "fpromote" => ctx.fpromote().await,
             "unfban" => unfban(ctx).await,
+            "renamefed" => rename_fed(ctx, args).await,
+            "subfed" => subfed_cmd(ctx, args).await,
             _ => Ok(()),
         }?;
     }

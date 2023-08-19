@@ -557,7 +557,8 @@ async fn handle_trigger(ctx: &Context) -> Result<()> {
                         .unwrap_or_else(|| format!(""));
                     match res.action {
                         ActionType::Mute => {
-                            ctx.mute(user.get_id(), duration).await?;
+                            ctx.mute(user.get_id(), ctx.try_get()?.chat, duration)
+                                .await?;
                             message
                                 .reply(format!(
                                     "User said a banned word. Action: Muted{}\n{}",

@@ -72,18 +72,12 @@ where
     R: DeserializeOwned + Sync + Send + 'a,
     P: Send + Sync + 'a,
 {
-    let res: Option<RedisStr> = REDIS
-        .query(|mut c| async move {
-            if !c.exists(key).await? {
-                Ok(None)
-            } else {
-                Ok(Some(c.get(key).await?))
-            }
-        })
-        .await?;
-
-    let res = res.map(|v| v.get::<Option<R>>().ok()).flatten();
-    Ok((res.is_some(), res.flatten()))
+    let res: Option<RedisStr> = REDIS.sq(|q| q.get(key)).await?;
+    if let Some(res) = res {
+        Ok((true, res.get()?))
+    } else {
+        Ok((false, None))
+    }
 }
 
 /// Default sql query cachin miss operation for a single value

@@ -3,7 +3,10 @@ use bot_impl::persist::{
     core::{chat_members, dialogs, users},
     migrate::ManagerHelper,
 };
-use sea_orm_migration::prelude::*;
+use sea_orm_migration::{
+    prelude::*,
+    sea_orm::{DatabaseBackend, Statement},
+};
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -12,6 +15,7 @@ pub struct Migration;
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         // Replace the sample below with your own migration scripts
+
         manager
             .create_table(
                 Table::create()
@@ -34,6 +38,60 @@ impl MigrationTrait for Migration {
                     )
                     .to_owned(),
             )
+            .await?;
+
+        manager
+            .get_connection()
+            .query_one(Statement::from_string(
+                sea_orm::DatabaseBackend::Postgres,
+                format!(
+                    "
+            CREATE FUNCTION prevent_cycle()
+              RETURNS TRIGGER AS $$
+            DECLARE
+              rc INTEGER;
+            BEGIN
+              EXECUTE format(
+                'WITH RECURSIVE search_graph(%2$I, path, cycle) AS (' ||
+                  'SELECT t.%2$I, ARRAY[t.{fed}, t.%2$I], (t.{fed} = t.%2$I) ' ||
+                    'FROM %1$I t ' ||
+                    'WHERE t.{fed} = $1 ' ||
+                  'UNION ALL ' ||
+                  'SELECT t.%2$I, sg.path || t.%2$I, t.%2$I = ANY(sg.path) ' ||
+                    'FROM search_graph sg ' ||
+                    'JOIN %1$I t on t.{fed} = sg.%2$I ' ||
+                    'WHERE NOT sg.cycle' ||
+                  ') SELECT 1 FROM search_graph WHERE cycle LIMIT 1;',
+                TG_ARGV[0], TG_ARGV[1]) USING NEW.{fed};
+              GET DIAGNOSTICS rc = ROW_COUNT;
+              IF rc > 0 THEN
+                RAISE EXCEPTION 'Self-referential foreign key cycle detected';
+              ELSE
+                RETURN NEW;
+              END IF;
+            END
+            $$ LANGUAGE plpgsql;    
+            ",
+                    fed = federations::Column::FedId.to_string()
+                ),
+            ))
+            .await?;
+
+        manager
+            .get_connection()
+            .query_one(Statement::from_string(
+                DatabaseBackend::Postgres,
+                format!(
+                    "
+                    CREATE TRIGGER prevent_cycle_trigger
+                    AFTER INSERT OR UPDATE OF {col} ON {table}
+                    FOR EACH ROW
+                    EXECUTE PROCEDURE prevent_cycle('{table}', '{col}');
+                    ",
+                    col = federations::Column::Subscribed.to_string(),
+                    table = federations::Entity.to_string(),
+                ),
+            ))
             .await?;
 
         manager
@@ -262,6 +320,25 @@ impl MigrationTrait for Migration {
                     .drop_column(dialogs::Column::Federation)
                     .to_owned(),
             )
+            .await?;
+
+        manager
+            .get_connection()
+            .query_one(Statement::from_string(
+                DatabaseBackend::Postgres,
+                format!(
+                    "DROP TRIGGER prevent_cycle_trigger ON {};",
+                    federations::Entity.to_string()
+                ),
+            ))
+            .await?;
+
+        manager
+            .get_connection()
+            .query_one(Statement::from_string(
+                sea_orm::DatabaseBackend::Postgres,
+                "DROP FUNCTION prevent_cycle;",
+            ))
             .await?;
         manager.drop_table_auto(federations::Entity).await?;
         manager.drop_table_auto(fedadmin::Entity).await?;

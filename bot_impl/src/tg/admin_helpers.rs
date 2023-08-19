@@ -199,7 +199,7 @@ pub struct FbanWithChat {
     pub subscribed: Option<Uuid>,
     pub owner: i64,
     pub fed_name: String,
-    pub chat_id: i64,
+    pub chat_id: Option<i64>,
     pub fban_id: Option<Uuid>,
     pub federation: Option<Uuid>,
     pub user: Option<i64>,
@@ -343,6 +343,10 @@ pub async fn get_fbans_for_user_with_chats(user: i64) -> Result<Vec<FbanWithChat
                                     ))
                                     .equals((Alias::new("feds"), federations::Column::FedId)),
                                 )
+                                .cond_where(
+                                    Expr::col((federations::Entity, federations::Column::Owner))
+                                        .eq(user),
+                                )
                                 .to_owned(),
                         )
                         .to_owned(),
@@ -355,7 +359,7 @@ pub async fn get_fbans_for_user_with_chats(user: i64) -> Result<Vec<FbanWithChat
         .column(ColumnRef::Asterisk)
         .from(Alias::new("feds"))
         .join(
-            JoinType::InnerJoin,
+            JoinType::LeftJoin,
             dialogs::Entity,
             Expr::col((Alias::new("feds"), federations::Column::FedId))
                 .equals((dialogs::Entity, dialogs::Column::Federation)),
@@ -367,12 +371,11 @@ pub async fn get_fbans_for_user_with_chats(user: i64) -> Result<Vec<FbanWithChat
                 .equals((fbans::Entity, fbans::Column::Federation)),
         )
         .join(
-            JoinType::InnerJoin,
+            JoinType::LeftJoin,
             chat_members::Entity,
             Expr::col((chat_members::Entity, chat_members::Column::ChatId))
                 .equals((dialogs::Entity, dialogs::Column::ChatId)),
         )
-        .cond_where(Expr::col((chat_members::Entity, chat_members::Column::UserId)).eq(user))
         .to_owned();
 
     let query = select.with(with).to_owned();
@@ -426,6 +429,8 @@ pub async fn is_user_fbanned(user: i64, chat: i64) -> Result<Option<fbans::Model
                 let fb: Option<RedisStr> = REDIS.sq(|q| q.get(&key)).await?;
                 if let Some(fb) = fb {
                     return Ok(fb.get()?);
+                } else {
+                    log::info!("fban cache empty?");
                 }
             } else {
                 return Ok(None);
@@ -461,8 +466,9 @@ pub async fn create_federation(ctx: &Context, federation: federations::Model) ->
         .await
     {
         Err(err) => match err {
-            sea_orm::DbErr::Query(_) => {
-                return Err(BotError::speak("Only one federation allowed per user", c).into())
+            sea_orm::DbErr::Query(err) => {
+                log::error!("create fed err {}", err);
+                return Err(BotError::speak("Only one federation allowed per user", c).into());
             }
             err => return Err(err.into()),
         },
@@ -478,9 +484,25 @@ pub async fn create_federation(ctx: &Context, federation: federations::Model) ->
     Ok(())
 }
 
-pub async fn update_fed(owner: i64, newname: String) -> Result<()> {
+pub async fn subfed(fed: &Uuid, sub: &Uuid) -> Result<federations::Model> {
+    let model = federations::Entity::update(federations::ActiveModel {
+        fed_id: Set(*fed),
+        subscribed: Set(Some(*sub)),
+        owner: NotSet,
+        fed_name: NotSet,
+    })
+    .exec(DB.deref())
+    .await?;
+
+    let key = get_fed_key(model.owner);
+    REDIS.sq(|q| q.del(&key)).await?;
+    try_update_fban_cache(model.owner).await?;
+    Ok(model)
+}
+
+pub async fn update_fed(owner: i64, newname: String) -> Result<federations::Model> {
     let key = get_fed_key(owner);
-    federations::Entity::update_many()
+    let mut model = federations::Entity::update_many()
         .set(federations::ActiveModel {
             fed_id: NotSet,
             subscribed: NotSet,
@@ -488,11 +510,13 @@ pub async fn update_fed(owner: i64, newname: String) -> Result<()> {
             fed_name: Set(newname),
         })
         .filter(federations::Column::Owner.eq(owner))
-        .exec(DB.deref())
+        .exec_with_returning(DB.deref())
         .await?;
 
     REDIS.sq(|q| q.del(&key)).await?;
-    Ok(())
+    Ok(model
+        .pop()
+        .ok_or_else(|| BotError::Generic("no fed".to_owned()))?)
 }
 
 pub async fn fban_user(fban: fbans::Model, user: &User) -> Result<()> {
@@ -528,15 +552,22 @@ pub async fn get_fed(user: i64) -> Result<Option<federations::Model>> {
 pub async fn is_fedmember(chat: i64) -> Result<Option<Uuid>> {
     let key = get_fed_chat_key(chat);
     for _ in 0..4 {
-        let (exists, _): (Option<RedisStr>, bool) = REDIS
-            .pipe(|p| p.hget(&key, chat).expire(&key, CONFIG.timing.cache_timeout))
+        let (exists, member, _): (bool, Option<RedisStr>, bool) = REDIS
+            .pipe(|p| {
+                p.exists(&key)
+                    .hget(&key, chat)
+                    .expire(&key, CONFIG.timing.cache_timeout)
+            })
             .await?;
-        match exists {
-            None => {
+        match (exists, member) {
+            (false, _) => {
                 try_update_fed_cache(chat).await?;
             }
-            Some(member) => {
+            (true, Some(member)) => {
                 return Ok(member.get()?);
+            }
+            (true, None) => {
+                return Ok(None);
             }
         };
     }
@@ -680,7 +711,7 @@ pub async fn is_fedadmin(user: i64, fed: &Uuid) -> Result<bool> {
             return Ok(admin);
         }
     }
-    todo!()
+    Ok(false)
 }
 
 pub async fn join_fed(chat: &Chat, fed: &Uuid) -> Result<()> {
@@ -698,11 +729,15 @@ pub async fn try_update_fed_cache(chat: i64) -> Result<()> {
         .find_also_related(federations::Entity)
         .all(DB.deref())
         .await?;
+    log::info!("try_update_fed_cache {}", feds.len());
+
     REDIS
         .try_pipe(|p| {
+            let key = get_fed_chat_key(chat);
+            p.hset(&key, true, true);
+
             for (chat, fed) in feds {
                 if let Some(fed) = fed {
-                    let key = get_fed_chat_key(chat.chat_id);
                     p.hset(&key, chat.chat_id, fed.fed_id.to_redis()?)
                         .expire(&key, CONFIG.timing.cache_timeout);
 
@@ -726,7 +761,8 @@ pub async fn try_update_fban_cache(user: i64) -> Result<()> {
             p.atomic();
 
             let mut members = HashMap::<i64, Uuid>::with_capacity(fbans.len());
-            let mut fban_cache = HashMap::<Uuid, HashSet<(i64, Uuid)>>::new();
+            let mut fban_cache = HashMap::<Uuid, (HashSet<(i64, Uuid)>, Option<Uuid>)>::new();
+
             let mut s = HashSet::<i64>::new();
             for FbanWithChat {
                 fed_id,
@@ -748,12 +784,22 @@ pub async fn try_update_fban_cache(user: i64) -> Result<()> {
                     fed_name,
                 };
 
+                if !fban_cache.contains_key(&federation_model.fed_id) {
+                    fban_cache.insert(
+                        federation_model.fed_id,
+                        (HashSet::new(), federation_model.subscribed),
+                    );
+                }
+
                 let fed_key = get_fed_key(federation_model.owner);
-                members.insert(chat_id, federation_model.fed_id);
-                s.insert(chat_id);
                 p.set(&fed_key, Some(&federation_model).to_redis()?)
                     .expire(&fed_key, CONFIG.timing.cache_timeout);
-                if let (Some(fban_id), Some(federation), Some(user)) = (fban_id, federation, user) {
+                if let (Some(fban_id), Some(federation), Some(user), Some(chat_id)) =
+                    (fban_id, federation, user, chat_id)
+                {
+                    members.insert(chat_id, federation_model.fed_id);
+                    s.insert(chat_id);
+
                     let fbans = fbans::Model {
                         fban_id,
                         federation,
@@ -766,12 +812,12 @@ pub async fn try_update_fban_cache(user: i64) -> Result<()> {
                     p.set(&fban_key, fbans.to_redis()?)
                         .expire(&fban_key, CONFIG.timing.cache_timeout);
 
-                    if let Some(cache) = fban_cache.get_mut(&federation_model.fed_id) {
+                    if let Some((cache, _)) = fban_cache.get_mut(&federation_model.fed_id) {
                         cache.insert((user, fbans.fban_id));
                     } else {
                         let mut hash = HashSet::<(i64, Uuid)>::new();
                         hash.insert((user, fbans.fban_id));
-                        fban_cache.insert(federation_model.fed_id, hash);
+                        fban_cache.insert(federation_model.fed_id, (hash, subscribed));
                     }
                 }
             }
@@ -789,10 +835,29 @@ pub async fn try_update_fban_cache(user: i64) -> Result<()> {
                 p.hset(&key, "", true);
             }
 
-            for (fed, fbans) in fban_cache {
+            for (fed, (fbans, subscribed)) in fban_cache.iter() {
                 let key = get_fban_set_key(&fed);
+                p.hset(&key, true, true);
                 for (user, fban) in fbans {
                     p.hset(&key, user, fban.to_redis()?);
+                }
+                let mut sub = subscribed;
+                let mut seen = HashSet::<&Uuid>::new();
+                while let Some(s) = sub {
+                    if seen.contains(&s) {
+                        log::warn!("somehow found a subscription cycle for fed {}", fed);
+                        break;
+                    }
+                    seen.insert(&s);
+                    if let Some((fbans, subscribed)) = fban_cache.get(&s) {
+                        for (user, fban) in fbans {
+                            p.hset(&key, user, fban.to_redis()?);
+                        }
+
+                        sub = subscribed;
+                    } else {
+                        sub = &None;
+                    }
                 }
             }
 
@@ -1635,7 +1700,7 @@ impl Context {
     /// Automatically sends localized string
     pub async fn warn_mute(&self, user: i64, count: i32, duration: Option<Duration>) -> Result<()> {
         let message = self.message()?;
-        self.mute(user, duration).await?;
+        self.mute(user, self.try_get()?.chat, duration).await?;
 
         let mention = user.mention().await?;
         message
@@ -1671,7 +1736,7 @@ impl Context {
                             .await?;
                     }
 
-                    self.unmute(user.get_id()).await?;
+                    self.unmute(user.get_id(), chat).await?;
                     action.delete(DB.deref()).await?;
                     return Ok(());
                 }
@@ -1716,15 +1781,28 @@ impl Context {
 
     /// Removes all restrictions on a user in a chat. This is persistent and
     /// if the user is not present the changes will be applied on joining
-    pub async fn unmute(&self, user: i64) -> Result<()> {
-        let chat = self.try_get()?.chat;
+    pub async fn unmute(&self, user: i64, chat: &Chat) -> Result<()> {
+        log::info!(
+            "unmute for user {} in chat {}",
+            user.cached_name().await?,
+            chat.name_humanreadable()
+        );
         let old = TG.client.get_chat(chat.get_id()).await?;
-        let old = old.get_permissions().ok_or_else(|| {
-            BotError::speak(
-                "cannot unmute user, failed to get permissions",
-                chat.get_id(),
+        let old = old.get_permissions().unwrap_or_else(|| {
+            Cow::Owned(
+                ChatPermissionsBuilder::new()
+                    .set_can_send_messages(false)
+                    .set_can_send_audios(false)
+                    .set_can_send_documents(false)
+                    .set_can_send_photos(false)
+                    .set_can_send_videos(false)
+                    .set_can_send_video_notes(false)
+                    .set_can_send_polls(false)
+                    .set_can_send_voice_notes(false)
+                    .set_can_send_other_messages(false)
+                    .build(),
             )
-        })?;
+        });
         let mut new = ChatPermissionsBuilder::new();
         let permissions = ChatPermissionsBuilder::new()
             .set_can_send_messages(true)
@@ -1741,14 +1819,15 @@ impl Context {
         new = merge_permissions(&permissions, new);
         new = merge_permissions(&old, new);
 
-        self.change_permissions(user, &new.build(), None).await?;
+        self.change_permissions_chat(user, chat, &new.build(), None)
+            .await?;
         Ok(())
     }
 
     /// Restricts a user in a given chat. If the user not present the restriction will be
     /// applied when they join. If a duration is specified the restrictions will be removed
     /// after the duration
-    pub async fn mute(&self, user: i64, duration: Option<Duration>) -> Result<()> {
+    pub async fn mute(&self, user: i64, chat: &Chat, duration: Option<Duration>) -> Result<()> {
         let permissions = ChatPermissionsBuilder::new()
             .set_can_send_messages(false)
             .set_can_send_audios(false)
@@ -1761,22 +1840,32 @@ impl Context {
             .set_can_send_other_messages(false)
             .build();
 
-        self.change_permissions(user, &permissions, duration)
+        self.change_permissions_chat(user, chat, &permissions, duration)
             .await?;
         Ok(())
     }
 
-    /// Restrict a given user in a given chat for the provided duration.
-    /// If the user is not currently in the chat the permission change is
-    /// queued until the user joins
     pub async fn change_permissions(
         &self,
         user: i64,
         permissions: &ChatPermissions,
         time: Option<Duration>,
     ) -> Result<()> {
+        self.change_permissions_chat(user, self.try_get()?.chat, permissions, time)
+            .await
+    }
+
+    /// Restrict a given user in a given chat for the provided duration.
+    /// If the user is not currently in the chat the permission change is
+    /// queued until the user joins
+    pub async fn change_permissions_chat(
+        &self,
+        user: i64,
+        chat: &Chat,
+        permissions: &ChatPermissions,
+        time: Option<Duration>,
+    ) -> Result<()> {
         let me = ME.get().unwrap();
-        let chat = self.try_get()?.chat;
         if user == me.get_id() {
             Err(BotError::speak(
                 lang_fmt!(self.try_get()?.lang, "mutemyself"),

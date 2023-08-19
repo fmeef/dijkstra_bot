@@ -263,27 +263,27 @@ async fn user_is_authorized(chat: i64, user: i64) -> Result<bool> {
     REDIS.sq(|q| q.sismember(&key, user)).await
 }
 
-async fn authorize_user<'a>(user: &User, ctx: &Context) -> Result<()> {
-    if let Some(unmute_chat) = ctx.chat() {
-        let key = auth_key(unmute_chat.get_id());
-        let (r, _): (i64, ()) = REDIS
-            .pipe(|q| {
-                q.sadd(&key, user.get_id())
-                    .expire(&key, CONFIG.timing.cache_timeout)
-            })
+async fn authorize_user<'a>(user: &User, ctx: &Context, unmute_chat: &Chat) -> Result<()> {
+    let key = auth_key(unmute_chat.get_id());
+    let (r, _): (i64, ()) = REDIS
+        .pipe(|q| {
+            q.sadd(&key, user.get_id())
+                .expire(&key, CONFIG.timing.cache_timeout)
+        })
+        .await?;
+    if r == 1 {
+        let model = authorized::Model {
+            chat: unmute_chat.get_id(),
+            user: user.get_id(),
+        };
+
+        ctx.unmute(user.get_id(), unmute_chat).await?;
+        authorized::Entity::insert(model.into_active_model())
+            .on_conflict(OnConflict::new().do_nothing().to_owned())
+            .exec(DB.deref())
             .await?;
-        if r == 1 {
-            let model = authorized::Model {
-                chat: unmute_chat.get_id(),
-                user: user.get_id(),
-            };
-            authorized::Entity::insert(model.into_active_model())
-                .on_conflict(OnConflict::new().do_nothing().to_owned())
-                .exec(DB.deref())
-                .await?;
-            ctx.unmute(user.get_id()).await?;
-        }
     }
+
     Ok(())
 }
 
@@ -388,7 +388,7 @@ async fn button_captcha<'a>(ctx: &'a Context) -> Result<()> {
         .build();
     let bctx = ctx.clone();
     unmute_button.on_push(|callback| async move {
-        authorize_user(callback.get_from_ref(), &bctx).await?;
+        authorize_user(callback.get_from_ref(), &bctx, bctx.try_get()?.chat).await?;
         if let Some(message) = callback.get_message() {
             message
                 .speak("User unmuted!")
@@ -410,6 +410,11 @@ async fn button_captcha<'a>(ctx: &'a Context) -> Result<()> {
         m.delete_after_time(Duration::minutes(5));
     }
     Ok(())
+}
+
+#[inline(always)]
+fn get_captcha_auth_key(user: i64, chat: i64) -> String {
+    format!("cak:{}:{}", user, chat)
 }
 
 async fn send_captcha_chooser(user: &User, chat: &Chat) -> Result<()> {
@@ -582,7 +587,7 @@ fn get_choices<'a>(
                     .build()
                     .await?;
             }
-            authorize_user(&callback.get_from(), &ctx).await?;
+            authorize_user(&callback.get_from(), &ctx, &unmute_chat).await?;
             reset_incorrect_tries(&callback.get_from(), unmute_chat.get_id()).await?;
         }
         TG.client()
@@ -657,7 +662,14 @@ async fn check_mambers<'a>(
     }
     let chat = message.get_chat();
     if !user_is_authorized(chat.get_id(), user.get_id()).await? {
-        ctx.mute(user.get_id(), None).await?;
+        ctx.mute(user.get_id(), ctx.try_get()?.chat, None).await?;
+        let key = get_captcha_auth_key(user.get_id(), chat.get_id());
+        REDIS
+            .pipe(|q| {
+                q.set(&key, true)
+                    .expire(&key, Duration::minutes(10).num_seconds() as usize)
+            })
+            .await?;
         if let Some(kicktime) = config.kick_time {
             let chatid = chat.get_id();
             let userid = user.get_id();
@@ -724,9 +736,14 @@ async fn handle_command<'a>(ctx: &Context) -> Result<()> {
                     let base: Option<RedisStr> = REDIS.sq(|q| q.get(&key)).await?;
                     if let Some(base) = base {
                         let (cchat, cuser): (Chat, User) = base.get()?;
-                        log::info!("chat {}", cchat.name_humanreadable());
-                        if cuser.get_id() == user.get_id() {
-                            send_captcha(message, cchat, ctx).await?;
+                        let key = get_captcha_auth_key(cuser.get_id(), cchat.get_id());
+                        if REDIS.sq(|q| q.exists(&key)).await? {
+                            log::info!("chat {}", cchat.name_humanreadable());
+                            if cuser.get_id() == user.get_id() {
+                                send_captcha(message, cchat, ctx).await?;
+                            }
+                        } else {
+                            ctx.reply("Not authorized to complete this captcha").await?;
                         }
                     }
                 }
