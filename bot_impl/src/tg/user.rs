@@ -275,7 +275,7 @@ impl RecordUser for UpdateExt {
             UpdateExt::ShippingQuery(ref sb) => Some(sb.get_from()),
             UpdateExt::PreCheckoutQuery(ref pcb) => Some(pcb.get_from()),
             UpdateExt::Poll(_) => None,
-            UpdateExt::PollAnswer(ref pollanswer) => Some(pollanswer.get_user()),
+            UpdateExt::PollAnswer(ref pollanswer) => pollanswer.get_user(),
             UpdateExt::MyChatMember(ref upd) => Some(upd.get_from()),
             UpdateExt::ChatJoinRequest(ref req) => Some(req.get_from()),
             UpdateExt::ChatMember(ref member) => Some(member.get_from()),
