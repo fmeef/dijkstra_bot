@@ -25,14 +25,19 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
 }
 
 async fn fban(ctx: &Context) -> Result<()> {
-    ctx.action_message(|ctx, user, _| async move {
+    ctx.action_message(|ctx, user, args| async move {
         if let Some(user) = user.get_cached_user().await? {
             let chat = ctx.try_get()?.chat;
             if let Some(fed) = is_fedmember(chat.get_id()).await? {
                 if is_fedadmin(user.get_id(), &fed).await?
                     || ctx.check_permissions(|p| p.is_support).await.is_ok()
                 {
-                    fban_user(fbans::Model::new(&user, fed), &user).await?;
+                    let mut model = fbans::Model::new(&user, fed);
+                    model.reason = args
+                        .map(|v| v.text.to_owned())
+                        .map(|v| v.is_empty().then(|| v))
+                        .flatten();
+                    fban_user(model, &user).await?;
                     ctx.reply("Successfully fbanned").await?;
                 } else {
                     ctx.reply("Permission denied, user is not a fedadmin")
@@ -70,6 +75,7 @@ async fn create_federation_cmd<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result
 }
 
 async fn join_fed_cmd<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
+    ctx.check_permissions(|p| p.can_restrict_members).await?;
     let fed = Uuid::parse_str(args.text)?;
     let chat = ctx.try_get()?.chat;
     join_fed(chat, &fed).await?;
@@ -111,7 +117,13 @@ async fn myfeds(ctx: &Context) -> Result<()> {
 pub async fn unfban(ctx: &Context) -> Result<()> {
     ctx.action_message(|ctx, user, _| async move {
         if let Some(fed) = is_fedmember(ctx.try_get()?.chat.get_id()).await? {
-            ctx.unfban(user, &fed).await?;
+            if is_fedadmin(user, &fed).await?
+                || ctx.check_permissions(|p| p.is_support).await.is_ok()
+            {
+                ctx.unfban(user, &fed).await?;
+            } else {
+                ctx.reply("You need to be fedamin to unfban").await?;
+            }
         } else {
             ctx.reply("This chat is not a member of a fed").await?;
         }
