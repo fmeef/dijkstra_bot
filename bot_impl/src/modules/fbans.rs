@@ -13,11 +13,24 @@ use itertools::Itertools;
 use sea_orm_migration::MigrationTrait;
 use uuid::Uuid;
 
-metadata!("Global Bans",
+metadata!("Federations",
     r#"
-    This is just a debugging module, it will be removed eventually. 
+    Federated bans are a way to maintain subscribable lists of banned users. Federations
+    store lists of banned users and groups can subscribe to them to autoban all banned users
+    in that federation.  
+
+    Each federation has an owner, and a number of admins, all of which are cable of issuing fbans
+    in that federation. Federations can subscribe to other federations to receive their bans \(but not 
+    their actual ban list \) 
     "#,
-    { command = "bun", help = "Report a pirate for termination" }
+    { command = "fban", help = "Bans a user in the current chat's federation" },
+    { command = "joinfed", help = "Joins a chat to a federation. Only one fed per chat" },
+    { command = "newfed", help = "Create a new federation with yourself as the owner" },
+    { command = "myfeds", help = "Get a list of feds you are either the owner or admin of" },
+    { command = "fpromote", help = "Promote another user as fedadmin. They need to click the message sent to confirm the promotion" },
+    { command = "unfban", help = "Unban a user in the current chat's federation" },
+    { command = "renamefed", help = "Rename your federation" },
+    { command = "subfed", help = "Usage: subfed \\<uuid\\>: subscribes your federation to a new fed's id" }
 );
 
 pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {

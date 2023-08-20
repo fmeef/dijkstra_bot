@@ -10,9 +10,11 @@ use sea_orm_migration::MigrationTrait;
 
 metadata!("Global Bans",
     r#"
-    This is just a debugging module, it will be removed eventually. 
+    Global bans \(gbans\) ban a user across every chat the bot is in. This is a drastic action
+    and therefore can only be taken by support users or the owner of the bot. 
     "#,
-    { command = "bun", help = "Report a pirate for termination" }
+    { command = "gban", help = "Ban a user in all chats" },
+    { command = "ungban", help = "Unban a user in all chats" }
 );
 
 pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
@@ -36,9 +38,15 @@ async fn ungban(ctx: &Context) -> Result<()> {
 }
 async fn gban(ctx: &Context) -> Result<()> {
     ctx.check_permissions(|p| p.is_support).await?;
-    ctx.action_message(|ctx, user, _| async move {
+    ctx.action_message(|ctx, user, args| async move {
         if let Some(user) = user.get_cached_user().await? {
-            gban_user(gbans::Model::new(user.get_id()), user).await?;
+            let mut model = gbans::Model::new(user.get_id());
+
+            model.reason = args
+                .map(|v| v.text.trim().to_owned())
+                .map(|v| (!v.is_empty()).then(|| v))
+                .flatten();
+            gban_user(model, user).await?;
             ctx.reply("user gbanned").await?;
         } else {
             ctx.reply("user not found").await?;
