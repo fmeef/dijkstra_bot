@@ -564,7 +564,7 @@ pub async fn is_fedmember(chat: i64) -> Result<Option<Uuid>> {
                 try_update_fed_cache(chat).await?;
             }
             (true, Some(member)) => {
-                return Ok(member.get()?);
+                return Ok(Some(member.get()?));
             }
             (true, None) => {
                 return Ok(None);
@@ -718,8 +718,10 @@ pub async fn join_fed(chat: &Chat, fed: &Uuid) -> Result<()> {
     let key = get_fed_chat_key(chat.get_id());
     let mut model = dialogs::Model::from_chat(chat).await?;
     model.federation = Set(Some(*fed));
-    REDIS.sq(|p| p.del(&key)).await?;
     upsert_dialog(model).await?;
+
+    REDIS.sq(|p| p.del(&key)).await?;
+    // try_update_fed_cache(chat.get_id()).await?;
     Ok(())
 }
 
@@ -832,7 +834,7 @@ pub async fn try_update_fban_cache(user: i64) -> Result<()> {
                 p.hset(&key, chat, fed.to_redis()?);
                 let key = get_fban_set_key(&fed);
                 p.del(&key);
-                p.hset(&key, "", true);
+                p.hset(&key, true, true);
             }
 
             for (fed, (fbans, subscribed)) in fban_cache.iter() {
