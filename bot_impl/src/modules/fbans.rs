@@ -34,8 +34,8 @@ async fn fban(ctx: &Context) -> Result<()> {
                 {
                     let mut model = fbans::Model::new(&user, fed);
                     model.reason = args
-                        .map(|v| v.text.to_owned())
-                        .map(|v| v.is_empty().then(|| v))
+                        .map(|v| v.text.trim().to_owned())
+                        .map(|v| (!v.is_empty()).then(|| v))
                         .flatten();
                     fban_user(model, &user).await?;
                     ctx.reply("Successfully fbanned").await?;
