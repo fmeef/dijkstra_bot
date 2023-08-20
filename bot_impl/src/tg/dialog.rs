@@ -83,7 +83,7 @@ pub async fn upsert_dialog(model: dialogs::ActiveModel) -> Result<()> {
     dialogs::Entity::insert(model)
         .on_conflict(
             OnConflict::column(dialogs::Column::ChatId)
-                .update_column(dialogs::Column::WarnLimit)
+                .update_columns([dialogs::Column::WarnLimit, dialogs::Column::Federation])
                 .to_owned(),
         )
         .exec(DB.deref().deref())
