@@ -42,7 +42,6 @@ use sea_orm::{
 };
 use sea_query::{
     Alias, ColumnRef, CommonTableExpression, Expr, Query, QueryStatementBuilder, UnionType,
-    WithQuery,
 };
 
 use uuid::Uuid;
@@ -244,63 +243,6 @@ pub async fn get_fban_for_chatmember(user: i64, chat: i64) -> Result<Option<fban
         .await?;
 
     Ok(result)
-}
-
-pub async fn get_fban_recursive_query() -> WithQuery {
-    let with = Query::with()
-        .recursive(true)
-        .cte(
-            CommonTableExpression::new()
-                .table_name(federations::Entity)
-                .columns([
-                    federations::Column::FedId,
-                    federations::Column::Subscribed,
-                    federations::Column::Owner,
-                    federations::Column::FedName,
-                ])
-                .query(
-                    Query::select()
-                        .columns([
-                            federations::Column::FedId,
-                            federations::Column::Subscribed,
-                            federations::Column::Owner,
-                            federations::Column::FedName,
-                        ])
-                        .from(federations::Entity)
-                        .cond_where(federations::Column::Owner.eq(0))
-                        .union(
-                            UnionType::All,
-                            Query::select()
-                                .columns([
-                                    federations::Column::FedId,
-                                    federations::Column::Subscribed,
-                                    federations::Column::Owner,
-                                    federations::Column::FedName,
-                                ])
-                                .from(federations::Entity)
-                                .join(
-                                    JoinType::InnerJoin,
-                                    Alias::new("feds"),
-                                    Expr::col((
-                                        Alias::new("feds"),
-                                        federations::Column::Subscribed,
-                                    ))
-                                    .equals((federations::Entity, federations::Column::FedId)),
-                                )
-                                .to_owned(),
-                        )
-                        .to_owned(),
-                )
-                .to_owned(),
-        )
-        .to_owned();
-
-    let select = Query::select()
-        .column(ColumnRef::Asterisk)
-        .from(Alias::new("feds"))
-        .to_owned();
-
-    select.with(with).to_owned()
 }
 
 pub async fn get_fbans_for_user_with_chats(user: i64) -> Result<Vec<FbanWithChat>> {
@@ -614,6 +556,15 @@ async fn iter_unfban_user(user: i64, fed: &Uuid) -> Result<()> {
     }
     reset_banned_chats(user).await?;
     Ok(())
+}
+
+pub async fn fstat(user: i64) -> Result<impl Iterator<Item = (fbans::Model, federations::Model)>> {
+    let res = fbans::Entity::find()
+        .filter(fbans::Column::User.eq(user))
+        .find_also_related(federations::Entity)
+        .all(DB.deref())
+        .await?;
+    Ok(res.into_iter().filter_map(|(v, s)| s.map(|u| (v, u))))
 }
 
 async fn iter_unban_user(user: i64) -> Result<()> {

@@ -1,15 +1,17 @@
 use crate::persist::admin::{fbans, federations};
 use crate::tg::admin_helpers::{
-    create_federation, fban_user, get_fed, get_feds, is_fedadmin, is_fedmember, join_fed, subfed,
-    update_fed,
+    create_federation, fban_user, fstat, get_fed, get_feds, is_fedadmin, is_fedmember, join_fed,
+    subfed, update_fed,
 };
 use crate::tg::command::{Cmd, Context, TextArgs};
+use crate::tg::markdown::MarkupType;
 use crate::tg::permissions::IsGroupAdmin;
 use crate::tg::user::{GetUser, Username};
 use crate::util::error::{BotError, Result};
 use crate::{metadata::metadata, util::string::Speak};
 
 use itertools::Itertools;
+use macros::entity_fmt;
 use sea_orm_migration::MigrationTrait;
 use uuid::Uuid;
 
@@ -174,6 +176,32 @@ async fn subfed_cmd<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
     Ok(())
 }
 
+async fn fstat_cmd(ctx: &Context) -> Result<()> {
+    ctx.action_message(|ctx, user, _| async move {
+        let lang = ctx.try_get()?.lang;
+        let chat = ctx.try_get()?.chat.get_id();
+        let v = fstat(user)
+            .await?
+            .map(|(fban, fed)| {
+                format!(
+                    "Banned in {} with reason \"{}\"",
+                    fed.fed_id,
+                    fban.reason
+                        .as_ref()
+                        .map(|v| v.as_str())
+                        .unwrap_or("No reason")
+                )
+            })
+            .join("\n");
+        let v = MarkupType::Text.text(&v);
+        ctx.reply_fmt(entity_fmt!(lang, chat, "fstat", user.mention().await?, v))
+            .await?;
+        Ok(())
+    })
+    .await?;
+    Ok(())
+}
+
 pub async fn handle_update(ctx: &Context) -> Result<()> {
     if let Some(&Cmd { cmd, ref args, .. }) = ctx.cmd() {
         match cmd {
@@ -185,6 +213,7 @@ pub async fn handle_update(ctx: &Context) -> Result<()> {
             "unfban" => unfban(ctx).await,
             "renamefed" => rename_fed(ctx, args).await,
             "subfed" => subfed_cmd(ctx, args).await,
+            "fstat" => fstat_cmd(ctx).await,
             _ => Ok(()),
         }?;
     }

@@ -8,6 +8,7 @@ needtobeadmin: "I'm sorry dave, I need to be admin to function in this group"
 lackingadminrights: "User {} lacking admin rights"
 banadmin: "I am not going to ban an admin"
 banmyself: "I am not going to ban myself"
+fstat: "Fstat for {}:\n{}"
 norules: |
   This chat has no rules. Complete anarchy. Feel free to spam it and post pirated udemy
   courses
