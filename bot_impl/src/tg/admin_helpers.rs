@@ -1387,8 +1387,6 @@ impl Context {
     pub async fn fpromote(&self) -> Result<()> {
         self.action_message(|ctx, user, _| async move {
             let c = self.try_get()?;
-
-            let lang = c.lang;
             let chat = c.chat.get_id();
             let me = ctx
                 .message()?
@@ -1485,7 +1483,7 @@ impl Context {
                 let name = user.name_humanreadable();
                 let mention = MarkupType::TextMention(user).text(&name);
                 self.speak_fmt(
-                    entity_fmt!(lang, chat, "fpromote", mention)
+                    entity_fmt!(ctx, "fpromote", mention)
                         .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(builder.build())),
                 )
                 .await?;
@@ -1658,8 +1656,7 @@ impl Context {
         let mention = user.mention().await?;
         message
             .reply_fmt(entity_fmt!(
-                self.try_get()?.lang,
-                message.get_chat().get_id(),
+                self,
                 "warnmute",
                 MarkupType::Text.text(&count.to_string()),
                 mention
@@ -1695,8 +1692,6 @@ impl Context {
                 }
             }
             if action.pending {
-                let lang = get_chat_lang(chat.get_id()).await?;
-
                 let name = user.name_humanreadable();
                 if action.is_banned {
                     TG.client()
@@ -1705,8 +1700,7 @@ impl Context {
                         .await?;
 
                     let mention = MarkupType::TextMention(user.to_owned()).text(&name);
-                    chat.speak_fmt(entity_fmt!(lang, chat.get_id(), "banned", mention))
-                        .await?;
+                    chat.speak_fmt(entity_fmt!(self, "banned", mention)).await?;
                 } else {
                     let permissions = ChatPermissionsBuilder::new()
                         .set_can_send_messages(action.can_send_messages)
@@ -2066,12 +2060,10 @@ impl Context {
     /// Automatically sends localized string
     pub async fn warn_ban(&self, user: i64, count: i32, duration: Option<Duration>) -> Result<()> {
         let message = self.message()?;
-        let lang = get_chat_lang(message.get_chat().get_id()).await?;
         self.ban(user, duration).await?;
         message
             .reply_fmt(entity_fmt!(
-                lang,
-                message.get_chat().get_id(),
+                self,
                 "warnban",
                 MarkupType::Text.text(&count.to_string()),
                 user.mention().await?,
@@ -2094,12 +2086,7 @@ impl Context {
             if let Some(user) = user.get_cached_user().await? {
                 let mention = MarkupType::TextMention(user).text(&name);
                 message
-                    .speak_fmt(entity_fmt!(
-                        lang,
-                        message.get_chat().get_id(),
-                        "banchat",
-                        mention
-                    ))
+                    .speak_fmt(entity_fmt!(self, "banchat", mention))
                     .await?;
             } else {
                 message.speak(lang_fmt!(lang, "banchat", name)).await?;
@@ -2132,12 +2119,7 @@ impl Context {
 
             let mention = user.mention().await?;
             message
-                .speak_fmt(entity_fmt!(
-                    lang,
-                    message.get_chat().get_id(),
-                    "banned",
-                    mention
-                ))
+                .speak_fmt(entity_fmt!(self, "banned", mention))
                 .await?;
         }
         Ok(())

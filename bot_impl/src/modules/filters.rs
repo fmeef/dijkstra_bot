@@ -19,7 +19,7 @@ use crate::metadata::metadata;
 use crate::util::filter::Header;
 use crate::util::filter::Lexer;
 use crate::util::filter::Parser;
-use crate::util::string::Lang;
+
 use crate::util::string::Speak;
 use botapi::gen_types::Message;
 use chrono::Duration;
@@ -423,11 +423,9 @@ async fn insert_filter(
     Ok(())
 }
 
-async fn command_filter<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang) -> Result<()> {
-    message
-        .get_from()
-        .admin_or_die(message.get_chat_ref())
-        .await?;
+async fn command_filter<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
+    ctx.check_permissions(|p| p.can_change_info).await?;
+    let message = ctx.message()?;
     let lexer = Lexer::new(args.text);
     let mut parser = Parser::new();
     for token in lexer.all_tokens() {
@@ -458,12 +456,7 @@ async fn command_filter<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang)
 
     message
         .get_chat()
-        .speak_fmt(entity_fmt!(
-            lang,
-            message.get_chat().get_id(),
-            "addfilter",
-            text
-        ))
+        .speak_fmt(entity_fmt!(ctx, "addfilter", text))
         .await?;
     Ok(())
 }
@@ -515,12 +508,11 @@ async fn handle_command(ctx: &Context) -> Result<()> {
         cmd,
         ref args,
         message,
-        lang,
         ..
     }) = ctx.cmd()
     {
         match cmd {
-            "filter" => command_filter(message, &args, &lang).await?,
+            "filter" => command_filter(ctx, &args).await?,
             "stop" => delete_trigger(message, args.text).await?,
             "filters" => list_triggers(message).await?,
             "stopall" => stopall(message).await?,

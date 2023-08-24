@@ -29,12 +29,11 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
 async fn cmd_approve<'a>(ctx: &Context) -> Result<()> {
     ctx.check_permissions(|p| p.can_restrict_members).await?;
     ctx.action_message(|ctx, user, _| async move {
-        if let (Some(user), Some(chat)) = (user.get_cached_user().await?, ctx.chat()) {
+        if let Some(user) = user.get_cached_user().await? {
             approve(ctx.message()?.get_chat_ref(), &user).await?;
             let name = user.name_humanreadable();
             ctx.speak_fmt(entity_fmt!(
-                ctx.try_get()?.lang,
-                chat.get_id(),
+                ctx,
                 "approved",
                 MarkupType::TextMention(user.clone()).text(&name)
             ))
@@ -49,17 +48,10 @@ async fn cmd_approve<'a>(ctx: &Context) -> Result<()> {
 async fn cmd_unapprove(ctx: &Context) -> Result<()> {
     ctx.check_permissions(|p| p.can_restrict_members).await?;
     ctx.action_message(|ctx, user, _| async move {
-        if let Some(chat) = ctx.chat() {
-            unapprove(ctx.message()?.get_chat_ref(), user).await?;
-            let name = user.mention().await?;
-            ctx.speak_fmt(entity_fmt!(
-                ctx.try_get()?.lang,
-                chat.get_id(),
-                "unapproved",
-                name
-            ))
-            .await?;
-        }
+        unapprove(ctx.message()?.get_chat_ref(), user).await?;
+        let name = user.mention().await?;
+        ctx.speak_fmt(entity_fmt!(ctx, "unapproved", name)).await?;
+
         Ok(())
     })
     .await?;

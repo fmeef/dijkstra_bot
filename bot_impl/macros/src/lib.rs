@@ -75,21 +75,14 @@ impl Parse for LocaleInput {
 }
 
 struct LangLocaleInput {
-    lang: Expr,
-    st: LitStr,
-    format: Punctuated<Expr, Token![,]>,
-}
-
-struct ChatLocaleInput {
-    lang: Expr,
-    chat: Expr,
+    ctx: Expr,
     st: LitStr,
     format: Punctuated<Expr, Token![,]>,
 }
 
 impl Parse for LangLocaleInput {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        let lang: Expr = input.parse()?;
+        let ctx: Expr = input.parse()?;
         let _: Token![,] = input.parse()?;
         let st: LitStr = input.parse()?;
         let lookahead = input.lookahead1();
@@ -97,27 +90,7 @@ impl Parse for LangLocaleInput {
             let _: Token![,] = input.parse()?;
         }
         Ok(Self {
-            lang,
-            st,
-            format: input.parse_terminated(Expr::parse)?,
-        })
-    }
-}
-
-impl Parse for ChatLocaleInput {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        let lang: Expr = input.parse()?;
-        let _: Token![,] = input.parse()?;
-        let chat: Expr = input.parse()?;
-        let _: Token![,] = input.parse()?;
-        let st: LitStr = input.parse()?;
-        let lookahead = input.lookahead1();
-        if lookahead.peek(Token![,]) {
-            let _: Token![,] = input.parse()?;
-        }
-        Ok(Self {
-            lang,
-            chat,
+            ctx,
             st,
             format: input.parse_terminated(Expr::parse)?,
         })
@@ -277,9 +250,9 @@ pub fn string_fmt(tokens: TokenStream) -> TokenStream {
 pub fn textentity_fmt(tokens: TokenStream) -> TokenStream {
     let input = parse_macro_input!(tokens as LangLocaleInput);
     let key = input.st;
-    let language = input.lang;
+    let ctx = input.ctx;
     let args = input.format;
-    let m = get_entity_match(language, key, args);
+    let m = get_entity_match(&ctx, key, args);
 
     let res = quote! {
         {
@@ -293,42 +266,40 @@ pub fn textentity_fmt(tokens: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn entity_fmt(tokens: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(tokens as ChatLocaleInput);
+    let input = parse_macro_input!(tokens as LangLocaleInput);
     let key = input.st;
-    let language = input.lang;
-    let chat = input.chat;
+    let ctx = input.ctx;
     let args = input.format;
-    let m = get_entity_match(language, key, args);
+    let m = get_entity_match(&ctx, key, args);
 
     let res = quote! {
         {
             let mut builder = crate::tg::markdown::EntityMessage::new();
             #m;
             builder
-        }.call(#chat)
+        }.call(#ctx.try_get()?.chat.get_id())
     };
     TokenStream::from(res)
 }
 
 #[proc_macro]
 pub fn message_fmt(tokens: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(tokens as ChatLocaleInput);
+    let input = parse_macro_input!(tokens as LangLocaleInput);
     let key = input.st;
-    let language = input.lang;
-    let chat = input.chat;
+    let ctx = input.ctx;
     let args = input.format;
-    let m = get_match(language, key, args);
+    let m = get_match(&ctx, key, args);
 
     let res = quote! {
         {
             crate::statics::TG.client()
-                .build_send_message(#chat, &#m)
+                .build_send_message(#ctx.try_get()?.chat.get_id(), &#m)
         }
     };
     TokenStream::from(res)
 }
 
-fn get_entity_match(language: Expr, key: LitStr, args: Punctuated<Expr, Comma>) -> impl ToTokens {
+fn get_entity_match(ctx: &Expr, key: LitStr, args: Punctuated<Expr, Comma>) -> impl ToTokens {
     let locale = LOCALE.read().unwrap();
     let mut format = locale
         .langs
@@ -357,14 +328,14 @@ fn get_entity_match(language: Expr, key: LitStr, args: Punctuated<Expr, Comma>) 
             }
         });
     quote! {
-        match #language {
+        match #ctx.lang() {
             #( #arms )*,
             Invalid => ("invalid", &(*crate::tg::markdown::EMPTY_ENTITIES))
         }
     }
 }
 
-fn get_match(language: Expr, key: LitStr, args: Punctuated<Expr, Comma>) -> impl ToTokens {
+fn get_match(language: &Expr, key: LitStr, args: Punctuated<Expr, Comma>) -> impl ToTokens {
     let locale = LOCALE.read().unwrap();
     let format = locale
         .langs
@@ -397,8 +368,8 @@ fn get_match(language: Expr, key: LitStr, args: Punctuated<Expr, Comma>) -> impl
 pub fn lang_fmt(tokens: TokenStream) -> TokenStream {
     let input = parse_macro_input!(tokens as LangLocaleInput);
     let key = input.st;
-    let language = input.lang;
+    let ctx = input.ctx;
     let args = input.format;
-    let m = get_match(language, key, args);
+    let m = get_match(&ctx, key, args);
     TokenStream::from(quote! { #m })
 }

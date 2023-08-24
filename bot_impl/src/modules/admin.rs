@@ -42,12 +42,7 @@ async fn promote(context: &Context) -> Result<()> {
                 chat.promote(user).await?;
                 let mention = user.mention().await?;
                 message
-                    .speak_fmt(entity_fmt!(
-                        ctx.try_get()?.lang,
-                        message.get_chat().get_id(),
-                        "promote",
-                        mention
-                    ))
+                    .speak_fmt(entity_fmt!(ctx, "promote", mention))
                     .await?;
             }
             Ok(())
@@ -69,13 +64,7 @@ async fn demote<'a>(context: &'a Context) -> Result<()> {
                     }
                     Ok(_) => {
                         let mention = user.mention().await?;
-                        ctx.speak_fmt(entity_fmt!(
-                            ctx.try_get()?.lang,
-                            ctx.try_get()?.chat.get_id(),
-                            "demote",
-                            mention
-                        ))
-                        .await?;
+                        ctx.speak_fmt(entity_fmt!(ctx, "demote", mention)).await?;
                     }
                 }
             }

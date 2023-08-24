@@ -433,6 +433,10 @@ impl Context {
     pub fn parse_cmd<'a>(&'a self) -> Option<(&'a str, TextArgs<'a>, Entities<'a>)> {
         self.get_static().parse_cmd()
     }
+
+    pub fn lang<'a>(&'a self) -> &'a Lang {
+        &self.get_static().lang
+    }
 }
 
 #[async_trait]

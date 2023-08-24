@@ -19,6 +19,7 @@ use macros::{lang_fmt, message_fmt};
 use super::{
     admin_helpers::is_dm,
     button::{get_url, InlineKeyboardBuilder},
+    command::Context,
     dialog::{Conversation, ConversationState},
     permissions::*,
     user::RecordUser,
@@ -118,6 +119,7 @@ pub struct TgClient {
 }
 
 pub async fn show_help<'a>(
+    ctx: &Context,
     message: &Message,
     helps: Arc<MetadataCollection>,
     args: Option<&'a str>,
@@ -177,7 +179,7 @@ pub async fn show_help<'a>(
                     .set_url(url)
                     .build(),
             );
-            message_fmt!(lang, message.get_chat().get_id(), "dmhelp")
+            message_fmt!(ctx, "dmhelp")
                 .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
                     button.build(),
                 ))

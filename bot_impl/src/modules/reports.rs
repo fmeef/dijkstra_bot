@@ -63,7 +63,7 @@ pub async fn report(ctx: &Context) -> Result<()> {
                         .collect::<Vec<MessageEntity>>();
 
                     let mention = user.mention().await?;
-                    let te = textentity_fmt!(ctx.try_get()?.lang, "reported", mention);
+                    let te = textentity_fmt!(ctx, "reported", mention);
                     let (text, entities) = te.textentities();
                     admins.extend_from_slice(entities.as_slice());
                     TG.client()
@@ -73,8 +73,7 @@ pub async fn report(ctx: &Context) -> Result<()> {
                         .build()
                         .await?;
                 } else {
-                    ctx.reply(lang_fmt!(ctx.try_get()?.lang, "reported_nomention"))
-                        .await?;
+                    ctx.reply(lang_fmt!(ctx, "reported_nomention")).await?;
                 }
             }
             Ok(())

@@ -166,22 +166,22 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
             helps: ::std::sync::Arc<crate::tg::client::MetadataCollection>
             ) -> crate::util::error::Result<()> {
             match crate::tg::command::StaticContext::get_context(update).await.map(|v| v.yoke()) {
-                Ok(cmd) => {
-                    if let Err(err) = cmd.record_chat_member().await {
+                Ok(ctx) => {
+                    if let Err(err) = ctx.record_chat_member().await {
                         log::error!("failed to record chat member {}", err);
                         err.record_stats();
                     }
 
-                    cmd.handle_gbans().await;
+                    ctx.handle_gbans().await;
 
-                    if let Err(err) = cmd.handle_pending_action_update().await {
+                    if let Err(err) = ctx.handle_pending_action_update().await {
                         log::error!("failed to handle pending action: {}", err);
                         err.record_stats();
                     }
 
-                    let help = if let Some(&crate::tg::command::Cmd{cmd, ref args, message, lang, ..}) = cmd.cmd() {
+                    let help = if let Some(&crate::tg::command::Cmd{cmd, ref args, message, lang, ..}) = ctx.cmd() {
                          match cmd {
-                            "help" => crate::tg::client::show_help(message, helps, args.args.first().map(|a| a.get_text())).await,
+                            "help" => crate::tg::client::show_help(&ctx, message, helps, args.args.first().map(|a| a.get_text())).await,
                             "start" => match args.args.first().map(|a| a.get_text()) {
                                 Some(v) => {
                                     if let (Some("help"), Some(s)) = (v.get(0..4), v.get(4..)) {
@@ -190,7 +190,7 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
                                         } else {
                                             None
                                         };
-                                        crate::tg::client::show_help(message, helps, s).await?;
+                                        crate::tg::client::show_help(&ctx, message, helps, s).await?;
                                         Ok(true)
                                     } else {
                                         Ok(false)
@@ -209,7 +209,7 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
                     };
                     match help {
                         Ok(false) => {#(
-                            if let Err(err) = #updates::handle_update(&cmd).await {
+                            if let Err(err) = #updates::handle_update(&ctx).await {
                                 err.record_stats();
                                 match err.get_message().await {
                                     Err(err) => {
@@ -217,7 +217,7 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
                                         err.record_stats();
                                     }
                                     Ok(v) => if ! v {
-                                        if let Some(chat) = cmd.chat() {
+                                        if let Some(chat) = ctx.chat() {
                                             if let Err(err) = chat.speak(err.to_string()).await {
                                                 log::error!("triple fault! {}", err);
                                             }

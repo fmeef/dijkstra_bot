@@ -178,8 +178,6 @@ async fn subfed_cmd<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
 
 async fn fstat_cmd(ctx: &Context) -> Result<()> {
     ctx.action_message(|ctx, user, _| async move {
-        let lang = ctx.try_get()?.lang;
-        let chat = ctx.try_get()?.chat.get_id();
         let v = fstat(user)
             .await?
             .map(|(fban, fed)| {
@@ -194,7 +192,7 @@ async fn fstat_cmd(ctx: &Context) -> Result<()> {
             })
             .join("\n");
         let v = MarkupType::Text.text(&v);
-        ctx.reply_fmt(entity_fmt!(lang, chat, "fstat", user.mention().await?, v))
+        ctx.reply_fmt(entity_fmt!(ctx, "fstat", user.mention().await?, v))
             .await?;
         Ok(())
     })

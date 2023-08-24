@@ -29,7 +29,7 @@ use crate::util::filter::Lexer;
 use crate::util::filter::Parser;
 
 use crate::util::glob::WildMatch;
-use crate::util::string::Lang;
+
 use crate::util::string::Speak;
 use botapi::gen_types::Message;
 use botapi::gen_types::User;
@@ -424,8 +424,11 @@ async fn insert_blocklist(
     Ok(())
 }
 
-async fn command_blocklist<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang) -> Result<()> {
-    message.check_permissions(|p| p.can_manage_chat).await?;
+async fn command_blocklist<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
+    ctx.check_permissions(|p| p.can_manage_chat).await?;
+
+    let message = ctx.message()?;
+
     let lexer = Lexer::new(args.text);
     let mut parser = Parser::new();
     for token in lexer.all_tokens() {
@@ -496,12 +499,7 @@ async fn command_blocklist<'a>(message: &Message, args: &TextArgs<'a>, lang: &La
 
     message
         .get_chat()
-        .speak_fmt(entity_fmt!(
-            lang,
-            message.get_chat().get_id(),
-            "addblocklist",
-            text
-        ))
+        .speak_fmt(entity_fmt!(ctx, "addblocklist", text))
         .await?;
 
     Ok(())
@@ -627,12 +625,11 @@ async fn handle_command<'a>(ctx: &Context) -> Result<()> {
         cmd,
         ref args,
         message,
-        lang,
         ..
     }) = ctx.cmd()
     {
         match cmd {
-            "addblocklist" => command_blocklist(message, &args, &lang).await?,
+            "addblocklist" => command_blocklist(ctx, &args).await?,
             "rmblocklist" => delete_trigger(message, args.text).await?,
             "blocklist" => list_triggers(message).await?,
             "rmallblocklists" => stopall(message).await?,

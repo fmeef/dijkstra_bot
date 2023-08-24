@@ -70,7 +70,6 @@ pub async fn warns(context: &Context) -> Result<()> {
         let chat = v.chat;
         let lang = v.lang;
         self_admin_or_die(&chat).await?;
-        let chat_id = chat.get_id();
         context
             .action_message(|ctx, user, _| async move {
                 let warns = get_warns(ctx.try_get()?.chat, user).await?;
@@ -87,7 +86,7 @@ pub async fn warns(context: &Context) -> Result<()> {
 
                 let list = MarkupType::Text.text(&list);
                 let mention = user.mention().await?;
-                ctx.reply_fmt(entity_fmt!(lang, chat_id, "warns", mention, list))
+                ctx.reply_fmt(entity_fmt!(context, "warns", mention, list))
                     .await?;
                 Ok(())
             })
