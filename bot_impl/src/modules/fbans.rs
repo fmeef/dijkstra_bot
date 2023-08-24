@@ -11,7 +11,7 @@ use crate::util::error::{BotError, Result};
 use crate::{metadata::metadata, util::string::Speak};
 
 use itertools::Itertools;
-use macros::entity_fmt;
+use macros::{entity_fmt, lang_fmt};
 use sea_orm_migration::MigrationTrait;
 use uuid::Uuid;
 
@@ -94,7 +94,13 @@ async fn join_fed_cmd<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
     let fed = Uuid::parse_str(args.text)?;
     let chat = ctx.try_get()?.chat;
     join_fed(chat, &fed).await?;
-    ctx.reply(format!("Joined fed {}", fed.to_string())).await?;
+    ctx.reply(lang_fmt!(
+        ctx,
+        "joinfed",
+        fed.to_string(),
+        chat.name_humanreadable()
+    ))
+    .await?;
     Ok(())
 }
 
@@ -105,17 +111,9 @@ async fn myfeds(ctx: &Context) -> Result<()> {
             .into_iter()
             .map(|f| {
                 if f.owner == user.get_id() {
-                    format!(
-                        "You are the owner of fed {}, with id {}",
-                        f.fed_name,
-                        f.fed_id.to_string()
-                    )
+                    lang_fmt!(ctx, "fedowner", f.fed_name, f.fed_id.to_string())
                 } else {
-                    format!(
-                        "You are admin of fed {} with id {}",
-                        f.fed_name,
-                        f.fed_id.to_string()
-                    )
+                    lang_fmt!(ctx, "fedadmin", f.fed_name, f.fed_id.to_string())
                 }
             })
             .join("\n");
@@ -137,10 +135,10 @@ pub async fn unfban(ctx: &Context) -> Result<()> {
             {
                 ctx.unfban(user, &fed).await?;
             } else {
-                ctx.reply("You need to be fedamin to unfban").await?;
+                ctx.reply(lang_fmt!(ctx, "unfbanperm")).await?;
             }
         } else {
-            ctx.reply("This chat is not a member of a fed").await?;
+            ctx.reply(lang_fmt!(ctx, "notfmember")).await?;
         }
         Ok(())
     })
@@ -153,7 +151,7 @@ async fn rename_fed<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
         let fed = update_fed(owner.get_id(), args.text.to_owned())
             .await?
             .fed_id;
-        ctx.reply(format!("Renamed fed {} to {}", fed.to_string(), args.text))
+        ctx.reply(lang_fmt!(ctx, "renamefed", fed.to_string(), args.text))
             .await?;
     }
     Ok(())
@@ -167,11 +165,8 @@ async fn subfed_cmd<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
             .await?
             .ok_or_else(|| BotError::speak("You currently do not have a fed", chat))?;
         subfed(&fed.fed_id, &sub).await?;
-        ctx.reply(format!(
-            "Successfully subscribed fed {} to {}",
-            fed.fed_id, sub
-        ))
-        .await?;
+        ctx.reply(lang_fmt!(ctx, "subscribefed", fed.fed_id, sub))
+            .await?;
     }
     Ok(())
 }
@@ -181,8 +176,9 @@ async fn fstat_cmd(ctx: &Context) -> Result<()> {
         let v = fstat(user)
             .await?
             .map(|(fban, fed)| {
-                format!(
-                    "Banned in {} with reason \"{}\"",
+                lang_fmt!(
+                    ctx,
+                    "fstatline",
                     fed.fed_id,
                     fban.reason
                         .as_ref()
