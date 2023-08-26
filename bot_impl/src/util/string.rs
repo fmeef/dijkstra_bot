@@ -7,12 +7,11 @@ use std::ops::DerefMut;
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisStr};
 use crate::statics::{CONFIG, DB, REDIS, TG};
 use crate::tg::admin_helpers::IntoChatUser;
-use crate::tg::markdown::MarkupBuilder;
+use crate::tg::markdown::{EntityMessage, MarkupBuilder};
 use crate::util::error::Result;
 
 use async_trait::async_trait;
 use botapi::bot::Part;
-use botapi::gen_methods::CallSendMessage;
 use botapi::gen_types::{Chat, EReplyMarkup, FileData, Message};
 use chrono::Duration;
 use lazy_static::__Deref;
@@ -81,11 +80,11 @@ pub trait Speak {
 
     /// Sends a telegram api send_message builder, potentially with existing MessageEntities or
     /// other formatting
-    async fn speak_fmt<'a>(&self, messsage: CallSendMessage<'a>) -> Result<Option<Message>>;
+    async fn speak_fmt(&self, messsage: EntityMessage) -> Result<Option<Message>>;
 
     /// Replies with a telegram api send_message builder, potentially with existing MessageEntities or
     /// other formatting
-    async fn reply_fmt<'a>(&self, messsage: CallSendMessage<'a>) -> Result<Option<Message>>;
+    async fn reply_fmt(&self, messsage: EntityMessage) -> Result<Option<Message>>;
 
     /// Replies with a text message to the chat associated with this type. Murkdown is parsed if valid
     async fn reply<T>(&self, message: T) -> Result<Option<Message>>
@@ -143,7 +142,8 @@ impl Speak for Message {
         }
     }
 
-    async fn speak_fmt<'a>(&self, message: CallSendMessage<'a>) -> Result<Option<Message>> {
+    async fn speak_fmt(&self, mut message: EntityMessage) -> Result<Option<Message>> {
+        let message = message.call();
         if !should_ignore_chat(self.get_chat().get_id()).await? {
             let b = MarkupBuilder::from_murkdown(message.get_text()).await?;
             let (text, entities) = b.build();
@@ -156,7 +156,8 @@ impl Speak for Message {
         }
     }
 
-    async fn reply_fmt<'a>(&self, message: CallSendMessage<'a>) -> Result<Option<Message>> {
+    async fn reply_fmt(&self, mut message: EntityMessage) -> Result<Option<Message>> {
+        let message = message.call();
         if !should_ignore_chat(self.get_chat().get_id()).await? {
             let b = MarkupBuilder::from_murkdown(message.get_text()).await?;
             let (text, entities) = b.build();
@@ -243,7 +244,8 @@ impl Speak for Chat {
         }
     }
 
-    async fn speak_fmt<'a>(&self, message: CallSendMessage<'a>) -> Result<Option<Message>> {
+    async fn speak_fmt(&self, mut message: EntityMessage) -> Result<Option<Message>> {
+        let message = message.call();
         if !should_ignore_chat(self.get_id()).await? {
             let m = message.build().await?;
             Ok(Some(m))
@@ -252,7 +254,8 @@ impl Speak for Chat {
         }
     }
 
-    async fn reply_fmt<'a>(&self, message: CallSendMessage<'a>) -> Result<Option<Message>> {
+    async fn reply_fmt(&self, mut message: EntityMessage) -> Result<Option<Message>> {
+        let message = message.call();
         if !should_ignore_chat(self.get_id()).await? {
             let m = message.build().await?;
             Ok(Some(m))

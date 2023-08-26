@@ -1,9 +1,8 @@
-use crate::statics::TG;
 use crate::tg::admin_helpers::{approve, get_approvals, unapprove};
 use crate::tg::command::{Cmd, Context};
 use crate::tg::permissions::*;
 
-use crate::tg::markdown::{MarkupBuilder, MarkupType};
+use crate::tg::markdown::{EntityMessage, MarkupType};
 use crate::tg::user::{get_user, GetUser, Username};
 use crate::util::error::Result;
 
@@ -62,27 +61,23 @@ async fn command_list<'a>(context: &Context) -> Result<()> {
     context.check_permissions(|p| p.can_manage_chat).await?;
 
     if let Some(chat) = context.chat() {
-        let mut res = MarkupBuilder::new();
+        let mut res = EntityMessage::new(chat.get_id());
         let chat_name = chat.name_humanreadable();
-        res.bold(format!("Approved users for {}\n", chat_name));
+        res.builder()
+            .bold(format!("Approved users for {}\n", chat_name));
         for (userid, name) in get_approvals(chat).await? {
             if let Some(user) = get_user(userid).await? {
                 let name = user.name_humanreadable();
-                res.text_mention(&name, user, None);
+                res.builder().text_mention(&name, user, None);
             } else {
                 let n = name.clone();
                 let user = UserBuilder::new(userid, false, name).build();
-                res.text_mention(&n, user, None);
+                res.builder().text_mention(&n, user, None);
             };
-            res.text("\n");
+            res.builder().text("\n");
         }
-        let (msg, entities) = res.build();
-        let msg = TG
-            .client
-            .build_send_message(chat.get_id(), msg)
-            .entities(entities);
 
-        context.reply_fmt(msg).await?;
+        context.reply_fmt(res).await?;
     }
 
     Ok(())

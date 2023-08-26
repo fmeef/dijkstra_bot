@@ -53,7 +53,7 @@ use super::{
         dialog_or_default, get_dialog_key, get_user_banned_chats, record_chat_member_banned,
         reset_banned_chats, upsert_dialog,
     },
-    markdown::{MarkupBuilder, MarkupType},
+    markdown::MarkupType,
     permissions::{GetCachedAdmins, IsAdmin},
     user::{get_user_username, GetUser, Username},
 };
@@ -1482,7 +1482,7 @@ impl Context {
                 let mention = MarkupType::TextMention(user).text(&name);
                 self.speak_fmt(
                     entity_fmt!(ctx, "fpromote", mention)
-                        .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(builder.build())),
+                        .reply_markup(EReplyMarkup::InlineKeyboardMarkup(builder.build())),
                 )
                 .await?;
             }
@@ -1949,9 +1949,22 @@ impl Context {
             user.to_string()
         };
         let text = if let Some(reason) = reason {
-            lang_fmt!(lang, "warnreason", name, count, dialog.warn_limit, reason)
+            entity_fmt!(
+                self,
+                "warnreason",
+                name,
+                count.to_string(),
+                dialog.warn_limit.to_string(),
+                reason
+            )
         } else {
-            lang_fmt!(lang, "warn", name, count, dialog.warn_limit)
+            entity_fmt!(
+                self,
+                "warn",
+                name,
+                count.to_string(),
+                dialog.warn_limit.to_string()
+            )
         };
 
         let button_text = lang_fmt!(lang, "removewarn");
@@ -2007,19 +2020,7 @@ impl Context {
         let markup = builder.build();
 
         let markup = botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(markup);
-
-        let md =
-            MarkupBuilder::from_murkdown_chatuser(text, message.get_chatuser().as_ref()).await?;
-
-        let (text, entities) = md.build();
-
-        let m = TG
-            .client
-            .build_send_message(message.get_chat().get_id(), &text)
-            .entities(entities)
-            .reply_markup(&markup);
-
-        message.reply_fmt(m).await?;
+        message.reply_fmt(text.reply_markup(markup)).await?;
 
         if count >= dialog.warn_limit {
             match dialog.action_type {

@@ -256,7 +256,7 @@ pub fn textentity_fmt(tokens: TokenStream) -> TokenStream {
 
     let res = quote! {
         {
-            let mut builder = crate::tg::markdown::EntityMessage::new();
+            let mut builder = crate::tg::markdown::EntityMessage::new(#ctx.try_get()?.chat.get_id());
             #m;
             builder
         }
@@ -274,10 +274,10 @@ pub fn entity_fmt(tokens: TokenStream) -> TokenStream {
 
     let res = quote! {
         {
-            let mut builder = crate::tg::markdown::EntityMessage::new();
+            let mut builder = crate::tg::markdown::EntityMessage::new(#ctx.try_get()?.chat.get_id());
             #m;
             builder
-        }.call(#ctx.try_get()?.chat.get_id())
+        }
     };
     TokenStream::from(res)
 }

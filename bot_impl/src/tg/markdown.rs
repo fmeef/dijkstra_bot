@@ -4,8 +4,8 @@
 
 use botapi::gen_methods::CallSendMessage;
 use botapi::gen_types::{
-    InlineKeyboardButton, InlineKeyboardButtonBuilder, InlineKeyboardMarkup, MessageEntity,
-    MessageEntityBuilder, User,
+    EReplyMarkup, InlineKeyboardButton, InlineKeyboardButtonBuilder, InlineKeyboardMarkup,
+    MessageEntity, MessageEntityBuilder, User,
 };
 use futures::future::BoxFuture;
 use futures::FutureExt;
@@ -803,23 +803,44 @@ where
 
 /// Type used by proc macros for hygiene purposes and to get the borrow checker
 /// to not complain. Don't use this manually
-pub struct EntityMessage(MarkupBuilder);
+pub struct EntityMessage {
+    builder: MarkupBuilder,
+    chat: i64,
+    reply_markup: Option<EReplyMarkup>,
+}
 
 impl EntityMessage {
-    pub fn new() -> Self {
-        Self(MarkupBuilder::new())
+    pub fn new(chat: i64) -> Self {
+        Self {
+            builder: MarkupBuilder::new(),
+            chat,
+            reply_markup: None,
+        }
+    }
+
+    pub fn reply_markup(mut self, reply_markup: EReplyMarkup) -> Self {
+        self.reply_markup = Some(reply_markup);
+        self
     }
 
     pub fn builder<'a>(&'a mut self) -> &'a mut MarkupBuilder {
-        &mut self.0
+        &mut self.builder
     }
-    pub fn call<'a>(&'a mut self, chat: i64) -> CallSendMessage<'a> {
-        let (text, entities) = self.0.build();
-        TG.client.build_send_message(chat, text).entities(entities)
+    pub fn call<'a>(&'a mut self) -> CallSendMessage<'a> {
+        let (text, entities) = self.builder.build();
+        let call = TG
+            .client
+            .build_send_message(self.chat, text)
+            .entities(entities);
+        if let Some(ref reply_markup) = self.reply_markup {
+            call.reply_markup(reply_markup)
+        } else {
+            call
+        }
     }
 
     pub fn textentities<'a>(&'a self) -> (&'a str, &'a Vec<MessageEntity>) {
-        self.0.build()
+        self.builder.build()
     }
 }
 

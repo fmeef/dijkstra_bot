@@ -14,10 +14,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use base64::{engine::general_purpose, Engine};
-use botapi::{
-    gen_methods::CallSendMessage,
-    gen_types::{Chat, Message, MessageEntity, UpdateExt, User},
-};
+use botapi::gen_types::{Chat, Message, MessageEntity, UpdateExt, User};
 use lazy_static::lazy_static;
 use redis::AsyncCommands;
 use regex::Regex;
@@ -30,6 +27,7 @@ use yoke::{Yoke, Yokeable};
 use super::{
     admin_helpers::UpdateHelpers,
     button::get_url,
+    markdown::EntityMessage,
     permissions::{BotPermissions, IsGroupAdmin, NamedBotPermissions, NamedPermission},
 };
 
@@ -448,11 +446,11 @@ impl Speak for Context {
         self.message()?.speak(message).await
     }
 
-    async fn speak_fmt<'a>(&self, messsage: CallSendMessage<'a>) -> Result<Option<Message>> {
+    async fn speak_fmt(&self, messsage: EntityMessage) -> Result<Option<Message>> {
         self.message()?.speak_fmt(messsage).await
     }
 
-    async fn reply_fmt<'a>(&self, messsage: CallSendMessage<'a>) -> Result<Option<Message>> {
+    async fn reply_fmt(&self, messsage: EntityMessage) -> Result<Option<Message>> {
         self.message()?.reply_fmt(messsage).await
     }
 

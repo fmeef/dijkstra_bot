@@ -1,7 +1,6 @@
-use crate::statics::TG;
 use crate::tg::command::{Cmd, Context};
 use crate::tg::dialog::get_user_chats;
-use crate::tg::markdown::MarkupBuilder;
+use crate::tg::markdown::EntityMessage;
 use crate::tg::permissions::IsGroupAdmin;
 use crate::tg::user::GetUser;
 use crate::util::error::Result;
@@ -23,16 +22,9 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
 async fn get_id(ctx: &Context) -> Result<()> {
     ctx.action_message(|ctx, user, _| async move {
         if let Some(chat) = ctx.chat() {
-            let mut builder = MarkupBuilder::new();
-
-            builder.code(user.to_string());
-            let (text, entities) = builder.build();
-            ctx.reply_fmt(
-                TG.client
-                    .build_send_message(chat.get_id(), text)
-                    .entities(entities),
-            )
-            .await?;
+            let mut builder = EntityMessage::new(chat.get_id());
+            builder.builder().code(user.to_string());
+            ctx.reply_fmt(builder).await?;
         }
         Ok(())
     })
