@@ -251,7 +251,7 @@ async fn delete_trigger(message: &Message, trigger: &str) -> Result<()> {
                     .eq(id)
                     .and(triggers::Column::Trigger.eq(trigger.as_str())),
             )
-            .exec(DB.deref().deref())
+            .exec(DB.deref())
             .await?;
     } else {
         let filters = triggers::Entity::find()
@@ -261,7 +261,7 @@ async fn delete_trigger(message: &Message, trigger: &str) -> Result<()> {
                     .eq(message.get_chat().get_id())
                     .and(triggers::Column::Trigger.eq(trigger.as_str())),
             )
-            .all(DB.deref().deref())
+            .all(DB.deref())
             .await?;
 
         for (f, _) in filters {
@@ -271,7 +271,7 @@ async fn delete_trigger(message: &Message, trigger: &str) -> Result<()> {
                         .eq(f.trigger)
                         .and(triggers::Column::FilterId.eq(f.filter_id)),
                 )
-                .exec(DB.deref().deref())
+                .exec(DB.deref())
                 .await?;
         }
     }
@@ -284,7 +284,7 @@ async fn get_filter(message: &Message, id: i64) -> Result<Option<filters::Model>
         |_, _| async move {
             let res = filters::Entity::find()
                 .filter(filters::Column::Id.eq(id))
-                .one(DB.deref().deref())
+                .one(DB.deref())
                 .await?;
             Ok(res)
         },
@@ -334,7 +334,7 @@ async fn update_cache_from_db(message: &Message) -> Result<()> {
         let res = filters::Entity::find()
             .filter(filters::Column::Chat.eq(message.get_chat().get_id()))
             .find_with_related(triggers::Entity)
-            .all(DB.deref().deref())
+            .all(DB.deref())
             .await?;
         REDIS
             .try_pipe(|p| {
@@ -385,7 +385,7 @@ async fn insert_filter(
             ])
             .to_owned(),
         )
-        .exec_with_returning(DB.deref().deref())
+        .exec_with_returning(DB.deref())
         .await?;
     let triggers = triggers
         .iter()
@@ -408,7 +408,7 @@ async fn insert_filter(
             .update_columns([triggers::Column::Trigger, triggers::Column::FilterId])
             .to_owned(),
     )
-    .exec(DB.deref().deref())
+    .exec(DB.deref())
     .await?;
     let id = model.id.clone();
     let hash_key = get_filter_hash_key(message);

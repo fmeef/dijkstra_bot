@@ -190,7 +190,7 @@ async fn enable_welcome<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang)
                 .update_column(entities::welcomes::Column::Enabled)
                 .to_owned(),
         )
-        .exec_with_returning(DB.deref().deref())
+        .exec_with_returning(DB.deref())
         .await?;
     model.cache(key).await?;
     message.reply("Enabled welcome").await?;
@@ -229,7 +229,7 @@ async fn set_goodbye<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang) ->
                 ])
                 .to_owned(),
         )
-        .exec_with_returning(DB.deref().deref())
+        .exec_with_returning(DB.deref())
         .await?;
     let text = if let Some(text) = model.text.as_ref() {
         lang_fmt!(lang, "setgoodbye", text)
@@ -258,7 +258,7 @@ async fn set_welcome<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang) ->
                 ])
                 .to_owned(),
         )
-        .exec_with_returning(DB.deref().deref())
+        .exec_with_returning(DB.deref())
         .await?;
 
     let text = if let Some(text) = model.text.as_ref() {

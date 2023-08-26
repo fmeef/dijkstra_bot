@@ -63,7 +63,7 @@ pub async fn get_dialog(chat: &Chat) -> Result<Option<dialogs::Model>> {
     let res = default_cache_query(
         |_, _| async move {
             let res = dialogs::Entity::find_by_id(chat_id)
-                .one(DB.deref().deref())
+                .one(DB.deref())
                 .await?;
             Ok(res)
         },
@@ -86,7 +86,7 @@ pub async fn upsert_dialog(model: dialogs::ActiveModel) -> Result<()> {
                 .update_columns([dialogs::Column::WarnLimit, dialogs::Column::Federation])
                 .to_owned(),
         )
-        .exec(DB.deref().deref())
+        .exec(DB.deref())
         .await?;
     Ok(())
 }
@@ -103,7 +103,7 @@ pub async fn dialog_or_default(chat: &Chat) -> Result<dialogs::Model> {
                     .update_column(dialogs::Column::WarnLimit)
                     .to_owned(),
             )
-            .exec_with_returning(DB.deref().deref())
+            .exec_with_returning(DB.deref())
             .await?;
         d.clone().cache(&key).await?; //TODO: remove this hack
         d
@@ -492,6 +492,7 @@ impl Conversation {
             Err(BotError::conversation_err("invalid choice current"))
         }?;
         self.write_key(current.state_id).await?;
+        log::info!("transition {}", current.state_id);
         if let Some(cb) = self.0.state_callback.as_ref() {
             cb(current.state_id, self.clone());
         }
@@ -534,6 +535,9 @@ impl Conversation {
         if let Some(message) = callback.get_message() {
             self.write_key(trans).await?;
 
+            if let Some(cb) = self.0.state_callback.as_ref() {
+                cb(trans, self.clone());
+            }
             let n = self.get_current_markup(row_limit).await?;
             if let Ok(builder) =
                 MarkupBuilder::from_murkdown_chatuser(&content, message.get_chatuser().as_ref())

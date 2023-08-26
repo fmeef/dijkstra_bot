@@ -417,7 +417,7 @@ async fn get_lock(message: &Message, locktype: LockType) -> Result<Option<locks:
     default_cache_query(
         |_, _| async move {
             let res = locks::Entity::find_by_id((chat, locktype))
-                .one(DB.deref().deref())
+                .one(DB.deref())
                 .await?;
             Ok(res)
         },
@@ -431,7 +431,7 @@ async fn clear_lock(message: &Message, locktype: LockType) -> Result<()> {
     let chat = message.get_chat().get_id();
     let key = get_lock_key(chat, &locktype);
     locks::Entity::delete_by_id((chat, locktype))
-        .exec(DB.deref().deref())
+        .exec(DB.deref())
         .await?;
     REDIS.sq(|q| q.del(&key)).await?;
     Ok(())
@@ -452,7 +452,7 @@ async fn set_lock(message: &Message, locktype: LockType, user: &User) -> Result<
                 .update_column(locks::Column::LockAction)
                 .to_owned(),
         )
-        .exec_with_returning(DB.deref().deref())
+        .exec_with_returning(DB.deref())
         .await?;
     res.cache(key).await?;
     Ok(())
@@ -522,7 +522,7 @@ async fn set_lock_action(
                 .update_column(locks::Column::LockAction)
                 .to_owned(),
         )
-        .exec(DB.deref().deref())
+        .exec(DB.deref())
         .await?;
     Ok(())
 }
@@ -562,11 +562,12 @@ async fn handle_lock<'a>(
     Ok(())
 }
 
-async fn handle_unlock<'a>(message: &Message, cmd: &Option<&Cmd<'a>>) -> Result<()> {
-    message
+async fn handle_unlock<'a>(ctx: &Context, cmd: &Option<&Cmd<'a>>) -> Result<()> {
+    ctx
         .check_permissions(|p| p.can_restrict_members)
         .await?;
-    let lang = get_chat_lang(message.get_chat().get_id());
+    let message = ctx.message()?;
+    let lang = ctx.lang();
     if let (Some(lock), _) = locktype_from_args(cmd, message.get_chat().get_id()) {
         let name = lock.get_name().to_owned();
         clear_lock(message, lock).await?;
@@ -584,7 +585,7 @@ async fn handle_list(message: &Message) -> Result<()> {
     let chat = message.get_chat().get_id();
     let locks = locks::Entity::find()
         .filter(locks::Column::Chat.eq(chat))
-        .all(DB.deref().deref())
+        .all(DB.deref())
         .await?;
 
     if locks.len() > 0 {
@@ -670,7 +671,7 @@ async fn handle_command(ctx: &Context) -> Result<()> {
         if let Some(user) = message.get_from() {
             match cmd {
                 "lock" => handle_lock(message, &command, &user, lang).await?,
-                "unlock" => handle_unlock(message, &command).await?,
+                "unlock" => handle_unlock(ctx, &command).await?,
                 "locks" => handle_list(message).await?,
                 "lockaction" => lock_action(message, &args).await?,
                 "available" => cmd_available(ctx).await?,

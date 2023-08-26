@@ -1,0 +1,142 @@
+addblocklist: ブロックリスト {} を追加しました
+addfilter: フィルタを追加しました {}
+approved: 承認されたユーザー {}
+baddm: このコマンドはDMでは機能しません
+banadmin: 管理者を禁止するつもりはありません
+banchat: 匿名チャンネル {} は禁止されました。彼らは話すことはできませんが、まだどこかに潜んでいます...
+banmyself: 自分自身を禁止するつもりはありません
+banned: 禁止されたユーザー {}
+cachewait: 管理キャッシュは 10 分に 1 回のみ更新できます
+clearedlock: ロック「{}」をクリアしました
+cleartime: '{} の警告時間をクリアしました'
+clearwarns: ユーザー {} の警告をクリアしました
+commandnotfound: コマンドが見つかりません
+currentlang: リストから言語を選択してください
+defaultgoodbye: さようなら{{メンション}}
+defaultwelcome: こんにちは、{{mention}}、{{chatname}} へようこそ
+demote: 降格されたユーザー {}
+dmhelp: 助けが必要な場合は午後に連絡してください。
+erranonchannelfed: 匿名チャネルはフィードを所有できません。メインアカウントからこのコマンドを実行してみてください
+failban: 'ユーザーを禁止できませんでした。過去 48 時間、ユーザーとやり取りしていません。彼らのメッセージを私に転送してください
+
+  彼らと交流できるようにするために'
+failfpromote: 'ユーザーを昇格できませんでした: {}'
+failmute: 'このユーザーの権限を変更できませんでした。過去 48 時間彼らとやり取りしていません。
+
+  彼らとやり取りできるようにするために、彼らのメッセージの 1 つを私に転送してください。'
+fban: いい厄介払い！ {} のユーザー {} を禁止されました
+fbanreason: '良い乗り心地！
+
+  ユーザー {} がフィード {} で禁止されました
+
+  [*理由：]
+
+  {}'
+fedadmin: あなたは ID {} のフィード {} の管理者です
+fedowner: あなたは ID {} のフィード {} の所有者です
+fedsforuser: 'ユーザー {} のフィード:
+
+  {}'
+filters: 'チャット内のフィルタ {}:
+
+
+  {}'
+foundadmins: '{} 人の管理者が見つかりました'
+fpromote: ユーザー {} は続行する前に fpromotion を確認する必要があります
+fpromoted: あなたは昇進しました
+fpromotenotauth: このプロモーションを受け入れる権限がありません
+fstat: '{} の Fstat:
+
+  {}'
+fstatline: '{} 理由「{}」'
+gbanned: 'いい厄介払い！
+
+  ユーザー {} が {} に対して禁止されました'
+getrules: チャット ルールを取得します {{rules}}
+helpbutton: クリックして助けてください！
+invalid_help: 無効なヘルプ ページ {}
+invalidlang: 無効な言語が選択されました
+joinfed: フィード {} のチャット {} に参加しました
+kickadmin: 管理者を追い出すつもりはない
+kicked: キックされたユーザー {}
+kickme: 青い文字をクリックする必要があります
+lackingadminrights: ユーザー {} に管理者権限がありません
+listnotes: '{} に関するメモ'
+lockban: 'ユーザー {{ment}} が禁止されました!
+
+  [*理由：]
+
+  {}'
+lockedinchat: '- {} はこのチャットでロックされています'
+locknotspec: 無効なロック タイプです。使用可能なロックについては /help を参照してください。
+lockwarn: 'ユーザー {{ment}} が警告しました。
+
+  [*理由：]
+
+  {}'
+muteadmin: 管理者をミュートするつもりはありません
+mutemyself: 自分自身をミュートするつもりはありません
+muteuser: ミュートされたユーザー {}
+nan: 数字を入力してください
+needtobeadmin: 申し訳ありませんが、デイブ、このグループで機能するには管理者になる必要があります
+negwarns: 負の警告制限はあまり意味がありません
+noactionarg: 設定するアクションを指定する必要があります
+noreason: 理由はありません
+norules: 'このチャットにはルールはありません。完全な無政府状態。スパムを送信したり、海賊版のudemyを投稿したりしてください
+
+  コース'
+notdm: このコマンドはDM内でのみ使用できます
+notfbanned: ユーザー {} は禁止されていません
+notfedadmin: あなたはフェデレーション {} のフェデラル管理者ではありません。 fban を発行できるのは fedadmins だけです
+notfmember: このチャットはフィードのメンバーではありません
+notinfed: チャット {} はフェデレーションに属していません。 /joinfed を管理者として使用して参加します
+notsupergroup: このグループはスーパーグループにアップグレードする必要があります
+onlyone: ユーザーごとに許可されるフェデレーションは 1 つだけです
+permdenied: 権限が拒否されました。ユーザーには「{}」権限がありません
+promote: 昇格されたユーザー {}
+refreshac: 管理キャッシュが正常に更新されました
+removewarn: 警告を削除する
+renamefed: フィード {} の名前を {} に変更しました
+reported: ユーザー {} を管理者に報告しました。
+reported_nomention: 管理者に報告しました!
+resetwelcome: ウェルカム設定をクリアしました
+restrict: 制限されたユーザー {}
+savednote: チャット {} にメモ {} を保存しました
+saverules: チャット {{chatname}} の保存済みルール
+sendsticker: ステッカーを送信してアップロードする
+setdefaultaction: デフォルトのアクションを設定する
+setgoodbye: グループの別れを {} に設定します
+setlang: 言語が正常に設定されました
+setlock: チャット「{}」にロック「{}」を設定する
+setlockaction: ロックアクションを「{}」に設定します
+setwelcome: グループへのようこそを {} に設定します
+specifytime: このコマンドには時間を指定する必要があります
+specifyuser: ユーザーを指定する必要があります
+startcmd: /help を送信して、使用可能なコマンドのリストを取得します
+subscribefed: フィード {} を {} に正常に登録しました
+test: '無効なマークダウン: {}'
+thing: もの
+unapproved: 未承認のユーザー {}
+unbanchat: 禁止解除された匿名チャンネル {}
+unbanned: 禁止解除されたユーザー {}
+unfban: 禁止されていないユーザー {}
+unfbanperm: FBAN を解除するには、Fedadmin である必要があります
+unmuteuser: ミュートを解除したユーザー {}
+usernotfound: ユーザーが見つかりません。最近見たユーザーのみと対話できます
+warn: 'Yowzers!: ユーザー {} と {}/{} の警告を警告しました'
+warnadmin: 管理者に警告するつもりはありません。なんてことだ、まったく
+warnban: それは {} の警告です。ユーザー {} が禁止されました
+warnlimit: チャット {} の警告制限を {} に設定します
+warnmode: チャット {} の警告モードを {} に設定します
+warnmute: それは {} の警告です。ユーザー {} がミュートされました
+warnreason: 'ヤウザーズ！ {}/{} の警告を持つユーザー {} に警告
+
+  [*理由：]
+
+  {}'
+warns: 'ユーザー {} に警告します:
+
+  {}'
+warnsline: 理由： {}
+welcome: Pythonb と asynctio で書かれたモジュール式のグループ管理ボットである {} へようこそ
+welcomeinvalid: 引数が無効です。on/off/yes/no を使用してください

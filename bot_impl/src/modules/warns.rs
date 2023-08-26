@@ -1,5 +1,5 @@
 use crate::tg::command::{Cmd, Context};
-use crate::tg::user::GetUser;
+use crate::tg::user::{GetUser, Username};
 use crate::util::error::Fail;
 
 use crate::{
@@ -72,8 +72,9 @@ pub async fn warns(context: &Context) -> Result<()> {
                 let list = warns
                     .into_iter()
                     .map(|w| {
-                        format!(
-                            "Reason: {}",
+                        lang_fmt!(
+                            lang,
+                            "warnsline",
                             w.reason.unwrap_or_else(|| lang_fmt!(lang, "noreason"))
                         )
                     })
@@ -101,9 +102,7 @@ pub async fn clear<'a>(ctx: &Context) -> Result<()> {
     ctx.action_message(|ctx, user, _| async move {
         clear_warns(ctx.message()?.get_chat_ref(), user).await?;
 
-        let name = user.cached_name().await?;
-
-        ctx.reply(format!("Cleared warns for user {}", name))
+        ctx.reply_fmt(entity_fmt!(ctx, "clearwarns", user.mention().await?))
             .await?;
         Ok(())
     })
@@ -115,15 +114,18 @@ pub async fn clear<'a>(ctx: &Context) -> Result<()> {
 async fn set_time<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
     ctx.check_permissions(|p| p.can_restrict_members).await?;
     let message = ctx.message()?;
+    let chat = ctx.try_get()?.chat.name_humanreadable();
     if let Ok(Some(time)) = ctx.parse_duration(&Some(args.as_slice())) {
         set_warn_time(message.get_chat_ref(), Some(time.num_seconds())).await?;
         let time = format_duration(time.to_std()?);
         message.reply(format!("Set warn time to {}", time)).await?;
     } else if args.text.trim() == "clear" {
         set_warn_time(message.get_chat_ref(), None).await?;
-        message.reply("Cleared warn time").await?;
+        message
+            .reply(lang_fmt!(ctx.lang(), "cleartime", chat))
+            .await?;
     } else {
-        message.reply("Specify a time").await?;
+        message.reply(lang_fmt!(ctx.lang(), "specifytime")).await?;
     }
     Ok(())
 }
@@ -131,9 +133,10 @@ async fn set_time<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
 async fn cmd_warn_mode<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
     ctx.check_permissions(|p| p.can_restrict_members).await?;
     let message = ctx.message()?;
+    let chat = ctx.try_get()?.chat.name_humanreadable();
     set_warn_mode(message.get_chat_ref(), args.text).await?;
     message
-        .reply(format!("Set warn mode {}", args.text))
+        .reply(lang_fmt!(ctx.lang(), "warnmode", args.text, chat))
         .await?;
     Ok(())
 }
@@ -141,19 +144,20 @@ async fn cmd_warn_mode<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
 async fn cmd_warn_limit<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
     ctx.check_permissions(|p| p.can_restrict_members).await?;
     let message = ctx.message()?;
+    let chat = ctx.try_get()?.chat.name_humanreadable();
     match i32::from_str_radix(args.text.trim(), 10) {
         Ok(num) => {
             if num > 0 {
                 set_warn_limit(message.get_chat_ref(), num).await?;
-                message.reply(format!("set warn limit to {}", num)).await?;
-            } else {
                 message
-                    .reply("Negative warn limits don't make sense")
+                    .reply(lang_fmt!(ctx.lang(), "warnlimit", num, chat))
                     .await?;
+            } else {
+                message.reply(lang_fmt!(ctx.lang(), "negwarns")).await?;
             }
         }
         Err(_) => {
-            message.speak("Enter a number").await?;
+            message.speak(lang_fmt!(ctx.lang(), "nan")).await?;
         }
     }
     Ok(())

@@ -39,6 +39,8 @@ async fn handle_terminal_state(current: Uuid, conv: Conversation, chat: i64) -> 
         .ok_or_else(|| BotError::speak("Chat not found", chat))?;
     if let Some(state) = conv.get_state(&current) {
         let lang = Lang::from_code(&state.content);
+
+        log::info!("set chat lang to {:?}", state.content);
         match lang {
             Lang::Invalid => {
                 chat.speak(lang_fmt!(lang, "invalidlang")).await?;
@@ -48,6 +50,8 @@ async fn handle_terminal_state(current: Uuid, conv: Conversation, chat: i64) -> 
                 chat.speak(lang_fmt!(l, "setlang")).await?;
             }
         }
+    } else {
+        log::warn!("setlang with invalid state");
     }
     Ok(())
 }
@@ -65,15 +69,18 @@ async fn get_lang_conversation(message: &Message, current: &Lang) -> Result<Conv
 
     let start = state.get_start()?.state_id;
     get_langs().iter().for_each(|lang| {
-        let success = state.add_state(lang_fmt!(lang, "setlang"));
+        log::warn!("supported lang: {:?}", lang);
+        let success = state.add_state(lang.into_code());
         state.add_transition(start, success, lang.into_code(), lang.into_code());
     });
     message.get_chat().record_chat().await?;
     let id = message.get_chat().get_id();
     state.state_callback(move |uuid, conv| {
+        log::info!("conversation state {}", uuid);
         if uuid != start {
             tokio::spawn(async move {
                 if let Err(err) = handle_terminal_state(uuid, conv, id).await {
+                    log::error!("terminal state error {}", err);
                     err.record_stats();
                 }
             });

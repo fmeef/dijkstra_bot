@@ -316,16 +316,15 @@ impl IsGroupAdmin for Message {
             .get_from()
             .ok_or_else(|| BotError::Generic("user not found".to_owned()))?;
         let permission = NamedBotPermissions::from_chatuser(&user, chat).await?;
+        let lang = get_chat_lang(chat.get_id()).await?;
+
         // log::info!("got permissions {:?}", permission);
 
         let sudo = permission.is_sudo.is_granted();
         let p = func(permission);
 
         if !p.is_granted() && !sudo {
-            self.fail(format!(
-                "Permission denied. User missing \"{}\"",
-                p.get_name()
-            ))
+            self.fail(lang_fmt!(lang, "permdenied", p.get_name()))
         } else {
             Ok(())
         }
@@ -358,13 +357,12 @@ impl IsAdmin for User {
     {
         is_group_or_die(chat).await?;
         let permission = NamedBotPermissions::from_chatuser(self, chat).await?;
+        let lang = get_chat_lang(chat.get_id()).await?;
+
         let sudo = permission.is_sudo.is_granted();
         let p = func(permission);
         if !p.is_granted() && !sudo {
-            chat.fail(format!(
-                "Permission denied. User missing \"{}\"",
-                p.get_name()
-            ))
+            chat.fail(lang_fmt!(lang, "permdenied", p.get_name()))
         } else {
             Ok(())
         }
@@ -412,6 +410,8 @@ impl<'a> IsAdmin for Option<Cow<'a, User>> {
         F: FnOnce(NamedBotPermissions) -> NamedPermission + Send,
     {
         is_group_or_die(chat).await?;
+
+        let lang = get_chat_lang(chat.get_id()).await?;
         let user = self
             .as_ref()
             .ok_or_else(|| BotError::Generic("user not found".to_owned()))?;
@@ -419,10 +419,7 @@ impl<'a> IsAdmin for Option<Cow<'a, User>> {
         let sudo = permission.is_sudo.is_granted();
         let p = func(permission);
         if !p.is_granted() && !sudo {
-            chat.fail(format!(
-                "Permission denied. User missing \"{}\"",
-                p.get_name()
-            ))
+            chat.fail(lang_fmt!(lang, "permdenied", p.get_name()))
         } else {
             Ok(())
         }
@@ -471,14 +468,13 @@ impl IsAdmin for i64 {
             .get_cached_user()
             .await?
             .ok_or_else(|| BotError::Generic("user not found".to_owned()))?;
+
+        let lang = get_chat_lang(chat.get_id()).await?;
         let permission = NamedBotPermissions::from_chatuser(&user, chat).await?;
         let sudo = permission.is_sudo.is_granted();
         let p = func(permission);
         if !p.is_granted() && !sudo {
-            chat.fail(format!(
-                "Permission denied. User missing \"{}\"",
-                p.get_name()
-            ))
+            chat.fail(lang_fmt!(lang, "permdenied", p.get_name()))
         } else {
             Ok(())
         }

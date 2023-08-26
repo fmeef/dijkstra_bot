@@ -1,0 +1,142 @@
+addblocklist: 添加了黑名單 {}
+addfilter: 添加了過濾器 {}
+approved: 已批准的用戶{}
+baddm: 該命令在 dm 中不起作用
+banadmin: 我不會禁止管理員
+banchat: 匿名頻道 {} 已被禁止，他們將無法說話，但仍潛伏在某處...
+banmyself: 我不會禁止自己
+banned: 被禁止的用戶 {}
+cachewait: 管理緩存只能每 10 分鐘刷新一次
+clearedlock: 清除鎖“{}”
+cleartime: 已清除 {} 的警告時間
+clearwarns: 已清除用戶 {} 的警告
+commandnotfound: 找不到命令
+currentlang: 從列表中選擇一種語言
+defaultgoodbye: 再見{{提及}}
+defaultwelcome: 您好{{mention}}，歡迎來到{{chatname}}
+demote: 已降級的用戶 {}
+dmhelp: 請pm聯繫我尋求幫助！
+erranonchannelfed: 匿名頻道不能擁有聯邦。嘗試從您的主帳戶運行此命令
+failban: '未能禁止用戶，我在過去 48 小時內沒有與他們互動。請向我轉發他們的一條消息
+
+  為了讓我能夠與他們互動'
+failfpromote: 未能提升用戶：{}
+failmute: '無法更改該用戶的權限。過去 48 小時內我沒有與他們互動。
+
+  請向我轉發他們的一條消息，以便我與他們互動'
+fban: 甩掉包袱！在 {} 中禁止用戶 {}
+fbanreason: '騎得好！
+
+  用戶 {} 在 fed {} 中被禁止
+
+  [*原因：]
+
+  {}'
+fedadmin: 您是 ID 為 {} 的 fed {} 的管理員
+fedowner: 您是 ID 為 {} 的 fed {} 的所有者
+fedsforuser: '用戶 {} 的 Feds：
+
+  {}'
+filters: '聊天中的過濾器 {}：
+
+
+  {}'
+foundadmins: 找到 {} 個管理員
+fpromote: 用戶 {} 需要先確認 fpromotion，然後才能繼續
+fpromoted: 你已經升職了
+fpromotenotauth: 您無權接受此促銷活動
+fstat: '{} 的 Fstat：
+
+  {}'
+fstatline: '{}，原因為“{}”'
+gbanned: '甩掉包袱！
+
+  用戶 {} 被禁止 {}'
+getrules: 獲取聊天規則{{rules}}
+helpbutton: 點我尋求幫助！
+invalid_help: 幫助頁面無效{}
+invalidlang: 選擇的語言無效
+joinfed: 已加入 feed {} 進行聊天 {}
+kickadmin: 我不會踢管理員
+kicked: 已踢出用戶 {}
+kickme: 藍色文字必須點擊
+lackingadminrights: 用戶 {} 缺乏管理員權限
+listnotes: '{} 的註釋'
+lockban: '用戶{{ment}}已被禁止！
+
+  [*原因：]
+
+  {}'
+lockedinchat: '- {} 在此聊天中被鎖定'
+locknotspec: 鎖類型無效，請參閱 /help 了解可用鎖
+lockwarn: '用戶{{ment}}警告！
+
+  [*原因：]
+
+  {}'
+muteadmin: 我不會將管理員靜音
+mutemyself: 我不會讓自己靜音
+muteuser: 靜音用戶 {}
+nan: 請輸入一個數字
+needtobeadmin: 抱歉，戴夫，我需要成為管理員才能在該組中工作
+negwarns: 負警告限制沒有多大意義
+noactionarg: 您需要指定要設置的操作
+noreason: 沒有理由
+norules: '這個聊天沒有規則。完全無政府狀態。請隨意發送垃圾郵件並發布盜版 udemy
+
+  培訓班'
+notdm: 該命令只能在dm中使用
+notfbanned: 用戶 {} 未被禁止
+notfedadmin: 您不是聯邦 {} 中的聯邦管理員。只有聯邦管理員才能發布 fban
+notfmember: 此聊天不是聯邦成員
+notinfed: 聊天 {} 不在聯合中。使用 /joinfed 作為管理員加入其中
+notsupergroup: 該組必須升級為超級組
+onlyone: 每個用戶僅允許一個聯盟
+permdenied: 權限被拒絕，用戶缺少“{}”權限
+promote: 晉升用戶{}
+refreshac: 成功刷新管理緩存
+removewarn: 刪除警告
+renamefed: 將 fed {} 重命名為 {}
+reported: 已向管理員舉報用戶 {}！
+reported_nomention: 已向管理員舉報！
+resetwelcome: 清除歡迎配置
+restrict: 受限用戶{}
+savednote: 已在聊天 {} 中保存註釋 {}
+saverules: 已保存聊天規則 {{chatname}}
+sendsticker: 發送貼紙上傳
+setdefaultaction: 設置默認操作
+setgoodbye: 將群組告別設置為 {}
+setlang: 設置語言成功
+setlock: 為聊天“{}”設置鎖定“{}”
+setlockaction: 將鎖定操作設置為“{}”
+setwelcome: 設置群組歡迎加入 {}
+specifytime: 您需要指定執行此命令的時間
+specifyuser: 您需要指定一個用戶
+startcmd: 發送 /help 以獲取可用命令的列表
+subscribefed: 已成功將 {} 訂閱到 {}
+test: 無效的靜音：{}
+thing: 事物
+unapproved: 未經批准的用戶 {}
+unbanchat: 解禁匿名頻道 {}
+unbanned: 解除禁止的用戶 {}
+unfban: 解除封禁的用戶 {}
+unfbanperm: 您需要成為聯邦管理員才能取消聯邦禁令
+unmuteuser: 取消靜音的用戶 {}
+usernotfound: 未找到用戶。只有最近見過的用戶才能與之互動
+warn: Yowzers！：警告用戶 {}，並發出 {}/{} 警告
+warnadmin: 我不會警告管理員！到底是什麼鬼啊
+warnban: 這是 {} 條警告！用戶 {} 被禁止
+warnlimit: 將聊天的警告限制設置為 {} {}
+warnmode: 將聊天警告模式設置為 {} {}
+warnmute: 這是 {} 條警告！用戶 {} 已靜音
+warnreason: '喲澤爾！使用 {}/{} 警告向用戶 {} 發出警告
+
+  [*原因：]
+
+  {}'
+warns: '針對用戶 {} 的警告：
+
+  {}'
+warnsline: 原因： {}
+welcome: 歡迎使用 {}，這是一個用 pythonb 和 asynctio 編寫的模塊化群組管理機器人
+welcomeinvalid: 參數無效，請使用 on/off/yes/no

@@ -409,7 +409,7 @@ pub async fn create_federation(ctx: &Context, federation: federations::Model) ->
         Err(err) => match err {
             sea_orm::DbErr::Query(err) => {
                 log::error!("create fed err {}", err);
-                return ctx.fail("Only one federation allowed per user");
+                return ctx.fail(lang_fmt!(ctx, "onlyone"));
             }
             err => return Err(err.into()),
         },
@@ -924,7 +924,7 @@ pub async fn set_warn_time(chat: &Chat, time: Option<i64>) -> Result<()> {
                 .update_column(dialogs::Column::WarnTime)
                 .to_owned(),
         )
-        .exec_with_returning(DB.deref().deref())
+        .exec_with_returning(DB.deref())
         .await?;
 
     model.cache(key).await?;
@@ -961,7 +961,7 @@ pub async fn set_warn_limit(chat: &Chat, limit: i32) -> Result<()> {
                 .update_column(dialogs::Column::WarnLimit)
                 .to_owned(),
         )
-        .exec_with_returning(DB.deref().deref())
+        .exec_with_returning(DB.deref())
         .await?;
 
     model.cache(key).await?;
@@ -1005,7 +1005,7 @@ pub async fn set_warn_mode(chat: &Chat, mode: &str) -> Result<()> {
                 .update_column(dialogs::Column::ActionType)
                 .to_owned(),
         )
-        .exec_with_returning(DB.deref().deref())
+        .exec_with_returning(DB.deref())
         .await?;
 
     model.cache(key).await?;
@@ -1050,7 +1050,7 @@ pub async fn get_warns(chat: &Chat, user_id: i64) -> Result<Vec<warns::Model>> {
                         .eq(user_id)
                         .and(warns::Column::ChatId.eq(chat_id)),
                 )
-                .all(DB.deref().deref())
+                .all(DB.deref())
                 .await?;
             Ok(count)
         },
@@ -1115,7 +1115,7 @@ pub async fn get_warns_count(message: &Message, user: &User) -> Result<i32> {
                             .eq(user_id)
                             .and(warns::Column::ChatId.eq(chat_id)),
                     )
-                    .count(DB.deref().deref())
+                    .count(DB.deref())
                     .await?;
                 Ok(count)
             },
@@ -1142,7 +1142,7 @@ pub async fn clear_warns(chat: &Chat, user: i64) -> Result<()> {
                 .eq(chat.get_id())
                 .and(warns::Column::UserId.eq(user)),
         )
-        .exec(DB.deref().deref())
+        .exec(DB.deref())
         .await?;
     Ok(())
 }
@@ -1403,13 +1403,13 @@ impl Context {
             let cancel = InlineKeyboardButtonBuilder::new("Cancel".to_owned())
                 .set_callback_data(Uuid::new_v4().to_string())
                 .build();
-
+            let lang = self.lang().clone();
             confirm.on_push_multi(move |callback| async move {
                 if callback.get_from().get_id() != user {
                     TG.client
                         .build_answer_callback_query(&callback.get_id())
                         .show_alert(true)
-                        .text("You are not authorized to accept this promotion")
+                        .text(&lang_fmt!(lang, "fpromotenotauth"))
                         .build()
                         .await?;
                     return Ok(false);
@@ -1424,7 +1424,7 @@ impl Context {
                             TG.client
                                 .build_answer_callback_query(&callback.get_id())
                                 .show_alert(true)
-                                .text("You have been promoted")
+                                .text(&lang_fmt!(lang, "fpromoted"))
                                 .build()
                                 .await
                         }
@@ -1432,7 +1432,7 @@ impl Context {
                             TG.client
                                 .build_answer_callback_query(&callback.get_id())
                                 .show_alert(true)
-                                .text(&format!("Failed to promote user: {}", err))
+                                .text(&lang_fmt!(lang, "failfpromote", err))
                                 .build()
                                 .await
                         }
@@ -1621,7 +1621,7 @@ impl Context {
             let chat = v.chat;
             is_group_or_die(chat).await
         } else {
-            Err(BotError::Generic("not a chgt".to_owned()))
+            Err(BotError::Generic("not a chat".to_owned()))
         }
     }
 
@@ -2120,7 +2120,7 @@ pub async fn warn_user(
         expires: Set(duration),
     };
     let model = warns::Entity::insert(model)
-        .exec_with_returning(DB.deref().deref())
+        .exec_with_returning(DB.deref())
         .await?;
     let m = RedisStr::new(&model)?;
     let key = get_warns_key(user, chat_id);
@@ -2170,7 +2170,7 @@ pub async fn update_actions_ban(
                 .update_columns([actions::Column::IsBanned, actions::Column::Expires])
                 .to_owned(),
         )
-        .exec_with_returning(DB.deref().deref())
+        .exec_with_returning(DB.deref())
         .await?;
 
     res.cache(key).await?;
@@ -2206,7 +2206,7 @@ pub async fn update_actions_pending(chat: &Chat, user: &User, pending: bool) -> 
                 .update_columns([actions::Column::Pending])
                 .to_owned(),
         )
-        .exec_with_returning(DB.deref().deref())
+        .exec_with_returning(DB.deref())
         .await?;
 
     res.cache(key).await?;
@@ -2289,7 +2289,7 @@ pub async fn update_actions_permissions(
                 ])
                 .to_owned(),
         )
-        .exec_with_returning(DB.deref().deref())
+        .exec_with_returning(DB.deref())
         .await?;
 
     res.cache(key).await?;
@@ -2319,7 +2319,7 @@ pub async fn update_actions(actions: actions::Model) -> Result<()> {
                 ])
                 .to_owned(),
         )
-        .exec(DB.deref().deref())
+        .exec(DB.deref())
         .await?;
     Ok(())
 }

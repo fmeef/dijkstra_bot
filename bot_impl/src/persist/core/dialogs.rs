@@ -1,9 +1,12 @@
 //! ORM type for storing metadata on conversations
 //! conversations being DMs, channels, and supergroups
 
+use std::borrow::Cow;
+
+use crate::tg::admin_helpers::is_dm;
 use crate::util::error::Fail;
 use crate::{persist::admin::actions::ActionType, statics::TG};
-use botapi::gen_types::Chat;
+use botapi::gen_types::{Chat, ChatPermissionsBuilder};
 use sea_orm::entity::prelude::*;
 use sea_orm::ActiveValue::{NotSet, Set};
 use serde::{Deserialize, Serialize};
@@ -74,13 +77,16 @@ impl Related<crate::persist::admin::fbans::Entity> for Entity {
 impl Model {
     pub async fn from_chat(chat: &Chat) -> crate::util::error::Result<ActiveModel> {
         let chat = TG.client.get_chat(chat.get_id()).await?;
-        let permissions = chat
-            .get_permissions()
-            .ok_or_else(|| chat.fail_err("failed to get chat permissions"))?;
 
+        let permissions = if is_dm(&chat) {
+            Cow::Owned(ChatPermissionsBuilder::new().build())
+        } else {
+            chat.get_permissions()
+                .ok_or_else(|| chat.fail_err("failed to get chat permissions"))?
+        };
         let res = ActiveModel {
             chat_id: Set(chat.get_id()),
-            language: Set(crate::util::string::Lang::En),
+            language: NotSet,
             chat_type: Set(chat.get_tg_type().into_owned()),
             warn_limit: Set(3),
             action_type: Set(ActionType::Mute),

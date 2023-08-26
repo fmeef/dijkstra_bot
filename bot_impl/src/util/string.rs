@@ -10,21 +10,18 @@ use crate::tg::admin_helpers::IntoChatUser;
 use crate::tg::markdown::{EntityMessage, MarkupBuilder};
 use crate::util::error::Result;
 
+pub use crate::langs::*;
 use async_trait::async_trait;
 use botapi::bot::Part;
 use botapi::gen_types::{Chat, EReplyMarkup, FileData, Message};
 use chrono::Duration;
 use lazy_static::__Deref;
-use macros::get_langs;
-get_langs!();
-
-pub use langs::*;
-
-use redis::Script;
-use sea_orm::sea_query::OnConflict;
-use sea_orm::{EntityTrait, IntoActiveModel};
 
 use crate::persist::core::dialogs;
+use redis::Script;
+use sea_orm::sea_query::OnConflict;
+use sea_orm::ActiveValue::Set;
+use sea_orm::{EntityTrait, IntoActiveModel};
 
 /// Returns false if ratelimiting is triggered. This function should be called before
 /// every attempt to send a messsage in a chat, as calling it determines ratelimiting
@@ -299,7 +296,8 @@ pub async fn get_chat_lang(chat: i64) -> Result<Lang> {
 /// Sets the current langauge config for the chat
 pub async fn set_chat_lang(chat: &Chat, lang: Lang) -> Result<()> {
     let r = RedisStr::new(&lang)?;
-    let c = dialogs::Model::from_chat(chat).await?;
+    let mut c = dialogs::Model::from_chat(chat).await?;
+    c.language = Set(lang);
     let key = get_lang_key(chat.get_id());
     REDIS
         .pipe(|p| {
@@ -309,11 +307,11 @@ pub async fn set_chat_lang(chat: &Chat, lang: Lang) -> Result<()> {
         .await?;
     dialogs::Entity::insert(c.into_active_model())
         .on_conflict(
-            OnConflict::column(dialogs::Column::Language)
+            OnConflict::column(dialogs::Column::ChatId)
                 .update_column(dialogs::Column::Language)
                 .to_owned(),
         )
-        .exec(DB.deref().deref())
+        .exec(DB.deref())
         .await?;
 
     Ok(())

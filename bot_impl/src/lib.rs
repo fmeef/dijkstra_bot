@@ -13,6 +13,9 @@ pub mod util;
 mod logger;
 pub mod statics;
 
+use macros::get_langs;
+get_langs!();
+
 fn init_db() {
     println!(
         "db initialized, mock: {}",

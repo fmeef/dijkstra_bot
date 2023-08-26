@@ -198,6 +198,7 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
                                 }
 
                                 None => {
+                                    log::info!("start with lang {:?}", lang);
                                     message.reply(macros::lang_fmt!(lang, "startcmd")).await?;
                                     Ok(true)
                                 }

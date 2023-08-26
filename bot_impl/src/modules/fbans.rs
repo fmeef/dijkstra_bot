@@ -132,12 +132,8 @@ async fn myfeds(ctx: &Context) -> Result<()> {
                 }
             })
             .join("\n");
-        ctx.reply(format!(
-            "Feds for user {}:\n{}",
-            user.name_humanreadable(),
-            msg
-        ))
-        .await?;
+        ctx.reply_fmt(entity_fmt!(ctx, "fedsforuser", user.mention().await?, msg))
+            .await?;
     }
     Ok(())
 }

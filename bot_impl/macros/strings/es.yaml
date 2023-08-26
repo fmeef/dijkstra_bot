@@ -1,0 +1,152 @@
+addblocklist: Lista de bloqueo agregada {}
+addfilter: Filtro agregado {}
+approved: Usuario aprobado {}
+baddm: Este comando no funciona en un dm
+banadmin: No voy a banear a un administrador.
+banchat: Canal anónimo prohibido {}, no podrán hablar pero siguen acechando por algún
+  lado...
+banmyself: no me voy a prohibir
+banned: Usuario prohibido {}
+cachewait: La caché de administrador solo se puede actualizar una vez cada 10 minutos.
+clearedlock: Bloqueo borrado "{}"
+cleartime: Hora de advertencia borrada para {}
+clearwarns: Advertencias borradas para el usuario {}
+commandnotfound: Comando no encontrado
+currentlang: Elija un idioma de la lista
+defaultgoodbye: Adiós {{mencionar}}
+defaultwelcome: Hola, {{mention}}, bienvenido a {{chatname}}
+demote: Usuario degradado {}
+dmhelp: ¡Contáctame por la tarde para obtener ayuda!
+erranonchannelfed: Los canales anónimos no pueden ser propietarios de federales. Intente
+  ejecutar este comando desde su cuenta principal
+failban: 'No se pudo prohibir al usuario. No he interactuado con él en las últimas
+  48 horas. Por favor envíame uno de sus mensajes.
+
+  para permitirme interactuar con ellos'
+failfpromote: 'No se pudo promocionar al usuario: {}'
+failmute: 'No se pudieron cambiar los permisos de este usuario. No he interactuado
+  con ellos en las últimas 48 horas.
+
+  Por favor reenvíame uno de sus mensajes para permitirme interactuar con ellos.'
+fban: ¡Buen viaje! Usuario bloqueado {} en {}
+fbanreason: '¡Buen viaje!
+
+  Usuario {} baneado en feed {}
+
+  [*Razón:]
+
+  {}'
+fedadmin: Eres el administrador de feed {} con id {}
+fedowner: Eres el propietario de feed {} con id {}
+fedsforuser: 'Federales para el usuario {}:
+
+  {}'
+filters: 'Filtros en el chat {}:
+
+
+  {}'
+foundadmins: Se encontraron {} administradores
+fpromote: El usuario {} debe confirmar la promoción antes de continuar.
+fpromoted: Usted ha sido promovido
+fpromotenotauth: No estás autorizado a aceptar esta promoción.
+fstat: 'Estadísticas rápidas para {}:
+
+  {}'
+fstatline: '{} con razón "{}"'
+gbanned: '¡Buen viaje!
+
+  Usuario {} gbaneado por {}'
+getrules: Obtenga las reglas del chat {{rules}}
+helpbutton: ¡Haz clic en mí para obtener ayuda!
+invalid_help: Página de ayuda no válida {}
+invalidlang: Idioma no válido seleccionado
+joinfed: Se unió a feed {} para chatear {}
+kickadmin: No voy a echar a un administrador.
+kicked: Usuario expulsado {}
+kickme: EL TEXTO AZUL DEBE HACER CLIC
+lackingadminrights: El usuario {} carece de derechos de administrador
+listnotes: Notas para {}
+lockban: '¡Usuario {{mention}} prohibido!
+
+  [*Razón:]
+
+  {}'
+lockedinchat: '- {} está bloqueado en este chat'
+locknotspec: Tipo de bloqueo no válido; consulte /ayuda para conocer los bloqueos
+  disponibles
+lockwarn: '¡Usuario {{mention}} advertido!
+
+  [*Razón:]
+
+  {}'
+muteadmin: No voy a silenciar a un administrador.
+mutemyself: no me voy a silenciar
+muteuser: Usuario silenciado {}
+nan: Por favor, introduzca un número
+needtobeadmin: Lo siento Dave, necesito ser administrador para funcionar en este grupo.
+negwarns: Los límites de advertencia negativos no tienen mucho sentido
+noactionarg: Debes especificar la acción a configurar.
+noreason: Sin razón
+norules: 'Este chat no tiene reglas. Anarquía total. No dudes en enviar spam y publicar
+  udemy pirateado.
+
+  cursos'
+notdm: Este comando sólo se puede utilizar en dm
+notfbanned: Usuario {} no bloqueado
+notfedadmin: No eres administrador de fe en la federación {}. Sólo los administradores
+  federales pueden emitir fbans
+notfmember: Este chat no es miembro de una Fed.
+notinfed: El chat {} no está en una federación. Utilice /joinfed como administrador
+  para unirse a uno
+notsupergroup: Este grupo debe actualizarse a un supergrupo.
+onlyone: Sólo se permite una federación por usuario
+permdenied: Permiso denegado, al usuario le falta el permiso "{}"
+promote: Usuario prometido {}
+refreshac: Caché de administrador actualizada correctamente
+removewarn: Quitar advertencia
+renamefed: Renombrado alimentado {} a {}
+reported: ¡Reporté al usuario {} a los administradores!
+reported_nomention: ¡Reportado a los administradores!
+resetwelcome: Configuración de bienvenida borrada
+restrict: Usuario restringido {}
+savednote: Nota guardada {} en el chat {}
+saverules: Reglas guardadas para el chat {{chatname}}
+sendsticker: Enviar una pegatina para subir
+setdefaultaction: Establecer acción predeterminada
+setgoodbye: Configurar el adiós del grupo a {}
+setlang: Idioma configurado correctamente
+setlock: Establecer bloqueo "{}" para el chat "{}"
+setlockaction: Establecer la acción de bloqueo en "{}"
+setwelcome: Establecer la bienvenida del grupo a {}
+specifytime: Debes especificar una hora para este comando.
+specifyuser: Necesitas especificar un usuario
+startcmd: Envíe /help para obtener una lista de comandos disponibles
+subscribefed: Suscrito correctamente envió {} a {}
+test: 'Anochecer no válido: {}'
+thing: cosa
+unapproved: Usuario no aprobado {}
+unbanchat: Canal anónimo no prohibido {}
+unbanned: Usuario no baneado {}
+unfban: Usuario no baneado {}
+unfbanperm: Necesitas ser administrador de fe para desactivar la prohibición.
+unmuteuser: Usuario no silenciado {}
+usernotfound: Usuario no encontrado. Sólo se puede interactuar con los usuarios que
+  han sido vistos recientemente.
+warn: '¡Yowzers!: Advirtió al usuario {} con {}/{} advierte'
+warnadmin: ¡No voy a advertir a un administrador! ¿Qué diablos absoluto?
+warnban: ¡Esas son {} advertencias! Usuario {} baneado
+warnlimit: Establezca el límite de advertencia en {} para chatear {}
+warnmode: Establezca el modo de advertencia en {} para chatear {}
+warnmute: ¡Esas son {} advertencias! Usuario {} silenciado
+warnreason: '¡Yowzers! Usuario advertido {} con {}/{} advertencias
+
+  [*Razón:]
+
+  {}'
+warns: 'Advertencias para el usuario {}:
+
+  {}'
+warnsline: 'Razón: {}'
+welcome: Bienvenido a {}, un bot modular de administración de grupos escrito en pythonb
+  y asynctio
+welcomeinvalid: Argumento no válido, use encendido/apagado/sí/no

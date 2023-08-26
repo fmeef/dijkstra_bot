@@ -20,6 +20,16 @@ static STRINGS_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/strings");
 
 lazy_static! {
     static ref LOCALE: RwLock<Locale> = RwLock::new(get_locale());
+    static ref STRINGS: Vec<String> = get_sorted_filenames();
+}
+
+fn get_sorted_filenames() -> Vec<String> {
+    let mut v = STRINGS_DIR
+        .files()
+        .map(|f| f.path().file_stem().unwrap().to_string_lossy().into_owned())
+        .collect::<Vec<String>>();
+    v.sort();
+    v
 }
 
 #[derive(Deserialize)]
@@ -139,55 +149,52 @@ pub fn inline_lang(tokens: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn get_langs(_: TokenStream) -> TokenStream {
-    let names = STRINGS_DIR
-        .files()
-        .map(|f| f.path().file_stem())
-        .map(|thing| {
-            let name = thing.unwrap().to_str().unwrap();
-            let v = name.to_case(Case::UpperCamel);
-            let v = format_ident!("{}", v);
-            quote! {
-                #[sea_orm(string_value = #name)]
-                #v
-            }
-        });
+    let names = STRINGS.iter().map(|name| {
+        let v = name.to_case(Case::UpperCamel);
+        let v = format_ident!("{}", v);
+        quote! {
+            #[sea_orm(string_value = #name)]
+            #v
+        }
+    });
 
-    let into = STRINGS_DIR
-        .files()
-        .map(|f| f.path().file_stem())
-        .map(|thing| {
-            let name = thing.unwrap().to_str().unwrap();
-            let v = name.to_case(Case::UpperCamel);
-            let v = format_ident!("{}", v);
+    let mnames = STRINGS.iter().map(|name| {
+        let v = name.to_case(Case::UpperCamel);
+        let v = format_ident!("{}", v);
+        quote! {
+             Self::#v
+        }
+    });
 
-            quote! {
-                Self::#v => #name.to_owned()
-            }
-        });
+    let into = STRINGS.iter().map(|name| {
+        let v = name.to_case(Case::UpperCamel);
+        let v = format_ident!("{}", v);
 
-    let from = STRINGS_DIR
-        .files()
-        .map(|f| f.path().file_stem())
-        .map(|thing| {
-            let name = thing.unwrap().to_str().unwrap();
-            let v = name.to_case(Case::UpperCamel);
-            let v = format_ident!("{}", v);
+        quote! {
+            Self::#v => #name
+        }
+    });
 
-            quote! {
-                #name => Self::#v
-            }
-        });
+    let from = STRINGS.iter().map(|name| {
+        let v = name.to_case(Case::UpperCamel);
+        let v = format_ident!("{}", v);
 
-    let vnames = STRINGS_DIR
-        .files()
-        .map(|f| f.path().file_stem())
-        .map(|thing| thing.unwrap().to_str().unwrap().to_case(Case::UpperCamel))
+        quote! {
+            #name => Self::#v
+        }
+    });
+
+    let vnames = STRINGS
+        .iter()
+        .map(|thing| thing.to_case(Case::UpperCamel))
         .map(|v| format_ident!("{}", v))
         .map(|v| {
             quote! {
                 Lang::#v
             }
         });
+
+    let ids: Vec<usize> = (0..STRINGS.len()).collect();
 
     let res = quote! {
         pub mod langs {
@@ -197,7 +204,7 @@ pub fn get_langs(_: TokenStream) -> TokenStream {
             #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
             #[sea_orm(rs_type = "String", db_type = "String(Some(16))")]
             pub enum Lang {
-                #( #names )*,
+                #( #names ),*,
                 #[sea_orm(string_value = "Invalid")]
                 Invalid
             }
@@ -207,17 +214,30 @@ pub fn get_langs(_: TokenStream) -> TokenStream {
             }
 
             impl Lang {
+
+
+                pub fn get_id(&self) -> Option<usize> {
+                    match self {
+                        #( #mnames => Some(#ids) ),*,
+                        Self::Invalid => None
+                    }
+                }
+
                 pub fn from_code<T: AsRef<str>>(code: T) ->  Self {
                     match code.as_ref() {
-                        #( #from )*,
+                        #( #from ),*,
                         _ => Self::Invalid
                     }
                 }
 
-                pub fn into_code(self) -> String {
+                pub fn lang<'a>(&'a self) -> &'a Self {
+                    &self
+                }
+
+                pub fn into_code(self) -> &'static str {
                     match self {
-                        #( #into )*,
-                        Self::Invalid => "invalid".to_string()
+                        #( #into ),*,
+                        Self::Invalid => "invalid"
                     }
                 }
             }
@@ -316,21 +336,26 @@ fn get_entity_match(ctx: &Expr, key: LitStr, args: Punctuated<Expr, Comma>) -> i
         panic!("wrong number of arguments {:?} {}", format, args.len());
     }
 
-    let arms = STRINGS_DIR
-        .files()
-        .map(|f| f.path().file_stem())
-        .map(|thing| thing.unwrap().to_str().unwrap().to_case(Case::UpperCamel))
-        .map(|v| format_ident!("{}", v))
-        .map(|v| {
+    let arms = STRINGS.iter() 
+          .map(|v| (v.to_case(Case::UpperCamel), v))
+        .map(|(v,u)| {
+            let v = format_ident!("{}", v);
             let idents = args.iter();
-            quote! {
-                #v => builder.builder() #(.text(#format).regular(#idents.into()))*.text(#last).build()
+            if let Some(format) = locale.langs.get(u.as_str()).unwrap().strings.get(&key.value()) {
+                let format = format.split("{}").collect::<Vec<&str>>();
+                quote! {
+                    crate::langs::Lang::#v => builder.builder() #(.text(#format).regular(#idents.into()))*.text(#last).build()
+                }
+            } else {
+                quote! {
+                    crate::langs::Lang::#v => builder.builder() #(.text(#format).regular(#idents.into()))*.text(#last).build()
+                }
             }
         });
     quote! {
         match #ctx.lang() {
-            #( #arms )*,
-            Invalid => ("invalid", &(*crate::tg::markdown::EMPTY_ENTITIES))
+            #( #arms ),*,
+            crate::langs::Lang::Invalid => ("invalid", &(*crate::tg::markdown::EMPTY_ENTITIES))
         }
     }
 }
@@ -345,21 +370,31 @@ fn get_match(language: &Expr, key: LitStr, args: Punctuated<Expr, Comma>) -> imp
         .get(&key.value())
         .expect("invalid resource");
 
-    let arms = STRINGS_DIR
-        .files()
-        .map(|f| f.path().file_stem())
-        .map(|thing| thing.unwrap().to_str().unwrap().to_case(Case::UpperCamel))
-        .map(|v| format_ident!("{}", v))
-        .map(|v| {
+    let arms = STRINGS.iter()
+        .map(|thing| {
+            (
+                thing,
+                thing.to_case(Case::UpperCamel),
+            )
+        })
+        .map(|(u, v)| (u, format_ident!("{}", v)))
+        .map(|(u, v)| {
             let idents = args.iter();
-            quote! {
-                #v => format!(#format, #( #idents ),*)
+            if let Some(format) = locale.langs.get(u).unwrap().strings.get(&key.value()) {
+                quote! {
+                    crate::langs::Lang::#v => format!(#format, #( #idents ),*)
+                }
+            } else {
+                quote! {
+
+                     crate::langs::Lang::#v => format!(#format, #( #idents ),*)
+                }
             }
         });
     quote! {
-        match #language {
-            #( #arms )*,
-            Invalid => "invalid".to_owned()
+        match #language.lang() {
+            #( #arms ),*,
+            crate::langs::Lang::Invalid => "invalid".to_owned()
         }
     }
 }

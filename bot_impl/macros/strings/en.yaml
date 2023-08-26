@@ -26,6 +26,7 @@ usernotfound: "User not found. Only users that have been seen recently can be in
 dmhelp: "Contact me in pm for help!"
 startcmd: "Send /help to get a list of available commands"
 invalid_help: "Invalid help page {}"
+helpbutton: "Click me for help!"
 
 # language settings
 setlang: "Successfully set language"
@@ -59,6 +60,13 @@ fban: "Good riddance! Fbanned user {} in {}"
 notfedadmin: "You are not a fedadmin in federation {}. Only fedadmins can issue fbans"
 notinfed: "The chat {} is not in a federation. Use /joinfed as admin to join one"
 erranonchannelfed: "Anonymous channels can't own feds. Try running this command from your main account"
+fedsforuser: |
+    Feds for user {}:
+    {}
+fpromotenotauth: "You are not authorized to accept this promotion"
+fpromoted: "You have been promoted"
+failfpromote: "Failed to promote user: {}"
+onlyone: "Only one federation allowed per user"
 
 # permissions and admin rights
 needtobeadmin: "I'm sorry dave, I need to be admin to function in this group"
@@ -66,6 +74,7 @@ lackingadminrights: "User {} lacking admin rights"
 foundadmins: "Found {} admins"
 refreshac: "Successfully refreshed admin cache"
 cachewait: "The admin cache can only be refreshed once every 10 minutes"
+permdenied: "Permission denied: the current user is missing the \"{}\" permission"
 
 # bans module
 banadmin: "I am not going to ban an admin"
@@ -122,12 +131,20 @@ warnban: "That's {} warnings! User {} banned"
 warnadmin: "I am not going to warn an admin! What the absolute hecking heck"
 warns: "Warns for user {}:\n{}"
 noreason: "No reason"
+warnsline: "Reason: {}"
 warnreason: |
   Yowzers! Warned user {} with {}/{} warns
   [*Reason:]
   {}
 warn: "Yowzers!: Warned user {} with {}/{} warns"
 removewarn: "Remove warn"
+clearwarns: "Cleared warns for user {}"
+cleartime: "Cleared warn time for {}"
+specifytime: "You need to specify a time for this command"
+warnmode: "Set the warn mode to {} for chat {}"
+warnlimit: "Set the warn limit to {} for chat {}"
+negwarns: "Negative warn limits don't make much sense"
+nan: "Please enter a number"
 
 # filters module
 filters: "Filters in chat {}:\n\n{}"
@@ -157,3 +174,8 @@ lockban: |
 addblocklist: "Added blocklist {}"
 approved: "Approved user {}"
 unapproved: "Unapproved user {}"
+
+# notes module
+savednote: "Saved note with name {} in chat {}"
+listnotes: "Notes for {}"
+

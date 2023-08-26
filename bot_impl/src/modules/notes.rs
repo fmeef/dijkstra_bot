@@ -11,11 +11,13 @@ use crate::tg::command::{
 
 use crate::tg::markdown::button_deeplink_key;
 use crate::tg::permissions::IsGroupAdmin;
+use crate::tg::user::Username;
 use crate::util::string::Speak;
 use ::sea_orm_migration::prelude::*;
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use itertools::Itertools;
+use macros::lang_fmt;
 use redis::AsyncCommands;
 
 use lazy_static::__Deref;
@@ -167,10 +169,10 @@ async fn handle_command<'a>(ctx: &Context) -> Result<()> {
     }) = ctx.cmd()
     {
         match cmd {
-            "save" => save(message, &args).await,
+            "save" => save(ctx, &args).await,
             "get" => get(ctx).await,
             "delete" => delete(message, args).await,
-            "notes" => list_notes(message).await,
+            "notes" => list_notes(ctx).await,
             "start" => {
                 let note: Option<(i64, String)> =
                     handle_deep_link(ctx, |k| button_deeplink_key(k)).await?;
@@ -338,7 +340,7 @@ async fn get_note_by_name(name: String, chat: i64) -> Result<Option<entities::no
     let note = CachedQuery::new(
         |_, _| async move {
             let res = entities::notes::Entity::find_by_id((n, chat))
-                .one(DB.deref().deref())
+                .one(DB.deref())
                 .await?;
 
             Ok(res)
@@ -377,26 +379,33 @@ async fn delete<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
     let hash_key = get_hash_key(message.get_chat().get_id());
     REDIS.sq(|q| q.hdel(&hash_key, &model.name)).await?;
     entities::notes::Entity::delete_by_id((model.name, message.get_chat().get_id()))
-        .exec(DB.deref().deref())
+        .exec(DB.deref())
         .await?;
     message.speak(format!("Deleted note {}", name)).await?;
     Ok(())
 }
 
-async fn list_notes(message: &Message) -> Result<()> {
-    message.check_permissions(|p| p.can_manage_chat).await?;
+async fn list_notes(ctx: &Context) -> Result<()> {
+    ctx.check_permissions(|p| p.can_manage_chat).await?;
+    let message = ctx.message()?;
     let notes = refresh_notes(message.get_chat().get_id()).await?;
-    let m = [String::from("Notes for {chatname}")]
-        .into_iter()
-        .chain(notes.iter().map(|(n, _)| format!("- {}", n)))
-        .collect::<Vec<String>>()
-        .join("\n");
+    let m = [lang_fmt!(
+        ctx,
+        "listnotes",
+        message.get_chat().name_humanreadable()
+    )]
+    .into_iter()
+    .chain(notes.iter().map(|(n, _)| format!("- {}", n)))
+    .collect::<Vec<String>>()
+    .join("\n");
     message.reply(m).await?;
     Ok(())
 }
 
-async fn save<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
-    message.check_permissions(|p| p.can_change_info).await?;
+async fn save<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
+    ctx.check_permissions(|p| p.can_change_info).await?;
+    let message = ctx.message()?;
+    let chat = message.get_chat().name_humanreadable();
     let model = get_model(message, args)?;
     let key = format!("note:{}:{}", message.get_chat().get_id(), model.name);
     log::info!("save key: {}", key);
@@ -415,10 +424,12 @@ async fn save<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
                 ])
                 .to_owned(),
         )
-        .exec(DB.deref().deref())
+        .exec(DB.deref())
         .await?;
 
-    message.speak(format!("Saved note {}", name)).await?;
+    message
+        .speak(lang_fmt!(ctx, "savednote", name, chat))
+        .await?;
     Ok(())
 }
 

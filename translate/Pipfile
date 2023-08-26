@@ -1,0 +1,15 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+googletrans = { git = "https://github.com/bllendev/py-googletrans.git", editable=true, ref = "master" }
+requests = "*"
+argparse = "*"
+pyyaml = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.11"

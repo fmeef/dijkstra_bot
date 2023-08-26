@@ -176,7 +176,7 @@ pub async fn show_help<'a>(
             let mut button = InlineKeyboardBuilder::default();
 
             button.button(
-                InlineKeyboardButtonBuilder::new("Inbix!".to_owned())
+                InlineKeyboardButtonBuilder::new(lang_fmt!(ctx, "helpbutton"))
                     .set_url(url)
                     .build(),
             );
