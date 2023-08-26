@@ -36,25 +36,25 @@ server {
   ssl on;
   ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
   ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
-	ssl_ciphers 'EECDH+AESGCM:EECDH+AES256';
+  ssl_ciphers 'EECDH+AESGCM:EECDH+AES256';
 
-	ssl_ecdh_curve secp384r1;
-	ssl_prefer_server_ciphers on;
+  ssl_ecdh_curve secp384r1;
+  ssl_prefer_server_ciphers on;
 
-	ssl_session_cache shared:SSL:10m;
-	ssl_session_timeout 1d;
+  ssl_session_cache shared:SSL:10m;
+  ssl_session_timeout 1d;
 
-	ssl_stapling on;
-	ssl_stapling_verify on;
+  ssl_stapling on;
+  ssl_stapling_verify on;
 
-	add_header Strict-Transport-Security "max-age=15768000; includeSubDomains; preload";
+  add_header Strict-Transport-Security "max-age=15768000; includeSubDomains; preload";
     location / {
-		proxy_set_header Host $http_host;
-		proxy_set_header X-Real-IP $remote_addr;
-		proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-		proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_pass          http://127.0.0.1:8080;
-	}
+      proxy_set_header Host $http_host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $scheme;
+      proxy_pass          http://127.0.0.1:8080;
+    }
 
 }
 ```
