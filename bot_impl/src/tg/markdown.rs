@@ -51,6 +51,7 @@ pub enum TgSpan {
     Filling(String),
     Button(String, String),
     NewlineButton(String, String),
+    NoOp,
 }
 
 lazy_static! {
@@ -87,6 +88,7 @@ pomelo! {
     raw       ::= RawChar(C) { C.into() }
     raw       ::= raw(mut R) RawChar(C) { R.push(C); R }
 
+    word      ::= LCurly RCurly { super::TgSpan::NoOp }
     word      ::= LCurly raw(W) RCurly { super::TgSpan::Filling(W) }
     word      ::= LSBracket Tick raw(W) RSBracket { super::TgSpan::Code(W) }
     word      ::= LSBracket Star main(S) RSBracket { super::TgSpan::Bold(S) }
@@ -355,6 +357,7 @@ impl MarkupBuilder {
                         size += s.encode_utf16().count() as i64;
                         self.text(s);
                     }
+                    (TgSpan::NoOp, _) => (),
                 };
             }
             let offset = self.offset - size;

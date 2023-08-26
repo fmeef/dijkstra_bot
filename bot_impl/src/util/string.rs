@@ -145,7 +145,11 @@ impl Speak for Message {
 
     async fn speak_fmt<'a>(&self, message: CallSendMessage<'a>) -> Result<Option<Message>> {
         if !should_ignore_chat(self.get_chat().get_id()).await? {
+            let b = MarkupBuilder::from_murkdown(message.get_text()).await?;
+            let (text, entities) = b.build();
+            let message = message.text(text).entities(entities);
             let m = message.build().await?;
+
             Ok(Some(m))
         } else {
             Ok(None)
@@ -154,6 +158,10 @@ impl Speak for Message {
 
     async fn reply_fmt<'a>(&self, message: CallSendMessage<'a>) -> Result<Option<Message>> {
         if !should_ignore_chat(self.get_chat().get_id()).await? {
+            let b = MarkupBuilder::from_murkdown(message.get_text()).await?;
+            let (text, entities) = b.build();
+            let message = message.text(text).entities(entities);
+
             let m = message
                 .reply_to_message_id(self.get_message_id())
                 .build()

@@ -6,7 +6,7 @@ use crate::tg::admin_helpers::{
 use crate::tg::command::{Cmd, Context, TextArgs};
 use crate::tg::permissions::IsGroupAdmin;
 use crate::tg::user::{GetUser, Username};
-use crate::util::error::{BotError, Result};
+use crate::util::error::{BotError, Fail, Result};
 use crate::{metadata::metadata, util::string::Speak};
 
 use itertools::Itertools;
@@ -51,17 +51,36 @@ async fn fban(ctx: &Context) -> Result<()> {
                         .map(|v| v.text.trim().to_owned())
                         .map(|v| (!v.is_empty()).then(|| v))
                         .flatten();
+                    let reason = model.reason.clone();
                     fban_user(model, &user).await?;
-                    ctx.reply("Successfully fbanned").await?;
+                    if let Some(reason) = reason {
+                        ctx.reply_fmt(entity_fmt!(
+                            ctx,
+                            "fbanreason",
+                            user.mention().await?,
+                            fed.to_string(),
+                            reason
+                        ))
+                        .await?;
+                    } else {
+                        ctx.reply_fmt(entity_fmt!(
+                            ctx,
+                            "fban",
+                            user.mention().await?,
+                            fed.to_string()
+                        ))
+                        .await?;
+                    }
                 } else {
-                    ctx.reply("Permission denied, user is not a fedadmin")
+                    ctx.reply(lang_fmt!(ctx, "notfedadmin", fed.to_string()))
                         .await?;
                 }
             } else {
-                ctx.reply("this chat is not in a federation").await?;
+                ctx.reply(lang_fmt!(ctx, "notinfed", chat.name_humanreadable()))
+                    .await?;
             }
         } else {
-            ctx.reply("user not found").await?;
+            ctx.reply(lang_fmt!(ctx, "usernotfound")).await?;
         }
 
         Ok(())
@@ -73,10 +92,7 @@ async fn fban(ctx: &Context) -> Result<()> {
 async fn create_federation_cmd<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
     let message = ctx.message()?;
     if message.get_sender_chat().is_some() {
-        return Err(BotError::speak(
-            "Anonymous channels can't own feds",
-            message.get_chat().get_id(),
-        ));
+        return ctx.fail(lang_fmt!(ctx, "erranonchannelfed"));
     }
     if let Some(from) = message.get_from() {
         let fedname = args.text.to_owned();

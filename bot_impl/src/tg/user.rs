@@ -244,6 +244,22 @@ impl GetUser for i64 {
 }
 
 #[async_trait]
+impl GetUser for User {
+    async fn get_cached_user(&self) -> Result<Option<User>> {
+        Ok(Some(self.clone()))
+    }
+
+    async fn cached_name(&self) -> Result<String> {
+        Ok(self.name_humanreadable())
+    }
+
+    async fn mention(&self) -> Result<Markup<String>> {
+        let name = self.name_humanreadable();
+        Ok(MarkupType::TextMention(self.clone()).text(name))
+    }
+}
+
+#[async_trait]
 impl GetChat for i64 {
     async fn get_chat(&self) -> Result<Option<Chat>> {
         get_chat(*self).await

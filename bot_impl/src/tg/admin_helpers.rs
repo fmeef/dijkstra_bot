@@ -1373,9 +1373,11 @@ impl Context {
             iter_unfban_user(user, &fban.federation).await?;
             fban.delete(DB.deref()).await?;
             REDIS.sq(|q| q.del(&key)).await?;
-            self.speak("Unfbanned user").await?;
+            self.speak_fmt(entity_fmt!(self, "unfban", user.mention().await?))
+                .await?;
         } else {
-            self.speak("User not fbanned").await?;
+            self.speak_fmt(entity_fmt!(self, "notfbanned", user.mention().await?))
+                .await?;
         }
         Ok(())
     }

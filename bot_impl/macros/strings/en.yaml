@@ -1,3 +1,17 @@
+# This file holds all the strings for translation, localization, and/or theming a cloned bot
+# Change these strings to your liking to get different text in the bot for this particular language
+#
+# Notes on formatting:
+# {} allows a single formatted parameter, either a raw string or a telegram MessageEntity.
+# {{filler}} allows automated formfilling from the message context (see bot_impl/src/tg/markdown.rs)
+# available fillers include
+# {{username}} - the username of the user interacting with the string
+# {{first}} - the user's first name
+# {{last}} - the user's last name
+# {{mention}} - a telegram TextMention entity mentioning the user
+# {{chatname}} - the chat the message or string was sent in
+# {{id}} - the id of the user interacting with the string 
+
 # debugging and testing
 test: "Invalid murkdown: {}"
 thing: "thing"
@@ -18,6 +32,9 @@ setlang: "Successfully set language"
 currentlang: "Choose a language from the list"
 invalidlang: "Invalid language selected"
 
+# gbans
+gbanned: "Good riddance!\nUser {} gbanned for {}"
+
 # federations
 joinfed: "Joined fed {} for chat {}"
 fpromote: "The user {} needs to confirm the fpromotion before continuing"
@@ -26,10 +43,22 @@ fedowner: "You are the owner of fed {} with id {}"
 fedadmin: "You are the admin of fed {} with id {}"
 subscribefed: "Successfully subscribed fed {} to {}"
 fstatline: "{} with reason \"{}\""
-fbanned: "Good riddence!\nUser {} banned in fed {} with reason \"{}\""
+fbanreason: | 
+  Good riddence!
+  User {} banned in fed {}
+  [*Reason:]
+  {}
 notfmember: "This chat is not a member of a fed"
 renamefed: "Renamed fed {} to {}"
-fstat: "Fstat for {}:\n{}"
+fstat: |
+  Fstat for {}:
+  {}
+unfban: "Unfbanned user {}"
+notfbanned: "User {} not fbanned"
+fban: "Good riddance! Fbanned user {} in {}"
+notfedadmin: "You are not a fedadmin in federation {}. Only fedadmins can issue fbans"
+notinfed: "The chat {} is not in a federation. Use /joinfed as admin to join one"
+erranonchannelfed: "Anonymous channels can't own feds. Try running this command from your main account"
 
 # permissions and admin rights
 needtobeadmin: "I'm sorry dave, I need to be admin to function in this group"
