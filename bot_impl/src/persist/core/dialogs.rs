@@ -1,7 +1,8 @@
 //! ORM type for storing metadata on conversations
 //! conversations being DMs, channels, and supergroups
 
-use crate::{persist::admin::actions::ActionType, statics::TG, util::error::BotError};
+use crate::util::error::Fail;
+use crate::{persist::admin::actions::ActionType, statics::TG};
 use botapi::gen_types::Chat;
 use sea_orm::entity::prelude::*;
 use sea_orm::ActiveValue::{NotSet, Set};
@@ -75,7 +76,7 @@ impl Model {
         let chat = TG.client.get_chat(chat.get_id()).await?;
         let permissions = chat
             .get_permissions()
-            .ok_or_else(|| BotError::speak("failed to get chat permissions", chat.get_id()))?;
+            .ok_or_else(|| chat.fail_err("failed to get chat permissions"))?;
 
         let res = ActiveModel {
             chat_id: Set(chat.get_id()),

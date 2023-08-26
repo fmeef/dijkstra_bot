@@ -6,7 +6,7 @@ use std::{borrow::Cow, collections::HashMap};
 use crate::{
     persist::redis::RedisStr,
     statics::{CONFIG, REDIS, TG},
-    util::error::{BotError, Result},
+    util::error::{BotError, Fail, Result},
     util::string::get_chat_lang,
 };
 use async_trait::async_trait;
@@ -70,9 +70,9 @@ impl NamedBotPermissions {
     /// no sender
     pub async fn from_message(message: &Message) -> Result<Self> {
         let chat = message.get_chat();
-        let user = message.get_from().ok_or_else(|| {
-            BotError::speak("Permission denied, user does not exist", chat.get_id())
-        })?;
+        let user = message
+            .get_from()
+            .ok_or_else(|| message.fail_err("Permission denied, user does not exist"))?;
         Self::from_chatuser(&user, &chat).await
     }
 }
@@ -290,7 +290,7 @@ impl IsGroupAdmin for Message {
         } else if let Some(user) = self.get_from() {
             let lang = get_chat_lang(self.get_chat().get_id()).await?;
             let msg = lang_fmt!(lang, "lackingadminrights", user.name_humanreadable());
-            Err(BotError::speak(msg, self.get_chat().get_id()))
+            self.fail(msg)
         } else {
             Err(BotError::Generic("not admin".to_owned()))
         }
@@ -322,9 +322,9 @@ impl IsGroupAdmin for Message {
         let p = func(permission);
 
         if !p.is_granted() && !sudo {
-            Err(BotError::speak(
-                format!("Permission denied. User missing \"{}\"", p.get_name()),
-                chat.get_id(),
+            self.fail(format!(
+                "Permission denied. User missing \"{}\"",
+                p.get_name()
             ))
         } else {
             Ok(())
@@ -344,7 +344,7 @@ impl IsAdmin for User {
         } else {
             let lang = get_chat_lang(chat.get_id()).await?;
             let msg = lang_fmt!(lang, "lackingadminrights", self.name_humanreadable());
-            Err(BotError::speak(msg, chat.get_id()))
+            chat.fail(msg)
         }
     }
 
@@ -361,9 +361,9 @@ impl IsAdmin for User {
         let sudo = permission.is_sudo.is_granted();
         let p = func(permission);
         if !p.is_granted() && !sudo {
-            Err(BotError::speak(
-                format!("Permission denied. User missing \"{}\"", p.get_name()),
-                chat.get_id(),
+            chat.fail(format!(
+                "Permission denied. User missing \"{}\"",
+                p.get_name()
             ))
         } else {
             Ok(())
@@ -393,7 +393,7 @@ impl<'a> IsAdmin for Option<Cow<'a, User>> {
                     user.get_username_ref()
                         .unwrap_or(user.get_id().to_string().as_str())
                 );
-                Err(BotError::speak(msg, chat.get_id()))
+                chat.fail(msg)
             }
         } else {
             Err(BotError::Generic("fail".to_owned()))
@@ -419,9 +419,9 @@ impl<'a> IsAdmin for Option<Cow<'a, User>> {
         let sudo = permission.is_sudo.is_granted();
         let p = func(permission);
         if !p.is_granted() && !sudo {
-            Err(BotError::speak(
-                format!("Permission denied. User missing \"{}\"", p.get_name()),
-                chat.get_id(),
+            chat.fail(format!(
+                "Permission denied. User missing \"{}\"",
+                p.get_name()
             ))
         } else {
             Ok(())
@@ -450,7 +450,7 @@ impl IsAdmin for i64 {
                 lang_fmt!(lang, "lackingadminrights", self)
             };
 
-            Err(BotError::speak(msg, chat.get_id()))
+            chat.fail(msg)
         }
     }
 
@@ -475,9 +475,9 @@ impl IsAdmin for i64 {
         let sudo = permission.is_sudo.is_granted();
         let p = func(permission);
         if !p.is_granted() && !sudo {
-            Err(BotError::speak(
-                format!("Permission denied. User missing \"{}\"", p.get_name()),
-                chat.get_id(),
+            chat.fail(format!(
+                "Permission denied. User missing \"{}\"",
+                p.get_name()
             ))
         } else {
             Ok(())
@@ -636,7 +636,7 @@ impl GetCachedAdmins for Chat {
             Ok(res)
         } else {
             let lang = get_chat_lang(self.get_id()).await?;
-            Err(BotError::speak(lang_fmt!(lang, "cachewait"), self.get_id()))
+            self.fail(lang_fmt!(lang, "cachewait"))
         }
     }
 }
@@ -645,10 +645,7 @@ impl GetCachedAdmins for Chat {
 pub async fn self_admin_or_die(chat: &Chat) -> Result<()> {
     if !is_self_admin(chat).await? {
         let lang = get_chat_lang(chat.get_id()).await?;
-        Err(BotError::speak(
-            lang_fmt!(lang, "needtobeadmin"),
-            chat.get_id(),
-        ))
+        chat.fail(lang_fmt!(lang, "needtobeadmin"))
     } else {
         Ok(())
     }

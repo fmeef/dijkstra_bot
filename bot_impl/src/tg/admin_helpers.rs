@@ -21,7 +21,7 @@ use crate::{
         },
     },
     statics::{BAN_GOVERNER, CONFIG, DB, ME, REDIS, TG},
-    util::error::{BotError, Result, SpeakErr},
+    util::error::{BotError, Fail, Result, SpeakErr},
     util::string::{get_chat_lang, Speak},
 };
 
@@ -48,7 +48,7 @@ use uuid::Uuid;
 
 use super::{
     button::{InlineKeyboardBuilder, OnPush},
-    command::{ArgSlice, Cmd, Context, Entities, EntityArg},
+    command::{ArgSlice, Context, Entities, EntityArg},
     dialog::{
         dialog_or_default, get_dialog_key, get_user_banned_chats, record_chat_member_banned,
         reset_banned_chats, upsert_dialog,
@@ -402,7 +402,6 @@ pub async fn get_feds(user: i64) -> Result<Vec<federations::Model>> {
 
 pub async fn create_federation(ctx: &Context, federation: federations::Model) -> Result<()> {
     let key = get_fed_key(federation.owner);
-    let c = ctx.try_get()?.chat.get_id();
     match federations::Entity::insert(federation.into_active_model())
         .exec_with_returning(DB.deref())
         .await
@@ -410,7 +409,7 @@ pub async fn create_federation(ctx: &Context, federation: federations::Model) ->
         Err(err) => match err {
             sea_orm::DbErr::Query(err) => {
                 log::error!("create fed err {}", err);
-                return Err(BotError::speak("Only one federation allowed per user", c).into());
+                return ctx.fail("Only one federation allowed per user");
             }
             err => return Err(err.into()),
         },
@@ -977,7 +976,7 @@ pub async fn set_warn_mode(chat: &Chat, mode: &str) -> Result<()> {
         "mute" => Ok(ActionType::Mute),
         "ban" => Ok(ActionType::Ban),
         "shame" => Ok(ActionType::Shame),
-        _ => Err(BotError::speak(format!("Invalid mode {}", mode), chat_id)),
+        _ => chat.fail(format!("Invalid mode {}", mode)),
     }?;
 
     let model = dialogs::ActiveModel {
@@ -1305,7 +1304,7 @@ pub async fn change_chat_permissions(chat: &Chat, permissions: &ChatPermissions)
     let mut new = ChatPermissionsBuilder::new();
     let old = current_perms
         .get_permissions()
-        .ok_or_else(|| BotError::speak("failed to get chat permissions", chat.get_id()))?;
+        .ok_or_else(|| chat.fail_err("failed to get chat permissions"))?;
     new = merge_permissions(&old, new);
     new = merge_permissions(permissions, new);
     let new = new.build();
@@ -1349,7 +1348,7 @@ pub async fn ban_message(message: &Message, duration: Option<Duration>) -> Resul
 pub async fn is_dm_or_die(chat: &Chat) -> Result<()> {
     let lang = get_chat_lang(chat.get_id()).await?;
     if !is_dm(chat) {
-        Err(BotError::speak(lang_fmt!(lang, "notdm"), chat.get_id()))
+        chat.fail(lang_fmt!(lang, "notdm"))
     } else {
         Ok(())
     }
@@ -1359,11 +1358,8 @@ pub async fn is_dm_or_die(chat: &Chat) -> Result<()> {
 pub async fn is_group_or_die(chat: &Chat) -> Result<()> {
     let lang = get_chat_lang(chat.get_id()).await?;
     match chat.get_tg_type().as_ref() {
-        "private" => Err(BotError::speak(lang_fmt!(lang, "baddm"), chat.get_id())),
-        "group" => Err(BotError::speak(
-            lang_fmt!(lang, "notsupergroup"),
-            chat.get_id(),
-        )),
+        "private" => chat.fail(lang_fmt!(lang, "baddm")),
+        "group" => chat.fail(lang_fmt!(lang, "notsupergroup")),
         _ => Ok(()),
     }
 }
@@ -1395,7 +1391,7 @@ impl Context {
                 .get_id();
             let fed = get_fed(me)
                 .await?
-                .ok_or_else(|| BotError::speak("This user does not have a fed", chat))?;
+                .ok_or_else(|| self.fail_err("This user does not have a fed"))?;
             let mut builder = InlineKeyboardBuilder::default();
 
             let confirm = InlineKeyboardButtonBuilder::new("Confirm".to_owned())
@@ -1504,10 +1500,7 @@ impl Context {
 
             Ok(())
         } else {
-            Err(BotError::speak(
-                "User is not gbanned",
-                self.try_get()?.chat.get_id(),
-            ))
+            self.fail("User is not gbanned")
         }
     }
 
@@ -1575,21 +1568,20 @@ impl Context {
 
     /// Parse an std::chrono::Duration from a argument list
     pub fn parse_duration<'a>(&self, args: &Option<ArgSlice<'a>>) -> Result<Option<Duration>> {
-        if let (Some(args), Some(&Cmd { message, .. })) = (args, self.cmd()) {
-            let chat = message.get_chat().get_id();
+        if let Some(args) = args {
             if let Some(thing) = args.args.first() {
                 let head = &thing.get_text()[0..thing.get_text().len() - 1];
                 let tail = &thing.get_text()[thing.get_text().len() - 1..];
                 log::info!("head {} tail {}", head, tail);
                 let head = match str::parse::<i64>(head) {
-                    Err(_) => return Err(BotError::speak("Enter a number", chat)),
+                    Err(_) => return self.fail("Enter a number"),
                     Ok(res) => res,
                 };
                 let res = match tail {
                     "m" => Duration::minutes(head),
                     "h" => Duration::hours(head),
                     "d" => Duration::days(head),
-                    _ => return Err(BotError::speak("Invalid time spec", chat)),
+                    _ => return self.fail("Invalid time spec"),
                 };
 
                 let res = if res.num_seconds() < 30 {
@@ -1612,7 +1604,7 @@ impl Context {
     pub async fn is_dm_or_die(&self) -> Result<()> {
         if let Some(v) = self.get() {
             if !is_dm(v.chat) {
-                Err(BotError::speak(lang_fmt!(v.lang, "notdm"), v.chat.get_id()))
+                self.fail(lang_fmt!(v.lang, "notdm"))
             } else {
                 Ok(())
             }
@@ -1655,12 +1647,7 @@ impl Context {
 
         let mention = user.mention().await?;
         message
-            .reply_fmt(entity_fmt!(
-                self,
-                "warnmute",
-                MarkupType::Text.text(&count.to_string()),
-                mention
-            ))
+            .reply_fmt(entity_fmt!(self, "warnmute", count.to_string(), mention))
             .await?;
 
         Ok(())
@@ -1814,15 +1801,9 @@ impl Context {
     ) -> Result<()> {
         let me = ME.get().unwrap();
         if user == me.get_id() {
-            Err(BotError::speak(
-                lang_fmt!(self.try_get()?.lang, "mutemyself"),
-                chat.get_id(),
-            ))
+            self.fail(lang_fmt!(self.try_get()?.lang, "mutemyself"))
         } else if user.is_admin(chat).await? {
-            Err(BotError::speak(
-                lang_fmt!(self.try_get()?.lang, "muteadmin"),
-                chat.get_id(),
-            ))
+            self.fail(lang_fmt!(self.try_get()?.lang, "muteadmin"))
         } else {
             if let Some(time) = time.map(|t| Utc::now().checked_add_signed(t)).flatten() {
                 TG.client()
@@ -1863,10 +1844,7 @@ impl Context {
             if let Some(user) = user {
                 action(ctx, user, args).await?;
             } else {
-                return Err(BotError::speak(
-                    lang_fmt!(ctx.try_get()?.lang, "specifyuser"),
-                    ctx.try_get()?.chat.get_id(),
-                ));
+                return self.fail(lang_fmt!(ctx.try_get()?.lang, "specifyuser"));
             }
             Ok(())
         })
@@ -1911,10 +1889,7 @@ impl Context {
                         .await?;
                         Ok(Some(user.get_id()))
                     } else {
-                        return Err(BotError::speak(
-                            lang_fmt!(self.try_get()?.lang, "usernotfound"),
-                            message.get_chat().get_id(),
-                        ));
+                        return self.fail(lang_fmt!(self.try_get()?.lang, "usernotfound"));
                     }
                 }
                 Some(EntityArg::TextMention(user)) => {
@@ -2065,7 +2040,7 @@ impl Context {
             .reply_fmt(entity_fmt!(
                 self,
                 "warnban",
-                MarkupType::Text.text(&count.to_string()),
+                count.to_string(),
                 user.mention().await?,
             ))
             .await?;
@@ -2096,13 +2071,10 @@ impl Context {
         let me = ME.get().unwrap();
 
         if user == me.get_id() {
-            return Err(BotError::speak(
-                lang_fmt!(lang, "banmyself"),
-                message.get_chat().get_id(),
-            ));
+            return self.fail(lang_fmt!(lang, "banmyself"));
         } else if user.is_admin(message.get_chat_ref()).await? {
             let banadmin = lang_fmt!(lang, "banadmin");
-            return Err(BotError::speak(banadmin, message.get_chat().get_id()));
+            return self.fail(banadmin);
         } else {
             if let Some(duration) = duration.map(|v| Utc::now().checked_add_signed(v)).flatten() {
                 TG.client()

@@ -7,7 +7,7 @@ use crate::{
         markdown::MarkupBuilder,
     },
     util::{
-        error::{BotError, Result},
+        error::{Fail, Result},
         string::should_ignore_chat,
     },
 };
@@ -49,7 +49,7 @@ pub fn get_media_type<'a>(message: &'a Message) -> Result<(Option<String>, Media
     } else if let Some(_) = message.get_text() {
         Ok((None, MediaType::Text))
     } else {
-        Err(BotError::speak("invalid", message.get_chat().get_id()))
+        message.fail("invalid")
     }
 }
 
@@ -88,7 +88,7 @@ where
                 .build_send_sticker(
                     chat,
                     FileData::String(
-                        media_id.ok_or_else(|| BotError::speak("invalid media", chat))?,
+                        media_id.ok_or_else(|| current_chat.fail_err("invalid media"))?,
                     ),
                 )
                 .build()
@@ -99,7 +99,7 @@ where
                 .build_send_photo(
                     chat,
                     FileData::String(
-                        media_id.ok_or_else(|| BotError::speak("invalid media", chat))?,
+                        media_id.ok_or_else(|| current_chat.fail_err("invalid media"))?,
                     ),
                 )
                 .build()
@@ -110,7 +110,7 @@ where
                 .build_send_document(
                     chat,
                     FileData::String(
-                        media_id.ok_or_else(|| BotError::speak("invalid media", chat))?,
+                        media_id.ok_or_else(|| current_chat.fail_err("invalid media"))?,
                     ),
                 )
                 .build()
@@ -121,7 +121,7 @@ where
                 .build_send_video(
                     chat,
                     FileData::String(
-                        media_id.ok_or_else(|| BotError::speak("invalid media", chat))?,
+                        media_id.ok_or_else(|| current_chat.fail_err("invalid media"))?,
                     ),
                 )
                 .build()
@@ -198,7 +198,7 @@ where
                 .build_send_sticker(
                     chat,
                     FileData::String(
-                        media_id.ok_or_else(|| BotError::speak("invalid media", chat))?,
+                        media_id.ok_or_else(|| current_message.fail_err("invalid media"))?,
                     ),
                 )
                 .build()
@@ -206,15 +206,15 @@ where
             None
         }
         MediaType::Photo => Some(InputMedia::InputMediaPhoto(InputMediaPhoto::new(Some(
-            InputFile::String(media_id.ok_or_else(|| BotError::speak("invalid media", chat))?),
+            InputFile::String(media_id.ok_or_else(|| current_message.fail_err("invalid media"))?),
         )))),
         MediaType::Document => Some(InputMedia::InputMediaDocument(InputMediaDocument::new(
             Some(InputFile::String(
-                media_id.ok_or_else(|| BotError::speak("invalid media", chat))?,
+                media_id.ok_or_else(|| current_message.fail_err("invalid media"))?,
             )),
         ))),
         MediaType::Video => Some(InputMedia::InputMediaVideo(InputMediaVideo::new(Some(
-            InputFile::String(media_id.ok_or_else(|| BotError::speak("invalid media", chat))?),
+            InputFile::String(media_id.ok_or_else(|| current_message.fail_err("invalid media"))?),
         )))),
         MediaType::Text => {
             TG.client
@@ -280,9 +280,7 @@ where
             TG.client()
                 .build_send_sticker(
                     chat,
-                    FileData::String(
-                        media_id.ok_or_else(|| BotError::speak("invalid media", chat))?,
-                    ),
+                    FileData::String(media_id.ok_or_else(|| message.fail_err("invalid media"))?),
                 )
                 .reply_to_message_id(message.get_message_id())
                 .build()
@@ -292,9 +290,7 @@ where
             TG.client()
                 .build_send_photo(
                     chat,
-                    FileData::String(
-                        media_id.ok_or_else(|| BotError::speak("invalid media", chat))?,
-                    ),
+                    FileData::String(media_id.ok_or_else(|| message.fail_err("invalid media"))?),
                 )
                 .caption(&text)
                 .caption_entities(&entities)
@@ -307,9 +303,7 @@ where
             TG.client()
                 .build_send_document(
                     chat,
-                    FileData::String(
-                        media_id.ok_or_else(|| BotError::speak("invalid media", chat))?,
-                    ),
+                    FileData::String(media_id.ok_or_else(|| message.fail_err("invalid media"))?),
                 )
                 .reply_markup(&buttons)
                 .caption_entities(&entities)
@@ -322,9 +316,7 @@ where
             TG.client()
                 .build_send_video(
                     chat,
-                    FileData::String(
-                        media_id.ok_or_else(|| BotError::speak("invalid media", chat))?,
-                    ),
+                    FileData::String(media_id.ok_or_else(|| message.fail_err("invalid media"))?),
                 )
                 .reply_to_message_id(message.get_message_id())
                 .caption(&text)

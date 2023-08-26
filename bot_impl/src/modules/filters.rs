@@ -12,10 +12,11 @@ use crate::statics::REDIS;
 use crate::tg::command::*;
 use crate::tg::markdown::MarkupType;
 use crate::tg::permissions::*;
-use crate::util::error::BotError;
+
 use crate::util::error::Result;
 
 use crate::metadata::metadata;
+use crate::util::error::SpeakErr;
 use crate::util::filter::Header;
 use crate::util::filter::Lexer;
 use crate::util::filter::Parser;
@@ -431,12 +432,14 @@ async fn command_filter<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
     for token in lexer.all_tokens() {
         parser
             .parse(token)
-            .map_err(|e| BotError::speak(e.to_string(), message.get_chat().get_id()))?;
+            .speak_err(ctx, |v| format!("failed to parse filter: {}", v))
+            .await?;
     }
 
     let cmd = parser
         .end_of_input()
-        .map_err(|e| BotError::speak(e.to_string(), message.get_chat().get_id()))?;
+        .speak_err(ctx, |v| format!("failed to parse blocklist: {}", v))
+        .await?;
 
     let filters = match cmd.header {
         Header::List(st) => st,

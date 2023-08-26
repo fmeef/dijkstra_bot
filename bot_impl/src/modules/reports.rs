@@ -3,7 +3,7 @@ use crate::tg::command::{Cmd, Context};
 
 use crate::tg::permissions::*;
 use crate::tg::user::GetUser;
-use crate::util::error::BotError;
+use crate::util::error::{BotError, Fail};
 use crate::util::string::{should_ignore_chat, Speak};
 use crate::{metadata::metadata, util::error::Result};
 use botapi::gen_types::{MessageEntity, MessageEntityBuilder};
@@ -43,10 +43,7 @@ pub async fn report(ctx: &Context) -> Result<()> {
             if let Some(chat) = ctx.chat() {
                 if let Some(user) = user {
                     if user.is_admin(chat).await? {
-                        return Err(BotError::speak(
-                            "I am not going to report an admin, what the FLOOP",
-                            chat.get_id(),
-                        ));
+                        return ctx.fail("I am not going to report an admin, what the FLOOP");
                     }
                     let mut admins = ctx
                         .message()?

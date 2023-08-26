@@ -4,7 +4,6 @@ use crate::tg::admin_helpers::{
     subfed, update_fed,
 };
 use crate::tg::command::{Cmd, Context, TextArgs};
-use crate::tg::markdown::MarkupType;
 use crate::tg::permissions::IsGroupAdmin;
 use crate::tg::user::{GetUser, Username};
 use crate::util::error::{BotError, Result};
@@ -187,7 +186,6 @@ async fn fstat_cmd(ctx: &Context) -> Result<()> {
                 )
             })
             .join("\n");
-        let v = MarkupType::Text.text(&v);
         ctx.reply_fmt(entity_fmt!(ctx, "fstat", user.mention().await?, v))
             .await?;
         Ok(())

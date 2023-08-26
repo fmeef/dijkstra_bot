@@ -738,6 +738,15 @@ pub enum MarkupType {
     CustomEmoji(String),
 }
 
+impl<T> From<T> for Markup<T>
+where
+    T: AsRef<str>,
+{
+    fn from(value: T) -> Self {
+        MarkupType::Text.text(value)
+    }
+}
+
 impl MarkupType {
     /// Adds text to an existing MarkupType, preserving current formatting
     pub fn text<T: AsRef<str>>(self, text: T) -> Markup<T> {

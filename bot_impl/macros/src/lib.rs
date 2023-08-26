@@ -324,7 +324,7 @@ fn get_entity_match(ctx: &Expr, key: LitStr, args: Punctuated<Expr, Comma>) -> i
         .map(|v| {
             let idents = args.iter();
             quote! {
-                #v => builder.builder() #(.text(#format).regular(#idents))*.text(#last).build()
+                #v => builder.builder() #(.text(#format).regular(#idents.into()))*.text(#last).build()
             }
         });
     quote! {

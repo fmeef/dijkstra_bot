@@ -1,7 +1,6 @@
 use crate::tg::command::{Cmd, Context};
-use crate::tg::markdown::MarkupType;
 use crate::tg::user::GetUser;
-use crate::util::error::BotError;
+use crate::util::error::Fail;
 
 use crate::{
     metadata::metadata, tg::admin_helpers::*, tg::command::TextArgs, tg::permissions::*,
@@ -41,10 +40,7 @@ pub async fn warn(context: &Context) -> Result<()> {
     context
         .action_message(|ctx, user, args| async move {
             if user.is_admin(ctx.message()?.get_chat_ref()).await? {
-                return Err(BotError::speak(
-                    &lang_fmt!(ctx.try_get()?.lang, "warnadmin"),
-                    ctx.message()?.get_chat().get_id(),
-                ));
+                return ctx.fail(lang_fmt!(ctx.try_get()?.lang, "warnadmin"));
             }
 
             let reason = args
@@ -84,7 +80,6 @@ pub async fn warns(context: &Context) -> Result<()> {
                     .collect::<Vec<String>>()
                     .join("\n");
 
-                let list = MarkupType::Text.text(&list);
                 let mention = user.mention().await?;
                 ctx.reply_fmt(entity_fmt!(context, "warns", mention, list))
                     .await?;

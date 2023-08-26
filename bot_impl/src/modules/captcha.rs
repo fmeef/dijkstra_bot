@@ -10,8 +10,8 @@ use crate::tg::button::{get_url, InlineKeyboardBuilder, OnPush};
 use crate::tg::command::{ArgSlice, Cmd, Context, TextArgs};
 use crate::tg::permissions::*;
 use crate::tg::user::Username;
-use crate::util::error::BotError;
 use crate::util::error::Result;
+use crate::util::error::{BotError, Fail};
 use crate::util::string::Speak;
 use base64::engine::general_purpose;
 use base64::Engine;
@@ -719,12 +719,7 @@ async fn handle_command<'a>(ctx: &Context) -> Result<()> {
             "captcha" => match args.args.first().map(|a| a.get_text()) {
                 Some("on") => enable_captcha(message).await?,
                 Some("off") => disable_captcha(message).await?,
-                _ => {
-                    return Err(BotError::speak(
-                        "Invalid argument, use on or off",
-                        message.get_chat().get_id(),
-                    ))
-                }
+                _ => return ctx.fail("Invalid argument, use on or off"),
             },
             "start" => {
                 if let (Some(user), Some(u)) =

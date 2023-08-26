@@ -1,14 +1,26 @@
+# debugging and testing
 test: "Invalid murkdown: {}"
 thing: "thing"
+
+# misc system functionality
+commandnotfound: "Command not found"
+baddm: "This command does not work in a dm"
+notsupergroup: "This group must be upgraded to a supergroup"
+notdm: "This command can only be used in dm"
+specifyuser: "You need to specify a user"
+usernotfound: "User not found. Only users that have been seen recently can be interacted with"
+dmhelp: "Contact me in pm for help!"
+startcmd: "Send /help to get a list of available commands"
+invalid_help: "Invalid help page {}"
+
+# language settings
 setlang: "Successfully set language"
 currentlang: "Choose a language from the list"
 invalidlang: "Invalid language selected"
+
+# federations
 joinfed: "Joined fed {} for chat {}"
 fpromote: "The user {} needs to confirm the fpromotion before continuing"
-needtobeadmin: "I'm sorry dave, I need to be admin to function in this group"
-lackingadminrights: "User {} lacking admin rights"
-banadmin: "I am not going to ban an admin"
-banmyself: "I am not going to ban myself"
 unfbanperm: "You need to be an fedadmin to unfban"
 fedowner: "You are the owner of fed {} with id {}"
 fedadmin: "You are the admin of fed {} with id {}"
@@ -18,15 +30,17 @@ fbanned: "Good riddence!\nUser {} banned in fed {} with reason \"{}\""
 notfmember: "This chat is not a member of a fed"
 renamefed: "Renamed fed {} to {}"
 fstat: "Fstat for {}:\n{}"
-norules: |
-  This chat has no rules. Complete anarchy. Feel free to spam it and post pirated udemy
-  courses
-saverules: "Saved rules for chat {{chatname}}"
-welcome: "Welcome to {}, a modular group management bot written in pythonb and asynctio"
-commandnotfound: "Command not found"
-refreshac: "Successfully refreshed admin cache"
-getrules: "Get the chat rules {{rules}}"
+
+# permissions and admin rights
+needtobeadmin: "I'm sorry dave, I need to be admin to function in this group"
+lackingadminrights: "User {} lacking admin rights"
 foundadmins: "Found {} admins"
+refreshac: "Successfully refreshed admin cache"
+cachewait: "The admin cache can only be refreshed once every 10 minutes"
+
+# bans module
+banadmin: "I am not going to ban an admin"
+banmyself: "I am not going to ban myself"
 kickadmin: "I am not going to kick an admin"
 failban: |
   Failed to ban user, I haven't interacted with them in the last 48 hours. Please forward me one of their messages
@@ -34,49 +48,66 @@ failban: |
 failmute: |
   Failed to change this user's permissions. I haven't interacted with them in the last 48 hours.
   Please forward me one of their messages in order to allow me to interact with them
-notdm: "This command can only be used in dm"
-specifyuser: "You need to specify a user"
-usernotfound: "User not found. Only users that have been seen recently can be interacted with"
-baddm: "This command does not work in a dm"
-notsupergroup: "This group must be upgraded to a supergroup"
 muteuser: "Muted user {}"
 unmuteuser: "Unmuted user {}"
 muteadmin: "I am not going to mute an admin"
 mutemyself: "I am not going to mute myself"
-sendsticker: "Send a sticker to upload"
 kickme: "BLUE TEXT MUST CLICK"
-cachewait: "The admin cache can only be refreshed once every 10 minutes"
 banned: "Banned user {}"
 unbanned: "Unbanned user {}"
 banchat: "Banned anonymous channel {}, they won't be able to speak but are still lurking somewhere..."
 unbanchat: "Unbanned anonymous channel {}"
-promote: "Promated user {}"
-demote: "Demoted user {}"
 restrict: "Restricted user {}"
-dmhelp: "Contact me in pm for help!"
-reported: "Reported user {} to admins!"
-reported_nomention: "Reported to admins!"
-warnmute: "That's {} warnings! User {} muted"
-warnban: "That's {} warnings! User {} banned"
-warnadmin: "I am not going to warn an admin! What the absolute hecking heck"
-warns: "Warns for user {}:\n{}"
-noreason: "No reason"
-filters: "Filters in chat {}:\n\n{}"
-startcmd: "Send /help to get a list of available commands"
+kicked: "Kicked user {}"
+
+# rules module
+norules: |
+  This chat has no rules. Complete anarchy. Feel free to spam it and post pirated udemy
+  courses
+saverules: "Saved rules for chat {{chatname}}"
+getrules: "Get the chat rules {{rules}}"
+
+# welcomes module
+welcome: "Welcome to {}, a modular group management bot written in pythonb and asynctio"
 defaultwelcome: "Hi there {{mention}}, welcome to {{chatname}}"
 defaultgoodbye: "Goodbye {{mention}}"
 resetwelcome: "Cleared welcome config"
 welcomeinvalid: "Invalid argument, use on/off/yes/no"
 setwelcome: "Set group welcome to {}"
 setgoodbye: "Set group goodbye to {}"
+
+# sticker tagger module
+sendsticker: "Send a sticker to upload"
+
+# admin module
+promote: "Promated user {}"
+demote: "Demoted user {}"
+
+# reports module
+reported: "Reported user {} to admins!"
+reported_nomention: "Reported to admins!"
+
+# warns module
+warnmute: "That's {} warnings! User {} muted"
+warnban: "That's {} warnings! User {} banned"
+warnadmin: "I am not going to warn an admin! What the absolute hecking heck"
+warns: "Warns for user {}:\n{}"
+noreason: "No reason"
+warnreason: |
+  Yowzers! Warned user {} with {}/{} warns
+  [*Reason:]
+  {}
+warn: "Yowzers!: Warned user {} with {}/{} warns"
+removewarn: "Remove warn"
+
+# filters module
+filters: "Filters in chat {}:\n\n{}"
+addfilter: "Added filter {}"
+
+# locks module
 setdefaultaction: "Set default action"
 noactionarg: "You need to specify the action to set"
 locknotspec: "Invalid lock type, see /help for available locks"
-kicked: "Kicked user {}"
-addfilter: "Added filter {}"
-addblocklist: "Added blocklist {}"
-approved: "Approved user {}"
-unapproved: "Unapproved user {}"
 clearedlock: |
   Cleared lock "{}"
 setlock: |
@@ -84,11 +115,6 @@ setlock: |
 setlockaction: |
   Set lock action to "{}"
 lockedinchat: "- {} is locked in this chat"
-warnreason: |
-  Yowzers! Warned user {} with {}/{} warns
-  [*Reason:]
-  {}
-warn: "Yowzers!: Warned user {} with {}/{} warns"
 lockwarn: |
   User {{mention}} warned! 
   [*Reason:]
@@ -97,5 +123,8 @@ lockban: |
   User {{mention}} banned!
   [*Reason:]
   {}
-invalid_help: "Invalid help page {}"
-removewarn: "Remove warn"
+
+# blocklists module
+addblocklist: "Added blocklist {}"
+approved: "Approved user {}"
+unapproved: "Unapproved user {}"

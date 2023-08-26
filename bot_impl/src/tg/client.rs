@@ -31,7 +31,7 @@ use crate::{
     tg::{admin_helpers::IntoChatUser, markdown::MarkupBuilder},
     util::{
         callback::{MultiCallback, MultiCb, SingleCallback, SingleCb},
-        error::BotError,
+        error::Fail,
         string::{should_ignore_chat, Speak},
     },
 };
@@ -84,9 +84,10 @@ impl MetadataCollection {
             "help".to_owned(),
             lang_fmt!(lang, "welcome", me.get_first_name()),
             message.get_chat().get_id(),
-            message.get_from().map(|u| u.get_id()).ok_or_else(|| {
-                BotError::speak("User does not exist", message.get_chat().get_id())
-            })?,
+            message
+                .get_from()
+                .map(|u| u.get_id())
+                .ok_or_else(|| message.fail_err("User does not exist"))?,
             "button",
         )?;
 

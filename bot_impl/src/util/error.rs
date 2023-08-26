@@ -5,10 +5,11 @@
 //! Also provides helper functions for either logging errors to prometheus or
 //! sending formatted errors to the user via telegram
 
+use crate::tg::command::Context;
 use crate::{statics::TG, tg::markdown::DefaultParseErr};
 use async_trait::async_trait;
 use botapi::bot::{ApiError, Response};
-use botapi::gen_types::Chat;
+use botapi::gen_types::{Chat, Message};
 use chrono::OutOfRangeError;
 use sea_orm::{DbErr, TransactionError};
 use thiserror::Error;
@@ -22,17 +23,23 @@ pub type Result<T> = std::result::Result<T, BotError>;
 #[async_trait]
 pub trait SpeakErr<T: Send> {
     /// Maps the error to BotError::Speak using a custom function to derive error message
-    async fn speak_err_fmt<F>(self, chat: &Chat, func: F) -> Result<T>
+    async fn speak_err<F, U>(self, ctx: &U, func: F) -> Result<T>
     where
+        U: Fail + Send + Sync,
         F: for<'b> FnOnce(&'b str) -> String + Send;
 
     /// Maps the error to BotError::Speak using a custom function to derive error message
-    async fn speak_err_raw<F>(self, chat: &Chat, func: F) -> Result<T>
+    /// returning None for the error message causes the error to be passed verbatim
+    async fn speak_err_raw<F, U>(self, ctx: &U, func: F) -> Result<T>
     where
+        U: Fail + Send + Sync,
         F: for<'b> FnOnce(&'b BotError) -> Option<String> + Send;
 
-    async fn speak_err<F>(self, chat: &Chat, code: i64, func: F) -> Result<T>
+    /// Maps the error to BotError::Speak using a custom function only if the telegram error code
+    /// matches
+    async fn speak_err_code<F, U>(self, ctx: &U, code: i64, func: F) -> Result<T>
     where
+        U: Fail + Send + Sync,
         F: for<'b> FnOnce(&'b Response) -> String + Send;
 
     async fn silent(self) -> Result<T>;
@@ -41,11 +48,12 @@ pub trait SpeakErr<T: Send> {
 }
 
 #[async_trait]
-impl<T: Send> SpeakErr<T> for Result<T> {
+impl<T: Send, E: Into<BotError> + Send> SpeakErr<T> for std::result::Result<T, E> {
     fn log(self) -> Option<T> {
         match self {
             Ok(v) => Some(v),
             Err(err) => {
+                let err = err.into();
                 log::error!("error {}", err);
                 err.record_stats();
                 None
@@ -53,36 +61,42 @@ impl<T: Send> SpeakErr<T> for Result<T> {
         }
     }
 
-    async fn speak_err_fmt<F>(self, chat: &Chat, func: F) -> Result<T>
+    async fn speak_err<F, U>(self, ctx: &U, func: F) -> Result<T>
     where
+        U: Fail + Send + Sync,
         F: for<'b> FnOnce(&'b str) -> String + Send,
     {
         match self {
-            Err(err) => match err {
-                BotError::ApiError(_) => {
-                    let message = err.get_tg_error();
-                    let err = func(message);
-                    Err(BotError::speak(err, chat.get_id()))
+            Err(err) => {
+                let err = err.into();
+                match err {
+                    BotError::ApiError(_) => {
+                        let message = err.get_tg_error();
+                        let err = func(message);
+                        ctx.fail(err)
+                    }
+                    BotError::Speak { .. } => Err(err),
+                    err => {
+                        let message = err.to_string();
+                        let err = func(&message);
+                        ctx.fail(err)
+                    }
                 }
-                BotError::Speak { .. } => Err(err),
-                err => {
-                    let message = err.to_string();
-                    let err = func(&message);
-                    Err(BotError::speak(err, chat.get_id()))
-                }
-            },
+            }
             Ok(v) => Ok(v),
         }
     }
 
     /// Maps the error to BotError::Speak using a custom function to derive error message
-    async fn speak_err_raw<F>(self, chat: &Chat, func: F) -> Result<T>
+    async fn speak_err_raw<F, U>(self, ctx: &U, func: F) -> Result<T>
     where
+        U: Fail + Send + Sync,
         F: for<'b> FnOnce(&'b BotError) -> Option<String> + Send,
     {
+        let self = self.map_err(|e| e.into());
         if let Err(ref err) = self {
             if let Some(message) = func(err) {
-                Err(BotError::speak(message, chat.get_id()))
+                ctx.fail(message)
             } else {
                 self
             }
@@ -91,15 +105,17 @@ impl<T: Send> SpeakErr<T> for Result<T> {
         }
     }
 
-    async fn speak_err<F>(self, chat: &Chat, code: i64, func: F) -> Result<T>
+    async fn speak_err_code<F, U>(self, ctx: &U, code: i64, func: F) -> Result<T>
     where
+        U: Fail + Send + Sync,
         F: for<'b> FnOnce(&'b Response) -> String + Send,
     {
+        let self = self.map_err(|e| e.into());
         if let Err(BotError::ApiError(ref err)) = self {
             if let Some(resp) = err.get_response() {
                 if !resp.ok && resp.error_code == Some(code) {
                     let message = func(resp);
-                    return Err(BotError::speak(message, chat.get_id()));
+                    return ctx.fail(message);
                 }
             }
         }
@@ -107,11 +123,52 @@ impl<T: Send> SpeakErr<T> for Result<T> {
     }
 
     async fn silent(self) -> Result<T> {
-        match self {
+        match self.map_err(|e| e.into()) {
             Err(BotError::Speak { err: Some(err), .. }) => Err(*err),
             Err(BotError::Speak { say, err: None, .. }) => Err(BotError::Generic(say)),
             v => v,
         }
+    }
+}
+
+/// Helper trait for constructing a BotError::Speak
+pub trait Fail {
+    /// construct a result that always returns Err(BotError::Speak)
+    fn fail<T: AsRef<str>, R>(&self, message: T) -> Result<R>;
+    /// construct a BotError::Speak
+    fn fail_err<T: AsRef<str>>(&self, message: T) -> BotError;
+}
+
+impl Fail for Context {
+    fn fail<T: AsRef<str>, R>(&self, message: T) -> Result<R> {
+        Err(self.fail_err(message))
+    }
+
+    fn fail_err<T: AsRef<str>>(&self, message: T) -> BotError {
+        match self.try_get() {
+            Ok(get) => BotError::speak(message.as_ref(), get.chat.get_id()),
+            Err(err) => err,
+        }
+    }
+}
+
+impl Fail for Message {
+    fn fail<T: AsRef<str>, R>(&self, message: T) -> Result<R> {
+        Err(self.fail_err(message))
+    }
+
+    fn fail_err<T: AsRef<str>>(&self, message: T) -> BotError {
+        BotError::speak(message.as_ref(), self.get_chat().get_id())
+    }
+}
+
+impl Fail for Chat {
+    fn fail<T: AsRef<str>, R>(&self, message: T) -> Result<R> {
+        Err(self.fail_err(message))
+    }
+
+    fn fail_err<T: AsRef<str>>(&self, message: T) -> BotError {
+        BotError::speak(message.as_ref(), self.get_id())
     }
 }
 
