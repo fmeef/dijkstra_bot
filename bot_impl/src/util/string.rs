@@ -143,9 +143,11 @@ impl Speak for Message {
         let message = message.call();
         if !should_ignore_chat(self.get_chat().get_id()).await? {
             let b = MarkupBuilder::from_murkdown(message.get_text()).await?;
-            let (text, entities) = b.build();
-            let message = message.text(text).entities(entities);
-            let m = message.build().await?;
+            let (text, mut entities, _) = b.build_owned();
+            if let Some(e) = message.get_entities() {
+                entities.extend_from_slice(e.as_slice());
+            }
+            let m = message.text(&text).entities(&entities).build().await?;
 
             Ok(Some(m))
         } else {
@@ -157,10 +159,15 @@ impl Speak for Message {
         let message = message.call();
         if !should_ignore_chat(self.get_chat().get_id()).await? {
             let b = MarkupBuilder::from_murkdown(message.get_text()).await?;
-            let (text, entities) = b.build();
-            let message = message.text(text).entities(entities);
+
+            let (text, mut entities, _) = b.build_owned();
+            if let Some(e) = message.get_entities() {
+                entities.extend_from_slice(e.as_slice());
+            }
 
             let m = message
+                .text(&text)
+                .entities(&entities)
                 .reply_to_message_id(self.get_message_id())
                 .build()
                 .await?;

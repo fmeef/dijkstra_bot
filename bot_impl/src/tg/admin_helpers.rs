@@ -1943,11 +1943,7 @@ impl Context {
         let lang = get_chat_lang(message.get_chat().get_id()).await?;
         let time = dialog.warn_time.map(|t| Duration::seconds(t));
         let (count, model) = warn_user(message, user, reason.map(|v| v.to_owned()), &time).await?;
-        let name = if let Some(user) = user.get_cached_user().await? {
-            user.name_humanreadable()
-        } else {
-            user.to_string()
-        };
+        let name = user.mention().await?;
         let text = if let Some(reason) = reason {
             entity_fmt!(
                 self,
