@@ -4,6 +4,7 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
+httpx = ">=0.23.0"
 googletrans = { git = "https://github.com/bllendev/py-googletrans.git", editable=true, ref = "master" }
 requests = "*"
 argparse = "*"

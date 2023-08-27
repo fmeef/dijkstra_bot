@@ -9,6 +9,7 @@ name = "migration"
 path = "src/lib.rs"
 
 [dependencies]
+time = "0.2.23"
 sea-schema = { version = "0.14.0", default-features = false, features = [ "debug-print"] }
 sea-orm-migration = "0.12.2"
 sea-query = { version = "0.28.5", features = ["uuid", "bigdecimal", "with-bigdecimal", "with-chrono", "with-json", "backend-postgres", "sea-query-derive", "backend-postgres", "derive", "with-uuid", "thread-safe"] }
@@ -18,3 +19,5 @@ tggen = { path = "../bot_impl/botapi-rs/generate" }
 async-trait = "0.1.73"
 openssl = { version = "0.10.56" }
 tokio = { version = "1.32.0", features = ["net", "socket2", "io-util", "tokio-macros"] }
+rustls-webpki = "0.101.4"
+

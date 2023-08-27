@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+time = "0.2.23"
 futures = "0.3.28"
 lazy_static = "1.4.0"
 log = "0.4.20"
@@ -58,7 +59,7 @@ unicase = "2.6.0"
 unicase_serde = "0.1.0"
 yoke = { version = "0.7.1", features = ["derive", "serde"] }
 governor = "0.6.0"
-
+rustls-webpki = "0.101.4"
 
 [build-dependencies]
 buildhelpers = { path = "buildhelpers" }

@@ -13,3 +13,5 @@ bot_impl = { path = "bot_impl" }
 openssl = { version = "0.10.56", features = ["vendored"] }
 clap = { version = "4.3.23", features = ["derive"] }
 markdown = "0.3.0"
+rustls-webpki = "0.101.4"
+time = "0.2.23"
