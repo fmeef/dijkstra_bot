@@ -1,6 +1,6 @@
 
-FROM docker.io/library/rust:latest AS base
-RUN apt update && apt install -y musl-tools musl-dev libssl-dev pkg-config musl-tools clang llvm 
+FROM rust:alpine3.17 AS base
+RUN apk update && apk add musl-dev openssl-dev openssl clang llvm pkgconfig gcc alpine-sdk git g++ perl make
 RUN update-ca-certificates
 
 # Create appuser
@@ -23,24 +23,16 @@ RUN adduser \
 
 WORKDIR /bobot
 
-RUN if  [ "$TARGETPLATFORM" = "linux/amd64" ]; then ARCHITECTURE=x86_64; \
-elif [ "$TARGETPLATFORM" = "linux/arm/v7" ]; then ARCHITECTURE=arm; \
-elif [ "$TARGETPLATFORM" = "linux/arm64" ]; then ARCHITECTURE=aarch64; \
-else ARCHITECTURE=x86_64; fi && \
-rustup default stable && \
-rustup target add $ARCHITECTURE-unknown-linux-musl 
+RUN rustup default stable
 
 FROM base AS builder
 COPY ./ .
-ENV CC=musl-gcc
-RUN if  [ "$TARGETPLATFORM" = "linux/amd64" ]; then ARCHITECTURE=x86_64; \
-elif [ "$TARGETPLATFORM" = "linux/arm/v7" ]; then ARCHITECTURE=arm; \
-elif [ "$TARGETPLATFORM" = "linux/arm64" ]; then ARCHITECTURE=aarch64; \
-else ARCHITECTURE=x86_64; fi && \
-cargo install --target $ARCHITECTURE-unknown-linux-musl --no-default-features \
+ENV CC=gcc
+ENV CXX=g++
+RUN cargo install --no-default-features \
  --features runtime-async-std-rustls --features cli --features codegen \
  --features async-std  sea-orm-cli && \
-cargo install --target  $ARCHITECTURE-unknown-linux-musl --path .
+cargo install --path .
 
 FROM alpine:edge AS migrate
 COPY --from=builder /etc/passwd /etc/passwd

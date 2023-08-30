@@ -4,6 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
       target: prod
+    image: gnu3ra/dijkstra
     ports:
       - "8080:8080"
     volumes:
@@ -16,6 +17,7 @@ services:
       context: .
       dockerfile: Dockerfile
       target: migrate
+    image: gnu3ra/dijkstra_migrate
     volumes:
       - ./:/migrate:z
       - cargo-cache:/home/bobot/.cargo/registry

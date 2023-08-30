@@ -17,7 +17,7 @@ bot_impl = { path = "../bot_impl" }
 botapi = { path = "../bot_impl/botapi-rs" }
 tggen = { path = "../bot_impl/botapi-rs/generate" }
 async-trait = "0.1.73"
-openssl = { version = "0.10.56" }
+openssl = { version = "0.10.56", features=["vendored"]}
 tokio = { version = "1.32.0", features = ["net", "socket2", "io-util", "tokio-macros"] }
 rustls-webpki = "0.101.4"
 
