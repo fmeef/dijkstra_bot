@@ -1,5 +1,7 @@
 addblocklist: Lista de bloqueo agregada {}
 addfilter: Filtro agregado {}
+anonban: Los canales anónimos no pueden bloquear a los usuarios
+anonfed: Los canales anónimos no pueden crear federaciones
 approved: Usuario aprobado {}
 baddm: Este comando no funciona en un dm
 banadmin: No voy a banear a un administrador.
@@ -86,6 +88,7 @@ nan: Por favor, introduzca un número
 needtobeadmin: Lo siento Dave, necesito ser administrador para funcionar en este grupo.
 negwarns: Los límites de advertencia negativos no tienen mucho sentido
 noactionarg: Debes especificar la acción a configurar.
+nofed: Este usuario no posee una federación.
 noreason: Sin razón
 norules: 'Este chat no tiene reglas. Anarquía total. No dudes en enviar spam y publicar
   udemy pirateado.

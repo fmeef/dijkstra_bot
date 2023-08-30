@@ -60,6 +60,8 @@ unicase_serde = "0.1.0"
 yoke = { version = "0.7.1", features = ["derive", "serde"] }
 governor = "0.6.0"
 rustls-webpki = "0.101.4"
+reqwest = "0.11.20"
+bytes = { version = "1.4.0", features = ["serde"] }
 
 [build-dependencies]
 buildhelpers = { path = "buildhelpers" }

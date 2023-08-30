@@ -25,16 +25,19 @@ use crate::{
     util::string::{get_chat_lang, Speak},
 };
 
+use async_trait::async_trait;
 use botapi::gen_types::{
-    Chat, ChatMember, ChatMemberUpdated, ChatPermissions, ChatPermissionsBuilder, EReplyMarkup,
-    InlineKeyboardButtonBuilder, InlineKeyboardMarkup, Message, UpdateExt, User,
+    Chat, ChatMember, ChatMemberUpdated, ChatPermissions, ChatPermissionsBuilder, Document,
+    EReplyMarkup, InlineKeyboardButtonBuilder, InlineKeyboardMarkup, Message, UpdateExt, User,
 };
+use bytes::Bytes;
 use chrono::{DateTime, Duration, Utc};
 use futures::Future;
 
 use lazy_static::{__Deref, lazy_static};
 use macros::{entity_fmt, lang_fmt};
 use redis::AsyncCommands;
+use reqwest::Response;
 use sea_orm::{
     sea_query::OnConflict, ActiveValue::NotSet, ActiveValue::Set, ColumnTrait, ConnectionTrait,
     EntityTrait, FromQueryResult, IntoActiveModel, JoinType, ModelTrait, PaginatorTrait,
@@ -601,6 +604,8 @@ pub async fn is_user_gbanned(user: i64) -> Result<Option<(gbans::Model, users::M
             u.unwrap_or_else(|| users::Model {
                 user_id: us,
                 username: None,
+                first_name: "".to_owned(),
+                last_name: None,
             }),
         )
     }))
@@ -1156,10 +1161,16 @@ pub async fn insert_user(user: &User) -> Result<users::Model> {
     let testmodel = users::Entity::insert(users::ActiveModel {
         user_id: Set(user.get_id()),
         username: Set(user.get_username().map(|v| v.into_owned())),
+        first_name: Set(user.get_first_name().into_owned()),
+        last_name: Set(user.get_last_name().map(|v| v.into_owned())),
     })
     .on_conflict(
         OnConflict::column(users::Column::UserId)
-            .update_columns([users::Column::Username])
+            .update_columns([
+                users::Column::Username,
+                users::Column::FirstName,
+                users::Column::LastName,
+            ])
             .to_owned(),
     )
     .exec_with_returning(DB.deref())
@@ -1393,7 +1404,7 @@ impl Context {
                 .get_id();
             let fed = get_fed(me)
                 .await?
-                .ok_or_else(|| self.fail_err("This user does not have a fed"))?;
+                .ok_or_else(|| self.fail_err(lang_fmt!(self, "nofed")))?;
             let mut builder = InlineKeyboardBuilder::default();
 
             let confirm = InlineKeyboardButtonBuilder::new("Confirm".to_owned())
@@ -1842,7 +1853,7 @@ impl Context {
         F: FnOnce(&'a Context, i64, Option<ArgSlice<'a>>) -> Fut,
         Fut: Future<Output = Result<()>>,
     {
-        self.action_message_some(|ctx, user, args| async move {
+        self.action_message_some(|ctx, user, args, _| async move {
             if let Some(user) = user {
                 action(ctx, user, args).await?;
             } else {
@@ -1853,6 +1864,20 @@ impl Context {
         .await?
         .ok_or_else(|| BotError::Generic("User not found".to_owned()))
     }
+
+    pub async fn action_message_message<'a, F, Fut>(&'a self, action: F) -> Result<i64>
+    where
+        F: FnOnce(&'a Context, &'a Message, Option<ArgSlice<'a>>) -> Fut,
+        Fut: Future<Output = Result<()>>,
+    {
+        self.action_message_some(|ctx, _, args, message| async move {
+            action(ctx, message, args).await?;
+            Ok(())
+        })
+        .await?
+        .ok_or_else(|| BotError::Generic("User not found".to_owned()))
+    }
+
     /// Runs the provided function with parameters specifying a user and message parsed from the
     /// arguments of a command. This is used to allows users to specify messages to interact with
     /// using either mentioning a user via an @ handle or text mention or by replying to a message.
@@ -1860,7 +1885,7 @@ impl Context {
     /// function along with the remaining args and the message itself
     pub async fn action_message_some<'a, F, Fut>(&'a self, action: F) -> Result<Option<i64>>
     where
-        F: FnOnce(&'a Context, Option<i64>, Option<ArgSlice<'a>>) -> Fut,
+        F: FnOnce(&'a Context, Option<i64>, Option<ArgSlice<'a>>, &'a Message) -> Fut,
         Fut: Future<Output = Result<()>>,
     {
         let message = self.message()?;
@@ -1872,12 +1897,20 @@ impl Context {
             .map(|e| &e.entities)
             .unwrap_or_else(|| &VECDEQUE);
 
-        if let Some(user) = message
-            .get_reply_to_message_ref()
-            .map(|v| v.get_from())
-            .flatten()
-        {
-            action(self, Some(user.get_id()), args.map(|a| a.as_slice())).await?;
+        if let (Some(user), Some(message)) = (
+            message
+                .get_reply_to_message_ref()
+                .map(|v| v.get_from())
+                .flatten(),
+            message.get_reply_to_message_ref(),
+        ) {
+            action(
+                self,
+                Some(user.get_id()),
+                args.map(|a| a.as_slice()),
+                message,
+            )
+            .await?;
             Ok(Some(user.get_id()))
         } else {
             match entities.front() {
@@ -1887,6 +1920,7 @@ impl Context {
                             self,
                             Some(user.get_id()),
                             args.map(|a| a.pop_slice()).flatten(),
+                            self.message()?,
                         )
                         .await?;
                         Ok(Some(user.get_id()))
@@ -1899,6 +1933,7 @@ impl Context {
                         self,
                         Some(user.get_id()),
                         args.map(|a| a.pop_slice()).flatten(),
+                        self.message()?,
                     )
                     .await?;
                     Ok(Some(user.get_id()))
@@ -1913,15 +1948,33 @@ impl Context {
                         .flatten()
                     {
                         Some(Ok(v)) => {
-                            action(self, Some(v), args.map(|a| a.pop_slice()).flatten()).await?;
+                            action(
+                                self,
+                                Some(v),
+                                args.map(|a| a.pop_slice()).flatten(),
+                                self.message()?,
+                            )
+                            .await?;
                             Ok(Some(v))
                         }
                         Some(Err(_)) => {
-                            action(self, None, args.map(|a| a.pop_slice()).flatten()).await?;
+                            action(
+                                self,
+                                None,
+                                args.map(|a| a.pop_slice()).flatten(),
+                                self.message()?,
+                            )
+                            .await?;
                             Ok(None)
                         }
                         None => {
-                            action(self, None, args.map(|a| a.pop_slice()).flatten()).await?;
+                            action(
+                                self,
+                                None,
+                                args.map(|a| a.pop_slice()).flatten(),
+                                self.message()?,
+                            )
+                            .await?;
                             Ok(None)
                         }
                     }
@@ -2171,6 +2224,83 @@ pub async fn update_actions_ban(
 
     res.cache(key).await?;
     Ok(())
+}
+
+/// Helper trait to convert emptystrings to Options
+pub trait StrOption
+where
+    Self: Sized,
+{
+    fn none_if_empty(self) -> Option<Self>;
+}
+
+impl<T> StrOption for T
+where
+    T: Sized + AsRef<str>,
+{
+    fn none_if_empty(self) -> Option<Self> {
+        if self.as_ref().len() == 0 {
+            None
+        } else {
+            Some(self)
+        }
+    }
+}
+
+#[async_trait]
+pub trait FileGetter {
+    async fn get_bytes(&self) -> Result<Bytes>;
+    async fn get_text(&self) -> Result<String>;
+}
+
+#[async_trait]
+impl FileGetter for Document {
+    async fn get_bytes(&self) -> Result<Bytes> {
+        let file = TG
+            .client
+            .build_get_file(self.get_file_id_ref())
+            .build()
+            .await?;
+        let path = file
+            .get_file_path()
+            .ok_or_else(|| BotError::Generic("Document file path missing".to_owned()))?;
+
+        Ok(get_file(&path).await?)
+    }
+
+    async fn get_text(&self) -> Result<String> {
+        let file = TG
+            .client
+            .build_get_file(self.get_file_id_ref())
+            .build()
+            .await?;
+        let path = file
+            .get_file_path()
+            .ok_or_else(|| BotError::Generic("Docuemnt file path missing".to_owned()))?;
+        Ok(get_file_text(&path).await?)
+    }
+}
+
+async fn get_file_body(path: &str) -> Result<Response> {
+    let path = format!("https://api.telegram.org/file/bot{}/{}", TG.token, path);
+    let body = reqwest::get(path).await.map_err(|err| err.without_url())?;
+    Ok(body)
+}
+
+/// Get a file from the boi api
+/// https://api.telegram.org/file/bot/<path>
+pub async fn get_file(path: &str) -> Result<Bytes> {
+    let body = get_file_body(path).await?;
+    let body = body.bytes().await?;
+    Ok(body)
+}
+
+/// Get a file from the bot api as text
+/// https://api.telegram.org/file/bot/<path>
+pub async fn get_file_text(path: &str) -> Result<String> {
+    let body = get_file_body(path).await?;
+    let text = body.text().await?;
+    Ok(text)
 }
 
 /// Sets the 'pending' flag on a stored action. Pending actions are applied the next time a user is seen

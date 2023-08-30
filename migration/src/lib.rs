@@ -11,6 +11,7 @@ mod m20230509_133432_approvals;
 mod m20230629_005040_rules;
 mod m20230629_231657_tags_idx;
 mod m20230712_063916_fbans;
+mod m20230828_202520_user_names;
 
 pub struct Migrator;
 
@@ -28,6 +29,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20230509_133432_approvals::Migration),
             Box::new(m20230629_005040_rules::Migration),
             Box::new(m20230712_063916_fbans::Migration),
+            Box::new(m20230828_202520_user_names::Migration),
         ];
         core_migrations.append(&mut module_migrations);
         core_migrations.append(&mut vec![Box::new(m20230629_231657_tags_idx::Migration)]);

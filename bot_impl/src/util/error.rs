@@ -217,6 +217,10 @@ pub enum BotError {
     Base64(#[from] base64::DecodeError),
     #[error("Invalid glob pattern: {0}")]
     GlobError(#[from] globset::Error),
+    #[error("Json serialization error: {0}")]
+    SerdeJsonErr(#[from] serde_json::Error),
+    #[error("Http error {0}")]
+    ReqwestError(#[from] reqwest::Error),
     #[error("Generic error {0}")]
     Generic(String),
 }

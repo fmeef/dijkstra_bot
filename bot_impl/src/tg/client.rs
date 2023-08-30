@@ -115,6 +115,7 @@ impl MetadataCollection {
 pub struct TgClient {
     pub client: Bot,
     pub modules: Arc<MetadataCollection>,
+    pub token: String,
     pub button_events: Arc<DashMap<String, SingleCb<CallbackQuery, Result<()>>>>,
     pub button_repeat: Arc<DashMap<String, MultiCb<CallbackQuery, Result<bool>>>>,
 }
@@ -235,8 +236,10 @@ impl TgClient {
                 .collect(),
             modules: metadata.into_iter().map(|v| (v.name.clone(), v)).collect(),
         };
+        let token = token.into();
         Self {
-            client: Bot::new(token).unwrap(),
+            client: Bot::new(token.clone()).unwrap(),
+            token,
             modules: Arc::new(metadata),
             button_events: Arc::new(DashMap::new()),
             button_repeat: Arc::new(DashMap::new()),
@@ -376,6 +379,7 @@ impl TgClient {
 impl Clone for TgClient {
     fn clone(&self) -> Self {
         TgClient {
+            token: self.token.clone(),
             client: self.client.clone(),
             modules: Arc::clone(&self.modules),
             button_events: Arc::clone(&self.button_events),

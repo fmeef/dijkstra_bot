@@ -39,7 +39,7 @@ pub async fn report(ctx: &Context) -> Result<()> {
             return Err(BotError::Generic("Admins can't warn".into()));
         }
 
-        ctx.action_message_some(|ctx, user, _| async move {
+        ctx.action_message_some(|ctx, user, _, _| async move {
             if let Some(chat) = ctx.chat() {
                 if let Some(user) = user {
                     if user.is_admin(chat).await? {

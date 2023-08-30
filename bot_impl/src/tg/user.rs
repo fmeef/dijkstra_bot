@@ -205,6 +205,8 @@ impl From<&User> for crate::persist::core::users::Model {
     fn from(user: &User) -> Self {
         Self {
             user_id: user.get_id(),
+            first_name: user.get_first_name().into_owned(),
+            last_name: user.get_last_name().map(|v| v.into_owned()),
             username: user.get_username().map(|v| v.into_owned()),
         }
     }

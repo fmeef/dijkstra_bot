@@ -106,6 +106,7 @@ impl MigrationTrait for Migration {
                     .col(
                         ColumnDef::new(fedadmin::Column::User)
                             .big_integer()
+                            .unique_key()
                             .not_null(),
                     )
                     .primary_key(
@@ -127,7 +128,12 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(fbans::Column::Federation).uuid().not_null())
                     .col(ColumnDef::new(fbans::Column::UserName).text())
                     .col(ColumnDef::new(fbans::Column::Reason).text())
-                    .col(ColumnDef::new(fbans::Column::User).big_integer().not_null())
+                    .col(
+                        ColumnDef::new(fbans::Column::User)
+                            .big_integer()
+                            .not_null()
+                            .unique_key(),
+                    )
                     .index(
                         Index::create()
                             .col(fbans::Column::User)

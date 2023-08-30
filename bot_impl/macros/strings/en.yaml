@@ -67,6 +67,9 @@ fpromotenotauth: "You are not authorized to accept this promotion"
 fpromoted: "You have been promoted"
 failfpromote: "Failed to promote user: {}"
 onlyone: "Only one federation allowed per user"
+anonfed: "Anonymous channels cannot create federations"
+anonban: "Anonymous channels cannot fban users"
+nofed: "This user does not own a federation."
 
 # permissions and admin rights
 needtobeadmin: "I'm sorry dave, I need to be admin to function in this group"

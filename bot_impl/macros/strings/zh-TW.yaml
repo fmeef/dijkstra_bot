@@ -1,5 +1,7 @@
 addblocklist: 添加了黑名單 {}
 addfilter: 添加了過濾器 {}
+anonban: 匿名渠道不能禁止用戶
+anonfed: 匿名渠道無法創建聯盟
 approved: 已批准的用戶{}
 baddm: 該命令在 dm 中不起作用
 banadmin: 我不會禁止管理員
@@ -81,6 +83,7 @@ nan: 請輸入一個數字
 needtobeadmin: 抱歉，戴夫，我需要成為管理員才能在該組中工作
 negwarns: 負警告限制沒有多大意義
 noactionarg: 您需要指定要設置的操作
+nofed: 該用戶不擁有聯盟。
 noreason: 沒有理由
 norules: '這個聊天沒有規則。完全無政府狀態。請隨意發送垃圾郵件並發布盜版 udemy
 

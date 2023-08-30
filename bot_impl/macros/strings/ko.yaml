@@ -1,5 +1,7 @@
 addblocklist: 차단 목록 {}을 추가했습니다.
 addfilter: 필터 {}를 추가했습니다.
+anonban: 익명 채널은 사용자를 fban할 수 없습니다.
+anonfed: 익명 채널은 페더레이션을 생성할 수 없습니다.
 approved: 승인된 사용자 {}
 baddm: 이 명령은 DM에서는 작동하지 않습니다
 banadmin: 관리자를 차단하지 않겠습니다
@@ -81,6 +83,7 @@ nan: 숫자를 입력하세요
 needtobeadmin: 죄송해요 데이브. 이 그룹에서 활동하려면 관리자여야 합니다
 negwarns: 부정적인 경고 제한은 별로 의미가 없습니다.
 noactionarg: 설정할 작업을 지정해야 합니다.
+nofed: 이 사용자는 페더레이션을 소유하지 않습니다.
 noreason: 이유없이
 norules: '이 채팅에는 규칙이 없습니다. 완전한 무정부 상태. 스팸을 보내거나 불법 복제된 udemy를 ​​게시해도 됩니다.
 
