@@ -27,10 +27,16 @@ then
   exit 1
 fi
 
+failpackages()
+{
+  echo "failed to install some packages, installation aborted"
+  exit 1 
+}
 
 if which apt-get 2> /dev/null
 then
-  $SUDO apt-get update && $SUDO apt-get -y install podman podman-compose git
+  $SUDO apt-get update && $SUDO apt-get -y install podman git python3-pip || failpackages
+  $SUDO pip3 install podman-compose || failpackages
 elif which dnf 2> /dev/null
 then
   $SUDO dnf install -y podman podman-compose git
