@@ -56,7 +56,6 @@ COPY --from=builder /etc/group /etc/group
 WORKDIR /bobot
 COPY --from=builder /etc/ssl /etc/ssl
 COPY --from=builder /usr/local/cargo/bin/dijkstra ./
-COPY --from=builder /usr/local/cargo/bin/sea-orm-cli ./
 USER bobot:bobot
 VOLUME /config
 ENTRYPOINT [ "/bobot/dijkstra", "--config", "/config/config.toml"]

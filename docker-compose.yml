@@ -19,9 +19,7 @@ services:
       target: migrate
     image: gnu3ra/dijkstra_migrate
     volumes:
-      - ./:/migrate:z
       - cargo-cache:/home/bobot/.cargo/registry
-      - migration-target:/migrate/migration/target
     environment:
       - DATABASE_URL=postgresql://bobot:changeme@db/bobot
     depends_on:
