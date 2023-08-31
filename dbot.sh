@@ -33,20 +33,20 @@ failpackages()
   exit 1 
 }
 
-if which apt-get 2> /dev/null
+if which apt-get > /dev/null
 then
   export DEBIAN_FRONTEND=noninteractive
-  $SUDO apt-get update && $SUDO apt-get -y install podman git python3-pip || failpackages
+  $SUDO apt-get update && $SUDO apt-get -y install podman git python3-pip podman-network || failpackages
   $SUDO pip3 install podman-compose || failpackages
-elif which dnf 2> /dev/null
+elif which dnf > /dev/null
 then
-  $SUDO dnf install -y podman podman-compose git
-elif which pacman 2> /dev/null
+  $SUDO dnf install -y podman podman-compose git containernetworking-plugins
+elif which pacman > /dev/null
 then
-  $SUDO pacman -S podman podman-compose git
-elif which yum 2> /dev/null
+  $SUDO pacman -S podman podman-compose git cni-plugins
+elif which yum > /dev/null
 then
-  $SUDO yum -y install podman podman-compose git
+  $SUDO yum -y install podman podman-compose git containernetworking-plugins
 else
   echo "No supported package manager found, exiting."
   exit 1
