@@ -1,5 +1,5 @@
 
-FROM rust:alpine3.17 AS base
+FROM docker.io/rust:alpine3.17 AS base
 RUN apk update && apk add musl-dev openssl-dev openssl clang llvm pkgconfig gcc alpine-sdk git g++ perl make
 RUN update-ca-certificates
 

@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
       target: prod
-    image: gnu3ra/dijkstra
+    image: docker.io/gnu3ra/dijkstra
     ports:
       - "8080:8080"
     volumes:
@@ -17,7 +17,7 @@ services:
       context: .
       dockerfile: Dockerfile
       target: migrate
-    image: gnu3ra/dijkstra_migrate
+    image: docker.io/gnu3ra/dijkstra_migrate
     volumes:
       - cargo-cache:/home/bobot/.cargo/registry
     environment:
@@ -26,7 +26,7 @@ services:
       db:
         condition: service_healthy
   db:
-    image: postgres:15.1-alpine
+    image: docker.io/postgres:15.1-alpine
     restart: always
     environment:
       - POSTGRES_USER=bobot
@@ -40,12 +40,12 @@ services:
       timeout: 3s
       retries: 10
   redis:
-    image: redis:7.0.7-alpine
+    image: docker.io/redis:7.0.7-alpine
     restart: always
     volumes: 
       - bobot-redis:/data  
   prometheus:
-    image: prom/prometheus:v2.41.0
+    image: docker.io/prom/prometheus:v2.41.0
     ports:
       - 9000:9090
     volumes:

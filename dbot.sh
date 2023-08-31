@@ -35,6 +35,7 @@ failpackages()
 
 if which apt-get 2> /dev/null
 then
+  export DEBIAN_FRONTEND=noninteractive
   $SUDO apt-get update && $SUDO apt-get -y install podman git python3-pip || failpackages
   $SUDO pip3 install podman-compose || failpackages
 elif which dnf 2> /dev/null
@@ -51,7 +52,7 @@ else
   exit 1
 fi
 
-if ! git clone --recursive https://github.com/fmeef/dijkstra_bot.git $HOME/.dijkstra 
+if [ ! -d $HOME/.dijkstra ] && ! git clone --recursive https://github.com/fmeef/dijkstra_bot.git $HOME/.dijkstra 
 then
   echo "Failed to clone git repository, make sure $HOME/.dijkstra is writable"
   exit 1
@@ -63,9 +64,9 @@ then
   exit 1
 fi
 
-if ! podman-compose build
+if ! podman-compose up
 then
-  echo "Failed to build dijkstra using podman. Your linux distro could be too old"
+  echo "Failed to start dijkstra using podman. Your linux distro could be too old"
   echo "to support user namespaces, you could be running inside a proot container on a mobile device"
   echo "or you could be in a sandboxed environment of some kind. Try again with a modern computer"
   exit 1
