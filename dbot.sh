@@ -2,10 +2,14 @@
 
 BOT_PREFIX=$HOME/.dijkstra
 
-echo "Welcome to Dijkstra Bot, a modular and scalable group management bot written in rust"
-echo ""
-echo "This installer will automatically setup a containerized bot instance"
-echo "\n"
+if [ -d /data/data/com.termux ]
+then
+  echo "This installation script cannot be run under termux"
+  echo "If someone on telegram or whatsapp told you to run this script you have been SCAMMED"
+  echo "this project probably doesn't do what you think it does"
+  echo "it definitely cannot hack anything and it won't add members to any chat groups"
+  exit 1
+fi
 
 if ! which curl >/dev/null 2>&1
 then
@@ -25,20 +29,19 @@ then
   SUDO=""
 fi
 
-if [ -d /data/data/com.termux ]
-then
-  echo "This installation script cannot be run under termux"
-  echo "If someone on telegram or whatsapp told you to run this script you have been SCAMMED"
-  echo "this project probably doesn't do what you think it does"
-  echo "it definitely cannot hack anything and it won't add members to any chat groups"
-  exit 1
-fi
-
 if [ -d $BOT_PREFIX ]
 then
   echo "Dijkstra bot is already installed. Exiting."
   exit 1
 fi
+
+
+
+echo "Welcome to Dijkstra Bot, a modular and scalable group management bot written in rust"
+echo ""
+echo "This installer will automatically setup a containerized bot instance"
+echo "\n"
+
 
 failpackages()
 {
