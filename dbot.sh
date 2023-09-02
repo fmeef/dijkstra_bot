@@ -53,7 +53,7 @@ setup_config()
   local db_pass="$(dd if=/dev/urandom bs=1 count=128 | sha512sum)"
   echo $db_pass > $BOT_PREFIX/db_pass.txt 
   local bot_token=""
-  read -p "Enter bot token from @BotFather > " bot_token
+  read -p "Enter bot token from @BotFather > " bot_token < /dev/tty
 
   [ -z "$bot_token" ] && echo "Bot token must not be empty" && return 1
 
