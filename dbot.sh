@@ -50,7 +50,7 @@ setup_config()
 {
   [ -f $BOX_PREFIX/config/config.toml ] && [ -f $BOT_PREFIX/db_pass.txt ] && return 0
 
-  local db_pass="$(dd if=/dev/urandom bs=1 count=128 | sha512sum)"
+  local db_pass="$(dd if=/dev/urandom bs=1 count=128 | sha512sum | cut -d " " -f 1)"
   echo $db_pass > $BOT_PREFIX/db_pass.txt 
   local bot_token=""
   read -p "Enter bot token from @BotFather > " bot_token < /dev/tty
