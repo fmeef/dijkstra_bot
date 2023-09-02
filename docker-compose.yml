@@ -1,17 +1,17 @@
 services:
   bobot:
     image: docker.io/gnu3ra/dijkstra:latest
-    pull_policy: always
+    pull_policy: missing
     ports:
       - "8080:8080"
     volumes:
       - ./config:/config:z
     depends_on:
-      migrate:
-        condition: service_completed_successfully
+      db:
+        condition: service_healthy
   migrate:
     image: docker.io/gnu3ra/dijkstra_migrate:latest
-    pull_policy: always
+    pull_policy: missing
     environment:
       - POSTGRES_USER=bobot
       - POSTGRES_PASSWORD_FILE=/run/secrets/pass
