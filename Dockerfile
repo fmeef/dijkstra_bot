@@ -6,7 +6,6 @@ RUN update-ca-certificates
 # Create appuser
 ENV USER=bobot
 ENV UID=10001
-ARG TARGETPLATFORM
 #ENV CC_aarch64_unknown_linux_musl=clang
 #ENV AR_aarch64_unknown_linux_musl=llvm-ar
 #ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS="-Clink-self-contained=yes -Clinker=rust-lld"

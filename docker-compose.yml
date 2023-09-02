@@ -1,9 +1,5 @@
 services:
   bobot:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: prod
     image: docker.io/gnu3ra/dijkstra:latest
     pull_policy: always
     ports:
@@ -14,10 +10,6 @@ services:
       migrate:
         condition: service_completed_successfully
   migrate:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: migrate
     image: docker.io/gnu3ra/dijkstra_migrate:latest
     pull_policy: always
     environment:
