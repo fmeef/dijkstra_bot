@@ -1,5 +1,6 @@
 #!/bin/sh
 
+BOT_PREFIX=$HOME/.dijkstra
 
 if ! which curl 2> /dev/null
 then
@@ -15,6 +16,7 @@ then
   exit 1
 elif !which sudo 2> /dev/null
 then
+  echo "warning! running as root. This is not recommended"
   SUDO=""
 fi
 
@@ -33,10 +35,65 @@ failpackages()
   exit 1 
 }
 
+is_cry_ubuntu()
+{
+  if grep "VERSION_ID=\"22\.04\"" /etc/os-release > /dev/null 
+  then
+    return 0
+  else
+    return 1
+  fi
+}
+
+
+setup_config()
+{
+  [ -f $BOX_PREFIX/config/config.toml ] && [ -f $BOT_PREFIX/db_pass.txt ] && return 0
+
+  local db_pass="$(dd if=/dev/urandom bs=1 count=128 | sha512sum)"
+  echo $db_pass > $BOT_PREFIX/db_pass.txt 
+  local bot_token=""
+  read -p "Enter bot token from @BotFather > " bot_token
+
+  [ -z "$bot_token" ] && echo "Bot token must not be empty" && return 1
+
+  cat <<EOF > $BOT_PREFIX/config/config.toml
+bot_token = '$bot_token'
+[persistence]
+database_connection = 'postgresql://bobot:$db_pass@db/bobot'
+redis_connection = 'redis://redis'
+
+[webhook]
+enable_webhook = false
+webhook_url = 'https://bot.ustc.edu.cn'
+listen = '0.0.0.0:8080'
+
+[logging]
+log_level = 'info'
+prometheus_hook = '0.0.0.0:9999'
+
+[timing]
+cache_timeout = 172800
+antifloodwait_count = 10
+antifloodwait_time = 20
+ignore_chat_time = 300
+
+[admin]
+sudo_users = []
+support_users = []
+EOF
+return 0
+}
+
 if which apt-get > /dev/null
 then
   export DEBIAN_FRONTEND=noninteractive
-  $SUDO apt-get update && $SUDO apt-get -y install podman git python3-pip podman-network || failpackages
+  if is_cry_ubuntu
+  then
+    curl http://archive.ubuntu.com/ubuntu/pool/universe/g/golang-github-containernetworking-plugins/containernetworking-plugins_1.1.1+ds1-1_amd64.deb > /tmp/cry.deb
+    $SUDO dpkg -i /tmp/cry.deb || failpackages
+  fi  
+  $SUDO apt-get update && $SUDO apt-get -y install podman git python3-pip || failpackages
   $SUDO pip3 install podman-compose || failpackages
 elif which dnf > /dev/null
 then
@@ -52,30 +109,27 @@ else
   exit 1
 fi
 
-if [ ! -d $HOME/.dijkstra ] && ! git clone --recursive https://github.com/fmeef/dijkstra_bot.git $HOME/.dijkstra 
+if [ ! -d $BOT_PREFIX ] && ! git clone --recursive https://github.com/fmeef/dijkstra_bot.git $BOT_PREFIX 
 then
-  echo "Failed to clone git repository, make sure $HOME/.dijkstra is writable"
+  echo "Failed to clone git repository, make sure $BOT_PREFIX is writable"
   exit 1
 fi
 
-if ! cd $HOME/.dijkstra 
+if ! cd $BOT_PREFIX
 then
-  echo "$HOME/.dijkstra is not accessible"
+  echo "$BOT_PREFIX is not accessible"
   exit 1
 fi
 
-if ! podman-compose up
+if ! setup_config
 then
-  echo "Failed to start dijkstra using podman. Your linux distro could be too old"
-  echo "to support user namespaces, you could be running inside a proot container on a mobile device"
-  echo "or you could be in a sandboxed environment of some kind. Try again with a modern computer"
+  echo "Failed to setup bot config. make sure you entered your token correctly"
   exit 1
 fi
 
-
-echo "Successfully installed dijkstra! To start first edit $HOME/.dijkstra/config/config.toml"
+echo "Successfully installed dijkstra! To start first edit $BOT_PREFIX/config/config.toml"
 echo "then run"
-echo "cd $HOME/.dijkstra && podman-compose up"
+echo "cd $BOT_PREFIX && podman-compose up"
 
 
 

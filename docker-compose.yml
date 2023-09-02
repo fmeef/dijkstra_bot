@@ -5,6 +5,7 @@ services:
       dockerfile: Dockerfile
       target: prod
     image: docker.io/gnu3ra/dijkstra:latest
+    pull_policy: always
     ports:
       - "8080:8080"
     volumes:
@@ -18,10 +19,13 @@ services:
       dockerfile: Dockerfile
       target: migrate
     image: docker.io/gnu3ra/dijkstra_migrate:latest
-    volumes:
-      - cargo-cache:/home/bobot/.cargo/registry
+    pull_policy: always
     environment:
-      - DATABASE_URL=postgresql://bobot:changeme@db/bobot
+      - POSTGRES_USER=bobot
+      - POSTGRES_PASSWORD_FILE=/run/secrets/pass
+      - POSTGRES_DB=bobot
+    secrets:
+      - pass
     depends_on:
       db:
         condition: service_healthy
@@ -30,8 +34,10 @@ services:
     restart: always
     environment:
       - POSTGRES_USER=bobot
-      - POSTGRES_PASSWORD=changeme
+      - POSTGRES_PASSWORD_FILE=/run/secrets/pass
       - POSTGRES_DB=bobot
+    secrets:
+      - pass
     volumes: 
       - bobot-db:/var/lib/postgresql/data 
     healthcheck:
@@ -49,7 +55,7 @@ services:
     ports:
       - 9000:9090
     volumes:
-      - ./prometheus:/etc/prometheus
+      - ./prometheus:/etc/prometheus:z
       - prometheus-data:/prometheus
     command: --web.enable-lifecycle  --config.file=/etc/prometheus/prometheus.yml
        
@@ -59,3 +65,7 @@ volumes:
   prometheus-data:
   cargo-cache:
   migration-target:
+
+secrets:
+  pass:
+    file: db_pass.txt

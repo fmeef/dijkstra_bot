@@ -29,25 +29,7 @@ FROM base AS builder
 COPY ./ .
 ENV CC=gcc
 ENV CXX=g++
-RUN cargo install --no-default-features \
- --features runtime-async-std-rustls --features cli --features codegen \
- --features async-std  sea-orm-cli && \
-cargo install --path .
-
-FROM alpine:edge AS migrate
-COPY --from=builder /etc/passwd /etc/passwd
-COPY --from=builder /etc/group /etc/group
-RUN apk add cargo openssl-dev
-COPY --from=builder /usr/local/cargo/bin/sea-orm-cli /
-RUN mkdir -p /migrate/migration/target && mkdir -p /home/bobot/.cargo/registry && \
-chown -R bobot:bobot /home/bobot && chown -R bobot:bobot /migrate
-USER bobot:bobot
-ENV OPENSSL_NO_VENDOR=1
-WORKDIR /migrate
-VOLUME /migrate
-COPY ./ ./
-
-CMD [ "/sea-orm-cli", "migrate", "up" ]
+RUN cargo install --path . && cargo install  --path ./migration/
 
 FROM scratch AS prod
 
@@ -60,6 +42,15 @@ USER bobot:bobot
 VOLUME /config
 ENTRYPOINT [ "/bobot/dijkstra", "--config", "/config/config.toml"]
 
+
+FROM alpine:3.17 AS migrate
+
+COPY --from=builder /etc/passwd /etc/passwd
+COPY --from=builder /etc/group /etc/group
+COPY --from=builder /etc/ssl /etc/ssl
+COPY --from=builder /usr/local/cargo/bin/migration /
+USER bobot:bobot
+CMD [ "sh", "-c", "/migration -u postgresql://$POSTGRES_USER:$(cat $POSTGRES_PASSWORD_FILE)@db/$POSTGRES_DB up" ]
 
 FROM base AS dev
 RUN rustup default stable && rustup component add rustfmt && \
