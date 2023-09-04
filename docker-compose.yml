@@ -16,6 +16,7 @@ services:
       - POSTGRES_USER=bobot
       - POSTGRES_PASSWORD_FILE=/run/secrets/pass
       - POSTGRES_DB=bobot
+      - POSTGRES_HOST=db
     secrets:
       - pass
     depends_on:

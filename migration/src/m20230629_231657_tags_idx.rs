@@ -13,7 +13,7 @@ impl MigrationTrait for Migration {
             .get_connection()
             .execute(Statement::from_string(
                 DbBackend::Postgres,
-                "CREATE EXTENSION pg_trgm;".to_owned(),
+                "CREATE EXTENSION IF NOT EXISTS pg_trgm;".to_owned(),
             ))
             .await?;
         manager
@@ -40,7 +40,7 @@ impl MigrationTrait for Migration {
             .get_connection()
             .execute(Statement::from_string(
                 DbBackend::Postgres,
-                "DROP EXTENSION pg_trgm;".to_owned(),
+                "DROP EXTENSION IF EXISTS pg_trgm;".to_owned(),
             ))
             .await?;
 
