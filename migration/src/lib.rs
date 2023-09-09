@@ -6,6 +6,8 @@ mod m20221217_150626_create_user;
 mod m20230113_005856_addlang;
 mod m20230118_045027_adminactions;
 mod m20230211_202851_expires;
+mod m20230214_000001_create_captcha;
+mod m20230312_000001_create_welcomes;
 mod m20230507_201523_dialog_permissions;
 mod m20230509_133432_approvals;
 mod m20230629_005040_rules;
@@ -30,6 +32,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20230629_005040_rules::Migration),
             Box::new(m20230712_063916_fbans::Migration),
             Box::new(m20230828_202520_user_names::Migration),
+            Box::new(m20230312_000001_create_welcomes::Migration),
+            Box::new(m20230214_000001_create_captcha::Migration),
         ];
         core_migrations.append(&mut module_migrations);
         core_migrations.append(&mut vec![Box::new(m20230629_231657_tags_idx::Migration)]);

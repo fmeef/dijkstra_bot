@@ -174,6 +174,11 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
 
                     ctx.handle_gbans().await;
 
+                    if let Err(err) = ctx.greeter_handle_update().await {
+                        log::error!("Failed to greet user {}", err);
+                        err.record_stats();
+                    }
+
                     if let Err(err) = ctx.handle_pending_action_update().await {
                         log::error!("failed to handle pending action: {}", err);
                         err.record_stats();

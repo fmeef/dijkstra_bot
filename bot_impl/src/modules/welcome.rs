@@ -1,23 +1,21 @@
-use crate::persist::core::media::{get_media_type, send_media_reply_chatuser, MediaType};
-use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache};
-use crate::statics::{CONFIG, DB, REDIS};
-use crate::tg::admin_helpers::{UpdateHelpers, UserChanged};
+use crate::persist::core::media::get_media_type;
+use crate::persist::core::welcomes;
+use crate::persist::migrate::ManagerHelper;
+use crate::persist::redis::RedisCache;
+use crate::statics::{DB, REDIS};
 use crate::tg::command::{Cmd, Context, TextArgs};
 use crate::tg::permissions::*;
 use crate::util::error::{BotError, Result};
-
-use crate::util::string::{get_chat_lang, Lang};
+use crate::util::string::Lang;
 use crate::{metadata::metadata, util::string::Speak};
-use botapi::gen_types::{Chat, ChatMemberUpdated, Message};
-use chrono::Duration;
-use futures::FutureExt;
+use async_trait::async_trait;
+use botapi::gen_types::Message;
 use lazy_static::__Deref;
-
 use macros::lang_fmt;
 use redis::AsyncCommands;
 use sea_orm::entity::ActiveValue::{NotSet, Set};
-use sea_orm::EntityTrait;
-use sea_orm_migration::{MigrationName, MigrationTrait};
+use sea_orm::{DbErr, EntityTrait};
+use sea_orm_migration::{MigrationName, MigrationTrait, SchemaManager};
 use sea_query::OnConflict;
 
 metadata!("Welcome",
@@ -45,88 +43,27 @@ impl MigrationName for Migration {
     }
 }
 
-pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
-    vec![Box::new(Migration)]
+#[async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, _: &SchemaManager) -> std::result::Result<(), DbErr> {
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> std::result::Result<(), DbErr> {
+        manager.drop_table_auto(welcomes::Entity).await?;
+        Ok(())
+    }
 }
 
-pub mod entities {
-    use crate::persist::migrate::ManagerHelper;
-    use ::sea_orm_migration::prelude::*;
-    #[async_trait::async_trait]
-    impl MigrationTrait for super::Migration {
-        async fn up(&self, manager: &SchemaManager) -> std::result::Result<(), DbErr> {
-            manager
-                .create_table(
-                    Table::create()
-                        .table(welcomes::Entity)
-                        .col(
-                            ColumnDef::new(welcomes::Column::Chat)
-                                .big_integer()
-                                .primary_key(),
-                        )
-                        .col(ColumnDef::new(welcomes::Column::Text).text())
-                        .col(ColumnDef::new(welcomes::Column::MediaId).text())
-                        .col(ColumnDef::new(welcomes::Column::MediaType).integer())
-                        .col(ColumnDef::new(welcomes::Column::GoodbyeText).text())
-                        .col(ColumnDef::new(welcomes::Column::GoodbyeMediaId).text())
-                        .col(ColumnDef::new(welcomes::Column::GoodbyeMediaType).integer())
-                        .col(
-                            ColumnDef::new(welcomes::Column::Enabled)
-                                .boolean()
-                                .not_null()
-                                .default(false),
-                        )
-                        .to_owned(),
-                )
-                .await?;
-
-            Ok(())
-        }
-
-        async fn down(&self, manager: &SchemaManager) -> std::result::Result<(), DbErr> {
-            manager.drop_table_auto(welcomes::Entity).await?;
-
-            Ok(())
-        }
-    }
-    pub mod welcomes {
-        use crate::persist::core::media::*;
-        use sea_orm::entity::prelude::*;
-        use serde::{Deserialize, Serialize};
-        #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
-        #[sea_orm(table_name = "welcome")]
-        pub struct Model {
-            #[sea_orm(primary_key)]
-            pub chat: i64,
-            #[sea_orm(column_type = "Text")]
-            pub text: Option<String>,
-            pub media_id: Option<String>,
-            pub media_type: Option<MediaType>,
-            #[sea_orm(column_type = "Text")]
-            pub goodbye_text: Option<String>,
-            pub goodbye_media_id: Option<String>,
-            pub goodbye_media_type: Option<MediaType>,
-            #[sea_orm(default = false)]
-            pub enabled: bool,
-        }
-
-        #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-        pub enum Relation {}
-        impl Related<super::welcomes::Entity> for Entity {
-            fn to() -> RelationDef {
-                panic!("no relations")
-            }
-        }
-
-        impl ActiveModelBehavior for ActiveModel {}
-    }
+pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
+    vec![]
 }
 
 fn get_model<'a>(
     message: &'a Message,
     args: &'a TextArgs<'a>,
     goodbye: bool,
-) -> Result<entities::welcomes::ActiveModel> {
+) -> Result<welcomes::ActiveModel> {
     let (message, text) = if let Some(message) = message.get_reply_to_message_ref() {
         (message, message.get_text_ref())
     } else {
@@ -134,7 +71,7 @@ fn get_model<'a>(
     };
     let (media_id, media_type) = get_media_type(message)?;
     let res = if goodbye {
-        entities::welcomes::ActiveModel {
+        welcomes::ActiveModel {
             chat: Set(message.get_chat().get_id()),
             text: NotSet,
             media_id: NotSet,
@@ -145,7 +82,7 @@ fn get_model<'a>(
             enabled: NotSet,
         }
     } else {
-        entities::welcomes::ActiveModel {
+        welcomes::ActiveModel {
             chat: Set(message.get_chat().get_id()),
             text: Set(text.map(|t| t.to_owned())),
             media_id: Set(media_id),
@@ -173,7 +110,7 @@ async fn enable_welcome<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang)
             message.get_chat().get_id(),
         )),
     }?;
-    let model = entities::welcomes::ActiveModel {
+    let model = welcomes::ActiveModel {
         chat: Set(message.get_chat().get_id()),
         text: NotSet,
         media_id: NotSet,
@@ -184,10 +121,10 @@ async fn enable_welcome<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang)
         enabled: Set(enabled),
     };
 
-    let model = entities::welcomes::Entity::insert(model)
+    let model = welcomes::Entity::insert(model)
         .on_conflict(
-            OnConflict::column(entities::welcomes::Column::Chat)
-                .update_column(entities::welcomes::Column::Enabled)
+            OnConflict::column(welcomes::Column::Chat)
+                .update_column(welcomes::Column::Enabled)
                 .to_owned(),
         )
         .exec_with_returning(DB.deref())
@@ -197,35 +134,18 @@ async fn enable_welcome<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang)
     Ok(())
 }
 
-async fn should_welcome(chat: &Chat) -> Result<Option<entities::welcomes::Model>> {
-    let key = format!("welcome:{}", chat.get_id());
-    let chat_id = chat.get_id();
-    let res = default_cache_query(
-        |_, _| async move {
-            let res = entities::welcomes::Entity::find_by_id(chat_id)
-                .one(DB.deref())
-                .await?;
-            Ok(res)
-        },
-        Duration::seconds(CONFIG.timing.cache_timeout as i64),
-    )
-    .query(&key, &())
-    .await?;
-    Ok(res)
-}
-
 async fn set_goodbye<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang) -> Result<()> {
     message.check_permissions(|p| p.can_change_info).await?;
     let model = get_model(message, args, true)?;
     let key = format!("welcome:{}", message.get_chat().get_id());
     log::info!("save goodbye: {}", key);
-    let model = entities::welcomes::Entity::insert(model)
+    let model = welcomes::Entity::insert(model)
         .on_conflict(
-            OnConflict::columns([entities::welcomes::Column::Chat])
+            OnConflict::columns([welcomes::Column::Chat])
                 .update_columns([
-                    entities::welcomes::Column::GoodbyeText,
-                    entities::welcomes::Column::GoodbyeMediaId,
-                    entities::welcomes::Column::GoodbyeMediaType,
+                    welcomes::Column::GoodbyeText,
+                    welcomes::Column::GoodbyeMediaId,
+                    welcomes::Column::GoodbyeMediaType,
                 ])
                 .to_owned(),
         )
@@ -248,13 +168,13 @@ async fn set_welcome<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang) ->
     let model = get_model(message, args, false)?;
     let key = format!("welcome:{}", message.get_chat().get_id());
     log::info!("save welcome: {}", key);
-    let model = entities::welcomes::Entity::insert(model)
+    let model = welcomes::Entity::insert(model)
         .on_conflict(
-            OnConflict::columns([entities::welcomes::Column::Chat])
+            OnConflict::columns([welcomes::Column::Chat])
                 .update_columns([
-                    entities::welcomes::Column::Text,
-                    entities::welcomes::Column::MediaId,
-                    entities::welcomes::Column::MediaType,
+                    welcomes::Column::Text,
+                    welcomes::Column::MediaId,
+                    welcomes::Column::MediaType,
                 ])
                 .to_owned(),
         )
@@ -296,7 +216,7 @@ async fn reset_welcome(message: &Message, lang: &Lang) -> Result<()> {
     let chat = message.get_chat().get_id();
     let key = format!("welcome:{}", chat);
 
-    entities::welcomes::Entity::delete_by_id(chat)
+    welcomes::Entity::delete_by_id(chat)
         .exec(DB.deref())
         .await?;
     REDIS.sq(|q| q.del(&key)).await?;
@@ -304,67 +224,7 @@ async fn reset_welcome(message: &Message, lang: &Lang) -> Result<()> {
     Ok(())
 }
 
-async fn welcome_mambers(
-    upd: &ChatMemberUpdated,
-    model: entities::welcomes::Model,
-    lang: &Lang,
-) -> Result<()> {
-    let text = if let Some(text) = model.text {
-        text
-    } else {
-        lang_fmt!(lang, "defaultwelcome")
-    };
-    send_media_reply_chatuser(
-        &upd.get_chat(),
-        model.media_type.unwrap_or(MediaType::Text),
-        Some(text),
-        model.media_id,
-        Some(upd.get_from_ref()),
-        |_, _| async move { Ok(()) }.boxed(),
-    )
-    .await?;
-
-    Ok(())
-}
-
-async fn goodbye_mambers(
-    upd: &ChatMemberUpdated,
-    model: entities::welcomes::Model,
-    lang: &Lang,
-) -> Result<()> {
-    let text = if let Some(text) = model.goodbye_text {
-        text
-    } else {
-        lang_fmt!(lang, "defaultgoodbye")
-    };
-    send_media_reply_chatuser(
-        &upd.get_chat(),
-        model.goodbye_media_type.unwrap_or(MediaType::Text),
-        Some(text),
-        model.goodbye_media_id,
-        Some(upd.get_from_ref()),
-        |_, _| async move { Ok(()) }.boxed(),
-    )
-    .await?;
-    Ok(())
-}
-
 pub async fn handle_update<'a>(cmd: &Context) -> Result<()> {
     handle_command(cmd).await?;
-    let update = cmd.update();
-    if let Some(userchanged) = update.user_event() {
-        let lang = get_chat_lang(userchanged.get_chat().get_id()).await?;
-        if let Some(model) = should_welcome(userchanged.get_chat()).await? {
-            if model.enabled {
-                match userchanged {
-                    UserChanged::UserJoined(member) => {
-                        welcome_mambers(member, model, &lang).await?
-                    }
-                    UserChanged::UserLeft(member) => goodbye_mambers(member, model, &lang).await?,
-                }
-            }
-        }
-    }
-
     Ok(())
 }

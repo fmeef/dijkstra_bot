@@ -143,6 +143,7 @@ pub async fn handle_update(ctx: &Context) -> Result<()> {
                         rules.text,
                         rules.media_id,
                         message.get_from_ref(),
+                        vec![],
                         |_, _| async move { Ok(()) }.boxed(),
                     )
                     .await?;

@@ -222,7 +222,7 @@ pub mod entities {
         impl LockType {
             pub fn get_name(&self) -> &str {
                 match self {
-                    Self::Premium => "Premium mambers",
+                    Self::Premium => "Premium members",
                     Self::Link => "Web links",
                     Self::Code => "Monospace formatted pre code",
                     Self::Photo => "Photos",
@@ -563,9 +563,7 @@ async fn handle_lock<'a>(
 }
 
 async fn handle_unlock<'a>(ctx: &Context, cmd: &Option<&Cmd<'a>>) -> Result<()> {
-    ctx
-        .check_permissions(|p| p.can_restrict_members)
-        .await?;
+    ctx.check_permissions(|p| p.can_restrict_members).await?;
     let message = ctx.message()?;
     let lang = ctx.lang();
     if let (Some(lock), _) = locktype_from_args(cmd, message.get_chat().get_id()) {

@@ -59,6 +59,7 @@ pub async fn send_media_reply_chatuser<F>(
     text: Option<String>,
     media_id: Option<String>,
     user: Option<&User>,
+    extra_buttons: Vec<InlineKeyboardButton>,
     callback: F,
 ) -> Result<()>
 where
@@ -75,9 +76,12 @@ where
         chat: Cow::Borrowed(current_chat),
         user: Cow::Borrowed(v),
     });
-    let (text, entities, buttons) = if let Ok(md) =
+    let (text, entities, buttons) = if let Ok(mut md) =
         MarkupBuilder::from_murkdown_button(&text, chatuser.as_ref(), &callback).await
     {
+        for ex in extra_buttons {
+            md.buttons.button(ex);
+        }
         md.build_owned()
     } else {
         (text, Vec::new(), InlineKeyboardMarkup::default())
@@ -183,6 +187,7 @@ where
             Some(text),
             media_id,
             current_message.get_from_ref(),
+            vec![],
             callback,
         )
         .await;

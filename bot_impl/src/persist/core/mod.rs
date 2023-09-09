@@ -9,3 +9,4 @@ pub mod module_schemas;
 pub mod prelude;
 pub mod rules;
 pub mod users;
+pub mod welcomes;

@@ -407,6 +407,7 @@ dependencies = [
  "itertools",
  "lazy_static",
  "log",
+ "lz4_flex",
  "macros",
  "markdown",
  "nonblock-logger",
@@ -442,7 +443,7 @@ dependencies = [
 
 [[package]]
 name = "botapi"
-version = "0.0.25"
+version = "0.0.26"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -1609,6 +1610,15 @@ name = "log"
 version = "0.4.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b5e6163cb8c49088c2c36f57875e58ccd8c87c7427f7fbd50ea6710b2f3f2e8f"
+
+[[package]]
+name = "lz4_flex"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ea9b256699eda7b0387ffbc776dd625e28bde3918446381781245b7a50349d8"
+dependencies = [
+ "twox-hash",
+]
 
 [[package]]
 name = "mach2"
@@ -3513,7 +3523,7 @@ dependencies = [
 
 [[package]]
 name = "tggen"
-version = "0.0.25"
+version = "0.0.26"
 dependencies = [
  "anyhow",
  "convert_case",
@@ -3834,6 +3844,16 @@ dependencies = [
  "thiserror",
  "url",
  "utf-8",
+]
+
+[[package]]
+name = "twox-hash"
+version = "1.6.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "97fee6b57c6a41524a810daee9286c02d7752c4253064d0b05472833a438f675"
+dependencies = [
+ "cfg-if",
+ "static_assertions",
 ]
 
 [[package]]

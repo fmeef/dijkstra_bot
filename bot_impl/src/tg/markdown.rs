@@ -159,7 +159,7 @@ impl<'a> Lexer<'a> {
 #[derive(Clone)]
 pub struct MarkupBuilder {
     entities: Vec<MessageEntity>,
-    buttons: InlineKeyboardBuilder,
+    pub buttons: InlineKeyboardBuilder,
     offset: i64,
     text: String,
 }
@@ -198,7 +198,7 @@ impl MarkupBuilder {
         Ok(())
     }
 
-    async fn button<'a, F>(
+    pub async fn button<'a, F>(
         &'a mut self,
         hint: String,
         button: String,
