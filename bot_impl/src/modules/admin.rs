@@ -99,8 +99,9 @@ async fn admincache(ctx: &Context) -> Result<()> {
     ctx.is_group_or_die().await?;
     let message = ctx.message()?;
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
-    message.get_chat().refresh_cached_admins().await?;
+    ctx.force_refresh_cached_admins().await?;
     message.speak(lang_fmt!(lang, "refreshac")).await?;
+
     Ok(())
 }
 pub async fn handle_update<'a>(cmd: &Context) -> Result<()> {

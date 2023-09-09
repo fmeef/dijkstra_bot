@@ -49,7 +49,7 @@ COPY --from=builder /etc/group /etc/group
 COPY --from=builder /etc/ssl /etc/ssl
 COPY --from=builder /usr/local/cargo/bin/migration /
 USER bobot:bobot
-CMD [ "sh", "-c", "/migration -u postgresql://$POSTGRES_USER:$(cat $POSTGRES_PASSWORD_FILE)@$POSTGRES_HOST/$POSTGRES_DB up" ]
+ENTRYPOINT [ "sh", "-c", "/migration -u postgresql://$POSTGRES_USER:$(cat $POSTGRES_PASSWORD_FILE)@$POSTGRES_HOST/$POSTGRES_DB up" ]
 
 FROM base AS dev
 RUN rustup default stable && rustup component add rustfmt && \

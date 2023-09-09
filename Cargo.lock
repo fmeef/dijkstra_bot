@@ -442,7 +442,7 @@ dependencies = [
 
 [[package]]
 name = "botapi"
-version = "0.0.25"
+version = "0.0.26"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -3578,7 +3578,7 @@ dependencies = [
 
 [[package]]
 name = "tggen"
-version = "0.0.25"
+version = "0.0.26"
 dependencies = [
  "anyhow",
  "convert_case",

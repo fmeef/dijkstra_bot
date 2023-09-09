@@ -13,14 +13,14 @@ use async_trait::async_trait;
 use botapi::gen_types::{Chat, ChatMember, ChatMemberAdministrator, Message, UpdateExt, User};
 use chrono::Duration;
 
+use super::{
+    admin_helpers::{is_group_or_die, is_self_admin},
+    command::Context,
+    user::{GetUser, Username},
+};
 use itertools::Itertools;
 use macros::lang_fmt;
 use redis::AsyncCommands;
-
-use super::{
-    admin_helpers::{is_group_or_die, is_self_admin},
-    user::{GetUser, Username},
-};
 
 /// Granular permissions with associated humanreadable name. Used for printing
 /// detailed error messages to users
@@ -259,7 +259,7 @@ pub trait GetCachedAdmins {
     async fn get_cached_admins(&self) -> Result<HashMap<i64, ChatMember>>;
 
     /// Manually refresh admin cache. This is ratelimited to 10 minutes between requests
-    async fn refresh_cached_admins(&self) -> Result<HashMap<i64, ChatMember>>;
+    async fn refresh_cached_admins(&self) -> Result<(HashMap<i64, ChatMember>, bool)>;
 
     /// Search the admin cache for a member
     async fn is_user_admin(&self, user: i64) -> Result<Option<ChatMember>>;
@@ -514,20 +514,7 @@ pub async fn update_self_admin(update: &UpdateExt) -> Result<()> {
 #[async_trait]
 impl GetCachedAdmins for Chat {
     async fn get_cached_admins(&self) -> Result<HashMap<i64, ChatMember>> {
-        let key = get_chat_admin_cache_key(self.get_id());
-        let admins: Option<HashMap<i64, RedisStr>> = REDIS.sq(|q| q.hgetall(&key)).await?;
-        if let Some(admins) = admins {
-            let admins = admins
-                .into_iter()
-                .map(|(k, v)| (k, v.get::<ChatMember>()))
-                .try_fold(HashMap::new(), |mut acc, (k, v)| {
-                    acc.insert(k, v?);
-                    Ok::<_, BotError>(acc)
-                })?;
-            Ok(admins)
-        } else {
-            self.refresh_cached_admins().await
-        }
+        self.refresh_cached_admins().await.map(|v| v.0)
     }
 
     async fn is_user_admin(&self, user: i64) -> Result<Option<ChatMember>> {
@@ -545,7 +532,7 @@ impl GetCachedAdmins for Chat {
                 Ok(None)
             }
         } else {
-            Ok(self.refresh_cached_admins().await?.remove(&user))
+            Ok(self.refresh_cached_admins().await?.0.remove(&user))
         }
     }
 
@@ -596,43 +583,88 @@ impl GetCachedAdmins for Chat {
         Ok(())
     }
 
-    async fn refresh_cached_admins(&self) -> Result<HashMap<i64, ChatMember>> {
+    async fn refresh_cached_admins(&self) -> Result<(HashMap<i64, ChatMember>, bool)> {
         if let Err(_) = is_group_or_die(self).await {
-            return Ok(HashMap::new());
+            return Ok((HashMap::new(), false));
         }
 
-        let admins = TG
-            .client()
-            .build_get_chat_administrators(self.get_id())
-            .chat_id(self.get_id())
-            .build()
-            .await?;
-        let res = admins
-            .iter()
-            .cloned()
-            .map(|cm| (cm.get_user().get_id(), cm))
-            .collect::<HashMap<i64, ChatMember>>();
-        let mut admins = admins.into_iter().map(|cm| (cm.get_user().get_id(), cm));
-        let lockkey = format!("aclock:{}", self.get_id());
-        if !REDIS.sq(|q| q.exists(&lockkey)).await? {
-            let key = get_chat_admin_cache_key(self.get_id());
+        let key = get_chat_admin_cache_key(self.get_id());
 
+        let admins: Option<HashMap<i64, RedisStr>> = REDIS.sq(|q| q.hgetall(&key)).await?;
+        if let Some(admins) = admins {
+            let admins = admins
+                .into_iter()
+                .map(|(k, v)| (k, v.get::<ChatMember>()))
+                .try_fold(HashMap::new(), |mut acc, (k, v)| {
+                    acc.insert(k, v?);
+                    Ok::<_, BotError>(acc)
+                })?;
+            Ok((admins, false))
+        } else {
+            let admins = TG
+                .client()
+                .build_get_chat_administrators(self.get_id())
+                .chat_id(self.get_id())
+                .build()
+                .await?;
+            let res = admins
+                .iter()
+                .cloned()
+                .map(|cm| (cm.get_user().get_id(), cm))
+                .collect::<HashMap<i64, ChatMember>>();
+            let mut admins = admins.into_iter().map(|cm| (cm.get_user().get_id(), cm));
             REDIS
                 .try_pipe(|q| {
-                    q.set(&lockkey, true);
-                    q.expire(&lockkey, Duration::minutes(10).num_seconds() as usize);
+                    q.atomic();
                     q.del(&key);
                     admins.try_for_each(|(id, cm)| {
                         q.hset(&key, id, RedisStr::new(&cm)?);
                         Ok::<(), BotError>(())
                     })?;
+
                     Ok(q.expire(&key, Duration::hours(48).num_seconds() as usize))
                 })
                 .await?;
-            Ok(res)
+            Ok((res, true))
+        }
+    }
+}
+
+impl Context {
+    pub async fn force_refresh_cached_admins(&self) -> Result<()> {
+        let chat = self.message()?.get_chat().get_id();
+        let lock = format!("frca:{}", chat);
+        if !REDIS.sq(|q| q.exists(&lock)).await? {
+            REDIS
+                .pipe(|q| {
+                    q.set(&lock, true)
+                        .expire(&lock, Duration::minutes(10).num_seconds() as usize)
+                })
+                .await?;
+            let key = get_chat_admin_cache_key(chat);
+            let admins = TG
+                .client()
+                .build_get_chat_administrators(chat)
+                .chat_id(chat)
+                .build()
+                .await?;
+            let mut admins = admins.into_iter().map(|cm| (cm.get_user().get_id(), cm));
+            REDIS
+                .try_pipe(|q| {
+                    q.atomic();
+                    q.del(&key);
+                    admins.try_for_each(|(id, cm)| {
+                        q.hset(&key, id, RedisStr::new(&cm)?);
+                        Ok::<(), BotError>(())
+                    })?;
+
+                    q.expire(&key, Duration::minutes(10).num_seconds() as usize);
+                    Ok(q)
+                })
+                .await?;
+            Ok(())
         } else {
-            let lang = get_chat_lang(self.get_id()).await?;
-            self.fail(lang_fmt!(lang, "cachewait"))
+            self.fail(lang_fmt!(self, "cachewait"))
         }
     }
 }
