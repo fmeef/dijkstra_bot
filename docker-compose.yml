@@ -17,8 +17,8 @@ services:
       - POSTGRES_PASSWORD_FILE=/run/secrets/pass
       - POSTGRES_DB=bobot
       - POSTGRES_HOST=db
-    secrets:
-      - pass
+    volumes:
+      - ./db_pass.txt:/run/secrets/pass:z
     depends_on:
       db:
         condition: service_healthy
@@ -29,10 +29,9 @@ services:
       - POSTGRES_USER=bobot
       - POSTGRES_PASSWORD_FILE=/run/secrets/pass
       - POSTGRES_DB=bobot
-    secrets:
-      - pass
     volumes: 
       - bobot-db:/var/lib/postgresql/data 
+      - ./db_pass.txt:/run/secrets/pass:z
     healthcheck:
       test: pg_isready -U bobot
       interval: 10s
@@ -58,7 +57,3 @@ volumes:
   prometheus-data:
   cargo-cache:
   migration-target:
-
-secrets:
-  pass:
-    file: db_pass.txt
