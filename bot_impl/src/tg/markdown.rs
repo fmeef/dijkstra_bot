@@ -206,7 +206,7 @@ pomelo! {
     word      ::= LTBracket raw(W) RTBracket LParen raw(L) RParen { super::TgSpan::Button(W, L) }
     word      ::= LTBracket LTBracket raw(W) RTBracket RTBracket LParen raw(L) RParen { super::TgSpan::NewlineButton(W, L) }
 
-    footer   ::= LBrace filterws(A) Rbrace { A }
+    footer   ::= LCurly filterws(A) RCurly { A }
     header   ::= multi(V)  { Header::List(V.into_iter().map(|v| v.get_text().to_owned()).collect()) }
     header   ::= filterw(S) { Header::Arg(S.get_text().to_owned()) }
     header   ::= quote(S) { Header::Arg(S) }
