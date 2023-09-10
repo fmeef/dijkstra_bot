@@ -75,7 +75,20 @@ impl Model {
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {}
+pub enum Relation {
+    #[sea_orm(
+        belongs_to = "super::super::core::users::Entity",
+        from = "Column::User",
+        to = "super::super::core::users::Column::UserId"
+    )]
+    Users,
+}
+
+impl Related<super::super::core::users::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Users.def()
+    }
+}
 
 #[derive(EnumIter, DeriveActiveEnum, Serialize, Deserialize, PartialEq, Debug, Clone)]
 #[sea_orm(rs_type = "i32", db_type = "Integer")]
