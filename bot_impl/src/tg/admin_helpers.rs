@@ -606,6 +606,7 @@ pub async fn is_user_gbanned(user: i64) -> Result<Option<(gbans::Model, users::M
                 username: None,
                 first_name: "".to_owned(),
                 last_name: None,
+                is_bot: false,
             }),
         )
     }))
@@ -1163,6 +1164,7 @@ pub async fn insert_user(user: &User) -> Result<users::Model> {
         username: Set(user.get_username().map(|v| v.into_owned())),
         first_name: Set(user.get_first_name().into_owned()),
         last_name: Set(user.get_last_name().map(|v| v.into_owned())),
+        is_bot: Set(user.get_is_bot()),
     })
     .on_conflict(
         OnConflict::column(users::Column::UserId)

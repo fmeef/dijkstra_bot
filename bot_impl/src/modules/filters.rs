@@ -2,16 +2,17 @@ use std::collections::HashMap;
 
 use crate::persist::core::media::get_media_type;
 use crate::persist::core::media::send_media_reply;
+use crate::persist::core::messageentity;
 use crate::persist::redis::default_cache_query;
 use crate::persist::redis::CachedQueryTrait;
 use crate::persist::redis::RedisCache;
 use crate::persist::redis::RedisStr;
+use crate::persist::redis::ToRedisStr;
 use crate::statics::CONFIG;
 use crate::statics::DB;
 use crate::statics::REDIS;
 use crate::tg::command::*;
 use crate::tg::markdown::Header;
-use crate::tg::markdown::Lexer;
 use crate::tg::markdown::MarkupBuilder;
 use crate::tg::markdown::MarkupType;
 use crate::tg::markdown::Parser;
@@ -27,7 +28,11 @@ use crate::util::string::Speak;
 use botapi::gen_types::Message;
 use chrono::Duration;
 use entities::{filters, triggers};
+use futures::stream;
 use futures::FutureExt;
+use futures::StreamExt;
+use futures::TryStreamExt;
+use hyper::server::accept::Accept;
 use itertools::Itertools;
 use lazy_static::__Deref;
 use macros::entity_fmt;
@@ -338,13 +343,31 @@ async fn update_cache_from_db(message: &Message) -> Result<()> {
             .find_with_related(triggers::Entity)
             .all(DB.deref())
             .await?;
+        let ids = res.iter().map(|(filter, _)| filter.id);
+        let mut entities: HashMap<i64, Vec<messageentity::Model>> = messageentity::Entity::find()
+            .filter(messageentity::Column::OwnerId.is_in(ids))
+            .all(DB.deref())
+            .await?
+            .into_iter()
+            .map(|v| (v.owner_id, v))
+            .fold(
+                HashMap::<i64, Vec<messageentity::Model>>::new(),
+                |mut acc, (v, model)| {
+                    if let Some(vec) = acc.get_mut(&v) {
+                        vec.push(model);
+                    } else {
+                        acc.insert(v, vec![model]);
+                    };
+                    acc
+                },
+            );
         REDIS
             .try_pipe(|p| {
                 p.hset(&hash_key, "empty", 0);
                 for (filter, triggers) in res.iter() {
                     let key = get_filter_key(message, filter.id);
-                    let filter_st = RedisStr::new(&filter)?;
-                    p.set(&key, filter_st)
+                    let ent = entities.remove(&filter.id).unwrap_or_else(|| vec![]);
+                    p.set(&key, (filter, ent).to_redis()?)
                         .expire(&key, CONFIG.timing.cache_timeout);
                     for trigger in triggers.iter() {
                         p.hset(&hash_key, trigger.trigger.to_owned(), filter.id)
@@ -358,16 +381,30 @@ async fn update_cache_from_db(message: &Message) -> Result<()> {
     Ok(())
 }
 
-async fn insert_filter(
-    message: &Message,
-    triggers: &[&str],
-    response: Option<String>,
-) -> Result<()> {
+async fn command_filter<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
+    ctx.check_permissions(|p| p.can_change_info).await?;
+    let message = ctx.message()?;
+    let cmd = MarkupBuilder::from_murkdown(args.text).await?;
+
+    let (body, entities, buttons, header, footer) = cmd.build_filter();
+    let filters = match header.ok_or_else(|| ctx.fail_err("Header missing from filter command"))? {
+        Header::List(st) => st,
+        Header::Arg(st) => vec![st],
+    };
+
+    let filters = filters.iter().map(|v| v.as_str()).collect::<Vec<&str>>();
+
+    let (f, message) = if let Some(message) = message.get_reply_to_message_ref() {
+        (message.get_text().map(|v| v.into_owned()), message)
+    } else {
+        (Some(body), message)
+    };
+
     let (id, media_type) = get_media_type(message)?;
     let model = filters::ActiveModel {
         id: ActiveValue::NotSet,
         chat: ActiveValue::Set(message.get_chat().get_id()),
-        text: ActiveValue::Set(response),
+        text: ActiveValue::Set(f),
         media_id: ActiveValue::Set(id),
         media_type: ActiveValue::Set(media_type),
     };
@@ -389,7 +426,7 @@ async fn insert_filter(
         )
         .exec_with_returning(DB.deref())
         .await?;
-    let triggers = triggers
+    let triggers = filters
         .iter()
         .map(|v| v.to_lowercase())
         .collect::<Vec<String>>();
@@ -413,6 +450,12 @@ async fn insert_filter(
     .exec(DB.deref())
     .await?;
     let id = model.id.clone();
+
+    let entities: Vec<messageentity::Model> = stream::iter(entities)
+        .then(|v| async move { messageentity::Model::from_entity(v, id).await })
+        .try_collect()
+        .await?;
+
     let hash_key = get_filter_hash_key(message);
     REDIS
         .pipe(|p| {
@@ -422,31 +465,10 @@ async fn insert_filter(
             p
         })
         .await?;
-    model.cache(get_filter_key(message, id)).await?;
-    Ok(())
-}
-
-async fn command_filter<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
-    ctx.check_permissions(|p| p.can_change_info).await?;
-    let message = ctx.message()?;
-    let cmd = MarkupBuilder::from_murkdown(args.text).await?;
-
-    let (body, entities, buttons, header, footer) = cmd.build_filter();
-
-    let filters = match header.ok_or_else(|| ctx.fail_err("Header missing from filter command"))? {
-        Header::List(st) => st,
-        Header::Arg(st) => vec![st],
-    };
-
-    let filters = filters.iter().map(|v| v.as_str()).collect::<Vec<&str>>();
-
-    let (f, message) = if let Some(message) = message.get_reply_to_message_ref() {
-        (message.get_text().map(|v| v.into_owned()), message)
-    } else {
-        (Some(body), message)
-    };
-
-    insert_filter(message, filters.as_slice(), f).await?;
+    let key = get_filter_key(message, id);
+    REDIS
+        .try_pipe(|q| Ok(q.set(&key, (model, entities).to_redis()?)))
+        .await?;
     let filters_fmt = [""].into_iter().chain(filters.into_iter()).join("\n - ");
     let text = MarkupType::Code.text(&filters_fmt);
 

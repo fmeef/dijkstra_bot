@@ -290,6 +290,7 @@ async fn set_fban_list(ctx: &Context, fed: &Uuid, message: &Message) -> Result<u
                     first_name: Set(fb.first_name),
                     last_name: Set(fb.last_name.none_if_empty()),
                     username: NotSet,
+                    is_bot: NotSet,
                 },
                 fbans::ActiveModel {
                     fban_id: Set(Uuid::new_v4()),
