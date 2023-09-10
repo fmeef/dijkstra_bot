@@ -38,6 +38,20 @@ impl Default for DefaultParseErr {
     }
 }
 
+/// Data for filter's header
+#[derive(Clone)]
+pub enum Header {
+    List(Vec<String>),
+    Arg(String),
+}
+
+/// Complete parsed filter with header, body, and footer
+pub struct FilterCommond {
+    pub header: Option<Header>,
+    pub body: Option<Vec<TgSpan>>,
+    pub footer: Option<String>,
+}
+
 /// Type for representing murkdown syntax tree
 pub enum TgSpan {
     Code(String),
@@ -62,10 +76,66 @@ lazy_static! {
     pub static ref EMPTY_ENTITIES: Vec<MessageEntity> = vec![];
 }
 
-// Pomello parser generator macro call for murkdown context-free grammar
+// // Pomello parser generator macro call for murkdown context-free grammar
+// pomelo! {
+//     %error super::DefaultParseErr;
+//     %type input Vec<super::TgSpan>;
+//     %type words Vec<super::TgSpan>;
+//     %type main Vec<super::TgSpan>;
+//     %type word super::TgSpan;
+//     %type wordraw (super::TgSpan, super::TgSpan);
+//     %type RawChar char;
+//     %type raw String;
+
+//     input     ::= main(A) { A }
+
+//     main     ::= words?(A) { A.unwrap_or_else(Vec::new) }
+
+//     wordraw  ::= word(W) raw(R) { (W, super::TgSpan::Raw(R)) }
+
+//     words    ::=  words(mut L) word(C) { L.push(C); L }
+//     words    ::= words(mut L) wordraw(W) { L.push(W.0); L.push(W.1); L }
+//     words    ::= wordraw(W) { vec![W.0, W.1] }
+//     words    ::= word(C) { vec![C] }
+//     words    ::= raw(R) { vec![super::TgSpan::Raw(R)]}
+
+//     raw       ::= RawChar(C) { C.into() }
+//     raw       ::= raw(mut R) RawChar(C) { R.push(C); R }
+
+//     word      ::= LCurly RCurly { super::TgSpan::NoOp }
+//     word      ::= LCurly raw(W) RCurly { super::TgSpan::Filling(W) }
+//     word      ::= LSBracket Tick raw(W) RSBracket { super::TgSpan::Code(W) }
+//     word      ::= LSBracket Star main(S) RSBracket { super::TgSpan::Bold(S) }
+//     word      ::= LSBracket main(H) RSBracket LParen raw(L) RParen { super::TgSpan::Link(H, L) }
+//     word      ::= LSBracket Tilde words(R) RSBracket { super::TgSpan::Strikethrough(R) }
+//     word      ::= LSBracket Underscore main(R) RSBracket { super::TgSpan::Italic(R) }
+//     word      ::= LSBracket DoubleUnderscore main(R) RSBracket { super::TgSpan::Underline(R) }
+//     word      ::= LSBracket DoubleBar main(R) RSBracket { super::TgSpan::Spoiler(R) }
+//     word      ::= LTBracket raw(W) RTBracket LParen raw(L) RParen { super::TgSpan::Button(W, L) }
+//     word      ::= LTBracket LTBracket raw(W) RTBracket RTBracket LParen raw(L) RParen { super::TgSpan::NewlineButton(W, L) }
+// }
+
 pomelo! {
-    %error super::DefaultParseErr;
-    %type input Vec<super::TgSpan>;
+    %include {
+             use super::{FilterCommond, Header};
+             use crate::tg::command::TextArg;
+        }
+    %error crate::tg::markdown::DefaultParseErr;
+    %parser pub struct Parser<'e>{};
+    %type input FilterCommond;
+    %token #[derive(Debug)] pub enum Token<'e>{};
+    %type quote String;
+    %type filterw TextArg<'e>;
+    %type Whitespace &'e str;
+    %type multi Vec<TextArg<'e>>;
+    %type list Vec<TextArg<'e>>;
+    %type Str &'e str;
+    %type footer String;
+    %type filterws String;
+    %type ign TextArg<'e>;
+    %type header Header;
+
+    %type inputm Vec<super::TgSpan>;
     %type words Vec<super::TgSpan>;
     %type main Vec<super::TgSpan>;
     %type word super::TgSpan;
@@ -73,7 +143,43 @@ pomelo! {
     %type RawChar char;
     %type raw String;
 
-    input     ::= main(A) { A }
+    input    ::= header(A) {
+        FilterCommond {
+            header: Some(A),
+            body: None,
+            footer: None
+        }
+    }
+    input    ::= header(A) Whitespace(_) main(W) {
+        FilterCommond {
+            header: Some(A),
+            body: Some(W),
+            footer: None
+        }
+    }
+    input    ::= header(A) Whitespace(_) footer(F) {
+        FilterCommond {
+            header: Some(A),
+            body: None,
+            footer: Some(F)
+        }
+    }
+
+    input    ::= header(A) Whitespace(_) main(W) Whitespace(_) footer(F) {
+        FilterCommond {
+            header: Some(A),
+            body: Some(W),
+            footer: Some(F)
+        }
+    }
+
+    input    ::= main(A) {
+         FilterCommond {
+            header: None,
+            body: Some(A),
+            footer: None
+        }
+    }
 
     main     ::= words?(A) { A.unwrap_or_else(Vec::new) }
 
@@ -99,9 +205,31 @@ pomelo! {
     word      ::= LSBracket DoubleBar main(R) RSBracket { super::TgSpan::Spoiler(R) }
     word      ::= LTBracket raw(W) RTBracket LParen raw(L) RParen { super::TgSpan::Button(W, L) }
     word      ::= LTBracket LTBracket raw(W) RTBracket RTBracket LParen raw(L) RParen { super::TgSpan::NewlineButton(W, L) }
+
+    footer   ::= LBrace filterws(A) Rbrace { A }
+    header   ::= multi(V)  { Header::List(V.into_iter().map(|v| v.get_text().to_owned()).collect()) }
+    header   ::= filterw(S) { Header::Arg(S.get_text().to_owned()) }
+    header   ::= quote(S) { Header::Arg(S) }
+    filterw     ::= Str(A) { TextArg::Arg(A) }
+    ign      ::= filterw(W) { W }
+    ign      ::= filterw(W) Whitespace(_) { W }
+    ign      ::= Whitespace(_) filterw(W) { W }
+    ign      ::= Whitespace(_) filterw(W) Whitespace(_) { W }
+    filterws    ::= filterw(W) { W.get_text().to_owned() }
+    filterws    ::= filterws(mut L) Whitespace(S) filterw(W) {
+        L.push_str(&S);
+        L.push_str(W.get_text());
+        L
+    }
+
+    quote    ::= Quote filterws(A) Quote { A }
+    multi    ::= LParen list(A) RParen {A }
+    list     ::= ign(A) { vec![A] }
+    list     ::= list(mut L) Comma ign(A) { L.push(A); L }
+
 }
 
-use parser::{Parser, Token};
+pub use parser::{Parser, Token};
 
 use super::admin_helpers::{is_dm, ChatUser};
 use super::button::InlineKeyboardBuilder;
@@ -109,15 +237,15 @@ use super::command::post_deep_link;
 use super::user::Username;
 
 /// Lexer to get murkdown tokens
-struct Lexer<'a>(Peekable<Chars<'a>>);
+pub struct Lexer<'a>(Peekable<Chars<'a>>);
 
 impl<'a> Lexer<'a> {
-    fn new(input: &'a str) -> Self {
+    pub fn new(input: &'a str) -> Self {
         let chars = input.chars().peekable();
         Self(chars)
     }
 
-    fn next_token(&mut self) -> Option<Token> {
+    pub fn next_token(&mut self) -> Option<Token<'a>> {
         if let Some(char) = self.0.next() {
             match char {
                 '\\' => self.0.next().map(|char| Token::RawChar(char)),
@@ -160,6 +288,8 @@ impl<'a> Lexer<'a> {
 pub struct MarkupBuilder {
     entities: Vec<MessageEntity>,
     pub buttons: InlineKeyboardBuilder,
+    pub header: Option<Header>,
+    pub footer: Option<String>,
     offset: i64,
     text: String,
 }
@@ -183,6 +313,8 @@ impl MarkupBuilder {
             offset: 0,
             text: String::new(),
             buttons: InlineKeyboardBuilder::default(),
+            header: None,
+            footer: None,
         }
     }
 
@@ -460,6 +592,19 @@ impl MarkupBuilder {
         s
     }
 
+    pub async fn from_tgspan<'a, F>(
+        tgspan: Vec<TgSpan>,
+        chatuser: Option<&'a ChatUser<'a>>,
+        callback: F,
+    ) -> Result<Self>
+    where
+        F: for<'b> Fn(String, &'b InlineKeyboardButton) -> BoxFuture<'b, Result<()>> + Send + Sync,
+    {
+        let mut s = Self::new();
+        s.parse_tgspan(tgspan, chatuser, &callback).await?;
+        Ok(s)
+    }
+
     /// Parses murkdown and constructs a builder with the corresponding text and
     /// entities
     pub async fn from_murkdown<T>(text: T) -> Result<Self>
@@ -511,7 +656,15 @@ impl MarkupBuilder {
             parser.parse(token)?;
         }
         let res = parser.end_of_input()?;
-        s.parse_tgspan(res, chatuser, &callback).await?;
+        s.header = res.header;
+        s.footer = res.footer;
+        s.parse_tgspan(
+            res.body
+                .ok_or_else(|| BotError::Generic("no body".to_owned()))?,
+            chatuser,
+            &callback,
+        )
+        .await?;
         Ok(s)
     }
 
@@ -710,6 +863,24 @@ impl MarkupBuilder {
     pub fn build_owned(self) -> (String, Vec<MessageEntity>, InlineKeyboardMarkup) {
         (self.text, self.entities, self.buttons.build())
     }
+
+    pub fn build_filter(
+        self,
+    ) -> (
+        String,
+        Vec<MessageEntity>,
+        InlineKeyboardMarkup,
+        Option<Header>,
+        Option<String>,
+    ) {
+        (
+            self.text,
+            self.entities,
+            self.buttons.build(),
+            self.header,
+            self.footer,
+        )
+    }
 }
 
 /// Represents metadata for a single MessageEntity. Useful when programatically
@@ -862,7 +1033,7 @@ mod test {
 
     const ESCAPE: &str = "\\[ thing";
 
-    fn test_parse(markdown: &str) -> Vec<TgSpan> {
+    fn test_parse(markdown: &str) -> FilterCommond {
         let mut parser = Parser::new();
         let mut tokenizer = Lexer::new(markdown);
         while let Some(token) = tokenizer.next_token() {

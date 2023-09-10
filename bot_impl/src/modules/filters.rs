@@ -10,16 +10,18 @@ use crate::statics::CONFIG;
 use crate::statics::DB;
 use crate::statics::REDIS;
 use crate::tg::command::*;
+use crate::tg::markdown::Header;
+use crate::tg::markdown::Lexer;
+use crate::tg::markdown::MarkupBuilder;
 use crate::tg::markdown::MarkupType;
+use crate::tg::markdown::Parser;
 use crate::tg::permissions::*;
 
+use crate::util::error::Fail;
 use crate::util::error::Result;
 
 use crate::metadata::metadata;
 use crate::util::error::SpeakErr;
-use crate::util::filter::Header;
-use crate::util::filter::Lexer;
-use crate::util::filter::Parser;
 
 use crate::util::string::Speak;
 use botapi::gen_types::Message;
@@ -427,30 +429,21 @@ async fn insert_filter(
 async fn command_filter<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
     ctx.check_permissions(|p| p.can_change_info).await?;
     let message = ctx.message()?;
-    let lexer = Lexer::new(args.text);
-    let mut parser = Parser::new();
-    for token in lexer.all_tokens() {
-        parser
-            .parse(token)
-            .speak_err(ctx, |v| format!("failed to parse filter: {}", v))
-            .await?;
-    }
+    let cmd = MarkupBuilder::from_murkdown(args.text).await?;
 
-    let cmd = parser
-        .end_of_input()
-        .speak_err(ctx, |v| format!("failed to parse blocklist: {}", v))
-        .await?;
+    let (body, entities, buttons, header, footer) = cmd.build_filter();
 
-    let filters = match cmd.header {
+    let filters = match header.ok_or_else(|| ctx.fail_err("Header missing from filter command"))? {
         Header::List(st) => st,
         Header::Arg(st) => vec![st],
     };
 
     let filters = filters.iter().map(|v| v.as_str()).collect::<Vec<&str>>();
+
     let (f, message) = if let Some(message) = message.get_reply_to_message_ref() {
         (message.get_text().map(|v| v.into_owned()), message)
     } else {
-        (cmd.body, message)
+        (Some(body), message)
     };
 
     insert_filter(message, filters.as_slice(), f).await?;
