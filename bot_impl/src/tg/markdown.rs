@@ -68,6 +68,21 @@ pub enum TgSpan {
     NoOp,
 }
 
+pub enum ParsedArg {
+    Arg(String),
+    Quote(String),
+}
+
+impl ParsedArg {
+    /// get the text of a single argument, whether or not it is quoted
+    pub fn get_text(self) -> String {
+        match self {
+            ParsedArg::Arg(s) => s,
+            ParsedArg::Quote(q) => q,
+        }
+    }
+}
+
 lazy_static! {
     /// regex for matching whitespace-separated string not containing murkdown reserved characters
     static ref RAWSTR: Regex = Regex::new(r#"([^\s"]+|")"#).unwrap();
@@ -118,30 +133,30 @@ lazy_static! {
 pomelo! {
     %include {
              use super::{FilterCommond, Header};
-             use crate::tg::command::TextArg;
+             use super::ParsedArg;
         }
     %error crate::tg::markdown::DefaultParseErr;
-    %parser pub struct Parser<'e>{};
+    %parser pub struct Parser{};
     %type input FilterCommond;
-    %token #[derive(Debug)] pub enum Token<'e>{};
+    %token #[derive(Debug)] pub enum Token{};
     %type quote String;
-    %type filterw TextArg<'e>;
-    %type Whitespace &'e str;
-    %type multi Vec<TextArg<'e>>;
-    %type list Vec<TextArg<'e>>;
-    %type Str &'e str;
+    %type fw ParsedArg;
+    %type fws String;
+    %type multi Vec<ParsedArg>;
+    %type list Vec<ParsedArg>;
+    %type Str String;
     %type footer String;
     %type filterws String;
-    %type ign TextArg<'e>;
+    %type ign ParsedArg;
     %type header Header;
-
+    %type Whitespace String;
     %type inputm Vec<super::TgSpan>;
     %type words Vec<super::TgSpan>;
     %type main Vec<super::TgSpan>;
     %type word super::TgSpan;
     %type wordraw (super::TgSpan, super::TgSpan);
     %type RawChar char;
-    %type raw String;
+    %type Space char;
 
     input    ::= header(A) {
         FilterCommond {
@@ -157,7 +172,7 @@ pomelo! {
             footer: None
         }
     }
-    input    ::= header(A) Whitespace(_) footer(F) {
+    input    ::= header(A) footer(F) {
         FilterCommond {
             header: Some(A),
             body: None,
@@ -183,49 +198,53 @@ pomelo! {
 
     main     ::= words?(A) { A.unwrap_or_else(Vec::new) }
 
-    wordraw  ::= word(W) raw(R) { (W, super::TgSpan::Raw(R)) }
-
-    words    ::=  words(mut L) word(C) { L.push(C); L }
-    words    ::= words(mut L) wordraw(W) { L.push(W.0); L.push(W.1); L }
-    words    ::= wordraw(W) { vec![W.0, W.1] }
     words    ::= word(C) { vec![C] }
-    words    ::= raw(R) { vec![super::TgSpan::Raw(R)]}
+    words    ::= words(mut L) word(W) { L.push(W); L }
+    words    ::= Str(C) { vec![super::TgSpan::Raw(C)]}
 
-    raw       ::= RawChar(C) { C.into() }
-    raw       ::= raw(mut R) RawChar(C) { R.push(C); R }
-
-    word      ::= LCurly RCurly { super::TgSpan::NoOp }
-    word      ::= LCurly raw(W) RCurly { super::TgSpan::Filling(W) }
-    word      ::= LSBracket Tick raw(W) RSBracket { super::TgSpan::Code(W) }
+ //   word      ::= LCurly RCurly { super::TgSpan::NoOp }
+    word      ::= LCurly Str(W) RCurly { super::TgSpan::Filling(W) }
+    word      ::= LSBracket Tick Str(W) RSBracket { super::TgSpan::Code(W) }
     word      ::= LSBracket Star main(S) RSBracket { super::TgSpan::Bold(S) }
-    word      ::= LSBracket main(H) RSBracket LParen raw(L) RParen { super::TgSpan::Link(H, L) }
+    word      ::= LSBracket main(H) RSBracket LParen Str(L) RParen { super::TgSpan::Link(H, L) }
     word      ::= LSBracket Tilde words(R) RSBracket { super::TgSpan::Strikethrough(R) }
     word      ::= LSBracket Underscore main(R) RSBracket { super::TgSpan::Italic(R) }
     word      ::= LSBracket DoubleUnderscore main(R) RSBracket { super::TgSpan::Underline(R) }
     word      ::= LSBracket DoubleBar main(R) RSBracket { super::TgSpan::Spoiler(R) }
-    word      ::= LTBracket raw(W) RTBracket LParen raw(L) RParen { super::TgSpan::Button(W, L) }
-    word      ::= LTBracket LTBracket raw(W) RTBracket RTBracket LParen raw(L) RParen { super::TgSpan::NewlineButton(W, L) }
+    word      ::= LTBracket Str(W) RTBracket LParen Str(L) RParen { super::TgSpan::Button(W, L) }
+    word      ::= LTBracket LTBracket Str(W) RTBracket RTBracket LParen Str(L) RParen { super::TgSpan::NewlineButton(W, L) }
 
-    footer   ::= LCurly filterws(A) RCurly { A }
-    header   ::= multi(V)  { Header::List(V.into_iter().map(|v| v.get_text().to_owned()).collect()) }
-    header   ::= filterw(S) { Header::Arg(S.get_text().to_owned()) }
+   // footer     ::= Fmuf { "".to_owned() }
+
+    footer   ::= LCurly Str(A) RCurly { A }
+    header   ::= multi(V)  { Header::List(V.into_iter().map(|v| v.get_text()).collect()) }
+    header   ::= fw(S) Whitespace { Header::Arg(S.get_text().to_owned()) }
     header   ::= quote(S) { Header::Arg(S) }
-    filterw     ::= Str(A) { TextArg::Arg(A) }
-    ign      ::= filterw(W) { W }
-    ign      ::= filterw(W) Whitespace(_) { W }
-    ign      ::= Whitespace(_) filterw(W) { W }
-    ign      ::= Whitespace(_) filterw(W) Whitespace(_) { W }
-    filterws    ::= filterw(W) { W.get_text().to_owned() }
-    filterws    ::= filterws(mut L) Whitespace(S) filterw(W) {
+    fw     ::= Str(A) { ParsedArg::Arg(A) }
+    ign      ::= fw(W) { W }
+    ign      ::= fw(W) Whitespace(_) { W }
+    ign      ::= Whitespace(_) fw(W) { W }
+    ign      ::= Whitespace(_) fw(W) Whitespace(_) { W }
+    fws    ::= fw(W) { W.get_text().to_owned() }
+    fws    ::= fws(mut L) Whitespace(S) fw(W) {
         L.push_str(&S);
-        L.push_str(W.get_text());
+        L.push_str(&W.get_text());
         L
     }
 
-    quote    ::= Quote filterws(A) Quote { A }
+    quote    ::= Quote fws(A) Quote { A }
     multi    ::= LParen list(A) RParen {A }
     list     ::= ign(A) { vec![A] }
     list     ::= list(mut L) Comma ign(A) { L.push(A); L }
+
+    // footer   ::= LCurly Str(A) RCurly { A }
+    // header   ::= multi(V)  { Header::List(V.into_iter().map(|v| v.get_text().to_owned()).collect()) }
+    // header   ::= Str(S) Whitespace { Header::Arg(S.get_text().to_owned()) }
+    // header   ::= quote(S) { Header::Arg(S) }
+    // quote    ::= Quote Str(A) Quote { A }
+    // multi    ::= LParen list(A) RParen {A }
+    // list     ::= list(mut L) Comma Str(A) { L.push(A); L }
+    // list     ::= Str(A) { vec![A] }
 
 }
 
@@ -237,29 +256,56 @@ use super::command::post_deep_link;
 use super::user::Username;
 
 /// Lexer to get murkdown tokens
-pub struct Lexer<'a>(Peekable<Chars<'a>>);
+pub struct Lexer<'a> {
+    s: Peekable<Chars<'a>>,
+    rawbuf: String,
+}
+
+fn is_valid(token: char) -> bool {
+    match token {
+        '\\' => true,
+        '_' => true,
+        '|' => true,
+        '~' => true,
+        '`' => true,
+        '*' => true,
+        '[' => true,
+        ']' => true,
+        '(' => true,
+        ')' => true,
+        '{' => true,
+        '}' => true,
+        '<' => true,
+        '>' => true,
+        ',' => true,
+        _ => false,
+    }
+}
 
 impl<'a> Lexer<'a> {
     pub fn new(input: &'a str) -> Self {
         let chars = input.chars().peekable();
-        Self(chars)
+        Self {
+            s: chars,
+            rawbuf: String::new(),
+        }
     }
 
-    pub fn next_token(&mut self) -> Option<Token<'a>> {
-        if let Some(char) = self.0.next() {
+    pub fn next_token(&mut self) -> Option<Token> {
+        if let Some(char) = self.s.next() {
             match char {
-                '\\' => self.0.next().map(|char| Token::RawChar(char)),
+                '\\' => self.s.next().map(|char| Token::RawChar(char)),
                 '_' => {
-                    if let Some('_') = self.0.peek() {
-                        self.0.next();
+                    if let Some('_') = self.s.peek() {
+                        self.s.next();
                         Some(Token::DoubleUnderscore)
                     } else {
                         Some(Token::Underscore)
                     }
                 }
                 '|' => {
-                    if let Some('|') = self.0.peek() {
-                        self.0.next();
+                    if let Some('|') = self.s.peek() {
+                        self.s.next();
                         Some(Token::DoubleBar)
                     } else {
                         self.next_token()
@@ -276,7 +322,30 @@ impl<'a> Lexer<'a> {
                 '}' => Some(Token::RCurly),
                 '<' => Some(Token::LTBracket),
                 '>' => Some(Token::RTBracket),
-                _ => Some(Token::RawChar(char)),
+                ',' => Some(Token::Comma),
+                _ => {
+                    self.rawbuf.push(char);
+                    if let Some(c) = self.s.peek() {
+                        if is_valid(*c) || (char.is_whitespace() != c.is_whitespace()) {
+                            let s = self.rawbuf.clone();
+                            self.rawbuf.clear();
+
+                            if char.is_whitespace() {
+                                return Some(Token::Whitespace(s));
+                            }
+                            return Some(Token::Str(s));
+                        }
+                    } else {
+                        let s = self.rawbuf.clone();
+                        self.rawbuf.clear();
+
+                        if char.is_whitespace() {
+                            return Some(Token::Whitespace(s));
+                        }
+                        return Some(Token::Str(s));
+                    }
+                    self.next_token()
+                }
             }
         } else {
             None
@@ -653,6 +722,7 @@ impl MarkupBuilder {
         let mut parser = Parser::new();
         let mut tokenizer = Lexer::new(text);
         while let Some(token) = tokenizer.next_token() {
+            log::info!("parsing token {:?}", token);
             parser.parse(token)?;
         }
         let res = parser.end_of_input()?;
