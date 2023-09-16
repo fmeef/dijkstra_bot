@@ -230,6 +230,7 @@ async fn print_note(message: &Message, note: entities::notes::Model, note_chat: 
         note.media_type,
         note.text,
         note.media_id,
+        None,
         |note, button| {
             async move {
                 button.on_push(move |b| async move {

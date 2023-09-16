@@ -13,7 +13,7 @@ use crate::{
 };
 use botapi::gen_types::{
     Chat, EReplyMarkup, FileData, InlineKeyboardButton, InlineKeyboardMarkup, InputFile,
-    InputMedia, InputMediaDocument, InputMediaPhoto, InputMediaVideo, Message, User,
+    InputMedia, InputMediaDocument, InputMediaPhoto, InputMediaVideo, Message, MessageEntity, User,
 };
 use futures::future::BoxFuture;
 use sea_orm::entity::prelude::*;
@@ -259,6 +259,7 @@ pub async fn send_media_reply<F>(
     media_type: MediaType,
     text: Option<String>,
     media_id: Option<String>,
+    extra_entities: Option<Vec<MessageEntity>>,
     callback: F,
 ) -> Result<()>
 where
@@ -270,13 +271,17 @@ where
     }
 
     let text = text.unwrap_or_else(|| "".to_owned());
-    let (text, entities, buttons) = if let Ok(md) =
+    let (text, mut entities, buttons) = if let Ok(md) =
         MarkupBuilder::from_murkdown_button(&text, message.get_chatuser().as_ref(), &callback).await
     {
         md.build_owned()
     } else {
         (text, Vec::new(), InlineKeyboardMarkup::default())
     };
+
+    if let Some(extra) = extra_entities {
+        entities.extend_from_slice(extra.as_slice());
+    }
 
     let buttons = EReplyMarkup::InlineKeyboardMarkup(buttons);
 

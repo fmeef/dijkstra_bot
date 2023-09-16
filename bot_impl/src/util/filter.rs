@@ -1,9 +1,9 @@
 //! Context-free grammar for parsing "filters" style commands.
 //! Currently this is used by filters and blocklists, but other modules may use it as well
 //!
-//! Example: (key1, key2, key3) multi word body {footer}
-//! Example: key1 multi word body
-//! Example: "multi word key" multi word body
+//! Example: (key1, key2, key3) multi fw body {footer}
+//! Example: key1 multi fw body
+//! Example: "multi fw key" multi fw body
 
 use lazy_static::lazy_static;
 
@@ -33,13 +33,13 @@ pomelo! {
     %type input FilterCommond;
     %token #[derive(Debug)] pub enum Token<'e>{};
     %type quote String;
-    %type word TextArg<'e>;
+    %type fw TextArg<'e>;
     %type Whitespace &'e str;
     %type multi Vec<TextArg<'e>>;
     %type list Vec<TextArg<'e>>;
     %type Str &'e str;
     %type footer String;
-    %type words String;
+    %type fws String;
     %type ign TextArg<'e>;
     %type header Header;
 
@@ -50,7 +50,7 @@ pomelo! {
             footer: None
         }
     }
-    input    ::= header(A) Whitespace(_) words(W) {
+    input    ::= header(A) Whitespace(_) fws(W) {
         FilterCommond {
             header: A,
             body: Some(W),
@@ -65,30 +65,30 @@ pomelo! {
         }
     }
 
-    input    ::= header(A) Whitespace(_) words(W) Whitespace(_) footer(F) {
+    input    ::= header(A) Whitespace(_) fws(W) Whitespace(_) footer(F) {
         FilterCommond {
             header: A,
             body: Some(W),
             footer: Some(F)
         }
     }
-    footer   ::= LBrace words(A) Rbrace { A }
+    footer   ::= LBrace fws(A) Rbrace { A }
     header   ::= multi(V)  { Header::List(V.into_iter().map(|v| v.get_text().to_owned()).collect()) }
-    header   ::= word(S) { Header::Arg(S.get_text().to_owned()) }
+    header   ::= fw(S) { Header::Arg(S.get_text().to_owned()) }
     header   ::= quote(S) { Header::Arg(S) }
-    word     ::= Str(A) { TextArg::Arg(A) }
-    ign      ::= word(W) { W }
-    ign      ::= word(W) Whitespace(_) { W }
-    ign      ::= Whitespace(_) word(W) { W }
-    ign      ::= Whitespace(_) word(W) Whitespace(_) { W }
-    words    ::= word(W) { W.get_text().to_owned() }
-    words    ::= words(mut L) Whitespace(S) word(W) {
+    fw     ::= Str(A) { TextArg::Arg(A) }
+    ign      ::= fw(W) { W }
+    ign      ::= fw(W) Whitespace(_) { W }
+    ign      ::= Whitespace(_) fw(W) { W }
+    ign      ::= Whitespace(_) fw(W) Whitespace(_) { W }
+    fws    ::= fw(W) { W.get_text().to_owned() }
+    fws    ::= fws(mut L) Whitespace(S) fw(W) {
         L.push_str(&S);
         L.push_str(W.get_text());
         L
     }
 
-    quote    ::= Quote words(A) Quote { A }
+    quote    ::= Quote fws(A) Quote { A }
     multi    ::= LParen list(A) RParen {A }
     list     ::= ign(A) { vec![A] }
     list     ::= list(mut L) Comma ign(A) { L.push(A); L }

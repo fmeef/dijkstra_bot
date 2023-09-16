@@ -774,7 +774,7 @@ async fn handle_user_event(update: &UpdateExt, ctx: &Context) -> Result<()> {
 }
 
 pub async fn handle_update<'a>(cmd: &Context) -> Result<()> {
-    handle_user_event(&cmd.get_static().update, cmd).await?;
+    handle_user_event(cmd.update(), cmd).await?;
     handle_command(cmd).await?;
 
     Ok(())

@@ -1,31 +1,33 @@
 use std::collections::HashMap;
 
+use crate::metadata::metadata;
 use crate::persist::core::media::get_media_type;
 use crate::persist::core::media::send_media_reply;
+use crate::persist::core::messageentity;
+use crate::persist::core::messageentity::EntityWithUser;
 use crate::persist::redis::default_cache_query;
 use crate::persist::redis::CachedQueryTrait;
-use crate::persist::redis::RedisCache;
-use crate::persist::redis::RedisStr;
+use crate::persist::redis::ToRedisStr;
 use crate::statics::CONFIG;
 use crate::statics::DB;
 use crate::statics::REDIS;
 use crate::tg::command::*;
+use crate::tg::markdown::Header;
+use crate::tg::markdown::MarkupBuilder;
 use crate::tg::markdown::MarkupType;
 use crate::tg::permissions::*;
-
+use crate::util::error::BotError;
+use crate::util::error::Fail;
 use crate::util::error::Result;
-
-use crate::metadata::metadata;
-use crate::util::error::SpeakErr;
-use crate::util::filter::Header;
-use crate::util::filter::Lexer;
-use crate::util::filter::Parser;
-
 use crate::util::string::Speak;
 use botapi::gen_types::Message;
+use botapi::gen_types::MessageEntity;
 use chrono::Duration;
 use entities::{filters, triggers};
+use futures::stream;
 use futures::FutureExt;
+use futures::StreamExt;
+use futures::TryStreamExt;
 use itertools::Itertools;
 use lazy_static::__Deref;
 use macros::entity_fmt;
@@ -36,9 +38,13 @@ use sea_orm::sea_query::OnConflict;
 use sea_orm::ColumnTrait;
 use sea_orm::EntityTrait;
 use sea_orm::IntoActiveModel;
+use sea_orm::ModelTrait;
 use sea_orm::QueryFilter;
+use sea_orm::QuerySelect;
+use sea_orm::RelationTrait;
 
 use sea_orm_migration::{MigrationName, MigrationTrait};
+use sea_query::JoinType;
 metadata!("Filters",
     r#"
     Respond to keywords with canned messages. This module is guaranteed to cause spam in the support chat
@@ -185,8 +191,19 @@ pub mod entities {
 
     pub mod filters {
 
-        use crate::persist::core::media::*;
-        use sea_orm::entity::prelude::*;
+        use std::ops::Deref;
+
+        use crate::{
+            modules::filters,
+            persist::core::{
+                button,
+                media::*,
+                messageentity::{self, DbMarkupType},
+            },
+            statics::DB,
+        };
+        use sea_orm::{entity::prelude::*, FromQueryResult, QuerySelect};
+        use sea_query::JoinType;
         use serde::{Deserialize, Serialize};
 
         #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
@@ -205,14 +222,124 @@ pub mod entities {
         pub enum Relation {
             #[sea_orm(has_many = "super::triggers::Entity")]
             Triggers,
+            #[sea_orm(has_many = "crate::persist::core::messageentity::Entity")]
+            Entities,
+
+            #[sea_orm(
+                belongs_to = "crate::persist::core::messageentity::Entity",
+                from = "Column::Id",
+                to = "crate::persist::core::messageentity::Column::OwnerId"
+            )]
+            Filters,
         }
+
+        #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+        pub enum MessageEntityRelation {}
+
         impl Related<super::triggers::Entity> for Entity {
             fn to() -> RelationDef {
                 Relation::Triggers.def()
             }
         }
 
+        impl Related<crate::persist::core::messageentity::Entity> for Entity {
+            fn to() -> RelationDef {
+                Relation::Entities.def()
+            }
+        }
+
+        impl Related<Entity> for crate::persist::core::messageentity::Entity {
+            fn to() -> RelationDef {
+                Relation::Filters.def().rev()
+            }
+        }
+
         impl ActiveModelBehavior for ActiveModel {}
+
+        #[derive(FromQueryResult)]
+        struct FiltersWithEntities {
+            //filter fields
+            pub id: Option<i64>,
+            pub chat: Option<i64>,
+            pub text: Option<String>,
+            pub media_id: Option<String>,
+            pub media_type: Option<MediaType>,
+
+            //button fields
+            pub button_id: Option<i64>,
+            pub button_text: Option<String>,
+            pub callback_data: Option<String>,
+            pub button_url: Option<String>,
+            pub owner_id: Option<i64>,
+
+            // entity fields
+            pub tg_type: Option<DbMarkupType>,
+            pub offset: Option<i64>,
+            pub length: Option<i64>,
+            pub url: Option<String>,
+            pub user: Option<i64>,
+            pub language: Option<String>,
+            pub emoji_id: Option<String>,
+        }
+
+        impl FiltersWithEntities {
+            fn get(self) -> (Option<Model>, Option<button::Model>) {
+                let button = if let (Some(button_text), Some(owner_id), Some(button_id)) =
+                    (self.button_text, self.owner_id, self.button_id)
+                {
+                    Some(button::Model {
+                        button_text,
+                        owner_id,
+                        button_id,
+                        callback_data: self.callback_data,
+                        button_url: self.button_url,
+                    })
+                } else {
+                    None
+                };
+
+                let filter = if let (Some(id), Some(chat), Some(media_type)) =
+                    (self.id, self.chat, self.media_type)
+                {
+                    Some(Model {
+                        id,
+                        chat,
+                        media_type,
+                        text: self.text,
+                        media_id: self.media_id,
+                    })
+                } else {
+                    None
+                };
+
+                let entity = if let (Some(tg_type), Some(offset), Some(length), Some(owner_id)) =
+                    (self.tg_type, self.offset, self.length, self.owner_id)
+                {
+                    Some(messageentity::Model {
+                        tg_type,
+                        offset,
+                        length,
+                        url: self.url,
+                        language: self.language,
+                        emoji_id: self.emoji_id,
+                        user: self.user,
+                        owner_id,
+                    })
+                } else {
+                    None
+                };
+
+                (filter, button)
+            }
+        }
+
+        pub async fn get_filters_join() -> crate::util::error::Result<()> {
+            super::filters::Entity::find()
+                .join(JoinType::RightJoin, Relation::Entities.def())
+                .all(DB.deref())
+                .await?;
+            Ok(())
+        }
     }
 }
 
@@ -279,14 +406,34 @@ async fn delete_trigger(message: &Message, trigger: &str) -> Result<()> {
     Ok(())
 }
 
-async fn get_filter(message: &Message, id: i64) -> Result<Option<filters::Model>> {
+async fn get_filter(
+    message: &Message,
+    id: i64,
+) -> Result<Option<(filters::Model, Vec<MessageEntity>)>> {
     default_cache_query(
         |_, _| async move {
             let res = filters::Entity::find()
                 .filter(filters::Column::Id.eq(id))
                 .one(DB.deref())
                 .await?;
-            Ok(res)
+
+            if let Some(res) = res {
+                let r: Vec<EntityWithUser> = res
+                    .find_related(messageentity::Entity)
+                    .join(JoinType::LeftJoin, filters::Relation::Entities.def())
+                    .into_model()
+                    .all(DB.deref())
+                    .await?;
+                Ok(Some((
+                    res,
+                    r.into_iter()
+                        .map(|v| v.get())
+                        .map(|(ent, user)| ent.to_entity(user))
+                        .try_collect()?,
+                )))
+            } else {
+                Ok(None)
+            }
         },
         Duration::seconds(CONFIG.timing.cache_timeout as i64),
     )
@@ -294,7 +441,10 @@ async fn get_filter(message: &Message, id: i64) -> Result<Option<filters::Model>
     .await
 }
 
-async fn search_cache(message: &Message, text: &str) -> Result<Option<filters::Model>> {
+async fn search_cache(
+    message: &Message,
+    text: &str,
+) -> Result<Option<(filters::Model, Vec<MessageEntity>)>> {
     update_cache_from_db(message).await?;
     let hash_key = get_filter_hash_key(message);
     REDIS
@@ -336,13 +486,35 @@ async fn update_cache_from_db(message: &Message) -> Result<()> {
             .find_with_related(triggers::Entity)
             .all(DB.deref())
             .await?;
+        let ids = res.iter().map(|(filter, _)| filter.id);
+        let mut entities: HashMap<i64, Vec<MessageEntity>> = messageentity::Entity::find()
+            .filter(messageentity::Column::OwnerId.is_in(ids))
+            .into_model::<EntityWithUser>()
+            .all(DB.deref())
+            .await?
+            .into_iter()
+            .map(|v| (v.owner_id, v))
+            .try_fold(
+                HashMap::<i64, Vec<MessageEntity>>::new(),
+                |mut acc, (v, model)| {
+                    let (model, user) = model.get();
+                    let model = model.to_entity(user)?;
+                    if let Some(vec) = acc.get_mut(&v) {
+                        vec.push(model);
+                    } else {
+                        acc.insert(v, vec![model]);
+                    };
+                    Ok::<_, BotError>(acc)
+                },
+            )?;
         REDIS
             .try_pipe(|p| {
                 p.hset(&hash_key, "empty", 0);
                 for (filter, triggers) in res.iter() {
                     let key = get_filter_key(message, filter.id);
-                    let filter_st = RedisStr::new(&filter)?;
-                    p.set(&key, filter_st)
+                    let ent = entities.remove(&filter.id).unwrap_or_else(|| vec![]);
+
+                    p.set(&key, (filter, ent).to_redis()?)
                         .expire(&key, CONFIG.timing.cache_timeout);
                     for trigger in triggers.iter() {
                         p.hset(&hash_key, trigger.trigger.to_owned(), filter.id)
@@ -356,16 +528,30 @@ async fn update_cache_from_db(message: &Message) -> Result<()> {
     Ok(())
 }
 
-async fn insert_filter(
-    message: &Message,
-    triggers: &[&str],
-    response: Option<String>,
-) -> Result<()> {
+async fn command_filter<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
+    ctx.check_permissions(|p| p.can_change_info).await?;
+    let message = ctx.message()?;
+    let cmd = MarkupBuilder::from_murkdown(args.text).await?;
+
+    let (body, entities, buttons, header, footer) = cmd.build_filter();
+    let filters = match header.ok_or_else(|| ctx.fail_err("Header missing from filter command"))? {
+        Header::List(st) => st,
+        Header::Arg(st) => vec![st],
+    };
+
+    let filters = filters.iter().map(|v| v.as_str()).collect::<Vec<&str>>();
+
+    let (f, message) = if let Some(message) = message.get_reply_to_message_ref() {
+        (message.get_text().map(|v| v.into_owned()), message)
+    } else {
+        (Some(body), message)
+    };
+
     let (id, media_type) = get_media_type(message)?;
     let model = filters::ActiveModel {
         id: ActiveValue::NotSet,
         chat: ActiveValue::Set(message.get_chat().get_id()),
-        text: ActiveValue::Set(response),
+        text: ActiveValue::Set(f),
         media_id: ActiveValue::Set(id),
         media_type: ActiveValue::Set(media_type),
     };
@@ -387,7 +573,7 @@ async fn insert_filter(
         )
         .exec_with_returning(DB.deref())
         .await?;
-    let triggers = triggers
+    let triggers = filters
         .iter()
         .map(|v| v.to_lowercase())
         .collect::<Vec<String>>();
@@ -411,6 +597,38 @@ async fn insert_filter(
     .exec(DB.deref())
     .await?;
     let id = model.id.clone();
+
+    let r = (&model, &entities).to_redis()?;
+
+    let entities: Vec<messageentity::Model> = stream::iter(entities)
+        .then(|v| async move { messageentity::Model::from_entity(v, id).await })
+        .try_collect()
+        .await?;
+
+    messageentity::Entity::insert_many(
+        entities
+            .into_iter()
+            .map(|v| v.into_active_model())
+            .collect::<Vec<messageentity::ActiveModel>>(),
+    )
+    .on_conflict(
+        OnConflict::columns([
+            messageentity::Column::TgType,
+            messageentity::Column::Offset,
+            messageentity::Column::Length,
+            messageentity::Column::OwnerId,
+        ])
+        .update_columns([
+            messageentity::Column::Url,
+            messageentity::Column::User,
+            messageentity::Column::Language,
+            messageentity::Column::EmojiId,
+        ])
+        .to_owned(),
+    )
+    .exec_with_returning(DB.deref())
+    .await?;
+
     let hash_key = get_filter_hash_key(message);
     REDIS
         .pipe(|p| {
@@ -420,40 +638,8 @@ async fn insert_filter(
             p
         })
         .await?;
-    model.cache(get_filter_key(message, id)).await?;
-    Ok(())
-}
-
-async fn command_filter<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
-    ctx.check_permissions(|p| p.can_change_info).await?;
-    let message = ctx.message()?;
-    let lexer = Lexer::new(args.text);
-    let mut parser = Parser::new();
-    for token in lexer.all_tokens() {
-        parser
-            .parse(token)
-            .speak_err(ctx, |v| format!("failed to parse filter: {}", v))
-            .await?;
-    }
-
-    let cmd = parser
-        .end_of_input()
-        .speak_err(ctx, |v| format!("failed to parse blocklist: {}", v))
-        .await?;
-
-    let filters = match cmd.header {
-        Header::List(st) => st,
-        Header::Arg(st) => vec![st],
-    };
-
-    let filters = filters.iter().map(|v| v.as_str()).collect::<Vec<&str>>();
-    let (f, message) = if let Some(message) = message.get_reply_to_message_ref() {
-        (message.get_text().map(|v| v.into_owned()), message)
-    } else {
-        (cmd.body, message)
-    };
-
-    insert_filter(message, filters.as_slice(), f).await?;
+    let key = get_filter_key(message, id);
+    REDIS.pipe(|q| q.set(&key, r)).await?;
     let filters_fmt = [""].into_iter().chain(filters.into_iter()).join("\n - ");
     let text = MarkupType::Code.text(&filters_fmt);
 
@@ -466,10 +652,15 @@ async fn command_filter<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
 
 async fn handle_trigger(message: &Message) -> Result<()> {
     if let Some(text) = message.get_text() {
-        if let Some(res) = search_cache(message, &text).await? {
-            send_media_reply(message, res.media_type, res.text, res.media_id, |_, _| {
-                async move { Ok(()) }.boxed()
-            })
+        if let Some((res, extra_entities)) = search_cache(message, &text).await? {
+            send_media_reply(
+                message,
+                res.media_type,
+                res.text,
+                res.media_id,
+                Some(extra_entities),
+                |_, _| async move { Ok(()) }.boxed(),
+            )
             .await?;
         }
     }
