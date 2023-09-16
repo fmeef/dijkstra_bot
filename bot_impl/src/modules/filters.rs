@@ -407,7 +407,10 @@ pub mod entities {
             let res = super::filters::Entity::find()
                 .join(JoinType::LeftJoin, Relation::Entities.def())
                 .join(JoinType::LeftJoin, Relation::Buttons.def())
-                .join(JoinType::LeftJoin, messageentity::Relation::Users.def())
+                .join(
+                    JoinType::LeftJoin,
+                    messageentity::Relation::Users.def().rev(),
+                )
                 .filter(filter)
                 .order_by_asc(button::Column::PosX)
                 .order_by_asc(button::Column::PosY)

@@ -984,7 +984,7 @@ pub fn retro_fillings(
         .map(|v| (v.get_offset(), v.get_length()))
         .collect::<Vec<(i64, i64)>>();
     while let Some(mat) = FILLER_REGEX.find(text) {
-        let filling = &mat.as_str()[1..mat.len() - 1];
+        let filling = &mat.as_str()[1..mat.len() - 2];
 
         let (text, entity) = match filling {
             "username" => {

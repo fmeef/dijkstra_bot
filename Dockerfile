@@ -64,7 +64,7 @@ RUN git clone https://github.com/helix-editor/helix /opt/helix && \
     cd /opt/helix &&  rustup override set stable && \
      cargo install --locked --path helix-term && cargo clean
 
-RUN apt update && apt install -y postgresql-client redis fish
+RUN apt update && apt install -y postgresql-client redis fish gdb lldb
 RUN mkdir -p /bobot/target && chown -R bobot:bobot /bobot && \
 chown -R bobot:bobot /usr/local && mkdir -p /bobot/migration/target && \
 chown -R bobot:bobot /bobot/migration/target && mkdir -p /bobot/bot_impl/target && \
