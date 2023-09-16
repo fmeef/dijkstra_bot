@@ -4,10 +4,10 @@ use crate::{
     statics::TG,
     tg::{
         admin_helpers::{ChatUser, IntoChatUser},
-        markdown::MarkupBuilder,
+        markdown::{retro_fillings, MarkupBuilder},
     },
     util::{
-        error::{Fail, Result},
+        error::{BotError, Fail, Result},
         string::should_ignore_chat,
     },
 };
@@ -18,7 +18,9 @@ use botapi::gen_types::{
 use futures::future::BoxFuture;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
-#[derive(EnumIter, DeriveActiveEnum, Serialize, Deserialize, Clone, PartialEq, Debug, Iden)]
+#[derive(
+    EnumIter, DeriveActiveEnum, Serialize, Deserialize, Clone, PartialEq, Eq, Hash, Debug, Iden,
+)]
 #[sea_orm(rs_type = "i32", db_type = "Integer")]
 pub enum MediaType {
     #[sea_orm(num_value = 1)]
@@ -271,17 +273,25 @@ where
     }
 
     let text = text.unwrap_or_else(|| "".to_owned());
-    let (text, mut entities, buttons) = if let Ok(md) =
-        MarkupBuilder::from_murkdown_button(&text, message.get_chatuser().as_ref(), &callback).await
-    {
-        md.build_owned()
+    let (text, entities, buttons) = if let Some(extra) = extra_entities {
+        let (text, entities) = retro_fillings(
+            &text,
+            extra,
+            &message
+                .get_chatuser()
+                .ok_or_else(|| BotError::Generic("No chatuser".to_owned()))?,
+        );
+        (text, entities, InlineKeyboardMarkup::default())
     } else {
-        (text, Vec::new(), InlineKeyboardMarkup::default())
+        if let Ok(md) =
+            MarkupBuilder::from_murkdown_button(&text, message.get_chatuser().as_ref(), &callback)
+                .await
+        {
+            md.build_owned()
+        } else {
+            (text, Vec::new(), InlineKeyboardMarkup::default())
+        }
     };
-
-    if let Some(extra) = extra_entities {
-        entities.extend_from_slice(extra.as_slice());
-    }
 
     let buttons = EReplyMarkup::InlineKeyboardMarkup(buttons);
 

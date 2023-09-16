@@ -95,10 +95,7 @@ impl Model {
         })
     }
 
-    pub fn to_entity(
-        self,
-        user: Option<users::Model>,
-    ) -> crate::util::error::Result<MessageEntity> {
+    pub fn to_entity(self, user: Option<users::Model>) -> MessageEntity {
         let tg_type = self.tg_type.get_tg_type();
         let mut res =
             MessageEntityBuilder::new(self.offset, self.length).set_type(tg_type.to_owned());
@@ -118,7 +115,7 @@ impl Model {
         if let Some(language) = self.language {
             res = res.set_language(language);
         }
-        Ok(res.build())
+        res.build()
     }
 }
 

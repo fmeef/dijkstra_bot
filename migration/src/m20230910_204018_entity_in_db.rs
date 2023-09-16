@@ -1,5 +1,5 @@
 use bot_impl::persist::{
-    core::{messageentity, users},
+    core::{button, messageentity, users},
     migrate::ManagerHelper,
 };
 use sea_orm_migration::prelude::*;
@@ -47,16 +47,11 @@ impl MigrationTrait for Migration {
                     .col(
                         ColumnDef::new(messageentity::Column::User)
                             .big_integer()
-                            .null()
-                            .unique_key(),
+                            .null(),
                     )
                     .col(ColumnDef::new(messageentity::Column::Language).text())
                     .col(ColumnDef::new(messageentity::Column::EmojiId).text())
-                    .col(
-                        ColumnDef::new(messageentity::Column::OwnerId)
-                            .big_integer()
-                            .unique_key(),
-                    )
+                    .col(ColumnDef::new(messageentity::Column::OwnerId).big_integer())
                     .index(
                         IndexCreateStatement::new()
                             .col(messageentity::Column::TgType)
@@ -64,6 +59,30 @@ impl MigrationTrait for Migration {
                             .col(messageentity::Column::Length)
                             .col(messageentity::Column::OwnerId)
                             .unique(),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                TableCreateStatement::new()
+                    .table(button::Entity)
+                    .col(
+                        ColumnDef::new(button::Column::ButtonId)
+                            .big_integer()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(button::Column::ButtonText).text().not_null())
+                    .col(ColumnDef::new(button::Column::CallbackData).text())
+                    .col(ColumnDef::new(button::Column::ButtonUrl).text())
+                    .col(ColumnDef::new(button::Column::PosX).unsigned().not_null())
+                    .col(ColumnDef::new(button::Column::PosY).unsigned().not_null())
+                    .col(
+                        ColumnDef::new(button::Column::OwnerId)
+                            .big_integer()
+                            .not_null(),
                     )
                     .to_owned(),
             )
@@ -78,6 +97,7 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await?;
+
         Ok(())
     }
 
@@ -101,6 +121,7 @@ impl MigrationTrait for Migration {
             .await?;
 
         manager.drop_table_auto(messageentity::Entity).await?;
+        manager.drop_table_auto(button::Entity).await?;
         Ok(())
     }
 }

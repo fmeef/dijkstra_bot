@@ -67,6 +67,11 @@ impl InlineKeyboardBuilder {
         self
     }
 
+    /// gets mutable access to stored vec
+    pub fn get<'a>(&'a mut self) -> &'a mut Vec<Vec<InlineKeyboardButton>> {
+        &mut self.0
+    }
+
     /// Generates an InlineKeyboardMarkup for use in telegram api types
     pub fn build(self) -> InlineKeyboardMarkup {
         InlineKeyboardMarkup::new(self.0)

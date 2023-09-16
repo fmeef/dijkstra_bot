@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use crate::metadata::metadata;
+use crate::persist::core::button;
 use crate::persist::core::media::get_media_type;
 use crate::persist::core::media::send_media_reply;
 use crate::persist::core::messageentity;
@@ -11,15 +12,17 @@ use crate::persist::redis::ToRedisStr;
 use crate::statics::CONFIG;
 use crate::statics::DB;
 use crate::statics::REDIS;
+use crate::tg::button::InlineKeyboardBuilder;
 use crate::tg::command::*;
 use crate::tg::markdown::Header;
 use crate::tg::markdown::MarkupBuilder;
 use crate::tg::markdown::MarkupType;
 use crate::tg::permissions::*;
-use crate::util::error::BotError;
 use crate::util::error::Fail;
 use crate::util::error::Result;
 use crate::util::string::Speak;
+use botapi::gen_types::InlineKeyboardButton;
+use botapi::gen_types::InlineKeyboardMarkup;
 use botapi::gen_types::Message;
 use botapi::gen_types::MessageEntity;
 use chrono::Duration;
@@ -38,13 +41,10 @@ use sea_orm::sea_query::OnConflict;
 use sea_orm::ColumnTrait;
 use sea_orm::EntityTrait;
 use sea_orm::IntoActiveModel;
-use sea_orm::ModelTrait;
 use sea_orm::QueryFilter;
-use sea_orm::QuerySelect;
-use sea_orm::RelationTrait;
 
 use sea_orm_migration::{MigrationName, MigrationTrait};
-use sea_query::JoinType;
+
 metadata!("Filters",
     r#"
     Respond to keywords with canned messages. This module is guaranteed to cause spam in the support chat
@@ -191,22 +191,23 @@ pub mod entities {
 
     pub mod filters {
 
-        use std::ops::Deref;
+        use std::{collections::HashMap, ops::Deref};
 
         use crate::{
-            modules::filters,
             persist::core::{
                 button,
                 media::*,
-                messageentity::{self, DbMarkupType},
+                messageentity::{self, DbMarkupType, EntityWithUser},
             },
             statics::DB,
         };
-        use sea_orm::{entity::prelude::*, FromQueryResult, QuerySelect};
-        use sea_query::JoinType;
+        use sea_orm::{entity::prelude::*, FromQueryResult, QueryOrder, QuerySelect};
+        use sea_query::{IntoCondition, JoinType};
         use serde::{Deserialize, Serialize};
 
-        #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+        use super::triggers;
+
+        #[derive(Clone, Debug, Hash, Eq, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
         #[sea_orm(table_name = "filters")]
         pub struct Model {
             #[sea_orm(primary_key, unique, autoincrement = true)]
@@ -224,7 +225,8 @@ pub mod entities {
             Triggers,
             #[sea_orm(has_many = "crate::persist::core::messageentity::Entity")]
             Entities,
-
+            #[sea_orm(has_many = "crate::persist::core::button::Entity")]
+            Buttons,
             #[sea_orm(
                 belongs_to = "crate::persist::core::messageentity::Entity",
                 from = "Column::Id",
@@ -254,6 +256,18 @@ pub mod entities {
             }
         }
 
+        impl Related<crate::persist::core::button::Entity> for Entity {
+            fn to() -> RelationDef {
+                Relation::Buttons.def()
+            }
+        }
+
+        impl Related<Entity> for crate::persist::core::button::Entity {
+            fn to() -> RelationDef {
+                Relation::Buttons.def().rev()
+            }
+        }
+
         impl ActiveModelBehavior for ActiveModel {}
 
         #[derive(FromQueryResult)]
@@ -271,6 +285,8 @@ pub mod entities {
             pub callback_data: Option<String>,
             pub button_url: Option<String>,
             pub owner_id: Option<i64>,
+            pub pos_x: Option<u32>,
+            pub pos_y: Option<u32>,
 
             // entity fields
             pub tg_type: Option<DbMarkupType>,
@@ -280,19 +296,49 @@ pub mod entities {
             pub user: Option<i64>,
             pub language: Option<String>,
             pub emoji_id: Option<String>,
+
+            // user fields
+            pub user_id: Option<i64>,
+            pub first_name: Option<String>,
+            pub last_name: Option<String>,
+            pub username: Option<String>,
+            pub is_bot: Option<bool>,
+
+            // trigger fields
+            pub trigger: Option<String>,
+            pub filter_id: Option<i64>,
         }
 
         impl FiltersWithEntities {
-            fn get(self) -> (Option<Model>, Option<button::Model>) {
-                let button = if let (Some(button_text), Some(owner_id), Some(button_id)) =
-                    (self.button_text, self.owner_id, self.button_id)
-                {
+            fn get(
+                self,
+            ) -> (
+                Option<Model>,
+                Option<button::Model>,
+                Option<EntityWithUser>,
+                Option<triggers::Model>,
+            ) {
+                let button = if let (
+                    Some(button_text),
+                    Some(owner_id),
+                    Some(button_id),
+                    Some(pos_x),
+                    Some(pos_y),
+                ) = (
+                    self.button_text,
+                    self.owner_id,
+                    self.button_id,
+                    self.pos_x,
+                    self.pos_y,
+                ) {
                     Some(button::Model {
                         button_text,
                         owner_id,
                         button_id,
                         callback_data: self.callback_data,
                         button_url: self.button_url,
+                        pos_x,
+                        pos_y,
                     })
                 } else {
                     None
@@ -315,7 +361,7 @@ pub mod entities {
                 let entity = if let (Some(tg_type), Some(offset), Some(length), Some(owner_id)) =
                     (self.tg_type, self.offset, self.length, self.owner_id)
                 {
-                    Some(messageentity::Model {
+                    Some(EntityWithUser {
                         tg_type,
                         offset,
                         length,
@@ -324,21 +370,75 @@ pub mod entities {
                         emoji_id: self.emoji_id,
                         user: self.user,
                         owner_id,
+                        user_id: self.user_id,
+                        first_name: self.first_name,
+                        last_name: self.last_name,
+                        username: self.username,
+                        is_bot: self.is_bot,
                     })
                 } else {
                     None
                 };
 
-                (filter, button)
+                let trigger =
+                    if let (Some(trigger), Some(filter_id)) = (self.trigger, self.filter_id) {
+                        Some(triggers::Model { trigger, filter_id })
+                    } else {
+                        None
+                    };
+
+                (filter, button, entity, trigger)
             }
         }
 
-        pub async fn get_filters_join() -> crate::util::error::Result<()> {
-            super::filters::Entity::find()
-                .join(JoinType::RightJoin, Relation::Entities.def())
+        pub type FiltersMap = HashMap<
+            Model,
+            (
+                Vec<EntityWithUser>,
+                Vec<button::Model>,
+                Vec<triggers::Model>,
+            ),
+        >;
+
+        pub async fn get_filters_join<F>(filter: F) -> crate::util::error::Result<FiltersMap>
+        where
+            F: IntoCondition,
+        {
+            let res = super::filters::Entity::find()
+                .join(JoinType::LeftJoin, Relation::Entities.def())
+                .join(JoinType::LeftJoin, Relation::Buttons.def())
+                .join(JoinType::LeftJoin, messageentity::Relation::Users.def())
+                .filter(filter)
+                .order_by_asc(button::Column::PosX)
+                .order_by_asc(button::Column::PosY)
+                .into_model::<FiltersWithEntities>()
                 .all(DB.deref())
                 .await?;
-            Ok(())
+
+            let res = res.into_iter().map(|v| v.get()).fold(
+                FiltersMap::new(),
+                |mut acc, (filter, button, entity, trigger)| {
+                    if let Some(filter) = filter {
+                        let (entitylist, buttonlist, triggerlist) = acc
+                            .entry(filter)
+                            .or_insert_with(|| (Vec::new(), Vec::new(), Vec::new()));
+
+                        if let Some(button) = button {
+                            buttonlist.push(button);
+                        }
+
+                        if let Some(entity) = entity {
+                            entitylist.push(entity);
+                        }
+
+                        if let Some(trigger) = trigger {
+                            triggerlist.push(trigger);
+                        }
+                    }
+                    acc
+                },
+            );
+            Ok(res)
         }
     }
 }
@@ -409,31 +509,25 @@ async fn delete_trigger(message: &Message, trigger: &str) -> Result<()> {
 async fn get_filter(
     message: &Message,
     id: i64,
-) -> Result<Option<(filters::Model, Vec<MessageEntity>)>> {
+) -> Result<Option<(filters::Model, Vec<MessageEntity>, InlineKeyboardMarkup)>> {
     default_cache_query(
         |_, _| async move {
-            let res = filters::Entity::find()
-                .filter(filters::Column::Id.eq(id))
-                .one(DB.deref())
-                .await?;
-
-            if let Some(res) = res {
-                let r: Vec<EntityWithUser> = res
-                    .find_related(messageentity::Entity)
-                    .join(JoinType::LeftJoin, filters::Relation::Entities.def())
-                    .into_model()
-                    .all(DB.deref())
-                    .await?;
-                Ok(Some((
-                    res,
-                    r.into_iter()
-                        .map(|v| v.get())
-                        .map(|(ent, user)| ent.to_entity(user))
-                        .try_collect()?,
-                )))
-            } else {
-                Ok(None)
-            }
+            let map = filters::get_filters_join(filters::Column::Id.eq(id))
+                .await?
+                .into_iter()
+                .map(|(filter, (entity, button, _))| {
+                    (
+                        filter,
+                        entity
+                            .into_iter()
+                            .map(|e| e.get())
+                            .map(|(e, u)| e.to_entity(u))
+                            .collect(),
+                        get_markup_for_buttons(button),
+                    )
+                })
+                .next();
+            Ok(map)
         },
         Duration::seconds(CONFIG.timing.cache_timeout as i64),
     )
@@ -441,10 +535,29 @@ async fn get_filter(
     .await
 }
 
+fn get_markup_for_buttons(button: Vec<button::Model>) -> InlineKeyboardMarkup {
+    button
+        .into_iter()
+        .fold(InlineKeyboardBuilder::default(), |mut acc, b| {
+            let v = acc.get();
+            let x = b.pos_x as usize;
+            let y = b.pos_y as usize;
+            if let Some(ve) = v.get_mut(b.pos_y as usize) {
+                ve.insert(x, b.to_button());
+            } else {
+                let mut ve = Vec::new();
+                ve.insert(x, b.to_button());
+                v.insert(y, ve);
+            }
+            acc
+        })
+        .build()
+}
+
 async fn search_cache(
     message: &Message,
     text: &str,
-) -> Result<Option<(filters::Model, Vec<MessageEntity>)>> {
+) -> Result<Option<(filters::Model, Vec<MessageEntity>, InlineKeyboardMarkup)>> {
     update_cache_from_db(message).await?;
     let hash_key = get_filter_hash_key(message);
     REDIS
@@ -481,40 +594,21 @@ async fn search_cache(
 async fn update_cache_from_db(message: &Message) -> Result<()> {
     let hash_key = get_filter_hash_key(message);
     if !REDIS.sq(|q| q.exists(&hash_key)).await? {
-        let res = filters::Entity::find()
-            .filter(filters::Column::Chat.eq(message.get_chat().get_id()))
-            .find_with_related(triggers::Entity)
-            .all(DB.deref())
+        let res = filters::get_filters_join(filters::Column::Chat.eq(message.get_chat().get_id()))
             .await?;
-        let ids = res.iter().map(|(filter, _)| filter.id);
-        let mut entities: HashMap<i64, Vec<MessageEntity>> = messageentity::Entity::find()
-            .filter(messageentity::Column::OwnerId.is_in(ids))
-            .into_model::<EntityWithUser>()
-            .all(DB.deref())
-            .await?
-            .into_iter()
-            .map(|v| (v.owner_id, v))
-            .try_fold(
-                HashMap::<i64, Vec<MessageEntity>>::new(),
-                |mut acc, (v, model)| {
-                    let (model, user) = model.get();
-                    let model = model.to_entity(user)?;
-                    if let Some(vec) = acc.get_mut(&v) {
-                        vec.push(model);
-                    } else {
-                        acc.insert(v, vec![model]);
-                    };
-                    Ok::<_, BotError>(acc)
-                },
-            )?;
+
         REDIS
             .try_pipe(|p| {
                 p.hset(&hash_key, "empty", 0);
-                for (filter, triggers) in res.iter() {
+                for (filter, (entities, buttons, triggers)) in res.into_iter() {
                     let key = get_filter_key(message, filter.id);
-                    let ent = entities.remove(&filter.id).unwrap_or_else(|| vec![]);
-
-                    p.set(&key, (filter, ent).to_redis()?)
+                    let kb = get_markup_for_buttons(buttons);
+                    let entities = entities
+                        .into_iter()
+                        .map(|v| v.get())
+                        .map(|(k, v)| k.to_entity(v))
+                        .collect_vec();
+                    p.set(&key, (&filter, entities, kb).to_redis()?)
                         .expire(&key, CONFIG.timing.cache_timeout);
                     for trigger in triggers.iter() {
                         p.hset(&hash_key, trigger.trigger.to_owned(), filter.id)
@@ -597,38 +691,38 @@ async fn command_filter<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
     .exec(DB.deref())
     .await?;
     let id = model.id.clone();
-
-    let r = (&model, &entities).to_redis()?;
+    let r = (&model, &entities, &buttons).to_redis()?;
 
     let entities: Vec<messageentity::Model> = stream::iter(entities)
         .then(|v| async move { messageentity::Model::from_entity(v, id).await })
         .try_collect()
         .await?;
 
-    messageentity::Entity::insert_many(
-        entities
-            .into_iter()
-            .map(|v| v.into_active_model())
-            .collect::<Vec<messageentity::ActiveModel>>(),
-    )
-    .on_conflict(
-        OnConflict::columns([
-            messageentity::Column::TgType,
-            messageentity::Column::Offset,
-            messageentity::Column::Length,
-            messageentity::Column::OwnerId,
-        ])
-        .update_columns([
-            messageentity::Column::Url,
-            messageentity::Column::User,
-            messageentity::Column::Language,
-            messageentity::Column::EmojiId,
-        ])
-        .to_owned(),
-    )
-    .exec_with_returning(DB.deref())
-    .await?;
-
+    if entities.len() > 0 {
+        messageentity::Entity::insert_many(
+            entities
+                .into_iter()
+                .map(|v| v.into_active_model())
+                .collect::<Vec<messageentity::ActiveModel>>(),
+        )
+        .on_conflict(
+            OnConflict::columns([
+                messageentity::Column::TgType,
+                messageentity::Column::Offset,
+                messageentity::Column::Length,
+                messageentity::Column::OwnerId,
+            ])
+            .update_columns([
+                messageentity::Column::Url,
+                messageentity::Column::User,
+                messageentity::Column::Language,
+                messageentity::Column::EmojiId,
+            ])
+            .to_owned(),
+        )
+        .exec_with_returning(DB.deref())
+        .await?;
+    }
     let hash_key = get_filter_hash_key(message);
     REDIS
         .pipe(|p| {
@@ -652,7 +746,7 @@ async fn command_filter<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
 
 async fn handle_trigger(message: &Message) -> Result<()> {
     if let Some(text) = message.get_text() {
-        if let Some((res, extra_entities)) = search_cache(message, &text).await? {
+        if let Some((res, extra_entities, extra_buttons)) = search_cache(message, &text).await? {
             send_media_reply(
                 message,
                 res.media_type,

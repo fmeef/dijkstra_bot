@@ -969,6 +969,107 @@ impl MarkupBuilder {
     }
 }
 
+lazy_static! {
+    static ref FILLER_REGEX: Regex = Regex::new(r"{\w*}").unwrap();
+}
+
+pub fn retro_fillings(
+    text: &str,
+    entities: Vec<MessageEntity>,
+    chatuser: &ChatUser,
+) -> (String, Vec<MessageEntity>) {
+    let mut res = String::with_capacity(text.len());
+    let mut offsets = entities
+        .iter()
+        .map(|v| (v.get_offset(), v.get_length()))
+        .collect::<Vec<(i64, i64)>>();
+    while let Some(mat) = FILLER_REGEX.find(text) {
+        let filling = &mat.as_str()[1..mat.len() - 1];
+
+        let (text, entity) = match filling {
+            "username" => {
+                let user = chatuser.user.as_ref().to_owned();
+                let name = user.name_humanreadable();
+                let pos = text.len() as i64;
+                let len = name.len() as i64;
+                (
+                    name,
+                    Some(MessageEntityBuilder::new(pos, len).set_user(user).build()),
+                )
+            }
+            "first" => {
+                let first = chatuser.user.get_first_name().into_owned();
+                (first, None)
+            }
+            "last" => {
+                let last = chatuser
+                    .user
+                    .get_last_name()
+                    .map(|v| v.into_owned())
+                    .unwrap_or_else(|| "".to_owned());
+                (last, None)
+            }
+            "mention" => {
+                let user = chatuser.user.as_ref().to_owned();
+                let first = user.get_first_name().into_owned();
+
+                let pos = text.len() as i64;
+                let len = first.len() as i64;
+                (
+                    first,
+                    Some(MessageEntityBuilder::new(pos, len).set_user(user).build()),
+                )
+            }
+            "chatname" => {
+                let chat = chatuser.chat.name_humanreadable();
+                (chat, None)
+            }
+            "id" => {
+                let id = chatuser.user.get_id().to_string();
+                (id, None)
+            } // TODO: handle rules filler
+            s => {
+                let s = format!("{{{}}}", s);
+                (s, None)
+            }
+        };
+
+        res.push_str(&text);
+        if let Some(entity) = entity {
+            for v in offsets.as_mut_slice() {
+                if v.0 >= entity.get_offset() {
+                    v.0 += entity.get_length();
+                }
+            }
+        }
+    }
+    let newoffsets = entities
+        .into_iter()
+        .zip(offsets)
+        .map(|(entity, (off, len))| {
+            let mut builder =
+                MessageEntityBuilder::new(off, len).set_type(entity.get_tg_type().into_owned());
+            if let Some(v) = entity.get_url() {
+                builder = builder.set_url(v.into_owned());
+            }
+
+            if let Some(v) = entity.get_user() {
+                builder = builder.set_user(v.into_owned());
+            }
+
+            if let Some(v) = entity.get_language() {
+                builder = builder.set_language(v.into_owned());
+            }
+
+            if let Some(v) = entity.get_custom_emoji_id() {
+                builder = builder.set_custom_emoji_id(v.into_owned());
+            }
+            builder.build()
+        })
+        .collect::<Vec<MessageEntity>>();
+    (res, newoffsets)
+}
+
 /// Represents metadata for a single MessageEntity. Useful when programatically
 /// constructing formatted text using MarkupBuilder
 pub struct Markup<T: AsRef<str>> {
