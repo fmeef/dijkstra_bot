@@ -970,7 +970,7 @@ impl MarkupBuilder {
 }
 
 lazy_static! {
-    static ref FILLER_REGEX: Regex = Regex::new(r"{\w*}").unwrap();
+    static ref FILLER_REGEX: Regex = Regex::new(r"\{\w*\}").unwrap();
 }
 
 pub fn retro_fillings(
