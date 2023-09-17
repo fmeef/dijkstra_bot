@@ -5,7 +5,6 @@ use crate::persist::core::button;
 use crate::persist::core::media::get_media_type;
 use crate::persist::core::media::send_media_reply;
 use crate::persist::core::messageentity;
-use crate::persist::core::messageentity::EntityWithUser;
 use crate::persist::redis::default_cache_query;
 use crate::persist::redis::CachedQueryTrait;
 use crate::persist::redis::ToRedisStr;
@@ -21,7 +20,6 @@ use crate::tg::permissions::*;
 use crate::util::error::Fail;
 use crate::util::error::Result;
 use crate::util::string::Speak;
-use botapi::gen_types::InlineKeyboardButton;
 use botapi::gen_types::InlineKeyboardMarkup;
 use botapi::gen_types::Message;
 use botapi::gen_types::MessageEntity;
@@ -57,6 +55,7 @@ metadata!("Filters",
 );
 
 struct Migration;
+struct EntityInDbMigration;
 
 impl MigrationName for Migration {
     fn name(&self) -> &str {
@@ -64,8 +63,14 @@ impl MigrationName for Migration {
     }
 }
 
+impl MigrationName for EntityInDbMigration {
+    fn name(&self) -> &str {
+        "m20230127_000002_filters_entity_in_db"
+    }
+}
+
 pub mod entities {
-    use crate::persist::migrate::ManagerHelper;
+    use crate::persist::{core::messageentity, migrate::ManagerHelper};
     use ::sea_orm_migration::prelude::*;
 
     #[async_trait::async_trait]
@@ -154,6 +159,35 @@ pub mod entities {
                 .await?;
             manager.drop_table_auto(filters::Entity).await?;
             manager.drop_table_auto(triggers::Entity).await?;
+            Ok(())
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl MigrationTrait for super::EntityInDbMigration {
+        async fn up(&self, manager: &SchemaManager) -> std::result::Result<(), DbErr> {
+            manager
+                .create_foreign_key(
+                    ForeignKeyCreateStatement::new()
+                        .name("entity_filter_fk")
+                        .from(messageentity::Entity, messageentity::Column::OwnerId)
+                        .to(filters::Entity, filters::Column::Id)
+                        .on_delete(ForeignKeyAction::Cascade)
+                        .to_owned(),
+                )
+                .await?;
+            Ok(())
+        }
+
+        async fn down(&self, manager: &SchemaManager) -> std::result::Result<(), DbErr> {
+            manager
+                .drop_foreign_key(
+                    ForeignKey::drop()
+                        .table(messageentity::Entity)
+                        .name("entity_filter_fk")
+                        .to_owned(),
+                )
+                .await?;
             Ok(())
         }
     }
@@ -456,7 +490,7 @@ pub mod entities {
 }
 
 pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
-    vec![Box::new(Migration)]
+    vec![Box::new(Migration), Box::new(EntityInDbMigration)]
 }
 
 fn get_filter_key(message: &Message, id: i64) -> String {
