@@ -61,6 +61,7 @@ metadata!("Filters",
 );
 
 struct Migration;
+struct MigrationEntityInDb;
 
 impl MigrationName for Migration {
     fn name(&self) -> &str {
@@ -68,8 +69,17 @@ impl MigrationName for Migration {
     }
 }
 
+impl MigrationName for MigrationEntityInDb {
+    fn name(&self) -> &str {
+        "m20230127_000002_filters_entity_in_db"
+    }
+}
+
 pub mod entities {
-    use crate::persist::migrate::ManagerHelper;
+    use crate::persist::{
+        core::{button, messageentity},
+        migrate::ManagerHelper,
+    };
     use ::sea_orm_migration::prelude::*;
 
     #[async_trait::async_trait]
@@ -158,6 +168,55 @@ pub mod entities {
                 .await?;
             manager.drop_table_auto(filters::Entity).await?;
             manager.drop_table_auto(triggers::Entity).await?;
+            Ok(())
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl MigrationTrait for super::MigrationEntityInDb {
+        async fn up(&self, manager: &SchemaManager) -> std::result::Result<(), DbErr> {
+            manager
+                .create_foreign_key(
+                    ForeignKey::create()
+                        .name("entity_filter_fk")
+                        .from(messageentity::Entity, messageentity::Column::OwnerId)
+                        .to(filters::Entity, filters::Column::Id)
+                        .on_delete(ForeignKeyAction::Cascade)
+                        .to_owned(),
+                )
+                .await?;
+
+            manager
+                .create_foreign_key(
+                    ForeignKey::create()
+                        .name("entity_button_fk")
+                        .from(button::Entity, button::Column::OwnerId)
+                        .to(filters::Entity, filters::Column::Id)
+                        .on_delete(ForeignKeyAction::Cascade)
+                        .to_owned(),
+                )
+                .await?;
+            Ok(())
+        }
+
+        async fn down(&self, manager: &SchemaManager) -> std::result::Result<(), DbErr> {
+            manager
+                .drop_foreign_key(
+                    ForeignKey::drop()
+                        .table(messageentity::Entity)
+                        .name("entity_filter_fk")
+                        .to_owned(),
+                )
+                .await?;
+
+            manager
+                .drop_foreign_key(
+                    ForeignKey::drop()
+                        .table(button::Entity)
+                        .name("entity_button_fk")
+                        .to_owned(),
+                )
+                .await?;
             Ok(())
         }
     }
@@ -295,7 +354,6 @@ pub mod entities {
             pub media_type: Option<MediaType>,
 
             //button fields
-            pub button_id: Option<i64>,
             pub button_text: Option<String>,
             pub callback_data: Option<String>,
             pub button_url: Option<String>,
@@ -333,23 +391,12 @@ pub mod entities {
                 Option<EntityWithUser>,
                 Option<triggers::Model>,
             ) {
-                let button = if let (
-                    Some(button_text),
-                    Some(owner_id),
-                    Some(button_id),
-                    Some(pos_x),
-                    Some(pos_y),
-                ) = (
-                    self.button_text,
-                    self.owner_id,
-                    self.button_id,
-                    self.pos_x,
-                    self.pos_y,
-                ) {
+                let button = if let (Some(button_text), Some(owner_id), Some(pos_x), Some(pos_y)) =
+                    (self.button_text, self.owner_id, self.pos_x, self.pos_y)
+                {
                     Some(button::Model {
                         button_text,
                         owner_id,
-                        button_id,
                         callback_data: self.callback_data,
                         button_url: self.button_url,
                         pos_x,
@@ -440,7 +487,6 @@ pub mod entities {
                 ])
                 .columns([triggers::Column::Trigger, triggers::Column::FilterId])
                 .columns([
-                    button::Column::ButtonId,
                     button::Column::ButtonText,
                     button::Column::CallbackData,
                     button::Column::ButtonUrl,
@@ -487,7 +533,7 @@ pub mod entities {
 }
 
 pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
-    vec![Box::new(Migration)]
+    vec![Box::new(Migration), Box::new(MigrationEntityInDb)]
 }
 
 fn get_filter_key(message: &Message, id: i64) -> String {
@@ -795,6 +841,36 @@ async fn command_filter<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
         .exec_with_returning(DB.deref())
         .await?;
     }
+
+    let buttons = buttons
+        .get_inline_keyboard_ref()
+        .into_iter()
+        .enumerate()
+        .flat_map(|(pos_y, list)| {
+            list.into_iter().enumerate().map(move |(pos_x, button)| {
+                button::Model::from_button(pos_x as u32, pos_y as u32, button, model.id)
+            })
+        })
+        .collect_vec();
+
+    if buttons.len() > 0 {
+        button::Entity::insert_many(buttons)
+            .on_conflict(
+                OnConflict::columns([
+                    button::Column::OwnerId,
+                    button::Column::PosX,
+                    button::Column::PosY,
+                ])
+                .update_columns([
+                    button::Column::ButtonText,
+                    button::Column::CallbackData,
+                    button::Column::ButtonUrl,
+                ])
+                .to_owned(),
+            )
+            .exec(DB.deref())
+            .await?;
+    }
     let hash_key = get_filter_hash_key(message);
     REDIS
         .pipe(|p| {
@@ -804,6 +880,7 @@ async fn command_filter<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
             p
         })
         .await?;
+
     let key = get_filter_key(message, id);
     REDIS.pipe(|q| q.set(&key, r)).await?;
     let filters_fmt = [""].into_iter().chain(filters.into_iter()).join("\n - ");

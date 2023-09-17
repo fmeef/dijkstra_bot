@@ -130,7 +130,12 @@ where
                     .get_chatuser()
                     .ok_or_else(|| BotError::Generic("No chatuser".to_owned()))?,
             );
-            (text, entities, InlineKeyboardMarkup::default())
+            (
+                text,
+                entities,
+                self.extra_buttons
+                    .unwrap_or_else(|| InlineKeyboardMarkup::default()),
+            )
         } else {
             if let Ok(md) = MarkupBuilder::from_murkdown_button(
                 &text,

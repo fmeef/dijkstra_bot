@@ -68,12 +68,6 @@ impl MigrationTrait for Migration {
             .create_table(
                 TableCreateStatement::new()
                     .table(button::Entity)
-                    .col(
-                        ColumnDef::new(button::Column::ButtonId)
-                            .big_integer()
-                            .not_null()
-                            .primary_key(),
-                    )
                     .col(ColumnDef::new(button::Column::ButtonText).text().not_null())
                     .col(ColumnDef::new(button::Column::CallbackData).text())
                     .col(ColumnDef::new(button::Column::ButtonUrl).text())
@@ -83,6 +77,13 @@ impl MigrationTrait for Migration {
                         ColumnDef::new(button::Column::OwnerId)
                             .big_integer()
                             .not_null(),
+                    )
+                    .index(
+                        IndexCreateStatement::new()
+                            .col(button::Column::OwnerId)
+                            .col(button::Column::PosX)
+                            .col(button::Column::PosY)
+                            .primary(),
                     )
                     .to_owned(),
             )
