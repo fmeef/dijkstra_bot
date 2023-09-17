@@ -51,7 +51,12 @@ COPY --from=builder /usr/local/cargo/bin/migration /
 USER bobot:bobot
 ENTRYPOINT [ "sh", "-c", "/migration -u postgresql://$POSTGRES_USER:$(cat $POSTGRES_PASSWORD_FILE)@$POSTGRES_HOST/$POSTGRES_DB up" ]
 
-FROM base AS dev
+FROM rust:latest AS dev
+
+ENV USER=bobot
+ENV UID=10001
+
+RUN apt update && apt install -y postgresql-client redis fish gdb lld libssl-dev 
 RUN rustup default stable && rustup component add rustfmt && \
  rustup toolchain install nightly && \	
  rustup component add rustfmt --toolchain nightly && \
@@ -64,11 +69,19 @@ RUN git clone https://github.com/helix-editor/helix /opt/helix && \
     cd /opt/helix &&  rustup override set stable && \
      cargo install --locked --path helix-term && cargo clean
 
-RUN apt update && apt install -y postgresql-client redis fish gdb lldb
+RUN adduser \
+    --disabled-password \
+    --gecos "" \
+    --home "/home/bobot" \
+    --shell "/sbin/nologin" \
+    --uid "${UID}" \
+    "${USER}"
+
 RUN mkdir -p /bobot/target && chown -R bobot:bobot /bobot && \
 chown -R bobot:bobot /usr/local && mkdir -p /bobot/migration/target && \
 chown -R bobot:bobot /bobot/migration/target && mkdir -p /bobot/bot_impl/target && \
 chown -R bobot:bobot /bobot
+
 USER bobot:bobot
 RUN mkdir -p /home/bobot/.config/helix && ln -sf /opt/helix/runtime /home/bobot/.config/helix/runtime
 VOLUME /bobot

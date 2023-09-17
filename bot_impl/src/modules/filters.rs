@@ -406,11 +406,8 @@ pub mod entities {
         {
             let res = super::filters::Entity::find()
                 .join(JoinType::LeftJoin, Relation::Entities.def())
-                .join(JoinType::LeftJoin, Relation::Buttons.def())
-                .join(
-                    JoinType::LeftJoin,
-                    messageentity::Relation::Users.def().rev(),
-                )
+                .join(JoinType::LeftJoin, Relation::Buttons.def().rev())
+                .join(JoinType::LeftJoin, messageentity::Relation::Users.def())
                 .filter(filter)
                 .order_by_asc(button::Column::PosX)
                 .order_by_asc(button::Column::PosY)
@@ -441,6 +438,18 @@ pub mod entities {
                     acc
                 },
             );
+
+            // let mut res = FiltersMap::new();
+            // res.insert(
+            //     Model {
+            //         id: 0,
+            //         chat: 0,
+            //         text: None,
+            //         media_id: None,
+            //         media_type: MediaType::Text,
+            //     },
+            //     (vec![], vec![], vec![]),
+            // );
             Ok(res)
         }
     }

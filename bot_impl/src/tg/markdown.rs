@@ -970,7 +970,7 @@ impl MarkupBuilder {
 }
 
 lazy_static! {
-    static ref FILLER_REGEX: Regex = Regex::new(r"{\w*}").unwrap();
+    static ref FILLER_REGEX: Regex = Regex::new(r"\{\w*\}").unwrap();
 }
 
 pub fn retro_fillings(
@@ -983,15 +983,21 @@ pub fn retro_fillings(
         .iter()
         .map(|v| (v.get_offset(), v.get_length()))
         .collect::<Vec<(i64, i64)>>();
-    while let Some(mat) = FILLER_REGEX.find(text) {
-        let filling = &mat.as_str()[1..mat.len() - 2];
-
+    let mut pos = 0;
+    let mut prev = 0;
+    for mat in FILLER_REGEX.find_iter(text) {
+        let filling = &mat.as_str()[1..mat.len() - 1];
+        let regular = &text[prev..mat.start()];
+        res.push_str(regular);
+        pos += regular.encode_utf16().count() as i64;
+        prev = mat.end();
+        log::info!("matching {}: {}", filling, pos);
         let (text, entity) = match filling {
             "username" => {
                 let user = chatuser.user.as_ref().to_owned();
                 let name = user.name_humanreadable();
-                let pos = text.len() as i64;
-                let len = name.len() as i64;
+                let len = name.encode_utf16().count() as i64;
+                pos += len;
                 (
                     name,
                     Some(MessageEntityBuilder::new(pos, len).set_user(user).build()),
@@ -1013,8 +1019,8 @@ pub fn retro_fillings(
                 let user = chatuser.user.as_ref().to_owned();
                 let first = user.get_first_name().into_owned();
 
-                let pos = text.len() as i64;
-                let len = first.len() as i64;
+                let len = first.encode_utf16().count() as i64;
+                pos += len;
                 (
                     first,
                     Some(MessageEntityBuilder::new(pos, len).set_user(user).build()),
@@ -1034,12 +1040,12 @@ pub fn retro_fillings(
             }
         };
 
+        let diff = text.encode_utf16().count() as i64 - mat.as_str().encode_utf16().count() as i64;
         res.push_str(&text);
-        if let Some(entity) = entity {
-            for v in offsets.as_mut_slice() {
-                if v.0 >= entity.get_offset() {
-                    v.0 += entity.get_length();
-                }
+
+        for v in offsets.as_mut_slice() {
+            if v.0 >= pos - text.encode_utf16().count() as i64 {
+                v.0 += diff;
             }
         }
     }
