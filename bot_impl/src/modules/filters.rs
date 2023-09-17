@@ -4,9 +4,12 @@ use crate::metadata::metadata;
 use crate::persist::core::button;
 use crate::persist::core::media::get_media_type;
 use crate::persist::core::media::send_media_reply;
+use crate::persist::core::media::SendMediaReply;
 use crate::persist::core::messageentity;
+use crate::persist::core::messageentity::EntityWithUser;
 use crate::persist::redis::default_cache_query;
 use crate::persist::redis::CachedQueryTrait;
+use crate::persist::redis::RedisStr;
 use crate::persist::redis::ToRedisStr;
 use crate::statics::CONFIG;
 use crate::statics::DB;
@@ -17,13 +20,16 @@ use crate::tg::markdown::Header;
 use crate::tg::markdown::MarkupBuilder;
 use crate::tg::markdown::MarkupType;
 use crate::tg::permissions::*;
+use crate::util::error::BotError;
 use crate::util::error::Fail;
 use crate::util::error::Result;
 use crate::util::string::Speak;
+use botapi::gen_types::InlineKeyboardButton;
 use botapi::gen_types::InlineKeyboardMarkup;
 use botapi::gen_types::Message;
 use botapi::gen_types::MessageEntity;
 use chrono::Duration;
+use clap::builder::NonEmptyStringValueParser;
 use entities::{filters, triggers};
 use futures::stream;
 use futures::FutureExt;
@@ -55,7 +61,6 @@ metadata!("Filters",
 );
 
 struct Migration;
-struct EntityInDbMigration;
 
 impl MigrationName for Migration {
     fn name(&self) -> &str {
@@ -63,14 +68,8 @@ impl MigrationName for Migration {
     }
 }
 
-impl MigrationName for EntityInDbMigration {
-    fn name(&self) -> &str {
-        "m20230127_000002_filters_entity_in_db"
-    }
-}
-
 pub mod entities {
-    use crate::persist::{core::messageentity, migrate::ManagerHelper};
+    use crate::persist::migrate::ManagerHelper;
     use ::sea_orm_migration::prelude::*;
 
     #[async_trait::async_trait]
@@ -163,35 +162,6 @@ pub mod entities {
         }
     }
 
-    #[async_trait::async_trait]
-    impl MigrationTrait for super::EntityInDbMigration {
-        async fn up(&self, manager: &SchemaManager) -> std::result::Result<(), DbErr> {
-            manager
-                .create_foreign_key(
-                    ForeignKeyCreateStatement::new()
-                        .name("entity_filter_fk")
-                        .from(messageentity::Entity, messageentity::Column::OwnerId)
-                        .to(filters::Entity, filters::Column::Id)
-                        .on_delete(ForeignKeyAction::Cascade)
-                        .to_owned(),
-                )
-                .await?;
-            Ok(())
-        }
-
-        async fn down(&self, manager: &SchemaManager) -> std::result::Result<(), DbErr> {
-            manager
-                .drop_foreign_key(
-                    ForeignKey::drop()
-                        .table(messageentity::Entity)
-                        .name("entity_filter_fk")
-                        .to_owned(),
-                )
-                .await?;
-            Ok(())
-        }
-    }
-
     pub mod triggers {
         use sea_orm::entity::prelude::*;
         use serde::{Deserialize, Serialize};
@@ -227,6 +197,7 @@ pub mod entities {
 
         use std::{collections::HashMap, ops::Deref};
 
+        use super::triggers;
         use crate::{
             persist::core::{
                 button,
@@ -238,8 +209,6 @@ pub mod entities {
         use sea_orm::{entity::prelude::*, FromQueryResult, QueryOrder, QuerySelect};
         use sea_query::{IntoCondition, JoinType};
         use serde::{Deserialize, Serialize};
-
-        use super::triggers;
 
         #[derive(Clone, Debug, Hash, Eq, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
         #[sea_orm(table_name = "filters")]
@@ -261,6 +230,18 @@ pub mod entities {
             Entities,
             #[sea_orm(has_many = "crate::persist::core::button::Entity")]
             Buttons,
+            #[sea_orm(
+                belongs_to = "crate::persist::core::button::Entity",
+                from = "Column::Id",
+                to = "crate::persist::core::button::Column::OwnerId"
+            )]
+            ButtonsRev,
+            #[sea_orm(
+                belongs_to = "crate::persist::core::messageentity::Entity",
+                from = "Column::Id",
+                to = "crate::persist::core::messageentity::Column::OwnerId"
+            )]
+            EntitiesRev,
             #[sea_orm(
                 belongs_to = "crate::persist::core::messageentity::Entity",
                 from = "Column::Id",
@@ -286,7 +267,7 @@ pub mod entities {
 
         impl Related<Entity> for crate::persist::core::messageentity::Entity {
             fn to() -> RelationDef {
-                Relation::Filters.def().rev()
+                Relation::EntitiesRev.def().rev()
             }
         }
 
@@ -298,7 +279,7 @@ pub mod entities {
 
         impl Related<Entity> for crate::persist::core::button::Entity {
             fn to() -> RelationDef {
-                Relation::Buttons.def().rev()
+                Relation::ButtonsRev.def().rev()
             }
         }
 
@@ -439,9 +420,35 @@ pub mod entities {
             F: IntoCondition,
         {
             let res = super::filters::Entity::find()
-                .join(JoinType::LeftJoin, Relation::Entities.def())
-                .join(JoinType::LeftJoin, Relation::Buttons.def().rev())
+                .select_only()
+                .columns([
+                    Column::Id,
+                    Column::Chat,
+                    Column::Text,
+                    Column::MediaId,
+                    Column::MediaType,
+                ])
+                .columns([
+                    messageentity::Column::TgType,
+                    messageentity::Column::Offset,
+                    messageentity::Column::Length,
+                    messageentity::Column::Url,
+                    messageentity::Column::User,
+                    messageentity::Column::Language,
+                    messageentity::Column::EmojiId,
+                    messageentity::Column::OwnerId,
+                ])
+                .columns([triggers::Column::Trigger, triggers::Column::FilterId])
+                .columns([
+                    button::Column::ButtonId,
+                    button::Column::ButtonText,
+                    button::Column::CallbackData,
+                    button::Column::ButtonUrl,
+                ])
+                .join(JoinType::LeftJoin, Relation::EntitiesRev.def())
+                .join(JoinType::LeftJoin, Relation::ButtonsRev.def())
                 .join(JoinType::LeftJoin, messageentity::Relation::Users.def())
+                .join(JoinType::LeftJoin, Relation::Triggers.def())
                 .filter(filter)
                 .order_by_asc(button::Column::PosX)
                 .order_by_asc(button::Column::PosY)
@@ -473,24 +480,14 @@ pub mod entities {
                 },
             );
 
-            // let mut res = FiltersMap::new();
-            // res.insert(
-            //     Model {
-            //         id: 0,
-            //         chat: 0,
-            //         text: None,
-            //         media_id: None,
-            //         media_type: MediaType::Text,
-            //     },
-            //     (vec![], vec![], vec![]),
-            // );
+            log::info!("got {} filters from db", res.len());
             Ok(res)
         }
     }
 }
 
 pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
-    vec![Box::new(Migration), Box::new(EntityInDbMigration)]
+    vec![Box::new(Migration)]
 }
 
 fn get_filter_key(message: &Message, id: i64) -> String {
@@ -501,8 +498,9 @@ fn get_filter_hash_key(message: &Message) -> String {
     format!("fcache:{}", message.get_chat().get_id())
 }
 
-async fn delete_trigger(message: &Message, trigger: &str) -> Result<()> {
-    message.check_permissions(|p| p.can_change_info).await?;
+async fn delete_trigger(ctx: &Context, trigger: &str) -> Result<()> {
+    ctx.check_permissions(|p| p.can_change_info).await?;
+    let message = ctx.message()?;
     let trigger = &trigger.to_lowercase();
     let hash_key = get_filter_hash_key(message);
     let key: Option<i64> = REDIS
@@ -555,61 +553,88 @@ async fn delete_trigger(message: &Message, trigger: &str) -> Result<()> {
 async fn get_filter(
     message: &Message,
     id: i64,
-) -> Result<Option<(filters::Model, Vec<MessageEntity>, InlineKeyboardMarkup)>> {
-    default_cache_query(
-        |_, _| async move {
-            let map = filters::get_filters_join(filters::Column::Id.eq(id))
-                .await?
-                .into_iter()
-                .map(|(filter, (entity, button, _))| {
-                    (
-                        filter,
-                        entity
-                            .into_iter()
-                            .map(|e| e.get())
-                            .map(|(e, u)| e.to_entity(u))
-                            .collect(),
-                        get_markup_for_buttons(button),
-                    )
+) -> Result<
+    Option<(
+        filters::Model,
+        Vec<MessageEntity>,
+        Option<InlineKeyboardMarkup>,
+    )>,
+> {
+    let filter_key = get_filter_key(message, id);
+    let v: Option<RedisStr> = REDIS.sq(|q| q.get(&filter_key)).await?;
+    if let Some(v) = v {
+        log::info!("cache hit");
+        Ok(v.get()?)
+    } else {
+        let map = filters::get_filters_join(filters::Column::Id.eq(id))
+            .await?
+            .into_iter()
+            .map(|(filter, (entity, button, _))| {
+                (
+                    filter,
+                    entity
+                        .into_iter()
+                        .map(|e| e.get())
+                        .map(|(e, u)| e.to_entity(u))
+                        .collect(),
+                    get_markup_for_buttons(button),
+                )
+            })
+            .next();
+
+        if let Some(ref map) = map {
+            REDIS
+                .try_pipe(|p| {
+                    Ok(p.set(&filter_key, map.to_redis()?)
+                        .expire(&filter_key, CONFIG.timing.cache_timeout))
                 })
-                .next();
-            Ok(map)
-        },
-        Duration::seconds(CONFIG.timing.cache_timeout as i64),
-    )
-    .query(&get_filter_key(message, id), &())
-    .await
+                .await?;
+        }
+        Ok(map)
+    }
 }
 
-fn get_markup_for_buttons(button: Vec<button::Model>) -> InlineKeyboardMarkup {
-    button
-        .into_iter()
-        .fold(InlineKeyboardBuilder::default(), |mut acc, b| {
-            let v = acc.get();
-            let x = b.pos_x as usize;
-            let y = b.pos_y as usize;
-            if let Some(ve) = v.get_mut(b.pos_y as usize) {
-                ve.insert(x, b.to_button());
-            } else {
-                let mut ve = Vec::new();
-                ve.insert(x, b.to_button());
-                v.insert(y, ve);
-            }
-            acc
-        })
-        .build()
+fn get_markup_for_buttons(button: Vec<button::Model>) -> Option<InlineKeyboardMarkup> {
+    if button.len() == 0 {
+        None
+    } else {
+        let b = button
+            .into_iter()
+            .fold(InlineKeyboardBuilder::default(), |mut acc, b| {
+                let v = acc.get();
+                let x = b.pos_x as usize;
+                let y = b.pos_y as usize;
+                if let Some(ve) = v.get_mut(b.pos_y as usize) {
+                    ve.insert(x, b.to_button());
+                } else {
+                    let mut ve = Vec::new();
+                    ve.insert(x, b.to_button());
+                    v.insert(y, ve);
+                }
+                acc
+            })
+            .build();
+        Some(b)
+    }
 }
 
 async fn search_cache(
     message: &Message,
     text: &str,
-) -> Result<Option<(filters::Model, Vec<MessageEntity>, InlineKeyboardMarkup)>> {
+) -> Result<
+    Option<(
+        filters::Model,
+        Vec<MessageEntity>,
+        Option<InlineKeyboardMarkup>,
+    )>,
+> {
     update_cache_from_db(message).await?;
     let hash_key = get_filter_hash_key(message);
     REDIS
         .query(|mut q| async move {
             let mut iter: redis::AsyncIter<(String, i64)> = q.hscan(&hash_key).await?;
             while let Some((key, item)) = iter.next_item().await {
+                log::info!("search cache {}", item);
                 let t = text.to_lowercase();
                 if let Some(mut idx) = t.find(&key) {
                     if idx == 0 && idx + key.len() == text.len() {
@@ -648,6 +673,7 @@ async fn update_cache_from_db(message: &Message) -> Result<()> {
                 p.hset(&hash_key, "empty", 0);
                 for (filter, (entities, buttons, triggers)) in res.into_iter() {
                     let key = get_filter_key(message, filter.id);
+                    log::info!("triggers {}", triggers.len());
                     let kb = get_markup_for_buttons(buttons);
                     let entities = entities
                         .into_iter()
@@ -790,18 +816,18 @@ async fn command_filter<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
     Ok(())
 }
 
-async fn handle_trigger(message: &Message) -> Result<()> {
+async fn handle_trigger(ctx: &Context) -> Result<()> {
+    let message = ctx.message()?;
     if let Some(text) = message.get_text() {
         if let Some((res, extra_entities, extra_buttons)) = search_cache(message, &text).await? {
-            send_media_reply(
-                message,
-                res.media_type,
-                res.text,
-                res.media_id,
-                Some(extra_entities),
-                |_, _| async move { Ok(()) }.boxed(),
-            )
-            .await?;
+            SendMediaReply::new(ctx, res.media_type)
+                .button_callback(|_, _| async move { Ok(()) }.boxed())
+                .text(res.text)
+                .media_id(res.media_id)
+                .extra_entities(extra_entities)
+                .extra_buttons(extra_buttons)
+                .send_media_reply()
+                .await?;
         }
     }
     Ok(())
@@ -824,8 +850,9 @@ async fn list_triggers(message: &Message) -> Result<()> {
     Ok(())
 }
 
-async fn stopall(message: &Message) -> Result<()> {
-    message.check_permissions(|p| p.can_change_info).await?;
+async fn stopall(ctx: &Context) -> Result<()> {
+    ctx.check_permissions(|p| p.can_change_info).await?;
+    let message = ctx.message()?;
     filters::Entity::delete_many()
         .filter(filters::Column::Chat.eq(message.get_chat().get_id()))
         .exec(DB.deref())
@@ -847,13 +874,13 @@ async fn handle_command(ctx: &Context) -> Result<()> {
     {
         match cmd {
             "filter" => command_filter(ctx, &args).await?,
-            "stop" => delete_trigger(message, args.text).await?,
+            "stop" => delete_trigger(ctx, args.text).await?,
             "filters" => list_triggers(message).await?,
-            "stopall" => stopall(message).await?,
-            _ => handle_trigger(message).await?,
+            "stopall" => stopall(ctx).await?,
+            _ => handle_trigger(ctx).await?,
         };
-    } else if let Ok(message) = ctx.message() {
-        handle_trigger(message).await?;
+    } else if let Ok(_) = ctx.message() {
+        handle_trigger(ctx).await?;
     }
 
     Ok(())
