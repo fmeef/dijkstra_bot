@@ -979,6 +979,7 @@ pub fn retro_fillings(
     chatuser: &ChatUser,
 ) -> (String, Vec<MessageEntity>) {
     let mut res = String::with_capacity(text.len());
+    let mut extra_entities = Vec::<MessageEntity>::new();
     let mut offsets = entities
         .iter()
         .map(|v| (v.get_offset(), v.get_length()))
@@ -996,11 +997,17 @@ pub fn retro_fillings(
             "username" => {
                 let user = chatuser.user.as_ref().to_owned();
                 let name = user.name_humanreadable();
+                let start = pos;
                 let len = name.encode_utf16().count() as i64;
                 pos += len;
                 (
                     name,
-                    Some(MessageEntityBuilder::new(pos, len).set_user(user).build()),
+                    Some(
+                        MessageEntityBuilder::new(start, len)
+                            .set_type("text_mention".to_owned())
+                            .set_user(user)
+                            .build(),
+                    ),
                 )
             }
             "first" => {
@@ -1018,12 +1025,17 @@ pub fn retro_fillings(
             "mention" => {
                 let user = chatuser.user.as_ref().to_owned();
                 let first = user.get_first_name().into_owned();
-
+                let start = pos;
                 let len = first.encode_utf16().count() as i64;
                 pos += len;
                 (
                     first,
-                    Some(MessageEntityBuilder::new(pos, len).set_user(user).build()),
+                    Some(
+                        MessageEntityBuilder::new(start, len)
+                            .set_type("text_mention".to_owned())
+                            .set_user(user)
+                            .build(),
+                    ),
                 )
             }
             "chatname" => {
@@ -1047,6 +1059,10 @@ pub fn retro_fillings(
             if v.0 >= pos - text.encode_utf16().count() as i64 {
                 v.0 += diff;
             }
+        }
+
+        if let Some(entity) = entity {
+            extra_entities.push(entity);
         }
     }
     let newoffsets = entities
@@ -1072,6 +1088,7 @@ pub fn retro_fillings(
             }
             builder.build()
         })
+        .chain(extra_entities)
         .collect::<Vec<MessageEntity>>();
     (res, newoffsets)
 }
