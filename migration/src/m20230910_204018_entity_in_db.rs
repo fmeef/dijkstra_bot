@@ -1,5 +1,5 @@
 use bot_impl::persist::{
-    core::{button, messageentity, users},
+    core::{button, entity, messageentity, users},
     migrate::ManagerHelper,
 };
 use sea_orm_migration::prelude::*;
@@ -19,6 +19,20 @@ impl MigrationTrait for Migration {
                             .boolean()
                             .not_null()
                             .default(false),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                TableCreateStatement::new()
+                    .table(entity::Entity)
+                    .col(
+                        ColumnDef::new(entity::Column::Id)
+                            .big_integer()
+                            .auto_increment()
+                            .primary_key(),
                     )
                     .to_owned(),
             )
@@ -98,7 +112,6 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await?;
-
         Ok(())
     }
 
@@ -123,6 +136,8 @@ impl MigrationTrait for Migration {
 
         manager.drop_table_auto(messageentity::Entity).await?;
         manager.drop_table_auto(button::Entity).await?;
+        manager.drop_table_auto(entity::Entity).await?;
+
         Ok(())
     }
 }

@@ -2,13 +2,10 @@ use std::collections::HashMap;
 
 use crate::metadata::metadata;
 use crate::persist::core::button;
+use crate::persist::core::entity;
 use crate::persist::core::media::get_media_type;
-use crate::persist::core::media::send_media_reply;
 use crate::persist::core::media::SendMediaReply;
 use crate::persist::core::messageentity;
-use crate::persist::core::messageentity::EntityWithUser;
-use crate::persist::redis::default_cache_query;
-use crate::persist::redis::CachedQueryTrait;
 use crate::persist::redis::RedisStr;
 use crate::persist::redis::ToRedisStr;
 use crate::statics::CONFIG;
@@ -20,16 +17,12 @@ use crate::tg::markdown::Header;
 use crate::tg::markdown::MarkupBuilder;
 use crate::tg::markdown::MarkupType;
 use crate::tg::permissions::*;
-use crate::util::error::BotError;
 use crate::util::error::Fail;
 use crate::util::error::Result;
 use crate::util::string::Speak;
-use botapi::gen_types::InlineKeyboardButton;
 use botapi::gen_types::InlineKeyboardMarkup;
 use botapi::gen_types::Message;
 use botapi::gen_types::MessageEntity;
-use chrono::Duration;
-use clap::builder::NonEmptyStringValueParser;
 use entities::{filters, triggers};
 use futures::stream;
 use futures::FutureExt;
@@ -76,10 +69,7 @@ impl MigrationName for MigrationEntityInDb {
 }
 
 pub mod entities {
-    use crate::persist::{
-        core::{button, messageentity},
-        migrate::ManagerHelper,
-    };
+    use crate::persist::migrate::ManagerHelper;
     use ::sea_orm_migration::prelude::*;
 
     #[async_trait::async_trait]
@@ -176,23 +166,10 @@ pub mod entities {
     impl MigrationTrait for super::MigrationEntityInDb {
         async fn up(&self, manager: &SchemaManager) -> std::result::Result<(), DbErr> {
             manager
-                .create_foreign_key(
-                    ForeignKey::create()
-                        .name("entity_filter_fk")
-                        .from(messageentity::Entity, messageentity::Column::OwnerId)
-                        .to(filters::Entity, filters::Column::Id)
-                        .on_delete(ForeignKeyAction::Cascade)
-                        .to_owned(),
-                )
-                .await?;
-
-            manager
-                .create_foreign_key(
-                    ForeignKey::create()
-                        .name("entity_button_fk")
-                        .from(button::Entity, button::Column::OwnerId)
-                        .to(filters::Entity, filters::Column::Id)
-                        .on_delete(ForeignKeyAction::Cascade)
+                .alter_table(
+                    TableAlterStatement::new()
+                        .table(filters::Entity)
+                        .add_column(ColumnDef::new(filters::Column::EntityId).big_integer())
                         .to_owned(),
                 )
                 .await?;
@@ -201,19 +178,10 @@ pub mod entities {
 
         async fn down(&self, manager: &SchemaManager) -> std::result::Result<(), DbErr> {
             manager
-                .drop_foreign_key(
-                    ForeignKey::drop()
-                        .table(messageentity::Entity)
-                        .name("entity_filter_fk")
-                        .to_owned(),
-                )
-                .await?;
-
-            manager
-                .drop_foreign_key(
-                    ForeignKey::drop()
-                        .table(button::Entity)
-                        .name("entity_button_fk")
+                .alter_table(
+                    TableAlterStatement::new()
+                        .table(filters::Entity)
+                        .drop_column(filters::Column::EntityId)
                         .to_owned(),
                 )
                 .await?;
@@ -259,7 +227,7 @@ pub mod entities {
         use super::triggers;
         use crate::{
             persist::core::{
-                button,
+                button, entity,
                 media::*,
                 messageentity::{self, DbMarkupType, EntityWithUser},
             },
@@ -279,34 +247,19 @@ pub mod entities {
             pub text: Option<String>,
             pub media_id: Option<String>,
             pub media_type: MediaType,
+            pub entity_id: Option<i64>,
         }
 
         #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
         pub enum Relation {
             #[sea_orm(has_many = "super::triggers::Entity")]
             Triggers,
-            #[sea_orm(has_many = "crate::persist::core::messageentity::Entity")]
+            #[sea_orm(
+                belongs_to = "crate::persist::core::entity::Entity",
+                from = "Column::EntityId",
+                to = "crate::persist::core::entity::Column::Id"
+            )]
             Entities,
-            #[sea_orm(has_many = "crate::persist::core::button::Entity")]
-            Buttons,
-            #[sea_orm(
-                belongs_to = "crate::persist::core::button::Entity",
-                from = "Column::Id",
-                to = "crate::persist::core::button::Column::OwnerId"
-            )]
-            ButtonsRev,
-            #[sea_orm(
-                belongs_to = "crate::persist::core::messageentity::Entity",
-                from = "Column::Id",
-                to = "crate::persist::core::messageentity::Column::OwnerId"
-            )]
-            EntitiesRev,
-            #[sea_orm(
-                belongs_to = "crate::persist::core::messageentity::Entity",
-                from = "Column::Id",
-                to = "crate::persist::core::messageentity::Column::OwnerId"
-            )]
-            Filters,
         }
 
         #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -318,27 +271,15 @@ pub mod entities {
             }
         }
 
-        impl Related<crate::persist::core::messageentity::Entity> for Entity {
+        impl Related<crate::persist::core::entity::Entity> for Entity {
             fn to() -> RelationDef {
                 Relation::Entities.def()
             }
         }
 
-        impl Related<Entity> for crate::persist::core::messageentity::Entity {
+        impl Related<Entity> for crate::persist::core::entity::Entity {
             fn to() -> RelationDef {
-                Relation::EntitiesRev.def().rev()
-            }
-        }
-
-        impl Related<crate::persist::core::button::Entity> for Entity {
-            fn to() -> RelationDef {
-                Relation::Buttons.def()
-            }
-        }
-
-        impl Related<Entity> for crate::persist::core::button::Entity {
-            fn to() -> RelationDef {
-                Relation::ButtonsRev.def().rev()
+                Relation::Entities.def().rev()
             }
         }
 
@@ -352,6 +293,7 @@ pub mod entities {
             pub text: Option<String>,
             pub media_id: Option<String>,
             pub media_type: Option<MediaType>,
+            pub entity_id: Option<i64>,
 
             //button fields
             pub button_text: Option<String>,
@@ -415,6 +357,7 @@ pub mod entities {
                         media_type,
                         text: self.text,
                         media_id: self.media_id,
+                        entity_id: self.entity_id,
                     })
                 } else {
                     None
@@ -474,6 +417,7 @@ pub mod entities {
                     Column::Text,
                     Column::MediaId,
                     Column::MediaType,
+                    Column::EntityId,
                 ])
                 .columns([
                     messageentity::Column::TgType,
@@ -491,8 +435,9 @@ pub mod entities {
                     button::Column::CallbackData,
                     button::Column::ButtonUrl,
                 ])
-                .join(JoinType::LeftJoin, Relation::EntitiesRev.def())
-                .join(JoinType::LeftJoin, Relation::ButtonsRev.def())
+                .join(JoinType::LeftJoin, Relation::Entities.def())
+                .join(JoinType::LeftJoin, entity::Relation::EntitiesRev.def())
+                .join(JoinType::LeftJoin, entity::Relation::ButtonsRev.def())
                 .join(JoinType::LeftJoin, messageentity::Relation::Users.def())
                 .join(JoinType::LeftJoin, Relation::Triggers.def())
                 .filter(filter)
@@ -745,7 +690,7 @@ async fn command_filter<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
     let message = ctx.message()?;
     let cmd = MarkupBuilder::from_murkdown(args.text).await?;
 
-    let (body, entities, buttons, header, footer) = cmd.build_filter();
+    let (body, entities, buttons, header, _) = cmd.build_filter();
     let filters = match header.ok_or_else(|| ctx.fail_err("Header missing from filter command"))? {
         Header::List(st) => st,
         Header::Arg(st) => vec![st],
@@ -766,6 +711,7 @@ async fn command_filter<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
         text: ActiveValue::Set(f),
         media_id: ActiveValue::Set(id),
         media_type: ActiveValue::Set(media_type),
+        entity_id: ActiveValue::NotSet,
     };
 
     let model = filters::Entity::insert(model)
@@ -785,6 +731,7 @@ async fn command_filter<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
         )
         .exec_with_returning(DB.deref())
         .await?;
+
     let triggers = filters
         .iter()
         .map(|v| v.to_lowercase())
@@ -808,11 +755,29 @@ async fn command_filter<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
     )
     .exec(DB.deref())
     .await?;
-    let id = model.id.clone();
+
+    let key = get_filter_key(message, model.id);
+    let model_id = model.id;
+
     let r = (&model, &entities, &buttons).to_redis()?;
 
+    let entity_id = if let Some(id) = model.entity_id {
+        id
+    } else {
+        let id = entity::Entity::insert(entity::ActiveModel {
+            id: ActiveValue::NotSet,
+        })
+        .exec_with_returning(DB.deref())
+        .await?
+        .id;
+        let mut active = model.into_active_model();
+        active.entity_id = ActiveValue::Set(Some(id));
+        filters::Entity::update(active).exec(DB.deref()).await?;
+        id
+    };
+
     let entities: Vec<messageentity::Model> = stream::iter(entities)
-        .then(|v| async move { messageentity::Model::from_entity(v, id).await })
+        .then(|v| async move { messageentity::Model::from_entity(v, entity_id).await })
         .try_collect()
         .await?;
 
@@ -841,18 +806,16 @@ async fn command_filter<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
         .exec_with_returning(DB.deref())
         .await?;
     }
-
     let buttons = buttons
         .get_inline_keyboard_ref()
         .into_iter()
         .enumerate()
         .flat_map(|(pos_y, list)| {
             list.into_iter().enumerate().map(move |(pos_x, button)| {
-                button::Model::from_button(pos_x as u32, pos_y as u32, button, model.id)
+                button::Model::from_button(pos_x as u32, pos_y as u32, button, entity_id)
             })
         })
         .collect_vec();
-
     if buttons.len() > 0 {
         button::Entity::insert_many(buttons)
             .on_conflict(
@@ -875,13 +838,12 @@ async fn command_filter<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
     REDIS
         .pipe(|p| {
             for trigger in triggers {
-                p.hset(&hash_key, trigger, id);
+                p.hset(&hash_key, trigger, model_id);
             }
             p
         })
         .await?;
 
-    let key = get_filter_key(message, id);
     REDIS.pipe(|q| q.set(&key, r)).await?;
     let filters_fmt = [""].into_iter().chain(filters.into_iter()).join("\n - ");
     let text = MarkupType::Code.text(&filters_fmt);

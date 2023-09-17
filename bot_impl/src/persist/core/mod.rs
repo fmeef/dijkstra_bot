@@ -5,6 +5,7 @@ pub mod conversation_states;
 pub mod conversation_transitions;
 pub mod conversations;
 pub mod dialogs;
+pub mod entity;
 pub mod media;
 pub mod messageentity;
 pub mod module_schemas;

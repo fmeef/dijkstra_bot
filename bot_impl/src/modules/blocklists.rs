@@ -28,8 +28,6 @@ use crate::util::error::Result;
 
 use crate::metadata::metadata;
 
-use crate::util::error::SpeakErr;
-
 use crate::util::glob::WildMatch;
 
 use crate::util::string::Speak;
@@ -432,7 +430,7 @@ async fn command_blocklist<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()>
     let message = ctx.message()?;
     let cmd = MarkupBuilder::from_murkdown(args.text).await?;
 
-    let (body, entities, buttons, header, footer) = cmd.build_filter();
+    let (body, _, _, header, footer) = cmd.build_filter();
     let filters = match header.ok_or_else(|| ctx.fail_err("Header missing from filter command"))? {
         Header::List(st) => st,
         Header::Arg(st) => vec![st],
