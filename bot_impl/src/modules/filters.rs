@@ -191,7 +191,7 @@ pub mod entities {
             manager
                 .drop_foreign_key(
                     ForeignKey::drop()
-                        .table(entity::Entity)
+                        .table(filters::Entity)
                         .name("filters_entity_fk")
                         .to_owned(),
                 )
