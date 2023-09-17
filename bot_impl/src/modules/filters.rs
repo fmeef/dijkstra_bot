@@ -69,7 +69,7 @@ impl MigrationName for MigrationEntityInDb {
 }
 
 pub mod entities {
-    use crate::persist::migrate::ManagerHelper;
+    use crate::persist::{core::entity, migrate::ManagerHelper};
     use ::sea_orm_migration::prelude::*;
 
     #[async_trait::async_trait]
@@ -173,10 +173,30 @@ pub mod entities {
                         .to_owned(),
                 )
                 .await?;
+
+            manager
+                .create_foreign_key(
+                    ForeignKey::create()
+                        .name("filters_entity_fk")
+                        .from(filters::Entity, filters::Column::EntityId)
+                        .to(entity::Entity, entity::Column::Id)
+                        .on_delete(ForeignKeyAction::Cascade)
+                        .to_owned(),
+                )
+                .await?;
             Ok(())
         }
 
         async fn down(&self, manager: &SchemaManager) -> std::result::Result<(), DbErr> {
+            manager
+                .drop_foreign_key(
+                    ForeignKey::drop()
+                        .table(entity::Entity)
+                        .name("filters_entity_fk")
+                        .to_owned(),
+                )
+                .await?;
+
             manager
                 .alter_table(
                     TableAlterStatement::new()

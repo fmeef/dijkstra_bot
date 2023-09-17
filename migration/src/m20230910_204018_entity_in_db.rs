@@ -1,5 +1,5 @@
 use bot_impl::persist::{
-    core::{button, entity, messageentity, users},
+    core::{button, entity, messageentity, users, welcomes},
     migrate::ManagerHelper,
 };
 use sea_orm_migration::prelude::*;
@@ -112,6 +112,25 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await?;
+
+        manager
+            .alter_table(
+                TableAlterStatement::new()
+                    .table(welcomes::Entity)
+                    .add_column(ColumnDef::new(welcomes::Column::EntityId).big_integer())
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_foreign_key(
+                ForeignKeyCreateStatement::new()
+                    .name("welcomes_entity_fk")
+                    .from(welcomes::Entity, welcomes::Column::EntityId)
+                    .to(entity::Entity, entity::Column::Id)
+                    .to_owned(),
+            )
+            .await?;
         Ok(())
     }
 
@@ -130,6 +149,24 @@ impl MigrationTrait for Migration {
                 ForeignKeyDropStatement::new()
                     .name("entity_user_fk")
                     .table(messageentity::Entity)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .drop_foreign_key(
+                ForeignKeyDropStatement::new()
+                    .name("welcomes_entity_fk")
+                    .table(welcomes::Entity)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .alter_table(
+                TableAlterStatement::new()
+                    .table(welcomes::Entity)
+                    .drop_column(welcomes::Column::EntityId)
                     .to_owned(),
             )
             .await?;

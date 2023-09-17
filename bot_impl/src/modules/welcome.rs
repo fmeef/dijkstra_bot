@@ -80,6 +80,7 @@ fn get_model<'a>(
             goodbye_media_id: Set(media_id),
             goodbye_media_type: Set(Some(media_type)),
             enabled: NotSet,
+            entity_id: NotSet,
         }
     } else {
         welcomes::ActiveModel {
@@ -91,6 +92,7 @@ fn get_model<'a>(
             goodbye_media_id: NotSet,
             goodbye_media_type: NotSet,
             enabled: NotSet,
+            entity_id: NotSet,
         }
     };
 
@@ -119,6 +121,7 @@ async fn enable_welcome<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang)
         goodbye_media_id: NotSet,
         goodbye_media_type: NotSet,
         enabled: Set(enabled),
+        entity_id: NotSet,
     };
 
     let model = welcomes::Entity::insert(model)
