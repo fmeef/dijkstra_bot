@@ -590,8 +590,9 @@ impl GetCachedAdmins for Chat {
 
         let key = get_chat_admin_cache_key(self.get_id());
 
-        let admins: Option<HashMap<i64, RedisStr>> = REDIS.sq(|q| q.hgetall(&key)).await?;
-        if let Some(admins) = admins {
+        let (admins, exists): (HashMap<i64, RedisStr>, bool) =
+            REDIS.pipe(|q| q.hgetall(&key).exists(&key)).await?;
+        if exists {
             let admins = admins
                 .into_iter()
                 .map(|(k, v)| (k, v.get::<ChatMember>()))
