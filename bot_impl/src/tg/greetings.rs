@@ -560,7 +560,7 @@ impl Context {
         log::info!(
             "handle_welcome\n entities {:?}\ngoodbyes {:?}",
             entities,
-            goodbye
+            buttons.is_some()
         );
         if let Some(userchanged) = self.update().user_event() {
             if welcome.enabled {

@@ -104,40 +104,43 @@ where
     }
 
     async fn note_button(&mut self) -> Result<()> {
-        let chatuser = self.context.message()?.get_chatuser();
-        let is_dm = chatuser.as_ref().map(|v| is_dm(&v.chat)).unwrap_or(true);
-        if self.buttons.is_none() {
-            self.buttons = Some(InlineKeyboardBuilder::default());
-        }
-        let buttonlist = self
-            .buttons
-            .as_mut()
-            .ok_or_else(|| self.context.fail_err("Missing buttons"))?;
-        for l in buttonlist.get_mut() {
-            for b in l.iter_mut() {
-                if let Some(ref button) = b.raw_text {
-                    if button.starts_with("#") && button.len() > 1 && is_dm {
-                        let tail = &button[1..];
+        if let Ok(message) = self.context.message() {
+            let chatuser = message.get_chatuser();
+            let is_dm = chatuser.as_ref().map(|v| is_dm(&v.chat)).unwrap_or(true);
+            if self.buttons.is_none() {
+                self.buttons = Some(InlineKeyboardBuilder::default());
+            }
+            let buttonlist = self
+                .buttons
+                .as_mut()
+                .ok_or_else(|| self.context.fail_err("Missing buttons"))?;
+            for l in buttonlist.get_mut() {
+                for b in l.iter_mut() {
+                    if let Some(ref button) = b.raw_text {
+                        if button.starts_with("#") && button.len() > 1 && is_dm {
+                            let tail = &button[1..];
 
-                        b.button_url = None;
-                        b.callback_data = Some(Uuid::new_v4().to_string());
-                        self.callback
-                            .as_ref()
-                            .ok_or_else(|| self.context.fail_err("no callback"))?(
-                            tail.to_owned(),
-                            &b.clone().to_button(),
-                        )
-                        .await?;
-                    } else if !is_dm && button.starts_with("#") && button.len() > 1 {
-                        let chat = chatuser
-                            .as_ref()
-                            .ok_or_else(|| BotError::Generic("missing chatuser".to_owned()))?;
-                        let chat = chat.chat.get_id();
-                        let tail = &button[1..];
+                            b.button_url = None;
+                            b.callback_data = Some(Uuid::new_v4().to_string());
+                            self.callback
+                                .as_ref()
+                                .ok_or_else(|| self.context.fail_err("no callback"))?(
+                                tail.to_owned(),
+                                &b.clone().to_button(),
+                            )
+                            .await?;
+                        } else if !is_dm && button.starts_with("#") && button.len() > 1 {
+                            let chat = chatuser
+                                .as_ref()
+                                .ok_or_else(|| BotError::Generic("missing chatuser".to_owned()))?;
+                            let chat = chat.chat.get_id();
+                            let tail = &button[1..];
 
-                        let url = post_deep_link((chat, tail), |v| button_deeplink_key(v)).await?;
-                        b.button_url = Some(url);
-                    };
+                            let url =
+                                post_deep_link((chat, tail), |v| button_deeplink_key(v)).await?;
+                            b.button_url = Some(url);
+                        };
+                    }
                 }
             }
         }
@@ -303,7 +306,9 @@ where
             let callback = self
                 .callback
                 .ok_or_else(|| BotError::Generic("callback not set".to_owned()))?;
-
+            let mut buttons = self
+                .buttons
+                .unwrap_or_else(|| InlineKeyboardBuilder::default());
             if should_ignore_chat(chat).await? {
                 return Ok(());
             }
@@ -313,7 +318,7 @@ where
                 let (text, entities) = retro_fillings(
                     text,
                     extra,
-                    self.buttons.as_mut(),
+                    Some(&mut buttons),
                     &self
                         .context
                         .get_static()
@@ -322,12 +327,7 @@ where
                 )
                 .await?;
                 log::info!("retro fillings: {}", text);
-                (
-                    text,
-                    entities,
-                    self.buttons
-                        .unwrap_or_else(|| InlineKeyboardBuilder::default()),
-                )
+                (text, entities, buttons)
             } else {
                 if let Ok(md) = MarkupBuilder::from_murkdown_button(
                     &text,
@@ -435,12 +435,15 @@ where
             return Ok(());
         }
 
+        let mut buttons = self
+            .buttons
+            .unwrap_or_else(|| InlineKeyboardBuilder::default());
         let text = self.text.unwrap_or_else(|| "".to_owned());
         let (text, entities, mut buttons) = if let Some(extra) = self.extra_entities {
             let (text, entities) = retro_fillings(
                 text,
                 extra,
-                self.buttons.as_mut(),
+                Some(&mut buttons),
                 &self
                     .context
                     .get_static()
@@ -448,12 +451,7 @@ where
                     .ok_or_else(|| BotError::Generic("No chatuser".to_owned()))?,
             )
             .await?;
-            (
-                text,
-                entities,
-                self.buttons
-                    .unwrap_or_else(|| InlineKeyboardBuilder::default()),
-            )
+            (text, entities, buttons)
         } else {
             if let Ok(md) = MarkupBuilder::from_murkdown_button(
                 &text,
