@@ -10,8 +10,8 @@ dotenv = "0.15.0"
 tokio = { version = "1.32.0", features = ["full", "net", "socket2", "io-util", "tokio-macros"] }
 migration = { path = "migration" }
 bot_impl = { path = "bot_impl" }
-openssl = { version = "0.10.56", features = ["vendored"] }
-clap = { version = "4.3.23", features = ["derive"] }
+openssl = { version = "0.10.57", features = ["vendored"] }
+clap = { version = "4.4.4", features = ["derive"] }
 markdown = "0.3.0"
-rustls-webpki = "0.101.4"
-time = "0.2.23"
+rustls-webpki = "0.101.6"
+time = "0.3.28"
