@@ -110,6 +110,8 @@ impl Speak for Message {
             match MarkupBuilder::from_murkdown_chatuser(
                 message.as_ref(),
                 self.get_chatuser().as_ref(),
+                false,
+                true,
             )
             .await
             {
@@ -119,7 +121,7 @@ impl Speak for Message {
                         .client()
                         .build_send_message(self.get_chat().get_id(), &text)
                         .entities(&entities)
-                        .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(markup))
+                        .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(markup.build()))
                         .build()
                         .await?;
 
@@ -142,7 +144,7 @@ impl Speak for Message {
     async fn speak_fmt(&self, mut message: EntityMessage) -> Result<Option<Message>> {
         let message = message.call();
         if !should_ignore_chat(self.get_chat().get_id()).await? {
-            let b = MarkupBuilder::from_murkdown(message.get_text()).await?;
+            let b = MarkupBuilder::from_murkdown(message.get_text(), false, true).await?;
             let (text, mut entities, _) = b.build_owned();
             if let Some(e) = message.get_entities() {
                 entities.extend_from_slice(e.as_slice());
@@ -158,7 +160,7 @@ impl Speak for Message {
     async fn reply_fmt(&self, mut message: EntityMessage) -> Result<Option<Message>> {
         let message = message.call();
         if !should_ignore_chat(self.get_chat().get_id()).await? {
-            let b = MarkupBuilder::from_murkdown(message.get_text()).await?;
+            let b = MarkupBuilder::from_murkdown(message.get_text(), false, true).await?;
 
             let (text, mut entities, _) = b.build_owned();
             if let Some(e) = message.get_entities() {
@@ -198,6 +200,8 @@ impl Speak for Message {
             match MarkupBuilder::from_murkdown_chatuser(
                 message.as_ref(),
                 self.get_chatuser().as_ref(),
+                false,
+                true,
             )
             .await
             {
@@ -207,7 +211,7 @@ impl Speak for Message {
                         .client()
                         .build_send_message(self.get_chat().get_id(), &text)
                         .entities(&entities)
-                        .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(markup))
+                        .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(markup.build()))
                         .reply_to_message_id(self.get_message_id())
                         .build()
                         .await?;

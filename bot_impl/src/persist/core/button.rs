@@ -2,9 +2,8 @@
 //! in most cases this is very simple
 
 use botapi::gen_types::{InlineKeyboardButton, InlineKeyboardButtonBuilder};
-use sea_orm::{entity::prelude::*, ActiveValue};
+use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
-use ActiveValue::Set;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, DeriveEntityModel)]
 #[sea_orm(table_name = "button")]
@@ -12,12 +11,12 @@ pub struct Model {
     pub button_text: String,
     pub callback_data: Option<String>,
     pub button_url: Option<String>,
+    pub owner_id: Option<i64>,
     #[sea_orm(primary_key)]
-    pub owner_id: i64,
+    pub pos_x: i32,
     #[sea_orm(primary_key)]
-    pub pos_x: u32,
-    #[sea_orm(primary_key)]
-    pub pos_y: u32,
+    pub pos_y: i32,
+    pub raw_text: Option<String>,
 }
 
 impl Model {
@@ -35,18 +34,37 @@ impl Model {
     }
 
     pub fn from_button(
-        pos_x: u32,
-        pos_y: u32,
+        pos_x: i32,
+        pos_y: i32,
         button: &InlineKeyboardButton,
         owner_id: i64,
-    ) -> ActiveModel {
-        ActiveModel {
-            pos_x: Set(pos_x),
-            pos_y: Set(pos_y),
-            button_text: Set(button.get_text().into_owned()),
-            button_url: Set(button.get_url().map(|v| v.into_owned())),
-            owner_id: Set(owner_id),
-            callback_data: Set(button.get_callback_data().map(|v| v.into_owned())),
+        raw_text: Option<String>,
+    ) -> Model {
+        Model {
+            pos_x,
+            pos_y,
+            button_text: button.get_text().into_owned(),
+            button_url: button.get_url().map(|v| v.into_owned()),
+            owner_id: Some(owner_id),
+            callback_data: button.get_callback_data().map(|v| v.into_owned()),
+            raw_text,
+        }
+    }
+
+    pub fn from_button_orphan(
+        pos_x: i32,
+        pos_y: i32,
+        button: &InlineKeyboardButton,
+        raw_text: Option<String>,
+    ) -> Model {
+        Model {
+            pos_x,
+            pos_y,
+            button_text: button.get_text().into_owned(),
+            button_url: button.get_url().map(|v| v.into_owned()),
+            owner_id: None,
+            callback_data: button.get_callback_data().map(|v| v.into_owned()),
+            raw_text,
         }
     }
 }

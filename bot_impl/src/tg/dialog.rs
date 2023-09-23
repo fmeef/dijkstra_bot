@@ -62,9 +62,7 @@ pub async fn get_dialog(chat: &Chat) -> Result<Option<dialogs::Model>> {
     let key = get_dialog_key(chat.get_id());
     let res = default_cache_query(
         |_, _| async move {
-            let res = dialogs::Entity::find_by_id(chat_id)
-                .one(DB.deref())
-                .await?;
+            let res = dialogs::Entity::find_by_id(chat_id).one(DB.deref()).await?;
             Ok(res)
         },
         Duration::seconds(CONFIG.timing.cache_timeout as i64),
@@ -539,9 +537,13 @@ impl Conversation {
                 cb(trans, self.clone());
             }
             let n = self.get_current_markup(row_limit).await?;
-            if let Ok(builder) =
-                MarkupBuilder::from_murkdown_chatuser(&content, message.get_chatuser().as_ref())
-                    .await
+            if let Ok(builder) = MarkupBuilder::from_murkdown_chatuser(
+                &content,
+                message.get_chatuser().as_ref(),
+                false,
+                false,
+            )
+            .await
             {
                 let (content, entities) = builder.build();
                 TG.client()

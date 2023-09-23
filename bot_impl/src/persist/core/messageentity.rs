@@ -24,7 +24,7 @@ pub struct Model {
     pub owner_id: i64,
 }
 
-#[derive(FromQueryResult)]
+#[derive(FromQueryResult, Debug)]
 pub struct EntityWithUser {
     // entity fields
     pub tg_type: DbMarkupType,
@@ -76,7 +76,7 @@ impl EntityWithUser {
 
 impl Model {
     pub async fn from_entity(
-        messageentity: MessageEntity,
+        messageentity: &MessageEntity,
         owner_id: i64,
     ) -> crate::util::error::Result<Self> {
         if let Some(user) = messageentity.get_user() {

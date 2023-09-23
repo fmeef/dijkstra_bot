@@ -25,7 +25,7 @@ use uuid::Uuid;
 use yoke::{Yoke, Yokeable};
 
 use super::{
-    admin_helpers::UpdateHelpers,
+    admin_helpers::{ChatUser, IntoChatUser, UpdateHelpers},
     button::get_url,
     markdown::EntityMessage,
     permissions::{BotPermissions, IsGroupAdmin, NamedBotPermissions, NamedPermission},
@@ -332,6 +332,21 @@ impl StaticContext {
         }
     }
 
+    pub fn chatuser<'a>(&'a self) -> Option<ChatUser> {
+        match self.update {
+            UpdateExt::Message(ref m) => m.get_chatuser(),
+            UpdateExt::EditedMessage(ref m) => m.get_chatuser(),
+            UpdateExt::CallbackQuery(ref m) => {
+                m.get_message_ref().map(|m| m.get_chatuser()).flatten()
+            }
+            UpdateExt::ChatMember(ref m) => Some(ChatUser {
+                chat: m.get_chat(),
+                user: m.get_from(),
+            }),
+            _ => None,
+        }
+    }
+
     /// Get a context from an update. Returns none if one or more fields aren't present
     /// Currently only Message updates return Some
     pub async fn get_context(update: UpdateExt) -> Result<Arc<Self>> {
@@ -480,6 +495,7 @@ where
         .await?;
     let bs = general_purpose::URL_SAFE_NO_PAD.encode(r.into_bytes());
     let bs = get_url(bs)?;
+    log::info!("post_deep_link {}", bs);
     Ok(bs)
 }
 

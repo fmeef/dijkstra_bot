@@ -148,7 +148,14 @@ pub async fn show_help<'a>(
                 current.content.clone()
             };
 
-            match MarkupBuilder::from_murkdown_chatuser(&m, message.get_chatuser().as_ref()).await {
+            match MarkupBuilder::from_murkdown_chatuser(
+                &m,
+                message.get_chatuser().as_ref(),
+                false,
+                false,
+            )
+            .await
+            {
                 Ok(md) => {
                     let (text, entities) = md.build();
                     TG.client()

@@ -1,6 +1,7 @@
 //! This module defines button related APIs for creating inline keyboards on messages,
 //! handling callbacks for clicked buttons, and handling deep links
 
+use crate::persist::core::button;
 use crate::statics::ME;
 use crate::util::error::Result;
 use crate::{statics::TG, util::error::BotError};
@@ -8,12 +9,13 @@ use botapi::gen_types::{
     CallbackQuery, InlineKeyboardButton, InlineKeyboardButtonBuilder, InlineKeyboardMarkup,
 };
 use futures::Future;
+use serde::{Deserialize, Serialize};
 
 const MAX_BUTTONS: usize = 8;
 
 /// Builds an inline keyboard with buttons for attaching to a message
-#[derive(Clone)]
-pub struct InlineKeyboardBuilder(Vec<Vec<InlineKeyboardButton>>);
+#[derive(Clone, Serialize, Deserialize)]
+pub struct InlineKeyboardBuilder(Vec<Vec<button::Model>>);
 
 impl Default for InlineKeyboardBuilder {
     fn default() -> Self {
@@ -34,11 +36,29 @@ pub fn get_url<T: AsRef<str>>(param: T) -> Result<String> {
 }
 
 impl InlineKeyboardBuilder {
+    pub fn from_vec(value: Vec<Vec<button::Model>>) -> Self {
+        Self(value)
+    }
+
+    pub fn get_mut<'a>(&'a mut self) -> &'a mut Vec<Vec<button::Model>> {
+        &mut self.0
+    }
+
     /// Adds a new button to the inline keyboard row, autowrapping if needed
-    pub fn button(&mut self, button: InlineKeyboardButton) -> &mut Self {
+    pub fn button_raw(
+        &mut self,
+        button: InlineKeyboardButton,
+        raw_text: Option<String>,
+    ) -> &mut Self {
+        let len = self.0.len() as i32;
         if let Some(v) = self.0.last_mut() {
             if v.len() < MAX_BUTTONS {
-                v.push(button);
+                v.push(button::Model::from_button_orphan(
+                    v.len() as i32,
+                    len,
+                    &button,
+                    raw_text,
+                ));
                 self
             } else {
                 self.newline().button(button)
@@ -46,6 +66,10 @@ impl InlineKeyboardBuilder {
         } else {
             self
         }
+    }
+
+    pub fn button(&mut self, button: InlineKeyboardButton) -> &mut Self {
+        self.button_raw(button, None)
     }
 
     /// get the length of the current button row
@@ -68,13 +92,22 @@ impl InlineKeyboardBuilder {
     }
 
     /// gets mutable access to stored vec
-    pub fn get<'a>(&'a mut self) -> &'a mut Vec<Vec<InlineKeyboardButton>> {
-        &mut self.0
+    pub fn get<'a>(&'a self) -> &'a Vec<Vec<button::Model>> {
+        &self.0
+    }
+
+    pub fn into_inner(self) -> Vec<Vec<button::Model>> {
+        self.0
     }
 
     /// Generates an InlineKeyboardMarkup for use in telegram api types
     pub fn build(self) -> InlineKeyboardMarkup {
-        InlineKeyboardMarkup::new(self.0)
+        InlineKeyboardMarkup::new(
+            self.0
+                .into_iter()
+                .map(|v| v.into_iter().map(|v| v.to_button()).collect())
+                .collect(),
+        )
     }
 }
 

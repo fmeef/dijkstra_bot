@@ -4,14 +4,15 @@
 
 use botapi::gen_methods::CallSendMessage;
 use botapi::gen_types::{
-    EReplyMarkup, InlineKeyboardButton, InlineKeyboardButtonBuilder, InlineKeyboardMarkup,
-    MessageEntity, MessageEntityBuilder, User,
+    EReplyMarkup, InlineKeyboardButton, InlineKeyboardButtonBuilder, MessageEntity,
+    MessageEntityBuilder, User,
 };
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use markdown::{Block, ListItem, Span};
 use uuid::Uuid;
 
+use crate::persist::core::button;
 use crate::statics::TG;
 use crate::util::error::{BotError, Result};
 use lazy_static::lazy_static;
@@ -198,7 +199,9 @@ pomelo! {
     }
 
     main     ::= words?(A) { A.unwrap_or_else(Vec::new) }
-    //main     ::= words?(A) { A.unwrap_or_else(Vec::new) }
+    main     ::= Whitespace(_) words?(A) { A.unwrap_or_else(Vec::new) }
+
+        //main     ::= words?(A) { A.unwrap_or_else(Vec::new) }
 
 
     words    ::= words(mut L) Whitespace(S) word(W) { L.push(super::TgSpan::Raw(S)); L.push(W); L }
@@ -265,6 +268,7 @@ pub struct Lexer<'a> {
     rawbuf: String,
     pos: usize,
     end: bool,
+    header: bool,
 }
 
 fn is_valid(token: char) -> bool {
@@ -289,20 +293,23 @@ fn is_valid(token: char) -> bool {
 }
 
 impl<'a> Lexer<'a> {
-    pub fn new(input: &'a str) -> Self {
+    pub fn new(input: &'a str, header: bool) -> Self {
         let chars = input.chars().peekable();
         Self {
             s: chars,
             rawbuf: String::new(),
             pos: 0,
             end: false,
+            header,
         }
     }
 
     pub fn next_token(&mut self) -> Option<Token> {
         self.pos += 1;
         if self.pos == 1 {
-            return Some(Token::Start);
+            if self.header {
+                return Some(Token::Start);
+            }
         }
         if let Some(char) = self.s.next() {
             match char {
@@ -377,6 +384,7 @@ pub struct MarkupBuilder {
     pub footer: Option<String>,
     offset: i64,
     text: String,
+    filling: bool,
 }
 
 pub fn button_deeplink_key(key: &str) -> String {
@@ -386,6 +394,29 @@ pub fn button_deeplink_key(key: &str) -> String {
 #[inline(always)]
 pub fn rules_deeplink_key(key: &str) -> String {
     format!("dlrules:{}", key)
+}
+
+pub fn get_markup_for_buttons(button: Vec<button::Model>) -> Option<InlineKeyboardBuilder> {
+    if button.len() == 0 {
+        None
+    } else {
+        let b = button
+            .into_iter()
+            .fold(InlineKeyboardBuilder::default(), |mut acc, b| {
+                let v = acc.get_mut();
+                let x = b.pos_x as usize;
+                let y = b.pos_y as usize;
+                if let Some(ve) = v.get_mut(b.pos_y as usize) {
+                    ve.insert(x, b);
+                } else {
+                    let mut ve = Vec::new();
+                    ve.insert(x, b);
+                    v.insert(y, ve);
+                }
+                acc
+            });
+        Some(b)
+    }
 }
 
 /// Builder for MessageEntity formatting. Generates MessageEntities from either murkdown
@@ -400,6 +431,7 @@ impl MarkupBuilder {
             buttons: InlineKeyboardBuilder::default(),
             header: None,
             footer: None,
+            filling: false,
         }
     }
 
@@ -418,7 +450,7 @@ impl MarkupBuilder {
     pub async fn button<'a, F>(
         &'a mut self,
         hint: String,
-        button: String,
+        button_text: String,
         chatuser: Option<&'a ChatUser<'a>>,
         callback: &'a F,
     ) -> Result<()>
@@ -428,13 +460,13 @@ impl MarkupBuilder {
         if let Some(ref chatuser) = chatuser {
             log::info!(
                 "building button for note: {} with chat {}",
-                button,
+                button_text,
                 chatuser.chat.name_humanreadable()
             );
         }
         let is_dm = chatuser.map(|v| is_dm(&v.chat)).unwrap_or(true);
-        let button = if button.starts_with("#") && button.len() > 1 && is_dm {
-            let tail = &button[1..];
+        let button = if button_text.starts_with("#") && button_text.len() > 1 && is_dm {
+            let tail = &button_text[1..];
 
             let button = InlineKeyboardButtonBuilder::new(hint)
                 .set_callback_data(Uuid::new_v4().to_string())
@@ -442,21 +474,21 @@ impl MarkupBuilder {
 
             callback(tail.to_owned(), &button).await?;
             button
-        } else if !is_dm && button.starts_with("#") && button.len() > 1 {
+        } else if !is_dm && button_text.starts_with("#") && button_text.len() > 1 {
             let chat = chatuser.ok_or_else(|| BotError::Generic("missing chatuser".to_owned()))?;
             let chat = chat.chat.get_id();
-            let tail = &button[1..];
+            let tail = &button_text[1..];
 
             let url = post_deep_link((chat, tail), |v| button_deeplink_key(v)).await?;
 
             InlineKeyboardButtonBuilder::new(hint).set_url(url).build()
         } else {
             InlineKeyboardButtonBuilder::new(hint)
-                .set_url(button)
+                .set_url(button_text.clone())
                 .build()
         };
 
-        self.buttons.button(button);
+        self.buttons.button_raw(button, Some(button_text));
 
         Ok(())
     }
@@ -522,53 +554,54 @@ impl MarkupBuilder {
                         size += s.encode_utf16().count() as i64;
                         self.text(s);
                     }
-                    (TgSpan::Filling(filling), Some(chatuser)) => match filling.as_str() {
-                        "username" => {
-                            let user = chatuser.user.as_ref().to_owned();
-                            let name = user.name_humanreadable();
-                            size += name.encode_utf16().count() as i64;
-                            self.text_mention(name, user, None);
+                    (TgSpan::Filling(filling), Some(chatuser)) if self.filling => {
+                        match filling.as_str() {
+                            "username" => {
+                                let user = chatuser.user.as_ref().to_owned();
+                                let name = user.name_humanreadable();
+                                size += name.encode_utf16().count() as i64;
+                                self.text_mention(name, user, None);
+                            }
+                            "first" => {
+                                let first = chatuser.user.get_first_name();
+                                size += first.encode_utf16().count() as i64;
+                                self.text(first);
+                            }
+                            "last" => {
+                                let last = chatuser
+                                    .user
+                                    .get_last_name()
+                                    .map(|v| v.into_owned())
+                                    .unwrap_or_else(|| "".to_owned());
+                                size += last.encode_utf16().count() as i64;
+                                self.text(last);
+                            }
+                            "mention" => {
+                                let user = chatuser.user.as_ref().to_owned();
+                                let first = user.get_first_name().into_owned();
+                                size += first.encode_utf16().count() as i64;
+                                self.text_mention(first, user, None);
+                            }
+                            "chatname" => {
+                                let chat = chatuser.chat.name_humanreadable();
+                                size += chat.encode_utf16().count() as i64;
+                                self.text(chat);
+                            }
+                            "id" => {
+                                let id = chatuser.user.get_id().to_string();
+                                size += id.encode_utf16().count() as i64;
+                                self.text(id);
+                            }
+                            "rules" => {
+                                self.rules(Some(chatuser)).await?;
+                            }
+                            s => {
+                                let s = format!("{{{}}}", s);
+                                size += s.encode_utf16().count() as i64;
+                                self.text(s);
+                            }
                         }
-                        "first" => {
-                            let first = chatuser.user.get_first_name();
-                            size += first.encode_utf16().count() as i64;
-                            self.text(first);
-                        }
-                        "last" => {
-                            let last = chatuser
-                                .user
-                                .get_last_name()
-                                .map(|v| v.into_owned())
-                                .unwrap_or_else(|| "".to_owned());
-                            size += last.encode_utf16().count() as i64;
-                            self.text(last);
-                        }
-                        "mention" => {
-                            let user = chatuser.user.as_ref().to_owned();
-                            let first = user.get_first_name().into_owned();
-                            size += first.encode_utf16().count() as i64;
-                            self.text_mention(first, user, None);
-                        }
-                        "chatname" => {
-                            let chat = chatuser.chat.name_humanreadable();
-                            size += chat.encode_utf16().count() as i64;
-                            self.text(chat);
-                        }
-                        "id" => {
-                            let id = chatuser.user.get_id().to_string();
-                            size += id.encode_utf16().count() as i64;
-                            self.text(id);
-                        }
-                        "rules" => {
-                            self.rules(Some(chatuser)).await?;
-                        }
-                        s => {
-                            let s = format!("{{{}}}", s);
-                            size += s.encode_utf16().count() as i64;
-                            self.text(s);
-                        }
-                    },
-
+                    }
                     (TgSpan::Filling(filling), _) => {
                         let s = format!("{{{}}}", filling);
                         size += s.encode_utf16().count() as i64;
@@ -692,11 +725,18 @@ impl MarkupBuilder {
 
     /// Parses murkdown and constructs a builder with the corresponding text and
     /// entities
-    pub async fn from_murkdown<T>(text: T) -> Result<Self>
+    pub async fn from_murkdown<T>(text: T, header: bool, filling: bool) -> Result<Self>
     where
         T: AsRef<str>,
     {
-        Self::from_murkdown_internal(text, None, &|_, _| async move { Ok(()) }.boxed()).await
+        Self::from_murkdown_internal(
+            text,
+            None,
+            &|_, _| async move { Ok(()) }.boxed(),
+            header,
+            filling,
+        )
+        .await
     }
 
     /// Parses murkdown and constructs a builder with the corresponding text and
@@ -704,11 +744,20 @@ impl MarkupBuilder {
     pub async fn from_murkdown_chatuser<'a, T>(
         text: T,
         chatuser: Option<&'a ChatUser<'a>>,
+        header: bool,
+        filling: bool,
     ) -> Result<Self>
     where
         T: AsRef<str>,
     {
-        Self::from_murkdown_internal(text, chatuser, &|_, _| async move { Ok(()) }.boxed()).await
+        Self::from_murkdown_internal(
+            text,
+            chatuser,
+            &|_, _| async move { Ok(()) }.boxed(),
+            header,
+            filling,
+        )
+        .await
     }
 
     /// parses murkdown with a callback called on every button requiring a callback
@@ -716,18 +765,22 @@ impl MarkupBuilder {
         text: T,
         chatuser: Option<&'a ChatUser<'a>>,
         callback: &F,
+        header: bool,
+        filling: bool,
     ) -> Result<Self>
     where
         T: AsRef<str>,
         F: for<'b> Fn(String, &'b InlineKeyboardButton) -> BoxFuture<'b, Result<()>> + Send + Sync,
     {
-        Self::from_murkdown_internal(text, chatuser, callback).await
+        Self::from_murkdown_internal(text, chatuser, callback, header, filling).await
     }
 
     async fn from_murkdown_internal<'a, T, F>(
         text: T,
         chatuser: Option<&'a ChatUser<'a>>,
         callback: &F,
+        header: bool,
+        filling: bool,
     ) -> Result<Self>
     where
         T: AsRef<str>,
@@ -735,10 +788,10 @@ impl MarkupBuilder {
     {
         let text = text.as_ref();
         let mut s = Self::new();
+        s.filling = filling;
         let mut parser = Parser::new();
-        let mut tokenizer = Lexer::new(text);
+        let mut tokenizer = Lexer::new(text, header);
         while let Some(token) = tokenizer.next_token() {
-            log::info!("parsing token {:?}", token);
             parser.parse(token)?;
         }
         let res = parser.end_of_input()?;
@@ -946,8 +999,8 @@ impl MarkupBuilder {
     }
 
     /// Consume this builder and return owned text and MessageEntities in Vec form
-    pub fn build_owned(self) -> (String, Vec<MessageEntity>, InlineKeyboardMarkup) {
-        (self.text, self.entities, self.buttons.build())
+    pub fn build_owned(self) -> (String, Vec<MessageEntity>, InlineKeyboardBuilder) {
+        (self.text, self.entities, self.buttons)
     }
 
     pub fn build_filter(
@@ -955,14 +1008,14 @@ impl MarkupBuilder {
     ) -> (
         String,
         Vec<MessageEntity>,
-        InlineKeyboardMarkup,
+        InlineKeyboardBuilder,
         Option<Header>,
         Option<String>,
     ) {
         (
             self.text,
             self.entities,
-            self.buttons.build(),
+            self.buttons,
             self.header,
             self.footer,
         )
@@ -973,11 +1026,12 @@ lazy_static! {
     static ref FILLER_REGEX: Regex = Regex::new(r"\{\w*\}").unwrap();
 }
 
-pub fn retro_fillings(
-    text: &str,
+pub async fn retro_fillings<'a>(
+    text: String,
     entities: Vec<MessageEntity>,
-    chatuser: &ChatUser,
-) -> (String, Vec<MessageEntity>) {
+    mut buttons: Option<&mut InlineKeyboardBuilder>,
+    chatuser: &ChatUser<'a>,
+) -> Result<(String, Vec<MessageEntity>)> {
     let mut res = String::with_capacity(text.len());
     let mut extra_entities = Vec::<MessageEntity>::new();
     let mut offsets = entities
@@ -986,7 +1040,11 @@ pub fn retro_fillings(
         .collect::<Vec<(i64, i64)>>();
     let mut pos = 0;
     let mut prev = 0;
-    for mat in FILLER_REGEX.find_iter(text) {
+    let iter: Vec<regex::Match<'_>> = FILLER_REGEX.find_iter(&text).collect();
+    if iter.len() == 0 {
+        return Ok((text, entities));
+    }
+    for mat in iter {
         let filling = &mat.as_str()[1..mat.len() - 1];
         let regular = &text[prev..mat.start()];
         res.push_str(regular);
@@ -1042,6 +1100,21 @@ pub fn retro_fillings(
                 let chat = chatuser.chat.name_humanreadable();
                 (chat, None)
             }
+            "rules" => {
+                if let Some(buttons) = buttons.as_mut() {
+                    let url =
+                        post_deep_link(chatuser.chat.get_id(), |k| rules_deeplink_key(k)).await?;
+
+                    let button = InlineKeyboardButtonBuilder::new("Get rules".to_owned())
+                        .set_url(url)
+                        .build();
+                    buttons.button(button);
+
+                    ("".to_owned(), None)
+                } else {
+                    ("{rules}".to_owned(), None)
+                }
+            }
             "id" => {
                 let id = chatuser.user.get_id().to_string();
                 (id, None)
@@ -1090,7 +1163,7 @@ pub fn retro_fillings(
         })
         .chain(extra_entities)
         .collect::<Vec<MessageEntity>>();
-    (res, newoffsets)
+    Ok((res, newoffsets))
 }
 
 /// Represents metadata for a single MessageEntity. Useful when programatically
@@ -1245,7 +1318,7 @@ mod test {
 
     fn test_parse(markdown: &str) -> FilterCommond {
         let mut parser = Parser::new();
-        let mut tokenizer = Lexer::new(markdown);
+        let mut tokenizer = Lexer::new(markdown, false);
         while let Some(token) = tokenizer.next_token() {
             parser.parse(token).unwrap();
         }
@@ -1255,7 +1328,7 @@ mod test {
 
     #[test]
     fn button() {
-        let mut tokenizer = Lexer::new("<button>(https://example.com)");
+        let mut tokenizer = Lexer::new("<button>(https://example.com)", false);
         let mut parser = Parser::new();
         while let Some(token) = tokenizer.next_token() {
             parser.parse(token).unwrap();
@@ -1266,7 +1339,7 @@ mod test {
 
     #[test]
     fn tokenize_test() {
-        let mut tokenizer = Lexer::new(MARKDOWN_SIMPLE);
+        let mut tokenizer = Lexer::new(MARKDOWN_SIMPLE, false);
         if let Some(Token::LSBracket) = tokenizer.next_token() {
         } else {
             panic!("got invalid token");

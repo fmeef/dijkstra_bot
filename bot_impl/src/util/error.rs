@@ -225,6 +225,12 @@ pub enum BotError {
     Generic(String),
 }
 
+impl From<TransactionError<BotError>> for BotError {
+    fn from(value: TransactionError<BotError>) -> Self {
+        value.into()
+    }
+}
+
 impl BotError {
     /// constructor for conversation state machine error
     pub fn conversation_err<T: Into<String>>(text: T) -> Self {

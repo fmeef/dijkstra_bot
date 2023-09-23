@@ -1,7 +1,10 @@
 use std::ops::{Deref, DerefMut};
 
 use crate::persist::admin::captchastate::CaptchaType;
-use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache, ToRedisStr};
+use crate::persist::core::media::SendMediaReply;
+use crate::persist::redis::{
+    default_cache_query, CachedQueryTrait, RedisCache, RedisStr, ToRedisStr,
+};
 use crate::statics::{ME, TG};
 use crate::util::error::BotError;
 use crate::util::string::Speak;
@@ -9,10 +12,7 @@ use crate::{
     langs::Lang,
     persist::{
         admin::{authorized, captchastate},
-        core::{
-            media::{send_media_reply_chatuser, MediaType},
-            welcomes,
-        },
+        core::{media::MediaType, welcomes},
     },
     statics::{CONFIG, DB, REDIS},
     util::error::Result,
@@ -21,7 +21,7 @@ use base64::engine::general_purpose;
 use base64::Engine;
 use botapi::gen_types::{
     CallbackQuery, Chat, ChatMemberUpdated, EReplyMarkup, InlineKeyboardButton,
-    InlineKeyboardButtonBuilder, Message, UpdateExt, User,
+    InlineKeyboardButtonBuilder, Message, MessageEntity, UpdateExt, User,
 };
 use captcha::gen;
 use chrono::Duration;
@@ -40,6 +40,7 @@ use uuid::Uuid;
 use super::admin_helpers::{kick, DeleteAfterTime, UpdateHelpers, UserChanged};
 use super::button::{get_url, InlineKeyboardBuilder, OnPush};
 use super::command::Context;
+use super::markdown::get_markup_for_buttons;
 use super::permissions::{IsAdmin, IsGroupAdmin};
 
 pub fn auth_key(chat: i64) -> String {
@@ -111,9 +112,36 @@ pub async fn get_captcha_config(
     Ok(res)
 }
 
+pub async fn goodbye_members(
+    ctx: &Context,
+    model: welcomes::Model,
+    entities: Vec<MessageEntity>,
+    buttons: Option<InlineKeyboardBuilder>,
+    lang: &Lang,
+) -> Result<()> {
+    let text = if let Some(text) = model.goodbye_text {
+        text
+    } else {
+        lang_fmt!(lang, "defaultgoodbye")
+    };
+
+    SendMediaReply::new(ctx, model.goodbye_media_type.unwrap_or(MediaType::Text))
+        .button_callback(|_, _| async move { Ok(()) }.boxed())
+        .text(Some(text))
+        .media_id(model.goodbye_media_id)
+        .extra_entities(entities)
+        .buttons(buttons)
+        .send_media()
+        .await?;
+    Ok(())
+}
+
 pub async fn welcome_members(
+    ctx: &Context,
     upd: &ChatMemberUpdated,
     model: welcomes::Model,
+    entities: Vec<MessageEntity>,
+    extra_buttons: Option<InlineKeyboardBuilder>,
     lang: &Lang,
     captcha: Option<&captchastate::Model>,
 ) -> Result<()> {
@@ -133,16 +161,15 @@ pub async fn welcome_members(
     } else {
         vec![]
     };
-    send_media_reply_chatuser(
-        &upd.get_chat(),
-        model.media_type.unwrap_or(MediaType::Text),
-        Some(text),
-        model.media_id,
-        Some(upd.get_from_ref()),
-        buttons,
-        |_, _| async move { Ok(()) }.boxed(),
-    )
-    .await?;
+    SendMediaReply::new(ctx, model.media_type.unwrap_or(MediaType::Text))
+        .button_callback(|_, _| async move { Ok(()) }.boxed())
+        .text(Some(text))
+        .media_id(model.media_id)
+        .extra_entities(entities)
+        .buttons(extra_buttons)
+        .extra_buttons(Some(buttons))
+        .send_media()
+        .await?;
 
     Ok(())
 }
@@ -361,34 +388,13 @@ pub async fn send_captcha<'a>(message: &Message, unmute_chat: Chat, ctx: &Contex
     Ok(())
 }
 
-pub async fn goodbye_members(
-    upd: &ChatMemberUpdated,
-    model: welcomes::Model,
-    lang: &Lang,
-) -> Result<()> {
-    let text = if let Some(text) = model.goodbye_text {
-        text
-    } else {
-        lang_fmt!(lang, "defaultgoodbye")
-    };
-    send_media_reply_chatuser(
-        &upd.get_chat(),
-        model.goodbye_media_type.unwrap_or(MediaType::Text),
-        Some(text),
-        model.goodbye_media_id,
-        Some(upd.get_from_ref()),
-        vec![],
-        |_, _| async move { Ok(()) }.boxed(),
-    )
-    .await?;
-    Ok(())
-}
-
 async fn button_captcha<'a>(
     ctx: &Context,
     upd: &ChatMemberUpdated,
     captcha: &captchastate::Model,
     welcome: Option<welcomes::Model>,
+    entities: Vec<MessageEntity>,
+    buttons: Option<InlineKeyboardBuilder>,
 ) -> Result<()> {
     let unmute_button = InlineKeyboardButtonBuilder::new("Press me to unmute".to_owned())
         .set_callback_data(Uuid::new_v4().to_string())
@@ -409,7 +415,16 @@ async fn button_captcha<'a>(
     let mut button = InlineKeyboardBuilder::default();
     button.button(unmute_button);
     if let Some(welcome) = welcome {
-        welcome_members(upd, welcome, ctx.lang(), Some(captcha)).await?;
+        welcome_members(
+            ctx,
+            upd,
+            welcome,
+            entities,
+            buttons,
+            ctx.lang(),
+            Some(captcha),
+        )
+        .await?;
     } else {
         let m = TG
             .client()
@@ -432,9 +447,12 @@ pub fn get_captcha_auth_key(user: i64, chat: i64) -> String {
 }
 
 async fn send_captcha_chooser(
+    ctx: &Context,
     upd: &ChatMemberUpdated,
     catpcha: &captchastate::Model,
     welcome: Option<welcomes::Model>,
+    entities: Vec<MessageEntity>,
+    buttons: Option<InlineKeyboardBuilder>,
     lang: &Lang,
 ) -> Result<()> {
     let user = upd.get_from_ref();
@@ -448,7 +466,7 @@ async fn send_captcha_chooser(
     );
 
     if let Some(welcome) = welcome {
-        welcome_members(upd, welcome, lang, Some(catpcha)).await?;
+        welcome_members(ctx, upd, welcome, entities, buttons, lang, Some(catpcha)).await?;
     } else {
         let nm = TG
             .client()
@@ -475,6 +493,9 @@ impl Context {
         &self,
         config: &captchastate::Model,
         welcome: Option<welcomes::Model>,
+        entities: Vec<MessageEntity>,
+
+        buttons: Option<InlineKeyboardBuilder>,
     ) -> Result<()> {
         if let Some(UserChanged::UserJoined(ref message)) = self.update().user_event() {
             let me = ME.get().unwrap();
@@ -506,9 +527,20 @@ impl Context {
                 }
                 match config.captcha_type {
                     CaptchaType::Text => {
-                        send_captcha_chooser(message, config, welcome, self.lang()).await?
+                        send_captcha_chooser(
+                            self,
+                            message,
+                            config,
+                            welcome,
+                            entities,
+                            buttons,
+                            self.lang(),
+                        )
+                        .await?
                     }
-                    CaptchaType::Button => button_captcha(self, message, config, welcome).await?,
+                    CaptchaType::Button => {
+                        button_captcha(self, message, config, welcome, entities, buttons).await?
+                    }
                 }
             }
         }
@@ -519,16 +551,34 @@ impl Context {
     async fn handle_welcome(
         &self,
         welcome: welcomes::Model,
+        entities: Vec<MessageEntity>,
+        goodbye: Vec<MessageEntity>,
+        buttons: Option<InlineKeyboardBuilder>,
+        gb_buttons: Option<InlineKeyboardBuilder>,
         captcha: Option<&captchastate::Model>,
     ) -> Result<()> {
+        log::info!(
+            "handle_welcome\n entities {:?}\ngoodbyes {:?}",
+            entities,
+            goodbye
+        );
         if let Some(userchanged) = self.update().user_event() {
             if welcome.enabled {
                 match userchanged {
                     UserChanged::UserJoined(member) => {
-                        welcome_members(member, welcome, &self.lang(), captcha).await?
+                        welcome_members(
+                            self,
+                            member,
+                            welcome,
+                            entities,
+                            buttons,
+                            &self.lang(),
+                            captcha,
+                        )
+                        .await?
                     }
-                    UserChanged::UserLeft(member) => {
-                        goodbye_members(member, welcome, &self.lang()).await?
+                    UserChanged::UserLeft(_) => {
+                        goodbye_members(self, welcome, goodbye, gb_buttons, &self.lang()).await?
                     }
                 }
             }
@@ -537,14 +587,20 @@ impl Context {
     }
 
     pub async fn greeter_handle_update(&self) -> Result<()> {
-        if let Some(UserChanged::UserJoined(ref upd)) = self.update().user_event() {
+        if let UpdateExt::ChatMember(ref upd) = self.update() {
             match (
                 self.should_welcome(upd).await?,
                 self.get_captcha_config().await?,
             ) {
-                (Some(welcome), None) => self.handle_welcome(welcome, None).await,
-                (None, Some(captcha)) => self.check_members(&captcha, None).await,
-                (Some(welcome), Some(captcha)) => self.check_members(&captcha, Some(welcome)).await,
+                (Some((welcome, entities, goodbyes, buttons, gb_buttons)), None) => {
+                    self.handle_welcome(welcome, entities, goodbyes, buttons, gb_buttons, None)
+                        .await
+                }
+                (None, Some(captcha)) => self.check_members(&captcha, None, vec![], None).await,
+                (Some((welcome, entities, _, buttons, _)), Some(captcha)) => {
+                    self.check_members(&captcha, Some(welcome), entities, buttons)
+                        .await
+                }
                 (None, None) => Ok(()),
             }?;
         }
@@ -626,22 +682,59 @@ impl Context {
         Ok(())
     }
 
-    pub async fn should_welcome(&self, upd: &ChatMemberUpdated) -> Result<Option<welcomes::Model>> {
+    pub async fn should_welcome(
+        &self,
+        upd: &ChatMemberUpdated,
+    ) -> Result<
+        Option<(
+            welcomes::Model,
+            Vec<MessageEntity>,
+            Vec<MessageEntity>,
+            Option<InlineKeyboardBuilder>,
+            Option<InlineKeyboardBuilder>,
+        )>,
+    > {
         let chat = upd.get_chat();
         let key = format!("welcome:{}", chat.get_id());
         let chat_id = chat.get_id();
-        let res = default_cache_query(
-            |_, _| async move {
-                let res = welcomes::Entity::find_by_id(chat_id)
-                    .one(DB.deref())
+
+        let v: Option<RedisStr> = REDIS.sq(|q| q.get(&key)).await?;
+        let res = if let Some(v) = v {
+            Ok(v.get()?)
+        } else {
+            let res = welcomes::get_filters_join(welcomes::Column::Chat.eq(chat_id)).await?;
+            let res = res
+                .into_iter()
+                .map(|(model, (entity, goodbye, button, gb_button))| {
+                    (
+                        model,
+                        entity
+                            .into_iter()
+                            .map(|e| e.get())
+                            .map(|(e, u)| e.to_entity(u))
+                            .collect(),
+                        goodbye
+                            .into_iter()
+                            .map(|e| e.get())
+                            .map(|(e, u)| e.to_entity(u))
+                            .collect(),
+                        get_markup_for_buttons(button),
+                        get_markup_for_buttons(gb_button),
+                    )
+                })
+                .next();
+
+            if let Some(ref map) = res {
+                REDIS
+                    .try_pipe(|p| {
+                        Ok(p.set(&key, map.to_redis()?)
+                            .expire(&key, CONFIG.timing.cache_timeout))
+                    })
                     .await?;
-                Ok(res)
-            },
-            Duration::seconds(CONFIG.timing.cache_timeout as i64),
-        )
-        .query(&key, &())
-        .await?;
-        Ok(res)
+            }
+            Ok(res)
+        };
+        res
     }
 
     pub async fn authorize_user<'a>(&self, user: i64, unmute_chat: &Chat) -> Result<()> {

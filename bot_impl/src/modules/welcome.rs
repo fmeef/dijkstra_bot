@@ -1,9 +1,9 @@
 use crate::persist::core::media::get_media_type;
-use crate::persist::core::welcomes;
+use crate::persist::core::{entity, welcomes};
 use crate::persist::migrate::ManagerHelper;
-use crate::persist::redis::RedisCache;
 use crate::statics::{DB, REDIS};
 use crate::tg::command::{Cmd, Context, TextArgs};
+use crate::tg::markdown::MarkupBuilder;
 use crate::tg::permissions::*;
 use crate::util::error::{BotError, Result};
 use crate::util::string::Lang;
@@ -59,7 +59,7 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![]
 }
 
-fn get_model<'a>(
+async fn get_model<'a>(
     message: &'a Message,
     args: &'a TextArgs<'a>,
     goodbye: bool,
@@ -68,6 +68,17 @@ fn get_model<'a>(
         (message, message.get_text_ref())
     } else {
         (message, Some(args.text))
+    };
+
+    let (text, entity_id) = if let Some(text) = text {
+        let builder = MarkupBuilder::from_murkdown(text, false, false).await?;
+        let (text, entities, buttons) = builder.build_owned();
+
+        log::info!("welcome get with buttons {:?}", buttons.get());
+        let entity_id = entity::insert(DB.deref(), &entities, buttons).await?;
+        (Some(text), Some(entity_id))
+    } else {
+        (None, None)
     };
     let (media_id, media_type) = get_media_type(message)?;
     let res = if goodbye {
@@ -80,7 +91,8 @@ fn get_model<'a>(
             goodbye_media_id: Set(media_id),
             goodbye_media_type: Set(Some(media_type)),
             enabled: NotSet,
-            entity_id: NotSet,
+            welcome_entity_id: NotSet,
+            goodbye_entity_id: Set(entity_id),
         }
     } else {
         welcomes::ActiveModel {
@@ -92,7 +104,8 @@ fn get_model<'a>(
             goodbye_media_id: NotSet,
             goodbye_media_type: NotSet,
             enabled: NotSet,
-            entity_id: NotSet,
+            welcome_entity_id: Set(entity_id),
+            goodbye_entity_id: NotSet,
         }
     };
 
@@ -121,10 +134,11 @@ async fn enable_welcome<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang)
         goodbye_media_id: NotSet,
         goodbye_media_type: NotSet,
         enabled: Set(enabled),
-        entity_id: NotSet,
+        welcome_entity_id: NotSet,
+        goodbye_entity_id: NotSet,
     };
 
-    let model = welcomes::Entity::insert(model)
+    welcomes::Entity::insert(model)
         .on_conflict(
             OnConflict::column(welcomes::Column::Chat)
                 .update_column(welcomes::Column::Enabled)
@@ -132,14 +146,14 @@ async fn enable_welcome<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang)
         )
         .exec_with_returning(DB.deref())
         .await?;
-    model.cache(key).await?;
+    REDIS.sq(|q| q.del(&key)).await?;
     message.reply("Enabled welcome").await?;
     Ok(())
 }
 
 async fn set_goodbye<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang) -> Result<()> {
     message.check_permissions(|p| p.can_change_info).await?;
-    let model = get_model(message, args, true)?;
+    let model = get_model(message, args, true).await?;
     let key = format!("welcome:{}", message.get_chat().get_id());
     log::info!("save goodbye: {}", key);
     let model = welcomes::Entity::insert(model)
@@ -149,6 +163,8 @@ async fn set_goodbye<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang) ->
                     welcomes::Column::GoodbyeText,
                     welcomes::Column::GoodbyeMediaId,
                     welcomes::Column::GoodbyeMediaType,
+                    welcomes::Column::WelcomeEntityId,
+                    welcomes::Column::GoodbyeEntityId,
                 ])
                 .to_owned(),
         )
@@ -159,7 +175,7 @@ async fn set_goodbye<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang) ->
     } else {
         lang_fmt!(lang, "setgoodbye", "*media*")
     };
-    model.cache(key).await?;
+    REDIS.sq(|q| q.del(&key)).await?;
 
     message.speak(text).await?;
     Ok(())
@@ -168,7 +184,7 @@ async fn set_goodbye<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang) ->
 async fn set_welcome<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang) -> Result<()> {
     message.check_permissions(|p| p.can_change_info).await?;
 
-    let model = get_model(message, args, false)?;
+    let model = get_model(message, args, false).await?;
     let key = format!("welcome:{}", message.get_chat().get_id());
     log::info!("save welcome: {}", key);
     let model = welcomes::Entity::insert(model)
@@ -178,6 +194,8 @@ async fn set_welcome<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang) ->
                     welcomes::Column::Text,
                     welcomes::Column::MediaId,
                     welcomes::Column::MediaType,
+                    welcomes::Column::WelcomeEntityId,
+                    welcomes::Column::GoodbyeEntityId,
                 ])
                 .to_owned(),
         )
@@ -189,7 +207,7 @@ async fn set_welcome<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang) ->
     } else {
         lang_fmt!(lang, "setwelcome", "*media*")
     };
-    model.cache(key).await?;
+    REDIS.sq(|q| q.del(&key)).await?;
     message.speak(text).await?;
     Ok(())
 }
