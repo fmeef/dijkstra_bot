@@ -201,7 +201,9 @@ pomelo! {
     main     ::= words?(A) { A.unwrap_or_else(Vec::new) }
     main     ::= Whitespace(_) words?(A) { A.unwrap_or_else(Vec::new) }
 
+
         //main     ::= words?(A) { A.unwrap_or_else(Vec::new) }
+
 
 
     words    ::= words(mut L) Whitespace(S) word(W) { L.push(super::TgSpan::Raw(S)); L.push(W); L }
@@ -271,7 +273,7 @@ pub struct Lexer<'a> {
     header: bool,
 }
 
-fn is_valid(token: char) -> bool {
+fn is_valid(token: char, header: bool) -> bool {
     match token {
         '\\' => true,
         '_' => true,
@@ -287,7 +289,8 @@ fn is_valid(token: char) -> bool {
         '}' => true,
         '<' => true,
         '>' => true,
-        ',' => true,
+        ',' if header => true,
+        '"' if header => true,
         _ => false,
     }
 }
@@ -312,8 +315,9 @@ impl<'a> Lexer<'a> {
             }
         }
         if let Some(char) = self.s.next() {
+            //     log::info!("parsing {}", char);
             match char {
-                '\\' => self.s.next().map(|char| Token::RawChar(char)),
+                '\\' => self.s.next().map(|char| Token::Str(char.to_string())),
                 '_' => {
                     if let Some('_') = self.s.peek() {
                         self.s.next();
@@ -341,11 +345,13 @@ impl<'a> Lexer<'a> {
                 '}' => Some(Token::RCurly),
                 '<' => Some(Token::LTBracket),
                 '>' => Some(Token::RTBracket),
-                ',' => Some(Token::Comma),
+                ',' if self.header => Some(Token::Comma),
+                '"' if self.header => Some(Token::Quote),
                 _ => {
                     self.rawbuf.push(char);
                     if let Some(c) = self.s.peek() {
-                        if is_valid(*c) || (char.is_whitespace() != c.is_whitespace()) {
+                        if is_valid(*c, self.header) || (char.is_whitespace() != c.is_whitespace())
+                        {
                             let s = self.rawbuf.clone();
                             self.rawbuf.clear();
 
@@ -357,10 +363,6 @@ impl<'a> Lexer<'a> {
                     } else {
                         let s = self.rawbuf.clone();
                         self.rawbuf.clear();
-
-                        if char.is_whitespace() {
-                            return Some(Token::Whitespace(s));
-                        }
                         return Some(Token::Str(s));
                     }
                     self.next_token()
