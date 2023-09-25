@@ -4,7 +4,7 @@
 use std::{borrow::Cow, collections::HashMap};
 
 use crate::{
-    persist::redis::RedisStr,
+    persist::redis::{RedisStr, ToRedisStr},
     statics::{CONFIG, REDIS, TG},
     util::error::{BotError, Fail, Result},
     util::string::get_chat_lang,
@@ -483,29 +483,52 @@ impl IsAdmin for i64 {
 
 /// Updates the admin cache with any changes in the bot's admin status
 pub async fn update_self_admin(update: &UpdateExt) -> Result<()> {
-    if let UpdateExt::MyChatMember(member) = update {
-        let key = get_chat_admin_cache_key(member.get_chat().get_id());
-        match member.get_new_chat_member_ref() {
-            ChatMember::ChatMemberAdministrator(ref admin) => {
-                log::info!("bot updated to admin");
-                let user_id = admin.get_user().get_id();
-                let admin = ChatMember::ChatMemberAdministrator(admin.to_owned());
-                let admin = RedisStr::new(&admin)?;
-                REDIS.sq(|q| q.hset(&key, user_id, admin)).await?;
-            }
-            ChatMember::ChatMemberOwner(ref owner) => {
-                log::info!("Im soemhow the owner. What?");
-                let user_id = owner.get_user().get_id();
-                let admin = ChatMember::ChatMemberOwner(owner.to_owned());
-                let admin = RedisStr::new(&admin)?;
-                REDIS.sq(|q| q.hset(&key, user_id, admin)).await?;
-            }
-            mamber => {
-                log::info!("Im not admin anymore ;(");
-                let user_id = mamber.get_user().get_id();
-                REDIS.sq(|q| q.hdel(&key, user_id)).await?;
+    match update {
+        UpdateExt::MyChatMember(member) => {
+            let key = get_chat_admin_cache_key(member.get_chat().get_id());
+            member.get_chat().refresh_cached_admins().await?;
+            match member.get_new_chat_member_ref() {
+                ChatMember::ChatMemberAdministrator(admin) => {
+                    log::info!("bot updated to admin");
+                    let user_id = admin.get_user().get_id();
+                    let admin = member.get_new_chat_member_ref().to_redis()?;
+                    REDIS.sq(|q| q.hset(&key, user_id, admin)).await?;
+                }
+                ChatMember::ChatMemberOwner(owner) => {
+                    log::info!("Im soemhow the owner. What?");
+                    let user_id = owner.get_user().get_id();
+                    let admin = member.get_new_chat_member_ref().to_redis()?;
+                    REDIS.sq(|q| q.hset(&key, user_id, admin)).await?;
+                }
+                mamber => {
+                    log::info!("Im not admin anymore ;(");
+                    let user_id = mamber.get_user().get_id();
+                    REDIS.sq(|q| q.hdel(&key, user_id)).await?;
+                }
             }
         }
+        UpdateExt::ChatMember(member) => {
+            let key = get_chat_admin_cache_key(member.get_chat().get_id());
+            member.get_chat().refresh_cached_admins().await?;
+            match member.get_new_chat_member_ref() {
+                ChatMember::ChatMemberAdministrator(admin) => {
+                    let user_id = admin.get_user().get_id();
+                    let admin = member.get_new_chat_member_ref().to_redis()?;
+                    REDIS.sq(|q| q.hset(&key, user_id, admin)).await?;
+                }
+
+                ChatMember::ChatMemberOwner(admin) => {
+                    let user_id = admin.get_user().get_id();
+                    let admin = member.get_new_chat_member_ref().to_redis()?;
+                    REDIS.sq(|q| q.hset(&key, user_id, admin)).await?;
+                }
+                member => {
+                    let user_id = member.get_user().get_id();
+                    REDIS.sq(|q| q.hdel(&key, user_id)).await?;
+                }
+            }
+        }
+        _ => (),
     }
 
     Ok(())
