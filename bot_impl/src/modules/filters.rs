@@ -705,7 +705,7 @@ async fn update_cache_from_db(message: &Message) -> Result<()> {
 
 async fn command_filter<'a>(c: &Context, args: &TextArgs<'a>) -> Result<()> {
     c.check_permissions(|p| p.can_change_info).await?;
-    let cmd = MarkupBuilder::from_murkdown(args.text, true, false).await?;
+    let cmd = MarkupBuilder::from_murkdown(args.text, None, true, false).await?;
     let ctx = c.clone();
     let filters = DB
         .deref()
@@ -911,55 +911,4 @@ pub async fn handle_update(cmd: &Context) -> Result<()> {
     handle_command(cmd).await?;
 
     Ok(())
-}
-
-#[allow(unused)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn parse_cmd2() {
-        let cmd = "(fme, fmoo,  cry) menhera";
-        let lexer = Lexer::new(cmd);
-        let mut parser = Parser::new();
-        for token in lexer.all_tokens() {
-            println!("token {:?}", token);
-            parser.parse(token).unwrap();
-        }
-        parser.end_of_input().unwrap();
-    }
-
-    #[test]
-    fn parse_whitespace() {
-        let cmd = "fmef menhera";
-        let lexer = Lexer::new(cmd);
-        let mut parser = Parser::new();
-        for token in lexer.all_tokens() {
-            println!("token {:?}", token);
-            parser.parse(token).unwrap();
-        }
-        let out = parser.end_of_input().unwrap();
-        if let Header::Arg(h) = out.header {
-            assert_eq!(h.as_str(), "fmef");
-        } else {
-            assert!(false);
-        }
-    }
-
-    #[test]
-    fn parse_quote() {
-        let cmd = "\"thing manuy\" menhera";
-        let lexer = Lexer::new(cmd);
-        let mut parser = Parser::new();
-        for token in lexer.all_tokens() {
-            println!("token {:?}", token);
-            parser.parse(token).unwrap();
-        }
-        let out = parser.end_of_input().unwrap();
-        if let Header::Arg(h) = out.header {
-            assert_eq!(h.as_str(), "thing manuy");
-        } else {
-            assert!(false);
-        }
-    }
 }

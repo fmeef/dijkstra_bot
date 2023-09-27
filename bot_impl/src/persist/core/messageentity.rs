@@ -170,6 +170,8 @@ pub enum DbMarkupType {
     Pre,
     #[sea_orm(num_value = 16)]
     CustomEmoji,
+    #[sea_orm(num_value = 17)]
+    Url,
 }
 
 impl DbMarkupType {
@@ -182,7 +184,7 @@ impl DbMarkupType {
             "strikethrough" => Ok(Self::StrikeThrough),
             "hashtag" => Ok(Self::HashTag),
             "cashtag" => Ok(Self::CashTag),
-            "botcommand" => Ok(Self::BotCommand),
+            "bot_command" => Ok(Self::BotCommand),
             "email" => Ok(Self::Email),
             "phone_number" => Ok(Self::PhoneNumber),
             "bold" => Ok(Self::Bold),
@@ -191,9 +193,11 @@ impl DbMarkupType {
             "spoiler" => Ok(Self::Spoiler),
             "code" => Ok(Self::Code),
             "mention" => Ok(Self::Mention),
-            _ => Err(crate::util::error::BotError::Generic(
-                "invalid tg_type".to_owned(),
-            )),
+            "url" => Ok(Self::Url),
+            v => Err(crate::util::error::BotError::Generic(format!(
+                "invalid tg_type {}",
+                v
+            ))),
         }
     }
 
@@ -206,7 +210,7 @@ impl DbMarkupType {
             Self::StrikeThrough => "strikethrough",
             Self::HashTag => "hashtag",
             Self::CashTag => "cashtag",
-            Self::BotCommand => "botcommand",
+            Self::BotCommand => "bot_command",
             Self::Email => "email",
             Self::PhoneNumber => "phone_number",
             Self::Bold => "bold",
@@ -214,6 +218,7 @@ impl DbMarkupType {
             Self::Underline => "underline",
             Self::Spoiler => "spoiler",
             Self::Code => "code",
+            Self::Url => "url",
             Self::Mention => "mention",
         }
     }

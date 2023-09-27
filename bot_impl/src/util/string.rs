@@ -110,6 +110,7 @@ impl Speak for Message {
             match MarkupBuilder::from_murkdown_chatuser(
                 message.as_ref(),
                 self.get_chatuser().as_ref(),
+                None,
                 false,
                 true,
             )
@@ -144,7 +145,7 @@ impl Speak for Message {
     async fn speak_fmt(&self, mut message: EntityMessage) -> Result<Option<Message>> {
         let message = message.call();
         if !should_ignore_chat(self.get_chat().get_id()).await? {
-            let b = MarkupBuilder::from_murkdown(message.get_text(), false, true).await?;
+            let b = MarkupBuilder::from_murkdown(message.get_text(), None, false, true).await?;
             let (text, mut entities, _) = b.build_owned();
             if let Some(e) = message.get_entities() {
                 entities.extend_from_slice(e.as_slice());
@@ -160,7 +161,7 @@ impl Speak for Message {
     async fn reply_fmt(&self, mut message: EntityMessage) -> Result<Option<Message>> {
         let message = message.call();
         if !should_ignore_chat(self.get_chat().get_id()).await? {
-            let b = MarkupBuilder::from_murkdown(message.get_text(), false, true).await?;
+            let b = MarkupBuilder::from_murkdown(message.get_text(), None, false, true).await?;
 
             let (text, mut entities, _) = b.build_owned();
             if let Some(e) = message.get_entities() {
@@ -200,6 +201,7 @@ impl Speak for Message {
             match MarkupBuilder::from_murkdown_chatuser(
                 message.as_ref(),
                 self.get_chatuser().as_ref(),
+                None,
                 false,
                 true,
             )

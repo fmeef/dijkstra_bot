@@ -208,6 +208,7 @@ where
                 if let Ok(md) = MarkupBuilder::from_murkdown_button(
                     &text,
                     self.context.get_static().chatuser().as_ref(),
+                    None,
                     &callback,
                     false,
                     false,
@@ -332,6 +333,7 @@ where
                 if let Ok(md) = MarkupBuilder::from_murkdown_button(
                     &text,
                     self.context.get_static().chatuser().as_ref(),
+                    None,
                     &callback,
                     false,
                     false,
@@ -456,6 +458,7 @@ where
             if let Ok(md) = MarkupBuilder::from_murkdown_button(
                 &text,
                 self.context.get_static().chatuser().as_ref(),
+                None,
                 &callback,
                 false,
                 false,
@@ -577,7 +580,8 @@ where
         user: Cow::Borrowed(v),
     });
     let (text, entities, buttons) = if let Ok(mut md) =
-        MarkupBuilder::from_murkdown_button(&text, chatuser.as_ref(), &callback, false, false).await
+        MarkupBuilder::from_murkdown_button(&text, chatuser.as_ref(), None, &callback, false, false)
+            .await
     {
         for ex in extra_buttons {
             md.buttons.button(ex);
@@ -664,6 +668,7 @@ where
     let (text, entities, buttons) = if let Ok(md) = MarkupBuilder::from_murkdown_button(
         &text,
         current_message.get_chatuser().as_ref(),
+        None,
         &callback,
         false,
         false,
@@ -788,6 +793,7 @@ where
         if let Ok(md) = MarkupBuilder::from_murkdown_button(
             &text,
             message.get_chatuser().as_ref(),
+            None,
             &callback,
             false,
             false,

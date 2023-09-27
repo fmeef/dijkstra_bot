@@ -51,6 +51,7 @@ async fn handle_murkdown(message: &Message) -> Result<bool> {
             match MarkupBuilder::from_murkdown_chatuser(
                 text,
                 message.get_chatuser().as_ref(),
+                None,
                 false,
                 false,
             )
@@ -82,7 +83,7 @@ async fn handle_murkdown(message: &Message) -> Result<bool> {
 async fn handle_markdown(message: &Message) -> Result<bool> {
     if let Some(message) = message.get_reply_to_message() {
         if let Some(text) = message.get_text() {
-            let md = MarkupBuilder::from_markdown(text);
+            let md = MarkupBuilder::from_markdown(text, None);
             let (msg, entities) = md.build();
             TG.client()
                 .build_send_message(message.get_chat().get_id(), msg)

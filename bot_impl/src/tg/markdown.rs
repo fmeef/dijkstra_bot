@@ -9,6 +9,7 @@ use botapi::gen_types::{
 };
 use futures::future::BoxFuture;
 use futures::FutureExt;
+use itertools::Itertools;
 use markdown::{Block, ListItem, Span};
 use uuid::Uuid;
 
@@ -159,6 +160,7 @@ pomelo! {
     %type RawChar char;
     %type Space char;
     %type text String;
+    %type wstr String;
 
     input    ::= header(A) Eof {
         FilterCommond {
@@ -217,16 +219,20 @@ pomelo! {
 
  //   word      ::= LCurly RCurly { super::TgSpan::NoOp }
     word      ::= Str(S) { super::TgSpan::Raw(S) }
-    word      ::= LCurly Str(W) RCurly { super::TgSpan::Filling(W) }
-    word      ::= LSBracket Tick Str(W) RSBracket { super::TgSpan::Code(W) }
+    word      ::= LCurly wstr(W) RCurly { super::TgSpan::Filling(W) }
+    word      ::= LSBracket Tick wstr(W) RSBracket { super::TgSpan::Code(W) }
     word      ::= LSBracket Star main(S) RSBracket { super::TgSpan::Bold(S) }
     word      ::= LSBracket main(H) RSBracket LParen Str(L) RParen { super::TgSpan::Link(H, L) }
     word      ::= LSBracket Tilde main(R) RSBracket { super::TgSpan::Strikethrough(R) }
     word      ::= LSBracket Underscore main(R) RSBracket { super::TgSpan::Italic(R) }
     word      ::= LSBracket DoubleUnderscore main(R) RSBracket { super::TgSpan::Underline(R) }
     word      ::= LSBracket DoubleBar main(R) RSBracket { super::TgSpan::Spoiler(R) }
-    word      ::= LTBracket Str(W) RTBracket LParen Str(L) RParen { super::TgSpan::Button(W, L) }
-    word      ::= LTBracket LTBracket Str(W) RTBracket RTBracket LParen Str(L) RParen { super::TgSpan::NewlineButton(W, L) }
+    word      ::= LTBracket wstr(W) RTBracket LParen wstr(L) RParen { super::TgSpan::Button(W, L) }
+    word      ::= LTBracket LTBracket wstr(W) RTBracket RTBracket LParen wstr(L) RParen { super::TgSpan::NewlineButton(W, L) }
+
+    wstr      ::= Str(S) { S }
+    wstr      ::= Str(S) Whitespace(W) wstr(mut L){ L.push_str(&S); L.push_str(&W); L}
+
 
 //   footer     ::= Fmuf { "".to_owned() }
 
@@ -380,6 +386,7 @@ impl<'a> Lexer<'a> {
 
 #[derive(Clone)]
 pub struct MarkupBuilder {
+    existing_entities: Option<Vec<MessageEntity>>,
     entities: Vec<MessageEntity>,
     pub buttons: InlineKeyboardBuilder,
     pub header: Option<Header>,
@@ -425,8 +432,13 @@ pub fn get_markup_for_buttons(button: Vec<button::Model>) -> Option<InlineKeyboa
 /// or manually
 impl MarkupBuilder {
     /// Constructs a new empty builder for manual formatting
-    pub fn new() -> Self {
+    pub fn new(existing: Option<Vec<MessageEntity>>) -> Self {
         Self {
+            existing_entities: existing.map(|v| {
+                v.into_iter()
+                    .sorted_by_key(|v| v.get_offset())
+                    .collect_vec()
+            }),
             entities: Vec::new(),
             offset: 0,
             text: String::new(),
@@ -500,11 +512,13 @@ impl MarkupBuilder {
         span: Vec<TgSpan>,
         message: Option<&'a ChatUser<'a>>,
         callback: &'a F,
-    ) -> BoxFuture<Result<(i64, i64)>>
+        topplevel: bool,
+    ) -> BoxFuture<Result<(i64, i64, i64)>>
     where
         F: for<'b> Fn(String, &'b InlineKeyboardButton) -> BoxFuture<'b, Result<()>> + Send + Sync,
     {
         async move {
+            let mut diff = 0;
             let mut size = 0;
             for span in span {
                 match (span, message) {
@@ -512,39 +526,54 @@ impl MarkupBuilder {
                         self.code(&code);
                     }
                     (TgSpan::Italic(s), _) => {
-                        let (s, e) = self.parse_tgspan(s, message, callback).await?;
+                        let (s, e, d) = self.parse_tgspan(s, message, callback, false).await?;
+                        diff += d;
                         size += e;
                         self.manual("italic", s, e);
                     }
                     (TgSpan::Bold(s), _) => {
-                        let (s, e) = self.parse_tgspan(s, message, callback).await?;
+                        let (s, e, d) = self.parse_tgspan(s, message, callback, false).await?;
+                        diff += d;
                         size += e;
                         self.manual("bold", s, e);
                     }
                     (TgSpan::Strikethrough(s), _) => {
-                        let (s, e) = self.parse_tgspan(s, message, callback).await?;
+                        let (s, e, d) = self.parse_tgspan(s, message, callback, false).await?;
+                        diff += d;
                         size += e;
                         self.manual("strikethrough", s, e);
                     }
                     (TgSpan::Underline(s), _) => {
-                        let (s, e) = self.parse_tgspan(s, message, callback).await?;
+                        let (s, e, d) = self.parse_tgspan(s, message, callback, false).await?;
+                        diff += d;
                         size += e;
                         self.manual("underline", s, e);
                     }
                     (TgSpan::Spoiler(s), _) => {
-                        let (s, e) = self.parse_tgspan(s, message, callback).await?;
+                        let (s, e, d) = self.parse_tgspan(s, message, callback, false).await?;
+                        diff += d;
                         size += e;
                         self.manual("spoiler", s, e);
                     }
                     (TgSpan::Button(hint, button), _) => {
+                        diff += hint.encode_utf16().count() as i64
+                            + button.encode_utf16().count() as i64
+                            + "<>()".encode_utf16().count() as i64;
                         self.button(hint, button, message, callback).await?;
                     }
                     (TgSpan::NewlineButton(hint, button), _) => {
+                        diff += hint.encode_utf16().count() as i64
+                            + button.encode_utf16().count() as i64
+                            + "<>()".encode_utf16().count() as i64;
                         self.buttons.newline();
                         self.button(hint, button, message, callback).await?;
                     }
                     (TgSpan::Link(hint, link), _) => {
-                        let (s, e) = self.parse_tgspan(hint, message, callback).await?;
+                        let (s, e, d) = self.parse_tgspan(hint, message, callback, false).await?;
+                        diff += d;
+
+                        diff += link.encode_utf16().count() as i64
+                            + "[]()".encode_utf16().count() as i64;
                         size += e;
                         let entity = MessageEntityBuilder::new(s, e)
                             .set_type("text_link".to_owned())
@@ -554,6 +583,7 @@ impl MarkupBuilder {
                     }
                     (TgSpan::Raw(s), _) => {
                         size += s.encode_utf16().count() as i64;
+                        diff += s.encode_utf16().count() as i64;
                         self.text(s);
                     }
                     (TgSpan::Filling(filling), Some(chatuser)) if self.filling => {
@@ -599,7 +629,9 @@ impl MarkupBuilder {
                             }
                             s => {
                                 let s = format!("{{{}}}", s);
+                                diff += s.encode_utf16().count() as i64;
                                 size += s.encode_utf16().count() as i64;
+
                                 self.text(s);
                             }
                         }
@@ -607,13 +639,45 @@ impl MarkupBuilder {
                     (TgSpan::Filling(filling), _) => {
                         let s = format!("{{{}}}", filling);
                         size += s.encode_utf16().count() as i64;
+                        diff += s.encode_utf16().count() as i64;
                         self.text(s);
                     }
                     (TgSpan::NoOp, _) => (),
                 };
             }
             let offset = self.offset - size;
-            Ok((offset, size))
+
+            if let Some(existing_entities) = self.existing_entities.as_mut() {
+                if topplevel {
+                    for entity in existing_entities.iter_mut() {
+                        if entity.get_offset() >= offset {
+                            log::info!("patching entity {} {} {}", self.offset, size, diff);
+                            let mut builder = MessageEntityBuilder::new(
+                                entity.get_offset() - (diff - size),
+                                entity.get_length(),
+                            )
+                            .set_type(entity.get_tg_type().into_owned());
+                            if let Some(v) = entity.get_url() {
+                                builder = builder.set_url(v.into_owned());
+                            }
+
+                            if let Some(v) = entity.get_user() {
+                                builder = builder.set_user(v.into_owned());
+                            }
+
+                            if let Some(v) = entity.get_language() {
+                                builder = builder.set_language(v.into_owned());
+                            }
+
+                            if let Some(v) = entity.get_custom_emoji_id() {
+                                builder = builder.set_custom_emoji_id(v.into_owned());
+                            }
+                            *entity = builder.build();
+                        }
+                    }
+                }
+            }
+            Ok((offset, size, diff))
         }
         .boxed()
     }
@@ -703,9 +767,9 @@ impl MarkupBuilder {
 
     /// Parses vanilla markdown and constructs a builder with the corresponding text
     /// and entities
-    pub fn from_markdown<T: AsRef<str>>(text: T) -> Self {
+    pub fn from_markdown<T: AsRef<str>>(text: T, existing: Option<Vec<MessageEntity>>) -> Self {
         let text = text.as_ref();
-        let mut s = Self::new();
+        let mut s = Self::new(existing);
         markdown::tokenize(text).into_iter().for_each(|v| {
             s.parse_block(v);
         });
@@ -715,25 +779,32 @@ impl MarkupBuilder {
     pub async fn from_tgspan<'a, F>(
         tgspan: Vec<TgSpan>,
         chatuser: Option<&'a ChatUser<'a>>,
+        existing: Option<Vec<MessageEntity>>,
         callback: F,
     ) -> Result<Self>
     where
         F: for<'b> Fn(String, &'b InlineKeyboardButton) -> BoxFuture<'b, Result<()>> + Send + Sync,
     {
-        let mut s = Self::new();
-        s.parse_tgspan(tgspan, chatuser, &callback).await?;
+        let mut s = Self::new(existing);
+        s.parse_tgspan(tgspan, chatuser, &callback, true).await?;
         Ok(s)
     }
 
     /// Parses murkdown and constructs a builder with the corresponding text and
     /// entities
-    pub async fn from_murkdown<T>(text: T, header: bool, filling: bool) -> Result<Self>
+    pub async fn from_murkdown<T>(
+        text: T,
+        existing: Option<Vec<MessageEntity>>,
+        header: bool,
+        filling: bool,
+    ) -> Result<Self>
     where
         T: AsRef<str>,
     {
         Self::from_murkdown_internal(
             text,
             None,
+            existing,
             &|_, _| async move { Ok(()) }.boxed(),
             header,
             filling,
@@ -746,6 +817,7 @@ impl MarkupBuilder {
     pub async fn from_murkdown_chatuser<'a, T>(
         text: T,
         chatuser: Option<&'a ChatUser<'a>>,
+        existing: Option<Vec<MessageEntity>>,
         header: bool,
         filling: bool,
     ) -> Result<Self>
@@ -755,6 +827,7 @@ impl MarkupBuilder {
         Self::from_murkdown_internal(
             text,
             chatuser,
+            existing,
             &|_, _| async move { Ok(()) }.boxed(),
             header,
             filling,
@@ -766,6 +839,7 @@ impl MarkupBuilder {
     pub async fn from_murkdown_button<'a, T, F>(
         text: T,
         chatuser: Option<&'a ChatUser<'a>>,
+        existing: Option<Vec<MessageEntity>>,
         callback: &F,
         header: bool,
         filling: bool,
@@ -774,12 +848,13 @@ impl MarkupBuilder {
         T: AsRef<str>,
         F: for<'b> Fn(String, &'b InlineKeyboardButton) -> BoxFuture<'b, Result<()>> + Send + Sync,
     {
-        Self::from_murkdown_internal(text, chatuser, callback, header, filling).await
+        Self::from_murkdown_internal(text, chatuser, existing, callback, header, filling).await
     }
 
     async fn from_murkdown_internal<'a, T, F>(
         text: T,
         chatuser: Option<&'a ChatUser<'a>>,
+        existing: Option<Vec<MessageEntity>>,
         callback: &F,
         header: bool,
         filling: bool,
@@ -789,7 +864,7 @@ impl MarkupBuilder {
         F: for<'b> Fn(String, &'b InlineKeyboardButton) -> BoxFuture<'b, Result<()>> + Send + Sync,
     {
         let text = text.as_ref();
-        let mut s = Self::new();
+        let mut s = Self::new(existing);
         s.filling = filling;
         let mut parser = Parser::new();
         let mut tokenizer = Lexer::new(text, header);
@@ -805,7 +880,10 @@ impl MarkupBuilder {
                 None
             }
         });
-        s.parse_tgspan(res.body, chatuser, &callback).await?;
+        s.parse_tgspan(res.body, chatuser, &callback, true).await?;
+        if let Some(ref existing) = s.existing_entities {
+            s.entities.extend_from_slice(&existing.as_slice());
+        }
         Ok(s)
     }
 
@@ -1050,7 +1128,7 @@ pub async fn retro_fillings<'a>(
         let filling = &mat.as_str()[1..mat.len() - 1];
         let regular = &text[prev..mat.start()];
         res.push_str(regular);
-        pos += regular.encode_utf16().count() as i64;
+        pos += regular.encode_utf16().count() as i64 + 1;
         prev = mat.end();
         log::info!("matching {}: {}", filling, pos);
         let (text, entity) = match filling {
@@ -1140,6 +1218,9 @@ pub async fn retro_fillings<'a>(
             extra_entities.push(entity);
         }
     }
+
+    let regular = &text[prev..];
+    res.push_str(regular);
     let newoffsets = entities
         .into_iter()
         .zip(offsets)
@@ -1191,6 +1272,7 @@ pub enum MarkupType {
     Spoiler,
     Code,
     Mention,
+    Url,
     TextLink(String),
     TextMention(User),
     Pre(String),
@@ -1232,7 +1314,7 @@ where
             MarkupType::StrikeThrough => "strikethrough",
             MarkupType::HashTag => "hashtag",
             MarkupType::CashTag => "cashtag",
-            MarkupType::BotCommand => "botcommand",
+            MarkupType::BotCommand => "bot_command",
             MarkupType::Email => "email",
             MarkupType::PhoneNumber => "phone_number",
             MarkupType::Bold => "bold",
@@ -1241,6 +1323,7 @@ where
             MarkupType::Spoiler => "spoiler",
             MarkupType::Code => "code",
             MarkupType::Mention => "mention",
+            MarkupType::Url => "url",
         }
     }
 
@@ -1268,7 +1351,7 @@ pub struct EntityMessage {
 impl EntityMessage {
     pub fn new(chat: i64) -> Self {
         Self {
-            builder: MarkupBuilder::new(),
+            builder: MarkupBuilder::new(None),
             chat,
             reply_markup: None,
         }
@@ -1352,17 +1435,20 @@ mod test {
             panic!("got invalid token");
         }
 
-        for c in ['b', 'o', 'l', 'd'] {
-            if let Some(Token::RawChar(s)) = tokenizer.next_token() {
-                assert_eq!(s, c);
-            } else {
-                panic!("got invalid token");
-            }
+        if let Some(Token::Str(s)) = tokenizer.next_token() {
+            assert_eq!(s, "bold");
+        } else {
+            panic!("got invalid token");
         }
 
         if let Some(Token::RSBracket) = tokenizer.next_token() {
         } else {
             panic!("got invalid token");
+        }
+
+        if let Some(Token::Eof) = tokenizer.next_token() {
+        } else {
+            panic!("Missing Eof");
         }
 
         if let Some(_) = tokenizer.next_token() {
@@ -1387,7 +1473,7 @@ mod test {
 
     #[test]
     fn parse_multi() {
-        let tokens = test_parse(MARKDOWN_TEST);
+        let tokens = test_parse(MARKDOWN_TEST).body;
         let mut counter = 0;
         for token in tokens {
             if let TgSpan::Raw(raw) = token {
@@ -1395,12 +1481,12 @@ mod test {
                 counter += 1;
             }
         }
-        assert_eq!(counter, 3);
+        assert_eq!(counter, 6);
     }
 
     #[test]
     fn raw_test() {
-        if let Some(TgSpan::Raw(res)) = test_parse(RAW).get(0) {
+        if let Some(TgSpan::Raw(res)) = test_parse(RAW).body.get(0) {
             assert_eq!(res, RAW);
         } else {
             panic!("failed to parse");
@@ -1414,19 +1500,16 @@ mod test {
 
     #[test]
     fn escape() {
-        if let Some(TgSpan::Raw(res)) = test_parse(ESCAPE).get(0) {
-            assert_eq!(res, ESCAPE.replace("\\", "").as_str());
+        if let [TgSpan::Raw(ref res), TgSpan::Raw(ref ws), TgSpan::Raw(ref res2)] =
+            test_parse(ESCAPE).body.as_slice()[0..]
+        {
+            let mut r = String::new();
+            r.push_str(&res);
+            r.push_str(&ws);
+            r.push_str(&res2);
+            assert_eq!(r, ESCAPE.replace("\\", "").as_str());
         } else {
             panic!("failed to parse");
         }
-    }
-
-    #[test]
-    fn markup_builder() {
-        let p = test_parse(MARKDOWN_TEST);
-        let mut b = MarkupBuilder::new();
-        b.parse_tgspan(p, None, &|_, _| async move { Ok(()) });
-        assert_eq!(b.entities.len(), 2);
-        println!("{}", b.text);
     }
 }

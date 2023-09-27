@@ -428,7 +428,7 @@ async fn command_blocklist<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()>
     ctx.check_permissions(|p| p.can_manage_chat).await?;
 
     let message = ctx.message()?;
-    let cmd = MarkupBuilder::from_murkdown(args.text, true, false).await?;
+    let cmd = MarkupBuilder::from_murkdown(args.text, None, true, false).await?;
 
     let (body, _, _, header, footer) = cmd.build_filter();
     let filters = match header.ok_or_else(|| ctx.fail_err("Header missing from filter command"))? {

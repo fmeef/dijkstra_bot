@@ -540,6 +540,7 @@ impl Conversation {
             if let Ok(builder) = MarkupBuilder::from_murkdown_chatuser(
                 &content,
                 message.get_chatuser().as_ref(),
+                None,
                 false,
                 false,
             )

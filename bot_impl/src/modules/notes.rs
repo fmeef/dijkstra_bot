@@ -358,7 +358,7 @@ pub mod entities {
                 },
             );
 
-            log::info!("got {:?} filters from db", res);
+            //            log::info!("got {:?} filters from db", res);
             Ok(res)
         }
     }
@@ -377,10 +377,17 @@ async fn get_model<'a>(
                 .map(|t| Some(t))
                 .unwrap_or_else(|| message.get_caption_ref());
             let (text, entity_id) = if let Some(text) = text {
-                let md =
-                    MarkupBuilder::from_murkdown_chatuser(&text, chatuser.as_ref(), false, false)
-                        .await?;
+                let extra = message.get_entities().map(|v| v.into_owned());
+                let md = MarkupBuilder::from_murkdown_chatuser(
+                    &text,
+                    chatuser.as_ref(),
+                    extra,
+                    false,
+                    false,
+                )
+                .await?;
                 let (text, entities, buttons) = md.build_owned();
+
                 let entity_id = entity::insert(DB.deref(), &entities, buttons).await?;
                 (Some(text), Some(entity_id))
             } else {
@@ -406,9 +413,16 @@ async fn get_model<'a>(
 
             let (text, entity_id) = if let Some(text) = content {
                 log::info!("content {}", text);
-                let md =
-                    MarkupBuilder::from_murkdown_chatuser(&text, chatuser.as_ref(), false, false)
-                        .await?;
+
+                let extra = message.get_entities().map(|v| v.into_owned());
+                let md = MarkupBuilder::from_murkdown_chatuser(
+                    &text,
+                    chatuser.as_ref(),
+                    extra,
+                    false,
+                    false,
+                )
+                .await?;
                 let (text, entities, buttons) = md.build_owned();
                 let entity_id = entity::insert(DB.deref(), &entities, buttons).await?;
                 (Some(text), Some(entity_id))

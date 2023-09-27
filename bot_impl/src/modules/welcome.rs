@@ -64,14 +64,18 @@ async fn get_model<'a>(
     args: &'a TextArgs<'a>,
     goodbye: bool,
 ) -> Result<welcomes::ActiveModel> {
-    let (message, text) = if let Some(message) = message.get_reply_to_message_ref() {
-        (message, message.get_text_ref())
+    let (message, text, extra) = if let Some(message) = message.get_reply_to_message_ref() {
+        (
+            message,
+            message.get_text_ref(),
+            message.get_entities().map(|v| v.into_owned()),
+        )
     } else {
-        (message, Some(args.text))
+        (message, Some(args.text), None)
     };
 
     let (text, entity_id) = if let Some(text) = text {
-        let builder = MarkupBuilder::from_murkdown(text, false, false).await?;
+        let builder = MarkupBuilder::from_murkdown(text, extra, false, false).await?;
         let (text, entities, buttons) = builder.build_owned();
 
         log::info!("welcome get with buttons {:?}", buttons.get());
