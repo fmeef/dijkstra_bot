@@ -31,7 +31,7 @@ use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::persist::core::{chat_members, dialogs};
-use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache, RedisStr};
+use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisStr, ToRedisStr};
 use crate::statics::{CONFIG, DB, REDIS, TG};
 use crate::tg::button::OnPush;
 use crate::util::error::BotError;
@@ -145,7 +145,12 @@ pub async fn dialog_or_default(chat: &Chat) -> Result<dialogs::Model> {
             )
             .exec_with_returning(DB.deref())
             .await?;
-        d.clone().cache(&key).await?; //TODO: remove this hack
+        REDIS
+            .try_pipe(|q| {
+                Ok(q.set(&key, d.to_redis()?)
+                    .expire(&key, CONFIG.timing.cache_timeout as usize))
+            })
+            .await?;
         d
     };
     Ok(model)
