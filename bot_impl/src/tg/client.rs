@@ -20,7 +20,7 @@ use super::{
     admin_helpers::is_dm,
     button::{get_url, InlineKeyboardBuilder},
     command::Context,
-    dialog::{Conversation, ConversationState},
+    dialog::{dialog_from_update, Conversation, ConversationState},
     permissions::*,
     user::RecordUser,
 };
@@ -302,6 +302,11 @@ impl TgClient {
 
                     if let Err(err) = update.record_user().await {
                         log::error!("failed to record_user: {}", err);
+                        err.record_stats();
+                    }
+
+                    if let Err(err) = dialog_from_update(&update).await {
+                        log::error!("failed to update dialog from update");
                         err.record_stats();
                     }
 

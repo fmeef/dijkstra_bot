@@ -56,6 +56,16 @@ pub fn get_dialog_key(chat: i64) -> String {
     format!("dia:{}", chat)
 }
 
+/// Attempt to record the current dialog from a message.
+/// TODO: Remove this later once all existing chats are updated?
+pub async fn dialog_from_update(update: &UpdateExt) -> Result<()> {
+    if let UpdateExt::Message(message) = update {
+        let chat = message.get_chat_ref();
+        dialog_or_default(chat).await?;
+    }
+    Ok(())
+}
+
 /// Get chat settings for a specific chat
 pub async fn get_dialog(chat: &Chat) -> Result<Option<dialogs::Model>> {
     let chat_id = chat.get_id();
@@ -81,7 +91,23 @@ pub async fn upsert_dialog(model: dialogs::ActiveModel) -> Result<()> {
     dialogs::Entity::insert(model)
         .on_conflict(
             OnConflict::column(dialogs::Column::ChatId)
-                .update_columns([dialogs::Column::WarnLimit, dialogs::Column::Federation])
+                .update_columns([
+                    dialogs::Column::WarnLimit,
+                    dialogs::Column::Federation,
+                    dialogs::Column::Language,
+                    dialogs::Column::ChatType,
+                    dialogs::Column::CanSendMessages,
+                    dialogs::Column::CanSendAudio,
+                    dialogs::Column::CanSendVideo,
+                    dialogs::Column::CanSendPhoto,
+                    dialogs::Column::CanSendDocument,
+                    dialogs::Column::CanSendVoiceNote,
+                    dialogs::Column::CanSendVideoNote,
+                    dialogs::Column::CanSendPoll,
+                    dialogs::Column::CanSendOther,
+                    dialogs::Column::WarnTime,
+                    dialogs::Column::ActionType,
+                ])
                 .to_owned(),
         )
         .exec(DB.deref())
@@ -98,7 +124,23 @@ pub async fn dialog_or_default(chat: &Chat) -> Result<dialogs::Model> {
         let d = dialogs::Entity::insert(dialogs::Model::from_chat(chat).await?)
             .on_conflict(
                 OnConflict::column(dialogs::Column::ChatId)
-                    .update_column(dialogs::Column::WarnLimit)
+                    .update_columns([
+                        dialogs::Column::WarnLimit,
+                        dialogs::Column::Federation,
+                        dialogs::Column::Language,
+                        dialogs::Column::ChatType,
+                        dialogs::Column::CanSendMessages,
+                        dialogs::Column::CanSendAudio,
+                        dialogs::Column::CanSendVideo,
+                        dialogs::Column::CanSendPhoto,
+                        dialogs::Column::CanSendDocument,
+                        dialogs::Column::CanSendVoiceNote,
+                        dialogs::Column::CanSendVideoNote,
+                        dialogs::Column::CanSendPoll,
+                        dialogs::Column::CanSendOther,
+                        dialogs::Column::WarnTime,
+                        dialogs::Column::ActionType,
+                    ])
                     .to_owned(),
             )
             .exec_with_returning(DB.deref())

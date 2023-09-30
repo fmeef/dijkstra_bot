@@ -5,7 +5,10 @@ use std::{borrow::Cow, collections::HashMap};
 
 use crate::{
     langs::Lang,
-    persist::redis::{RedisStr, ToRedisStr},
+    persist::{
+        core::dialogs,
+        redis::{RedisStr, ToRedisStr},
+    },
     statics::{CONFIG, REDIS, TG},
     util::string::get_chat_lang,
     util::{
@@ -19,6 +22,7 @@ use botapi::gen_types::{
     UpdateExt, User,
 };
 use chrono::Duration;
+use sea_orm::IntoActiveModel;
 use tokio::{sync::mpsc, time::sleep};
 use uuid::Uuid;
 
@@ -26,6 +30,7 @@ use super::{
     admin_helpers::{is_group_or_die, is_self_admin},
     button::{InlineKeyboardBuilder, OnPush},
     command::Context,
+    dialog::upsert_dialog,
     markdown::EntityMessage,
     user::{GetUser, Username},
 };
@@ -606,6 +611,8 @@ impl IsAdmin for i64 {
 pub async fn update_self_admin(update: &UpdateExt) -> Result<()> {
     match update {
         UpdateExt::MyChatMember(member) => {
+            let dialog = dialogs::Model::from_chat(member.get_chat_ref()).await?;
+            upsert_dialog(dialog.into_active_model()).await?;
             let key = get_chat_admin_cache_key(member.get_chat().get_id());
             member.get_chat().refresh_cached_admins().await?;
             match member.get_new_chat_member_ref() {
