@@ -430,7 +430,7 @@ impl IsGroupAdmin for Context {
     /// return with error
     async fn check_permissions<F>(&self, func: F) -> Result<()>
     where
-        F: FnOnce(NamedBotPermissions) -> NamedPermission + Send,
+        F: Fn(NamedBotPermissions) -> NamedPermission + Send,
     {
         self.message()?.check_permissions(func).await
     }

@@ -4,23 +4,49 @@
 use std::{borrow::Cow, collections::HashMap};
 
 use crate::{
+    langs::Lang,
     persist::redis::{RedisStr, ToRedisStr},
     statics::{CONFIG, REDIS, TG},
-    util::error::{BotError, Fail, Result},
     util::string::get_chat_lang,
+    util::{
+        error::{BotError, Fail, Result},
+        string::Speak,
+    },
 };
 use async_trait::async_trait;
-use botapi::gen_types::{Chat, ChatMember, ChatMemberAdministrator, Message, UpdateExt, User};
+use botapi::gen_types::{
+    Chat, ChatMember, ChatMemberAdministrator, EReplyMarkup, InlineKeyboardButtonBuilder, Message,
+    UpdateExt, User,
+};
 use chrono::Duration;
+use tokio::{sync::mpsc, time::sleep};
+use uuid::Uuid;
 
 use super::{
     admin_helpers::{is_group_or_die, is_self_admin},
+    button::{InlineKeyboardBuilder, OnPush},
     command::Context,
+    markdown::EntityMessage,
     user::{GetUser, Username},
 };
 use itertools::Itertools;
 use macros::lang_fmt;
 use redis::AsyncCommands;
+
+/// Helper trait to get information from a ChatMember
+pub trait ChatMemberUtils {
+    fn is_anon_admin(&self) -> bool;
+}
+
+impl ChatMemberUtils for ChatMember {
+    fn is_anon_admin(&self) -> bool {
+        match self {
+            ChatMember::ChatMemberAdministrator(ref admin) => admin.get_is_anonymous(),
+            ChatMember::ChatMemberOwner(ref owner) => owner.get_is_anonymous(),
+            _ => false,
+        }
+    }
+}
 
 /// Granular permissions with associated humanreadable name. Used for printing
 /// detailed error messages to users
@@ -37,6 +63,22 @@ pub struct NamedBotPermissions {
 }
 
 impl NamedBotPermissions {
+    /// Use the admin cache to check a user's permissions in a group
+    pub async fn from_chatmember(admin: ChatMember) -> Result<Self> {
+        let user = admin.get_user().get_id();
+        let mut v: NamedBotPermissions = admin.into();
+        if CONFIG.admin.sudo_users.contains(&user) {
+            v.is_sudo.0.iter_mut().for_each(|v| v.val = true);
+            v.is_support.0.iter_mut().for_each(|v| v.val = true);
+        }
+
+        if CONFIG.admin.support_users.contains(&user) {
+            v.is_support.0.iter_mut().for_each(|v| v.val = true);
+        }
+
+        Ok(v)
+    }
+
     /// Use the admin cache to check a user's permissions in a group
     pub async fn from_chatuser(user: &User, chat: &Chat) -> Result<Self> {
         let mut v = if let Some(admin) = chat.is_user_admin(user.get_id()).await? {
@@ -228,7 +270,7 @@ pub trait IsAdmin {
     /// return with error
     async fn check_permissions<F>(&self, chat: &Chat, func: F) -> Result<()>
     where
-        F: FnOnce(NamedBotPermissions) -> NamedPermission + Send;
+        F: Fn(NamedBotPermissions) -> NamedPermission + Send;
 }
 
 /// Extension trait similar to IsAdmin, but with checking for supergroups.
@@ -248,7 +290,7 @@ pub trait IsGroupAdmin {
     /// return with error
     async fn check_permissions<F>(&self, func: F) -> Result<()>
     where
-        F: FnOnce(NamedBotPermissions) -> NamedPermission + Send;
+        F: Fn(NamedBotPermissions) -> NamedPermission + Send;
 }
 
 /// Defines behavior for interacting with the admin cache. Implementors should have
@@ -269,6 +311,119 @@ pub trait GetCachedAdmins {
 
     /// Demotes a user, caching the demotion without refreshing
     async fn demote(&self, user: i64) -> Result<()>;
+}
+
+async fn get_permission_from_anonchannel<T, F>(
+    sp: &T,
+    func: F,
+    chat: &Chat,
+    lang: &Lang,
+) -> Result<()>
+where
+    T: Speak + Fail,
+
+    F: Fn(NamedBotPermissions) -> NamedPermission + Send,
+{
+    let (out, mut rx) = mpsc::channel(8);
+    let button = InlineKeyboardButtonBuilder::new("Push me to confirm admin".to_owned())
+        .set_callback_data(Uuid::new_v4().to_string())
+        .build();
+    let timer_out = out.clone();
+
+    tokio::spawn(async move {
+        sleep(Duration::minutes(1).to_std()?).await;
+        timer_out.send(None).await?;
+        Ok::<(), BotError>(())
+    });
+
+    button.on_push_multi(move |callback| {
+        let out = out.clone();
+        async move {
+            let user = callback.get_from();
+            if let Some(message) = callback.get_message() {
+                let permission =
+                    NamedBotPermissions::from_chatuser(&user, message.get_chat_ref()).await?;
+                if let Ok(_) = out.send(Some((permission, callback))).await {
+                    Ok(false)
+                } else {
+                    Ok(true)
+                }
+            } else {
+                Ok(true)
+            }
+        }
+    });
+    let mut kb = InlineKeyboardBuilder::default();
+    kb.button(button);
+    let mut m = EntityMessage::new(chat.get_id())
+        .reply_markup(EReplyMarkup::InlineKeyboardMarkup(kb.build()));
+
+    m.builder().text(lang_fmt!(lang, "provebutton"));
+    sp.speak_fmt(m).await?;
+    while let Some(Some((perm, cb))) = rx.recv().await {
+        let sudo = perm.is_sudo.is_granted();
+        let p = func(perm);
+        if p.is_granted() || sudo {
+            TG.client
+                .build_answer_callback_query(cb.get_id_ref())
+                .build()
+                .await?;
+            if let Some(message) = cb.get_message_ref() {
+                TG.client
+                    .build_delete_message(message.get_chat().get_id(), message.get_message_id())
+                    .build()
+                    .await?;
+            }
+            return Ok(());
+        } else {
+            TG.client
+                .build_answer_callback_query(cb.get_id_ref())
+                .text(&lang_fmt!(lang, "channeldenied"))
+                .show_alert(true)
+                .build()
+                .await?;
+        }
+    }
+    rx.close();
+    sp.fail("Anonymous channel denied permission")
+}
+
+async fn handle_perm_check<T, F>(
+    sp: &T,
+    func: F,
+    user: &User,
+    chat: &Chat,
+    anon: bool,
+) -> Result<()>
+where
+    T: Speak + Fail,
+    F: Fn(NamedBotPermissions) -> NamedPermission + Send,
+{
+    let lang = get_chat_lang(chat.get_id()).await?;
+
+    if anon {
+        return get_permission_from_anonchannel(sp, func, &chat, &lang).await;
+    }
+    log::info!("trying user {} {}", user.get_id(), chat.get_id());
+    let permission = if let Some(admin) = chat.is_user_admin(user.get_id()).await? {
+        log::info!("found is_user_admin");
+        if admin.is_anon_admin() {
+            return get_permission_from_anonchannel(sp, func, chat, &lang).await;
+        }
+        NamedBotPermissions::from_chatmember(admin).await?
+    } else {
+        log::info!("cached admin not found");
+        NamedBotPermissions::from_chatuser(user, chat).await?
+    };
+
+    let sudo = permission.is_sudo.is_granted();
+    let p = func(permission);
+
+    if !p.is_granted() && !sudo {
+        sp.fail(lang_fmt!(lang, "permdenied", p.get_name()))
+    } else {
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -305,28 +460,20 @@ impl IsGroupAdmin for Message {
         let res = NamedBotPermissions::from_chatuser(&user, chat).await?;
         Ok(res.into())
     }
+
     async fn check_permissions<F>(&self, func: F) -> Result<()>
     where
-        F: FnOnce(NamedBotPermissions) -> NamedPermission + Send,
+        F: Fn(NamedBotPermissions) -> NamedPermission + Send,
     {
         let chat = self.get_chat_ref();
         is_group_or_die(&chat).await?;
-
         let user = self
             .get_from()
             .ok_or_else(|| BotError::Generic("user not found".to_owned()))?;
-        let permission = NamedBotPermissions::from_chatuser(&user, chat).await?;
-        let lang = get_chat_lang(chat.get_id()).await?;
-
-        // log::info!("got permissions {:?}", permission);
-
-        let sudo = permission.is_sudo.is_granted();
-        let p = func(permission);
-
-        if !p.is_granted() && !sudo {
-            self.fail(lang_fmt!(lang, "permdenied", p.get_name()))
+        if let Some(chat) = self.get_sender_chat_ref() {
+            handle_perm_check(self, func, &user, chat, true).await
         } else {
-            Ok(())
+            handle_perm_check(self, func, &user, chat, false).await
         }
     }
 }
@@ -353,19 +500,10 @@ impl IsAdmin for User {
     }
     async fn check_permissions<F>(&self, chat: &Chat, func: F) -> Result<()>
     where
-        F: FnOnce(NamedBotPermissions) -> NamedPermission + Send,
+        F: Fn(NamedBotPermissions) -> NamedPermission + Send,
     {
         is_group_or_die(chat).await?;
-        let permission = NamedBotPermissions::from_chatuser(self, chat).await?;
-        let lang = get_chat_lang(chat.get_id()).await?;
-
-        let sudo = permission.is_sudo.is_granted();
-        let p = func(permission);
-        if !p.is_granted() && !sudo {
-            chat.fail(lang_fmt!(lang, "permdenied", p.get_name()))
-        } else {
-            Ok(())
-        }
+        handle_perm_check(chat, func, self, chat, false).await
     }
 }
 
@@ -407,22 +545,14 @@ impl<'a> IsAdmin for Option<Cow<'a, User>> {
     }
     async fn check_permissions<F>(&self, chat: &Chat, func: F) -> Result<()>
     where
-        F: FnOnce(NamedBotPermissions) -> NamedPermission + Send,
+        F: Fn(NamedBotPermissions) -> NamedPermission + Send,
     {
         is_group_or_die(chat).await?;
 
-        let lang = get_chat_lang(chat.get_id()).await?;
         let user = self
             .as_ref()
             .ok_or_else(|| BotError::Generic("user not found".to_owned()))?;
-        let permission = NamedBotPermissions::from_chatuser(&user, chat).await?;
-        let sudo = permission.is_sudo.is_granted();
-        let p = func(permission);
-        if !p.is_granted() && !sudo {
-            chat.fail(lang_fmt!(lang, "permdenied", p.get_name()))
-        } else {
-            Ok(())
-        }
+        handle_perm_check(chat, func, &user, chat, false).await
     }
 }
 
@@ -461,23 +591,14 @@ impl IsAdmin for i64 {
     }
     async fn check_permissions<F>(&self, chat: &Chat, func: F) -> Result<()>
     where
-        F: FnOnce(NamedBotPermissions) -> NamedPermission + Send,
+        F: Fn(NamedBotPermissions) -> NamedPermission + Send,
     {
         is_group_or_die(chat).await?;
         let user = self
             .get_cached_user()
             .await?
             .ok_or_else(|| BotError::Generic("user not found".to_owned()))?;
-
-        let lang = get_chat_lang(chat.get_id()).await?;
-        let permission = NamedBotPermissions::from_chatuser(&user, chat).await?;
-        let sudo = permission.is_sudo.is_granted();
-        let p = func(permission);
-        if !p.is_granted() && !sudo {
-            chat.fail(lang_fmt!(lang, "permdenied", p.get_name()))
-        } else {
-            Ok(())
-        }
+        handle_perm_check(chat, func, &user, chat, false).await
     }
 }
 

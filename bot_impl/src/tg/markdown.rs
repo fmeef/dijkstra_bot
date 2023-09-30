@@ -652,27 +652,7 @@ impl MarkupBuilder {
                     for entity in existing_entities.iter_mut() {
                         if entity.get_offset() >= offset {
                             log::info!("patching entity {} {} {}", self.offset, size, diff);
-                            let mut builder = MessageEntityBuilder::new(
-                                entity.get_offset() - (diff - size),
-                                entity.get_length(),
-                            )
-                            .set_type(entity.get_tg_type().into_owned());
-                            if let Some(v) = entity.get_url() {
-                                builder = builder.set_url(v.into_owned());
-                            }
-
-                            if let Some(v) = entity.get_user() {
-                                builder = builder.set_user(v.into_owned());
-                            }
-
-                            if let Some(v) = entity.get_language() {
-                                builder = builder.set_language(v.into_owned());
-                            }
-
-                            if let Some(v) = entity.get_custom_emoji_id() {
-                                builder = builder.set_custom_emoji_id(v.into_owned());
-                            }
-                            *entity = builder.build();
+                            entity.set_offset(entity.get_offset() - (diff - size));
                         }
                     }
                 }
@@ -1224,25 +1204,9 @@ pub async fn retro_fillings<'a>(
     let newoffsets = entities
         .into_iter()
         .zip(offsets)
-        .map(|(entity, (off, len))| {
-            let mut builder =
-                MessageEntityBuilder::new(off, len).set_type(entity.get_tg_type().into_owned());
-            if let Some(v) = entity.get_url() {
-                builder = builder.set_url(v.into_owned());
-            }
-
-            if let Some(v) = entity.get_user() {
-                builder = builder.set_user(v.into_owned());
-            }
-
-            if let Some(v) = entity.get_language() {
-                builder = builder.set_language(v.into_owned());
-            }
-
-            if let Some(v) = entity.get_custom_emoji_id() {
-                builder = builder.set_custom_emoji_id(v.into_owned());
-            }
-            builder.build()
+        .map(|(mut entity, (off, len))| {
+            entity.set_offset(off).set_length(len);
+            entity
         })
         .chain(extra_entities)
         .collect::<Vec<MessageEntity>>();

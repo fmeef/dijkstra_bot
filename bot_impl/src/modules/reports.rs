@@ -51,6 +51,7 @@ pub async fn report(ctx: &Context) -> Result<()> {
                         .get_cached_admins()
                         .await?
                         .values()
+                        .filter(|v| !v.is_anon_admin())
                         .map(|a| {
                             MessageEntityBuilder::new(0, 0)
                                 .set_type("text_mention".to_owned())

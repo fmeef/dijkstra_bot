@@ -1,4 +1,5 @@
 use crate::tg::command::Cmd;
+use crate::tg::markdown::EntityMessage;
 use crate::tg::permissions::*;
 use crate::tg::user::GetUser;
 use crate::{
@@ -8,7 +9,8 @@ use crate::{
     util::string::{get_chat_lang, Speak},
 };
 
-use itertools::Itertools;
+use futures::{stream, StreamExt, TryStreamExt};
+
 use macros::{entity_fmt, lang_fmt};
 use sea_orm_migration::MigrationTrait;
 metadata!("Admin",
@@ -82,16 +84,18 @@ async fn listadmins(ctx: &Context) -> Result<()> {
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
     let admins = message.get_chat().get_cached_admins().await?;
     let header = lang_fmt!(lang, "foundadmins", admins.len());
-    let body = admins
-        .values()
-        .map(|v| {
-            v.get_user()
-                .get_username()
-                .map(|u| u.into_owned())
-                .unwrap_or_else(|| v.get_user().get_id().to_string())
+    let mut builder = EntityMessage::new(message.get_chat().get_id());
+    builder.builder().text(header);
+    let body = stream::iter(admins.values().filter(|p| !p.is_anon_admin()))
+        .then(|v| async move { v.get_user().mention().await })
+        .try_fold(builder, |mut entities, value| async move {
+            entities.builder().text("\n");
+            entities.builder().regular(value);
+            Ok(entities)
         })
-        .join("\n - ");
-    message.speak(format!("{}:\n - {}", header, body)).await?;
+        .await?;
+
+    message.speak_fmt(body).await?;
     Ok(())
 }
 

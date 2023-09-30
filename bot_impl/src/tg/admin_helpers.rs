@@ -134,8 +134,10 @@ impl UpdateHelpers for UpdateExt {
 
             if old_left && !new_left {
                 Some(UserChanged::UserJoined(member))
-            } else {
+            } else if !old_left && new_left {
                 Some(UserChanged::UserLeft(member))
+            } else {
+                None
             }
         } else {
             None

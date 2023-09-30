@@ -1,184 +1,171 @@
-# This file holds all the strings for translation, localization, and/or theming a cloned bot
-# Change these strings to your liking to get different text in the bot for this particular language
-#
-# Notes on formatting:
-# {} allows a single formatted parameter, either a raw string or a telegram MessageEntity.
-# {{filler}} allows automated formfilling from the message context (see bot_impl/src/tg/markdown.rs)
-# available fillers include
-# {{username}} - the username of the user interacting with the string
-# {{first}} - the user's first name
-# {{last}} - the user's last name
-# {{mention}} - a telegram TextMention entity mentioning the user
-# {{chatname}} - the chat the message or string was sent in
-# {{id}} - the id of the user interacting with the string 
+addblocklist: Added blocklist {}
+addfilter: Added filter {}
+anonban: Anonymous channels cannot fban users
+anonfed: Anonymous channels cannot create federations
+approved: Approved user {}
+baddm: This command does not work in a dm
+banadmin: I am not going to ban an admin
+banchat: Banned anonymous channel {}, they won't be able to speak but are still lurking
+  somewhere...
+banmyself: I am not going to ban myself
+banned: Banned user {}
+cachewait: The admin cache can only be refreshed once every 10 minutes
+channeldenied: Anonymous channel is not admin, permission denied
+clearedlock: 'Cleared lock "{}"
 
-# debugging and testing
-test: "Invalid murkdown: {}"
-thing: "thing"
+  '
+cleartime: Cleared warn time for {}
+clearwarns: Cleared warns for user {}
+commandnotfound: Command not found
+currentlang: Choose a language from the list
+defaultgoodbye: Goodbye {{mention}}
+defaultwelcome: Hi there {{mention}}, welcome to {{chatname}}
+demote: Demoted user {}
+dmhelp: Contact me in pm for help!
+erranonchannelfed: Anonymous channels can't own feds. Try running this command from
+  your main account
+failban: 'Failed to ban user, I haven''t interacted with them in the last 48 hours.
+  Please forward me one of their messages
 
-# misc system functionality
-commandnotfound: "Command not found"
-baddm: "This command does not work in a dm"
-notsupergroup: "This group must be upgraded to a supergroup"
-notdm: "This command can only be used in dm"
-specifyuser: "You need to specify a user"
-usernotfound: "User not found. Only users that have been seen recently can be interacted with"
-dmhelp: "Contact me in pm for help!"
-startcmd: "Send /help to get a list of available commands"
-invalid_help: "Invalid help page {}"
-helpbutton: "Click me for help!"
-
-# language settings
-setlang: "Successfully set language"
-currentlang: "Choose a language from the list"
-invalidlang: "Invalid language selected"
-
-# gbans
-gbanned: "Good riddance!\nUser {} gbanned for {}"
-
-# federations
-joinfed: "Joined fed {} for chat {}"
-fpromote: "The user {} needs to confirm the fpromotion before continuing"
-unfbanperm: "You need to be an fedadmin to unfban"
-fedowner: "You are the owner of fed {} with id {}"
-fedadmin: "You are the admin of fed {} with id {}"
-subscribefed: "Successfully subscribed fed {} to {}"
-fstatline: "{} with reason \"{}\""
-fbanreason: | 
-  Good riddence!
-  User {} banned in fed {}
-  [*Reason:]
-  {}
-notfmember: "This chat is not a member of a fed"
-renamefed: "Renamed fed {} to {}"
-fstat: |
-  Fstat for {}:
-  {}
-unfban: "Unfbanned user {}"
-notfbanned: "User {} not fbanned"
-fban: "Good riddance! Fbanned user {} in {}"
-notfedadmin: "You are not a fedadmin in federation {}. Only fedadmins can issue fbans"
-notinfed: "The chat {} is not in a federation. Use /joinfed as admin to join one"
-erranonchannelfed: "Anonymous channels can't own feds. Try running this command from your main account"
-fedsforuser: |
-    Feds for user {}:
-    {}
-fpromotenotauth: "You are not authorized to accept this promotion"
-fpromoted: "You have been promoted"
-failfpromote: "Failed to promote user: {}"
-onlyone: "Only one federation allowed per user"
-anonfed: "Anonymous channels cannot create federations"
-anonban: "Anonymous channels cannot fban users"
-nofed: "This user does not own a federation."
-
-# permissions and admin rights
-needtobeadmin: "I'm sorry dave, I need to be admin to function in this group"
-lackingadminrights: "User {} lacking admin rights"
-foundadmins: "Found {} admins"
-refreshac: "Successfully refreshed admin cache"
-cachewait: "The admin cache can only be refreshed once every 10 minutes"
-permdenied: "Permission denied: the current user is missing the \"{}\" permission"
-
-# bans module
-banadmin: "I am not going to ban an admin"
-banmyself: "I am not going to ban myself"
-kickadmin: "I am not going to kick an admin"
-failban: |
-  Failed to ban user, I haven't interacted with them in the last 48 hours. Please forward me one of their messages
   in order to allow me to interact with them
-failmute: |
-  Failed to change this user's permissions. I haven't interacted with them in the last 48 hours.
+
+  '
+failfpromote: 'Failed to promote user: {}'
+failmute: 'Failed to change this user''s permissions. I haven''t interacted with them
+  in the last 48 hours.
+
   Please forward me one of their messages in order to allow me to interact with them
-muteuser: "Muted user {}"
-unmuteuser: "Unmuted user {}"
-muteadmin: "I am not going to mute an admin"
-mutemyself: "I am not going to mute myself"
-kickme: "BLUE TEXT MUST CLICK"
-banned: "Banned user {}"
-unbanned: "Unbanned user {}"
-banchat: "Banned anonymous channel {}, they won't be able to speak but are still lurking somewhere..."
-unbanchat: "Unbanned anonymous channel {}"
-restrict: "Restricted user {}"
-kicked: "Kicked user {}"
 
-# rules module
-norules: |
-  This chat has no rules. Complete anarchy. Feel free to spam it and post pirated udemy
+  '
+fban: Good riddance! Fbanned user {} in {}
+fbanreason: 'Good riddence!
+
+  User {} banned in fed {}
+
+  [*Reason:]
+
+  {}
+
+  '
+fedadmin: You are the admin of fed {} with id {}
+fedowner: You are the owner of fed {} with id {}
+fedsforuser: 'Feds for user {}:
+
+  {}
+
+  '
+filters: 'Filters in chat {}:
+
+
+  {}'
+foundadmins: Found {} admins
+fpromote: The user {} needs to confirm the fpromotion before continuing
+fpromoted: You have been promoted
+fpromotenotauth: You are not authorized to accept this promotion
+fstat: 'Fstat for {}:
+
+  {}
+
+  '
+fstatline: '{} with reason "{}"'
+gbanned: 'Good riddance!
+
+  User {} gbanned for {}'
+getrules: Get the chat rules {{rules}}
+helpbutton: Click me for help!
+invalid_help: Invalid help page {}
+invalidlang: Invalid language selected
+joinfed: Joined fed {} for chat {}
+kickadmin: I am not going to kick an admin
+kicked: Kicked user {}
+kickme: BLUE TEXT MUST CLICK
+lackingadminrights: User {} lacking admin rights
+listnotes: Notes for {}
+lockban: 'User {{mention}} banned!
+
+  [*Reason:]
+
+  {}
+
+  '
+lockedinchat: '- {} is locked in this chat'
+locknotspec: Invalid lock type, see /help for available locks
+lockwarn: "User {{mention}} warned! \n[*Reason:]\n{}\n"
+muteadmin: I am not going to mute an admin
+mutemyself: I am not going to mute myself
+muteuser: Muted user {}
+nan: Please enter a number
+needtobeadmin: I'm sorry dave, I need to be admin to function in this group
+negwarns: Negative warn limits don't make much sense
+noactionarg: You need to specify the action to set
+nofed: This user does not own a federation.
+noreason: No reason
+norules: 'This chat has no rules. Complete anarchy. Feel free to spam it and post
+  pirated udemy
+
   courses
-saverules: "Saved rules for chat {{chatname}}"
-getrules: "Get the chat rules {{rules}}"
 
-# welcomes module
-welcome: "Welcome to {}, a modular group management bot written in pythonb and asynctio"
-defaultwelcome: "Hi there {{mention}}, welcome to {{chatname}}"
-defaultgoodbye: "Goodbye {{mention}}"
-resetwelcome: "Cleared welcome config"
-welcomeinvalid: "Invalid argument, use on/off/yes/no"
-setwelcome: "Set group welcome to {}"
-setgoodbye: "Set group goodbye to {}"
+  '
+notdm: This command can only be used in dm
+notfbanned: User {} not fbanned
+notfedadmin: You are not a fedadmin in federation {}. Only fedadmins can issue fbans
+notfmember: This chat is not a member of a fed
+notinfed: The chat {} is not in a federation. Use /joinfed as admin to join one
+notsupergroup: This group must be upgraded to a supergroup
+onlyone: Only one federation allowed per user
+permdenied: 'Permission denied: the current user is missing the "{}" permission'
+promote: Promated user {}
+provebutton: Click the button to prove you are admin
+refreshac: Successfully refreshed admin cache
+removewarn: Remove warn
+renamefed: Renamed fed {} to {}
+reported: Reported user {} to admins!
+reported_nomention: Reported to admins!
+resetwelcome: Cleared welcome config
+restrict: Restricted user {}
+savednote: Saved note with name {} in chat {}
+saverules: Saved rules for chat {{chatname}}
+sendsticker: Send a sticker to upload
+setdefaultaction: Set default action
+setgoodbye: Set group goodbye to {}
+setlang: Successfully set language
+setlock: 'Set lock "{}" for chat "{}"
 
-# sticker tagger module
-sendsticker: "Send a sticker to upload"
+  '
+setlockaction: 'Set lock action to "{}"
 
-# admin module
-promote: "Promated user {}"
-demote: "Demoted user {}"
+  '
+setwelcome: Set group welcome to {}
+specifytime: You need to specify a time for this command
+specifyuser: You need to specify a user
+startcmd: Send /help to get a list of available commands
+subscribefed: Successfully subscribed fed {} to {}
+test: 'Invalid murkdown: {}'
+thing: thing
+unapproved: Unapproved user {}
+unbanchat: Unbanned anonymous channel {}
+unbanned: Unbanned user {}
+unfban: Unfbanned user {}
+unfbanperm: You need to be an fedadmin to unfban
+unmuteuser: Unmuted user {}
+usernotfound: User not found. Only users that have been seen recently can be interacted
+  with
+warn: 'Yowzers!: Warned user {} with {}/{} warns'
+warnadmin: I am not going to warn an admin! What the absolute hecking heck
+warnban: That's {} warnings! User {} banned
+warnlimit: Set the warn limit to {} for chat {}
+warnmode: Set the warn mode to {} for chat {}
+warnmute: That's {} warnings! User {} muted
+warnreason: 'Yowzers! Warned user {} with {}/{} warns
 
-# reports module
-reported: "Reported user {} to admins!"
-reported_nomention: "Reported to admins!"
-
-# warns module
-warnmute: "That's {} warnings! User {} muted"
-warnban: "That's {} warnings! User {} banned"
-warnadmin: "I am not going to warn an admin! What the absolute hecking heck"
-warns: "Warns for user {}:\n{}"
-noreason: "No reason"
-warnsline: "Reason: {}"
-warnreason: |
-  Yowzers! Warned user {} with {}/{} warns
   [*Reason:]
-  {}
-warn: "Yowzers!: Warned user {} with {}/{} warns"
-removewarn: "Remove warn"
-clearwarns: "Cleared warns for user {}"
-cleartime: "Cleared warn time for {}"
-specifytime: "You need to specify a time for this command"
-warnmode: "Set the warn mode to {} for chat {}"
-warnlimit: "Set the warn limit to {} for chat {}"
-negwarns: "Negative warn limits don't make much sense"
-nan: "Please enter a number"
 
-# filters module
-filters: "Filters in chat {}:\n\n{}"
-addfilter: "Added filter {}"
-
-# locks module
-setdefaultaction: "Set default action"
-noactionarg: "You need to specify the action to set"
-locknotspec: "Invalid lock type, see /help for available locks"
-clearedlock: |
-  Cleared lock "{}"
-setlock: |
-  Set lock "{}" for chat "{}"
-setlockaction: |
-  Set lock action to "{}"
-lockedinchat: "- {} is locked in this chat"
-lockwarn: |
-  User {{mention}} warned! 
-  [*Reason:]
-  {}
-lockban: |
-  User {{mention}} banned!
-  [*Reason:]
   {}
 
-# blocklists module
-addblocklist: "Added blocklist {}"
-approved: "Approved user {}"
-unapproved: "Unapproved user {}"
+  '
+warns: 'Warns for user {}:
 
-# notes module
-savednote: "Saved note with name {} in chat {}"
-listnotes: "Notes for {}"
-
+  {}'
+warnsline: 'Reason: {}'
+welcome: Welcome to {}, a modular group management bot written in pythonb and asynctio
+welcomeinvalid: Invalid argument, use on/off/yes/no

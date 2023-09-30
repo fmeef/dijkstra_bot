@@ -10,6 +10,7 @@ banchat: Canal anónimo prohibido {}, no podrán hablar pero siguen acechando po
 banmyself: no me voy a prohibir
 banned: Usuario prohibido {}
 cachewait: La caché de administrador solo se puede actualizar una vez cada 10 minutos.
+channeldenied: El canal anónimo no es administrador, permiso denegado
 clearedlock: Bloqueo borrado "{}"
 cleartime: Hora de advertencia borrada para {}
 clearwarns: Advertencias borradas para el usuario {}
@@ -105,6 +106,7 @@ notsupergroup: Este grupo debe actualizarse a un supergrupo.
 onlyone: Sólo se permite una federación por usuario
 permdenied: Permiso denegado, al usuario le falta el permiso "{}"
 promote: Usuario prometido {}
+provebutton: Haga clic en el botón para demostrar que es administrador
 refreshac: Caché de administrador actualizada correctamente
 removewarn: Quitar advertencia
 renamefed: Renombrado alimentado {} a {}
