@@ -1107,10 +1107,9 @@ pub async fn get_warns(chat: &Chat, user_id: i64) -> Result<Vec<warns::Model>> {
 }
 
 /// Gets the number of warns a user has in the given chat (from message)
-pub async fn get_warns_count(message: &Message, user: &User) -> Result<i32> {
-    let user_id = user.get_id();
+pub async fn get_warns_count(message: &Message, user: i64) -> Result<i32> {
     let chat_id = message.get_chat().get_id();
-    let key = get_warns_key(user.get_id(), message.get_chat().get_id());
+    let key = get_warns_key(user, message.get_chat().get_id());
     let v: Option<i32> = REDIS.sq(|q| q.scard(&key)).await?;
     if let Some(v) = v {
         Ok(v)
@@ -1120,7 +1119,7 @@ pub async fn get_warns_count(message: &Message, user: &User) -> Result<i32> {
                 let count = warns::Entity::find()
                     .filter(
                         warns::Column::UserId
-                            .eq(user_id)
+                            .eq(user)
                             .and(warns::Column::ChatId.eq(chat_id)),
                     )
                     .count(DB.deref())
@@ -1129,7 +1128,7 @@ pub async fn get_warns_count(message: &Message, user: &User) -> Result<i32> {
             },
             |key, _| async move {
                 let (exists, count): (bool, u64) =
-                    REDIS.pipe(|q| q.exists(&key).llen(&key)).await?;
+                    REDIS.pipe(|q| q.exists(&key).scard(&key)).await?;
                 Ok((exists, count))
             },
             |_, v| async move { Ok(v) },
@@ -2000,86 +1999,14 @@ impl Context {
         let dialog = dialog_or_default(message.get_chat_ref()).await?;
         let lang = get_chat_lang(message.get_chat().get_id()).await?;
         let time = dialog.warn_time.map(|t| Duration::seconds(t));
-        let (count, model) = warn_user(message, user, reason.map(|v| v.to_owned()), &time).await?;
-        let name = user.mention().await?;
-        let mut text = if let Some(_) = reason {
-            entity_fmt!(
-                self,
-                "warnreason",
-                name,
-                count.to_string(),
-                dialog.warn_limit.to_string()
-            )
-        } else {
-            entity_fmt!(
-                self,
-                "warn",
-                name,
-                count.to_string(),
-                dialog.warn_limit.to_string()
-            )
-        };
-        text.builder.filling = true;
-        text.builder = text.builder.chatuser(Some(
-            &message.get_chatuser_user(Cow::Owned(
-                user.get_cached_user()
-                    .await?
-                    .ok_or_else(|| self.fail_err(lang_fmt!(lang, "failwarn")))?,
-            )),
-        ));
-        let button_text = lang_fmt!(lang, "removewarn");
-
-        let button = InlineKeyboardButtonBuilder::new(button_text)
-            .set_callback_data(Uuid::new_v4().to_string())
-            .build();
-        let model = model.id;
-        button.on_push_multi(move |cb| async move {
-            if let Some(message) = cb.get_message_ref() {
-                let chat = message.get_chat_ref();
-                if cb.get_from().is_admin(chat).await? {
-                    let key = get_warns_key(user, chat.get_id());
-                    if let Some(res) = warns::Entity::find_by_id(model).one(DB.deref()).await? {
-                        let st = RedisStr::new(&res)?;
-                        res.delete(DB.deref()).await?;
-                        REDIS.sq(|q| q.srem(&key, st)).await?;
-                    }
-                    TG.client
-                        .build_edit_message_reply_markup()
-                        .message_id(message.get_message_id())
-                        .chat_id(chat.get_id())
-                        .build()
-                        .await?;
-                    TG.client
-                        .build_edit_message_text("Warn removed")
-                        .message_id(message.get_message_id())
-                        .chat_id(chat.get_id())
-                        .build()
-                        .await?;
-                    TG.client
-                        .build_answer_callback_query(cb.get_id_ref())
-                        .build()
-                        .await?;
-
-                    Ok(true)
-                } else {
-                    TG.client
-                        .build_answer_callback_query(cb.get_id_ref())
-                        .show_alert(true)
-                        .text("User is not admin")
-                        .build()
-                        .await?;
-                    Ok(false)
-                }
-            } else {
-                Ok(true)
-            }
-        });
-
-        if let Some(reason) = reason {
-            text.builder.text(&reason);
-        }
-        text.builder.buttons.button(button);
-        message.reply_fmt(text).await?;
+        let (count, model) = warn_user(
+            message,
+            user,
+            reason.map(|v| v.to_owned()),
+            &time,
+            dialog.warn_limit,
+        )
+        .await?;
 
         if count >= dialog.warn_limit {
             match dialog.action_type {
@@ -2089,6 +2016,86 @@ impl Context {
                 actions::ActionType::Warn => Ok(()),
                 actions::ActionType::Delete => Ok(()),
             }?;
+        } else if let Some(model) = model {
+            let name = user.mention().await?;
+            let mut text = if let Some(_) = reason {
+                entity_fmt!(
+                    self,
+                    "warnreason",
+                    name,
+                    count.to_string(),
+                    dialog.warn_limit.to_string()
+                )
+            } else {
+                entity_fmt!(
+                    self,
+                    "warn",
+                    name,
+                    count.to_string(),
+                    dialog.warn_limit.to_string()
+                )
+            };
+            text.builder.filling = true;
+            text.builder = text.builder.chatuser(Some(
+                &message.get_chatuser_user(Cow::Owned(
+                    user.get_cached_user()
+                        .await?
+                        .ok_or_else(|| self.fail_err(lang_fmt!(lang, "failwarn")))?,
+                )),
+            ));
+            let button_text = lang_fmt!(lang, "removewarn");
+
+            let button = InlineKeyboardButtonBuilder::new(button_text)
+                .set_callback_data(Uuid::new_v4().to_string())
+                .build();
+            let model = model.id;
+            button.on_push_multi(move |cb| async move {
+                if let Some(message) = cb.get_message_ref() {
+                    let chat = message.get_chat_ref();
+                    if cb.get_from().is_admin(chat).await? {
+                        let key = get_warns_key(user, chat.get_id());
+                        if let Some(res) = warns::Entity::find_by_id(model).one(DB.deref()).await? {
+                            let st = RedisStr::new(&res)?;
+                            res.delete(DB.deref()).await?;
+                            REDIS.sq(|q| q.srem(&key, st)).await?;
+                        }
+                        TG.client
+                            .build_edit_message_reply_markup()
+                            .message_id(message.get_message_id())
+                            .chat_id(chat.get_id())
+                            .build()
+                            .await?;
+                        TG.client
+                            .build_edit_message_text("Warn removed")
+                            .message_id(message.get_message_id())
+                            .chat_id(chat.get_id())
+                            .build()
+                            .await?;
+                        TG.client
+                            .build_answer_callback_query(cb.get_id_ref())
+                            .build()
+                            .await?;
+
+                        Ok(true)
+                    } else {
+                        TG.client
+                            .build_answer_callback_query(cb.get_id_ref())
+                            .show_alert(true)
+                            .text("User is not admin")
+                            .build()
+                            .await?;
+                        Ok(false)
+                    }
+                } else {
+                    Ok(true)
+                }
+            });
+
+            if let Some(reason) = reason {
+                text.builder.text(&reason);
+            }
+            text.builder.buttons.button(button);
+            message.reply_fmt(text).await?;
         }
         Ok((count, dialog.warn_limit))
     }
@@ -2169,7 +2176,8 @@ pub async fn warn_user(
     user: i64,
     reason: Option<String>,
     duration: &Option<Duration>,
-) -> Result<(i32, warns::Model)> {
+    limit: i32,
+) -> Result<(i32, Option<warns::Model>)> {
     let chat_id = message.get_chat().get_id();
     let duration = duration.map(|v| Utc::now().checked_add_signed(v)).flatten();
     let model = warns::ActiveModel {
@@ -2179,6 +2187,10 @@ pub async fn warn_user(
         reason: Set(reason),
         expires: Set(duration),
     };
+    let count = get_warns_count(message, user).await?;
+    if count >= limit {
+        return Ok((count as i32, None));
+    }
     let model = warns::Entity::insert(model)
         .exec_with_returning(DB.deref())
         .await?;
@@ -2192,7 +2204,7 @@ pub async fn warn_user(
         })
         .await?;
 
-    Ok((count as i32, model))
+    Ok((count as i32, Some(model)))
 }
 
 /// Updates the current stored action with a user, either banning or unbanning.
