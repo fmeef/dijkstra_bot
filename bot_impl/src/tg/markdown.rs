@@ -490,6 +490,7 @@ impl MarkupBuilder {
     }
 
     async fn rules<'a>(&'a mut self) -> Result<()> {
+        log::info!("adding rules {}", self.chatuser.is_some());
         if let Some(ref chatuser) = self.chatuser {
             let url = post_deep_link(chatuser.chat.get_id(), |k| rules_deeplink_key(k)).await?;
 
@@ -899,16 +900,21 @@ impl MarkupBuilder {
         &'a mut Vec<MessageEntity>,
         Option<&'a mut EReplyMarkup>,
     ) {
-        self.built_markup = Some(EReplyMarkup::InlineKeyboardMarkup(
-            self.buttons.build_owned(),
-        ));
         if let Ok(()) = self.nofail_internal().await {
+            self.built_markup = Some(EReplyMarkup::InlineKeyboardMarkup(
+                self.buttons.build_owned(),
+            ));
+
             (
                 &mut self.text,
                 &mut self.entities,
                 self.built_markup.as_mut(),
             )
         } else {
+            self.built_markup = Some(EReplyMarkup::InlineKeyboardMarkup(
+                self.buttons.build_owned(),
+            ));
+
             (
                 &mut self.text,
                 &mut self.entities,
@@ -1414,6 +1420,13 @@ impl EntityMessage {
             }
         } else {
             let (text, entities, buttons) = self.builder.build_murkdown_nofail_ref().await;
+            if let Some(EReplyMarkup::InlineKeyboardMarkup(ref buttons)) = buttons {
+                log::info!(
+                    "call {} {}",
+                    buttons.get_inline_keyboard_ref().len(),
+                    self.reply_markup.is_some()
+                );
+            }
             let call = TG
                 .client
                 .build_send_message(self.chat, text)
