@@ -109,6 +109,15 @@ impl InlineKeyboardBuilder {
                 .collect(),
         )
     }
+
+    pub fn build_owned(&mut self) -> InlineKeyboardMarkup {
+        InlineKeyboardMarkup::new(
+            self.0
+                .drain(..)
+                .map(|mut v| v.drain(..).map(|v| v.to_button()).collect())
+                .collect(),
+        )
+    }
 }
 
 /// Extension trait for registing callback on buttons.

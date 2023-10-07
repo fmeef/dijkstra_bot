@@ -130,35 +130,17 @@ impl Speak for Message {
         }
     }
 
-    async fn speak_fmt(&self, message: EntityMessage) -> Result<Option<Message>> {
+    async fn speak_fmt(&self, mut message: EntityMessage) -> Result<Option<Message>> {
         if !should_ignore_chat(self.get_chat().get_id()).await? {
-            let (text, entities, buttons) = message.builder.build_murkdown_nofail().await;
-            let m = TG
-                .client
-                .build_send_message(message.chat, &text)
-                .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(buttons.build()))
-                .entities(&entities)
-                .build()
-                .await?;
-
-            Ok(Some(m))
+            Ok(Some(message.call().await.build().await?))
         } else {
             Ok(None)
         }
     }
 
-    async fn reply_fmt(&self, message: EntityMessage) -> Result<Option<Message>> {
+    async fn reply_fmt(&self, mut message: EntityMessage) -> Result<Option<Message>> {
         if !should_ignore_chat(self.get_chat().get_id()).await? {
-            let (text, entities, buttons) = message.builder.build_murkdown_nofail().await;
-            let m = TG
-                .client
-                .build_send_message(message.chat, &text)
-                .entities(&entities)
-                .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(buttons.build()))
-                .reply_to_message_id(self.get_message_id())
-                .build()
-                .await?;
-            Ok(Some(m))
+            Ok(Some(message.call().await.build().await?))
         } else {
             Ok(None)
         }
@@ -224,42 +206,17 @@ impl Speak for Chat {
         }
     }
 
-    async fn speak_fmt(&self, message: EntityMessage) -> Result<Option<Message>> {
-        let (text, entities, buttons) = message.builder.build_murkdown_nofail().await;
-        let buttons = &EReplyMarkup::InlineKeyboardMarkup(buttons.build());
-        let call = TG
-            .client
-            .build_send_message(message.chat, &text)
-            .entities(&entities);
-        let message = if let Some(ref reply_markup) = message.reply_markup {
-            call.reply_markup(reply_markup)
-        } else {
-            call.reply_markup(buttons)
-        };
+    async fn speak_fmt(&self, mut message: EntityMessage) -> Result<Option<Message>> {
         if !should_ignore_chat(self.get_id()).await? {
-            let m = message.build().await?;
-            Ok(Some(m))
+            Ok(Some(message.call().await.build().await?))
         } else {
             Ok(None)
         }
     }
 
-    async fn reply_fmt(&self, message: EntityMessage) -> Result<Option<Message>> {
-        let (text, entities, buttons) = message.builder.build_murkdown_nofail().await;
-
-        let buttons = &EReplyMarkup::InlineKeyboardMarkup(buttons.build());
-        let call = TG
-            .client
-            .build_send_message(message.chat, &text)
-            .entities(&entities);
-        let message = if let Some(ref reply_markup) = message.reply_markup {
-            call.reply_markup(reply_markup)
-        } else {
-            call.reply_markup(buttons)
-        };
+    async fn reply_fmt(&self, mut message: EntityMessage) -> Result<Option<Message>> {
         if !should_ignore_chat(self.get_id()).await? {
-            let m = message.build().await?;
-            Ok(Some(m))
+            Ok(Some(message.call().await.build().await?))
         } else {
             Ok(None)
         }

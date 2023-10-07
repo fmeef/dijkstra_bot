@@ -33,6 +33,19 @@ impl Model {
         b.build()
     }
 
+    pub fn to_button_owned(&self) -> InlineKeyboardButton {
+        let mut b = InlineKeyboardButtonBuilder::new(self.button_text.to_owned());
+
+        if let Some(ref text) = self.callback_data {
+            b = b.set_callback_data(text.to_owned());
+        }
+
+        if let Some(ref url) = self.button_url {
+            b = b.set_url(url.to_owned());
+        }
+        b.build()
+    }
+
     pub fn from_button(
         pos_x: i32,
         pos_y: i32,

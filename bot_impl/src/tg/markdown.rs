@@ -3,7 +3,9 @@
 //! a builder api for manually generating formatted text
 
 use crate::persist::core::button;
+use crate::statics::TG;
 use crate::util::error::{BotError, Result};
+use botapi::gen_methods::CallSendMessage;
 use botapi::gen_types::{
     Chat, EReplyMarkup, InlineKeyboardButton, InlineKeyboardButtonBuilder, MessageEntity,
     MessageEntityBuilder, User,
@@ -427,6 +429,7 @@ pub struct MarkupBuilder {
     pub enabled_header: bool,
     button_function: ButtonFn,
     chatuser: Option<OwnedChatUser>,
+    pub built_markup: Option<EReplyMarkup>,
 }
 
 pub fn button_deeplink_key(key: &str) -> String {
@@ -482,6 +485,7 @@ impl MarkupBuilder {
             enabled_header: false,
             button_function: Arc::new(|_, _| async move { Ok(()) }.boxed()),
             chatuser: None,
+            built_markup: None,
         }
     }
 
@@ -796,84 +800,6 @@ impl MarkupBuilder {
         Ok(s)
     }
 
-    // /// Parses murkdown and constructs a builder with the corresponding text and
-    // /// entities
-    // pub async fn from_murkdown<T>(
-    //     text: T,
-    //     existing: Option<Vec<MessageEntity>>,
-    //     header: bool,
-    //     filling: bool,
-    // ) -> Result<Self>
-    // where
-    //     T: AsRef<str>,
-    // {
-    //     Self::from_murkdown_internal(text, None, existing, header, filling).await
-    // }
-
-    // /// Parses murkdown and constructs a builder with the corresponding text and
-    // /// entities. The provided ChatUser value is used to perform automated formfilling
-    // pub async fn from_murkdown_chatuser<'a, T>(
-    //     text: T,
-    //     chatuser: Option<&'a ChatUser<'a>>,
-    //     existing: Option<Vec<MessageEntity>>,
-    //     header: bool,
-    //     filling: bool,
-    // ) -> Result<Self>
-    // where
-    //     T: AsRef<str>,
-    // {
-    //     Self::from_murkdown_internal(text, chatuser, existing, header, filling).await
-    // }
-
-    // /// parses murkdown with a callback called on every button requiring a callback
-    // pub async fn from_murkdown_button<'a, T>(
-    //     text: T,
-    //     chatuser: Option<&'a ChatUser<'a>>,
-    //     existing: Option<Vec<MessageEntity>>,
-    //     header: bool,
-    //     filling: bool,
-    // ) -> Result<Self>
-    // where
-    //     T: AsRef<str>,
-    // {
-    //     Self::from_murkdown_internal(text, chatuser, existing, header, filling).await
-    // }
-
-    // async fn from_murkdown_internal<'a, T>(
-    //     text: T,
-    //     chatuser: Option<&'a ChatUser<'a>>,
-    //     existing: Option<Vec<MessageEntity>>,
-    //     header: bool,
-    //     filling: bool,
-    // ) -> Result<Self>
-    // where
-    //     T: AsRef<str>,
-    // {
-    //     let text = text.as_ref();
-    //     let mut s = Self::new(existing);
-    //     s.chatuser = chatuser.map(|v| v.into());
-    //     s.filling = filling;
-    //     let mut parser = Parser::new();
-    //     let mut tokenizer = Lexer::new(text, header);
-    //     while let Some(token) = tokenizer.next_token() {
-    //         parser.parse(token)?;
-    //     }
-    //     let res = parser.end_of_input()?;
-    //     s.header = res.header;
-    //     s.footer = res.body.iter().rev().find_map(|p| {
-    //         if let TgSpan::Filling(f) = p {
-    //             Some(f.to_owned())
-    //         } else {
-    //             None
-    //         }
-    //     });
-    //     s.parse_tgspan(res.body, true).await?;
-    //     if let Some(ref existing) = s.existing_entities {
-    //         s.entities.extend_from_slice(&existing.as_slice());
-    //     }
-    //     Ok(s)
-    // }
-
     pub async fn append<'a, T>(
         &'a mut self,
         text: T,
@@ -963,6 +889,31 @@ impl MarkupBuilder {
             (self.text, self.entities, self.buttons)
         } else {
             (self.text, self.entities, self.buttons)
+        }
+    }
+
+    pub async fn build_murkdown_nofail_ref<'a>(
+        &'a mut self,
+    ) -> (
+        &'a mut String,
+        &'a mut Vec<MessageEntity>,
+        Option<&'a mut EReplyMarkup>,
+    ) {
+        self.built_markup = Some(EReplyMarkup::InlineKeyboardMarkup(
+            self.buttons.build_owned(),
+        ));
+        if let Ok(()) = self.nofail_internal().await {
+            (
+                &mut self.text,
+                &mut self.entities,
+                self.built_markup.as_mut(),
+            )
+        } else {
+            (
+                &mut self.text,
+                &mut self.entities,
+                self.built_markup.as_mut(),
+            )
         }
     }
 
@@ -1438,43 +1389,29 @@ impl EntityMessage {
         }
     }
 
-    // pub async fn new_append<'a>(
-    //     chat: i64,
-    //     text: &str,
-    //     chatuser: &ChatUser<'a>,
-    //     entities: Vec<MessageEntity>,
-    //     kb: InlineKeyboardBuilder,
-    // ) -> Result<Self> {
-    //     let mut builder = MarkupBuilder::new(Some(entities));
-
-    //     Ok(Self {
-    //         builder,
-    //         chat,
-    //         reply_markup: Some(EReplyMarkup::InlineKeyboardMarkup(kb.build())),
-    //     })
-    // }
-
     pub fn reply_markup(mut self, reply_markup: EReplyMarkup) -> Self {
         self.reply_markup = Some(reply_markup);
         self
     }
 
-    // pub fn call<'a>(self) -> CallSendMessage<'a> {
-    //     let (text, entities, _) = self.builder.build_murkdown();
-    //     let call = TG
-    //         .client
-    //         .build_send_message(self.chat, text)
-    //         .entities(entities);
-    //     if let Some(ref reply_markup) = self.reply_markup {
-    //         call.reply_markup(reply_markup)
-    //     } else {
-    //         call
-    //     }
-    // }
+    pub async fn call<'a>(&'a mut self) -> CallSendMessage<'a> {
+        let (text, entities, buttons) = self.builder.build_murkdown_nofail_ref().await;
+        let call = TG
+            .client
+            .build_send_message(self.chat, text)
+            .entities(entities);
+        if let Some(ref reply_markup) = self.reply_markup {
+            call.reply_markup(reply_markup)
+        } else if let Some(buttons) = buttons {
+            call.reply_markup(buttons)
+        } else {
+            call
+        }
+    }
 
-    // pub fn textentities<'a>(&'a self) -> (&'a str, &'a Vec<MessageEntity>) {
-    //     self.builder.build()
-    // }
+    pub fn textentities<'a>(&'a self) -> (&'a str, &'a Vec<MessageEntity>) {
+        (&self.builder.text, &self.builder.entities)
+    }
 }
 
 #[allow(dead_code)]
