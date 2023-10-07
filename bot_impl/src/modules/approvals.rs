@@ -63,18 +63,18 @@ async fn command_list<'a>(context: &Context) -> Result<()> {
     if let Some(chat) = context.chat() {
         let mut res = EntityMessage::new(chat.get_id());
         let chat_name = chat.name_humanreadable();
-        res.builder()
+        res.builder
             .bold(format!("Approved users for {}\n", chat_name));
         for (userid, name) in get_approvals(chat).await? {
             if let Some(user) = get_user(userid).await? {
                 let name = user.name_humanreadable();
-                res.builder().text_mention(&name, user, None);
+                res.builder.text_mention(&name, user, None);
             } else {
                 let n = name.clone();
                 let user = UserBuilder::new(userid, false, name).build();
-                res.builder().text_mention(&n, user, None);
+                res.builder.text_mention(&n, user, None);
             };
-            res.builder().text("\n");
+            res.builder.text("\n");
         }
 
         context.reply_fmt(res).await?;

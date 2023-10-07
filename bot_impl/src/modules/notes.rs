@@ -197,7 +197,7 @@ pub mod entities {
             pub protect: Option<bool>,
             pub entity_id: Option<i64>,
 
-            //button fields
+            // button fields
             pub button_text: Option<String>,
             pub callback_data: Option<String>,
             pub button_url: Option<String>,
@@ -378,16 +378,13 @@ async fn get_model<'a>(
                 .unwrap_or_else(|| message.get_caption_ref());
             let (text, entity_id) = if let Some(text) = text {
                 let extra = message.get_entities().map(|v| v.into_owned());
-                let md = MarkupBuilder::from_murkdown_chatuser(
-                    &text,
-                    chatuser.as_ref(),
-                    extra,
-                    false,
-                    false,
-                )
-                .await?;
-                let (text, entities, buttons) = md.build_owned();
 
+                let md = MarkupBuilder::new(extra)
+                    .chatuser(chatuser.as_ref())
+                    .filling(false)
+                    .header(false)
+                    .set_text(text.to_owned());
+                let (text, entities, buttons) = md.build_murkdown().await?;
                 let entity_id = entity::insert(DB.deref(), &entities, buttons).await?;
                 (Some(text), Some(entity_id))
             } else {
@@ -415,15 +412,13 @@ async fn get_model<'a>(
                 log::info!("content {}", text);
 
                 let extra = message.get_entities().map(|v| v.into_owned());
-                let md = MarkupBuilder::from_murkdown_chatuser(
-                    &text,
-                    chatuser.as_ref(),
-                    extra,
-                    false,
-                    false,
-                )
-                .await?;
-                let (text, entities, buttons) = md.build_owned();
+
+                let md = MarkupBuilder::new(extra)
+                    .chatuser(chatuser.as_ref())
+                    .filling(false)
+                    .header(false)
+                    .set_text(text.to_owned());
+                let (text, entities, buttons) = md.build_murkdown().await?;
                 let entity_id = entity::insert(DB.deref(), &entities, buttons).await?;
                 (Some(text), Some(entity_id))
             } else {
@@ -484,9 +479,10 @@ fn handle_transition<'a>(
     async move {
         log::info!("current note: {}", note);
         if let Some((note, extra_entities, extra_buttons)) = get_note_by_name(note, chat).await? {
+            let c = ctx.clone();
             SendMediaReply::new(ctx, note.media_type)
                 .button_callback(move |note, button| {
-                    let c = ctx.clone();
+                    let c = c.clone();
                     async move {
                         log::info!("next notes: {}", note);
                         button.on_push(move |b| async move {
@@ -529,9 +525,10 @@ async fn print_note(
     buttons: Option<InlineKeyboardBuilder>,
     note_chat: i64,
 ) -> Result<()> {
+    let c = ctx.clone();
     SendMediaReply::new(ctx, note.media_type)
         .button_callback(move |note, button| {
-            let c = ctx.clone();
+            let c = c.clone();
             async move {
                 button.on_push(move |b| async move {
                     TG.client

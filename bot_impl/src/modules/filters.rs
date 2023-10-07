@@ -705,14 +705,20 @@ async fn update_cache_from_db(message: &Message) -> Result<()> {
 
 async fn command_filter<'a>(c: &Context, args: &TextArgs<'a>) -> Result<()> {
     c.check_permissions(|p| p.can_change_info).await?;
-    let cmd = MarkupBuilder::from_murkdown(args.text, None, true, false).await?;
+
     let ctx = c.clone();
+    let text = args.text.to_owned();
     let filters = DB
         .deref()
         .transaction::<_, Vec<String>, BotError>(move |tx| {
             async move {
                 let message = ctx.message()?;
-                let (body, entities, buttons, header, _) = cmd.build_filter();
+                let (body, entities, buttons, header, _) = MarkupBuilder::new(None)
+                    .set_text(text)
+                    .filling(false)
+                    .header(true)
+                    .build_filter()
+                    .await;
 
                 let filters = match header
                     .ok_or_else(|| ctx.fail_err("Header missing from filter command"))?

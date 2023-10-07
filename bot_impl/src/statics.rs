@@ -183,6 +183,7 @@ lazy_static! {
     pub static ref EXEC: Runtime = {
         tokio::runtime::Builder::new_multi_thread()
             .enable_all()
+            .thread_stack_size(16 * 1024 * 1024)
             .build()
             .expect("create tokio threadpool")
     };

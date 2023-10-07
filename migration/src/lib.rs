@@ -15,6 +15,7 @@ mod m20230629_231657_tags_idx;
 mod m20230712_063916_fbans;
 mod m20230828_202520_user_names;
 mod m20230910_204018_entity_in_db;
+mod m20231001_175538_warns_markup;
 
 pub struct Migrator;
 
@@ -36,6 +37,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20230312_000001_create_welcomes::Migration),
             Box::new(m20230214_000001_create_captcha::Migration),
             Box::new(m20230910_204018_entity_in_db::Migration),
+            Box::new(m20231001_175538_warns_markup::Migration),
         ];
         core_migrations.append(&mut module_migrations);
         core_migrations.append(&mut vec![Box::new(m20230629_231657_tags_idx::Migration)]);

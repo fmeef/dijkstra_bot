@@ -148,38 +148,23 @@ pub async fn show_help<'a>(
                 current.content.clone()
             };
 
-            match MarkupBuilder::from_murkdown_chatuser(
-                &m,
-                message.get_chatuser().as_ref(),
-                None,
-                false,
-                false,
-            )
-            .await
-            {
-                Ok(md) => {
-                    let (text, entities) = md.build();
-                    TG.client()
-                        .build_send_message(message.get_chat().get_id(), text)
-                        .entities(&entities)
-                        .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
-                            conv.get_current_markup(3).await?,
-                        ))
-                        .reply_to_message_id(message.get_message_id())
-                        .build()
-                        .await?;
-                }
-                Err(_) => {
-                    TG.client()
-                        .build_send_message(message.get_chat().get_id(), &m)
-                        .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
-                            conv.get_current_markup(3).await?,
-                        ))
-                        .reply_to_message_id(message.get_message_id())
-                        .build()
-                        .await?;
-                }
-            }
+            let (text, entities, _) = MarkupBuilder::new(None)
+                .set_text(m)
+                .filling(false)
+                .header(false)
+                .chatuser(message.get_chatuser().as_ref())
+                .build_murkdown_nofail()
+                .await;
+
+            TG.client()
+                .build_send_message(message.get_chat().get_id(), &text)
+                .entities(&entities)
+                .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
+                    conv.get_current_markup(3).await?,
+                ))
+                .reply_to_message_id(message.get_message_id())
+                .build()
+                .await?;
         } else {
             let url = get_url(format!("help{}", args.unwrap_or("")))?;
             let mut button = InlineKeyboardBuilder::default();

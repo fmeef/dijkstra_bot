@@ -67,6 +67,7 @@ pub async fn insert<T>(
 where
     T: ConnectionTrait,
 {
+    log::info!("inserting {} entities", entities.len());
     let entity_id = Entity::insert(ActiveModel {
         id: ActiveValue::NotSet,
     })

@@ -161,11 +161,6 @@ pub mod entities {
 
         #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
         pub enum Relation {}
-        impl Related<super::locks::Entity> for Entity {
-            fn to() -> RelationDef {
-                panic!("no relations")
-            }
-        }
 
         impl ActiveModelBehavior for ActiveModel {}
 
@@ -260,12 +255,6 @@ pub mod entities {
 
         #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
         pub enum Relation {}
-        impl Related<super::locks::Entity> for Entity {
-            fn to() -> RelationDef {
-                panic!("no relations")
-            }
-        }
-
         impl ActiveModelBehavior for ActiveModel {}
     }
 }

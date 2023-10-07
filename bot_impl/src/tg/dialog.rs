@@ -584,33 +584,23 @@ impl Conversation {
                 cb(trans, self.clone());
             }
             let n = self.get_current_markup(row_limit).await?;
-            if let Ok(builder) = MarkupBuilder::from_murkdown_chatuser(
-                &content,
-                message.get_chatuser().as_ref(),
-                None,
-                false,
-                false,
-            )
-            .await
-            {
-                let (content, entities) = builder.build();
-                TG.client()
-                    .build_edit_message_text(&content)
-                    .message_id(message.get_message_id())
-                    .reply_markup(&n)
-                    .entities(entities)
-                    .chat_id(message.get_chat().get_id())
-                    .build()
-                    .await?;
-            } else {
-                TG.client()
-                    .build_edit_message_text(&content)
-                    .message_id(message.get_message_id())
-                    .reply_markup(&n)
-                    .chat_id(message.get_chat().get_id())
-                    .build()
-                    .await?;
-            }
+
+            let (text, entities, _) = MarkupBuilder::new(None)
+                .set_text(content)
+                .filling(false)
+                .header(false)
+                .chatuser(message.get_chatuser().as_ref())
+                .build_murkdown_nofail()
+                .await;
+
+            TG.client()
+                .build_edit_message_text(&text)
+                .message_id(message.get_message_id())
+                .reply_markup(&n)
+                .entities(&entities)
+                .chat_id(message.get_chat().get_id())
+                .build()
+                .await?;
 
             TG.client()
                 .build_answer_callback_query(&callback.get_id())

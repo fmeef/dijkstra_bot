@@ -62,7 +62,7 @@ pub async fn report(ctx: &Context) -> Result<()> {
 
                     let mention = user.mention().await?;
                     let te = textentity_fmt!(ctx, "reported", mention);
-                    let (text, entities) = te.textentities();
+                    let (text, entities) = (&te.builder.text, &te.builder.entities);
                     admins.extend_from_slice(entities.as_slice());
                     TG.client()
                         .build_send_message(chat.get_id(), text)

@@ -1659,6 +1659,7 @@ impl Context {
     /// Helper function to handle a mute action after warn limit is exceeded.
     /// Automatically sends localized string
     pub async fn warn_mute(&self, user: i64, count: i32, duration: Option<Duration>) -> Result<()> {
+        log::info!("warn_mute");
         let message = self.message()?;
         self.mute(user, self.try_get()?.chat, duration).await?;
 
@@ -1999,16 +2000,16 @@ impl Context {
         let dialog = dialog_or_default(message.get_chat_ref()).await?;
         let lang = get_chat_lang(message.get_chat().get_id()).await?;
         let time = dialog.warn_time.map(|t| Duration::seconds(t));
-        let (count, model) = warn_user(message, user, reason.map(|v| v.to_owned()), &time).await?;
+        let (count, model) =
+            warn_user(message, user, reason.map(|v| v.to_owned()), &time, None).await?;
         let name = user.mention().await?;
-        let text = if let Some(reason) = reason {
+        let mut text = if let Some(_) = reason {
             entity_fmt!(
                 self,
                 "warnreason",
                 name,
                 count.to_string(),
-                dialog.warn_limit.to_string(),
-                reason
+                dialog.warn_limit.to_string()
             )
         } else {
             entity_fmt!(
@@ -2019,10 +2020,15 @@ impl Context {
                 dialog.warn_limit.to_string()
             )
         };
-
+        text.builder.filling = true;
+        text.builder = text.builder.chatuser(Some(
+            &message.get_chatuser_user(Cow::Owned(
+                user.get_cached_user()
+                    .await?
+                    .ok_or_else(|| self.fail_err(lang_fmt!(lang, "failwarn")))?,
+            )),
+        ));
         let button_text = lang_fmt!(lang, "removewarn");
-
-        let mut builder = InlineKeyboardBuilder::default();
 
         let button = InlineKeyboardButtonBuilder::new(button_text)
             .set_callback_data(Uuid::new_v4().to_string())
@@ -2069,11 +2075,12 @@ impl Context {
                 Ok(true)
             }
         });
-        builder.button(button);
-        let markup = builder.build();
 
-        let markup = botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(markup);
-        message.reply_fmt(text.reply_markup(markup)).await?;
+        if let Some(reason) = reason {
+            text.builder.text(&reason);
+        }
+        text.builder.buttons.button(button);
+        message.reply_fmt(text).await?;
 
         if count >= dialog.warn_limit {
             match dialog.action_type {
@@ -2090,6 +2097,7 @@ impl Context {
     /// Helper function to handle a ban action after warn limit is exceeded.
     /// Automatically sends localized string
     pub async fn warn_ban(&self, user: i64, count: i32, duration: Option<Duration>) -> Result<()> {
+        log::info!("warn_ban");
         let message = self.message()?;
         self.ban(user, duration).await?;
         message
@@ -2162,6 +2170,7 @@ pub async fn warn_user(
     user: i64,
     reason: Option<String>,
     duration: &Option<Duration>,
+    entity_id: Option<i64>,
 ) -> Result<(i32, warns::Model)> {
     let chat_id = message.get_chat().get_id();
     let duration = duration.map(|v| Utc::now().checked_add_signed(v)).flatten();
@@ -2171,6 +2180,7 @@ pub async fn warn_user(
         chat_id: Set(chat_id),
         reason: Set(reason),
         expires: Set(duration),
+        entity_id: Set(entity_id),
     };
     let model = warns::Entity::insert(model)
         .exec_with_returning(DB.deref())
@@ -2220,7 +2230,11 @@ pub async fn update_actions_ban(
     let res = actions::Entity::insert(active)
         .on_conflict(
             OnConflict::columns([actions::Column::UserId, actions::Column::ChatId])
-                .update_columns([actions::Column::IsBanned, actions::Column::Expires])
+                .update_columns([
+                    actions::Column::IsBanned,
+                    actions::Column::Expires,
+                    actions::Column::Pending,
+                ])
                 .to_owned(),
         )
         .exec_with_returning(DB.deref())
@@ -2400,6 +2414,8 @@ pub async fn update_actions_permissions(
         action: NotSet,
         expires: Set(expires),
     };
+
+    log::info!("update_actions_permissions {:?}", active);
 
     let res = actions::Entity::insert(active)
         .on_conflict(

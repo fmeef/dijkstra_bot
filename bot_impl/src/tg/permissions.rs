@@ -363,7 +363,7 @@ where
     let mut m = EntityMessage::new(chat.get_id())
         .reply_markup(EReplyMarkup::InlineKeyboardMarkup(kb.build()));
 
-    m.builder().text(lang_fmt!(lang, "provebutton"));
+    m.builder.text(lang_fmt!(lang, "provebutton"));
     sp.speak_fmt(m).await?;
     while let Some(Some((perm, cb))) = rx.recv().await {
         let sudo = perm.is_sudo.is_granted();

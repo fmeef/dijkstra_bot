@@ -23,7 +23,7 @@ async fn get_id(ctx: &Context) -> Result<()> {
     ctx.action_message(|ctx, user, _| async move {
         if let Some(chat) = ctx.chat() {
             let mut builder = EntityMessage::new(chat.get_id());
-            builder.builder().code(user.to_string());
+            builder.builder.code(user.to_string());
             ctx.reply_fmt(builder).await?;
         }
         Ok(())

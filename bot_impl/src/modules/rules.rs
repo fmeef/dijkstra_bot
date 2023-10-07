@@ -1,5 +1,5 @@
 use crate::metadata::metadata;
-use crate::persist::core::media::{get_media_type, send_media_reply_chatuser, MediaType};
+use crate::persist::core::media::{get_media_type, MediaType, SendMediaReply};
 use crate::persist::core::rules;
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache};
 use crate::statics::{CONFIG, DB};
@@ -128,7 +128,6 @@ pub async fn handle_update(ctx: &Context) -> Result<()> {
             "setrules" => save_rule(ctx).await,
             "rules" => rules(ctx).await,
             "start" => {
-                let message = ctx.message()?;
                 let key: Option<i64> = handle_deep_link(ctx, |k| rules_deeplink_key(k)).await?;
                 if let Some(chat_id) = key {
                     let rules = if let Some(rules) = get_rule(chat_id).await? {
@@ -137,16 +136,12 @@ pub async fn handle_update(ctx: &Context) -> Result<()> {
                         default_rules(chat_id, ctx.try_get()?.lang)
                     };
 
-                    send_media_reply_chatuser(
-                        message.get_chat_ref(),
-                        rules.media_type,
-                        rules.text,
-                        rules.media_id,
-                        message.get_from_ref(),
-                        vec![],
-                        |_, _| async move { Ok(()) }.boxed(),
-                    )
-                    .await?;
+                    SendMediaReply::new(ctx, rules.media_type)
+                        .button_callback(|_, _| async move { Ok(()) }.boxed())
+                        .text(rules.text)
+                        .media_id(rules.media_id)
+                        .send_media_reply()
+                        .await?;
                 }
                 Ok(())
             }

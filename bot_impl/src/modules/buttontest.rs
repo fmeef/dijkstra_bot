@@ -1,14 +1,9 @@
-use crate::tg::admin_helpers::IntoChatUser;
+use crate::statics::TG;
 use crate::tg::command::{Cmd, Context};
 use crate::util::error::Result;
-use crate::{
-    metadata::metadata,
-    statics::TG,
-    tg::markdown::MarkupBuilder,
-    util::string::{should_ignore_chat, Lang, Speak},
-};
+use crate::util::string::Speak;
+use crate::{metadata::metadata, tg::markdown::MarkupBuilder};
 use botapi::gen_types::Message;
-use macros::lang_fmt;
 use sea_orm_migration::MigrationTrait;
 
 metadata!("Antipiracy",
@@ -45,41 +40,42 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![]
 }
 
-async fn handle_murkdown(message: &Message) -> Result<bool> {
-    if let Some(message) = message.get_reply_to_message() {
-        if let Some(text) = message.get_text() {
-            match MarkupBuilder::from_murkdown_chatuser(
-                text,
-                message.get_chatuser().as_ref(),
-                None,
-                false,
-                false,
-            )
-            .await
-            {
-                Ok(md) => {
-                    if !should_ignore_chat(message.get_chat().get_id()).await? {
-                        if should_ignore_chat(message.get_chat().get_id()).await? {
-                            return Ok(false);
-                        }
-                        let (msg, entities) = md.build();
+// async fn handle_murkdown(message: &Message) -> Result<bool> {
+//     if let Some(message) = message.get_reply_to_message() {
+//         if let Some(text) = message.get_text() {
+//             match MarkupBuilder::from_murkdown_chatuser(
+//                 text,
+//                 message.get_chatuser().as_ref(),
+//                 None,
+//                 false,
+//                 false,
+//             )
+//             .await
+//             {
+//                 Ok(md) => {
+//                     if !should_ignore_chat(message.get_chat().get_id()).await? {
+//                         if should_ignore_chat(message.get_chat().get_id()).await? {
+//                             return Ok(false);
+//                         }
+//                         let (msg, entities) = md.build();
 
-                        TG.client()
-                            .build_send_message(message.get_chat().get_id(), msg)
-                            .entities(entities)
-                            .build()
-                            .await?;
-                    }
-                }
+//                         TG.client()
+//                             .build_send_message(message.get_chat().get_id(), msg)
+//                             .entities(entities)
+//                             .build()
+//                             .await?;
+//                     }
+//                 }
 
-                Err(err) => {
-                    message.speak(lang_fmt!(Lang::En, "test", err)).await?;
-                }
-            }
-        }
-    }
-    Ok(false)
-}
+//                 Err(err) => {
+//                     message.speak(lang_fmt!(Lang::En, "test", err)).await?;
+//                 }
+//             }
+//         }
+//     }
+//     Ok(false)
+// }
+
 async fn handle_markdown(message: &Message) -> Result<bool> {
     if let Some(message) = message.get_reply_to_message() {
         if let Some(text) = message.get_text() {
@@ -109,7 +105,7 @@ pub async fn handle_update(ctx: &Context) -> Result<()> {
                 handle_markdown(message).await?;
             }
             "murkdown" => {
-                handle_murkdown(message).await?;
+                // handle_murkdown(message).await?;
             }
             "biig" => {
                 message.reply(BIG).await?;

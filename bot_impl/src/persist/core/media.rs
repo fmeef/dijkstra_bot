@@ -1,9 +1,7 @@
-use std::borrow::Cow;
-
 use crate::{
     statics::TG,
     tg::{
-        admin_helpers::{is_dm, ChatUser, IntoChatUser},
+        admin_helpers::{is_dm, IntoChatUser},
         button::InlineKeyboardBuilder,
         command::{post_deep_link, Context},
         markdown::{button_deeplink_key, retro_fillings, MarkupBuilder},
@@ -14,8 +12,8 @@ use crate::{
     },
 };
 use botapi::gen_types::{
-    Chat, EReplyMarkup, FileData, InlineKeyboardButton, InputFile, InputMedia, InputMediaDocument,
-    InputMediaPhoto, InputMediaVideo, Message, MessageEntity, User,
+    EReplyMarkup, FileData, InlineKeyboardButton, InputFile, InputMedia, InputMediaDocument,
+    InputMediaPhoto, InputMediaVideo, Message, MessageEntity,
 };
 use futures::future::BoxFuture;
 use sea_orm::entity::prelude::*;
@@ -59,7 +57,10 @@ pub fn get_media_type<'a>(message: &'a Message) -> Result<(Option<String>, Media
 
 pub struct SendMediaReply<'a, F>
 where
-    F: for<'b> Fn(String, &'b InlineKeyboardButton) -> BoxFuture<'b, Result<()>> + Send + Sync,
+    F: for<'b> Fn(String, &'b InlineKeyboardButton) -> BoxFuture<'b, Result<()>>
+        + Send
+        + Sync
+        + 'static,
 {
     context: &'a Context,
     media_type: MediaType,
@@ -73,7 +74,10 @@ where
 
 impl<'a, F> SendMediaReply<'a, F>
 where
-    F: for<'b> Fn(String, &'b InlineKeyboardButton) -> BoxFuture<'b, Result<()>> + Send + Sync,
+    F: for<'b> Fn(String, &'b InlineKeyboardButton) -> BoxFuture<'b, Result<()>>
+        + Send
+        + Sync
+        + 'static,
 {
     pub fn new(context: &'a Context, media_type: MediaType) -> Self {
         Self {
@@ -178,7 +182,6 @@ where
             let text = self.text;
             let callback = self
                 .callback
-                .as_ref()
                 .ok_or_else(|| self.context.fail_err("Need to set callback"))?;
 
             let chat = current_message.get_chat().get_id();
@@ -205,20 +208,14 @@ where
                 log::info!("retro fillings: {}", text);
                 (text, entities, buttons)
             } else {
-                if let Ok(md) = MarkupBuilder::from_murkdown_button(
-                    &text,
-                    self.context.get_static().chatuser().as_ref(),
-                    None,
-                    &callback,
-                    false,
-                    false,
-                )
-                .await
-                {
-                    md.build_owned()
-                } else {
-                    (text, Vec::new(), InlineKeyboardBuilder::default())
-                }
+                MarkupBuilder::new(None)
+                    .set_text(text)
+                    .filling(false)
+                    .header(false)
+                    .callback(callback)
+                    .chatuser(self.context.get_static().chatuser().as_ref())
+                    .build_murkdown_nofail()
+                    .await
             };
 
             if let Some(extra_buttons) = self.extra_buttons {
@@ -330,20 +327,14 @@ where
                 log::info!("retro fillings: {}", text);
                 (text, entities, buttons)
             } else {
-                if let Ok(md) = MarkupBuilder::from_murkdown_button(
-                    &text,
-                    self.context.get_static().chatuser().as_ref(),
-                    None,
-                    &callback,
-                    false,
-                    false,
-                )
-                .await
-                {
-                    md.build_owned()
-                } else {
-                    (text, Vec::new(), InlineKeyboardBuilder::default())
-                }
+                MarkupBuilder::new(None)
+                    .set_text(text)
+                    .filling(false)
+                    .header(false)
+                    .callback(callback)
+                    .chatuser(self.context.get_static().chatuser().as_ref())
+                    .build_murkdown_nofail()
+                    .await
             };
 
             if let Some(extra_buttons) = self.extra_buttons {
@@ -455,20 +446,14 @@ where
             .await?;
             (text, entities, buttons)
         } else {
-            if let Ok(md) = MarkupBuilder::from_murkdown_button(
-                &text,
-                self.context.get_static().chatuser().as_ref(),
-                None,
-                &callback,
-                false,
-                false,
-            )
-            .await
-            {
-                md.build_owned()
-            } else {
-                (text, Vec::new(), InlineKeyboardBuilder::default())
-            }
+            MarkupBuilder::new(None)
+                .set_text(text)
+                .filling(false)
+                .header(false)
+                .callback(callback)
+                .chatuser(self.context.get_static().chatuser().as_ref())
+                .build_murkdown_nofail()
+                .await
         };
 
         if let Some(extra_buttons) = self.extra_buttons {
@@ -554,319 +539,4 @@ where
 
         Ok(())
     }
-}
-
-pub async fn send_media_reply_chatuser<F>(
-    current_chat: &Chat,
-    media_type: MediaType,
-    text: Option<String>,
-    media_id: Option<String>,
-    user: Option<&User>,
-    extra_buttons: Vec<InlineKeyboardButton>,
-    callback: F,
-) -> Result<()>
-where
-    F: for<'b> Fn(String, &'b InlineKeyboardButton) -> BoxFuture<'b, Result<()>> + Send + Sync,
-{
-    let chat = current_chat.get_id();
-    if should_ignore_chat(chat).await? {
-        return Ok(());
-    }
-
-    let text = text.unwrap_or_else(|| "".to_owned());
-
-    let chatuser = user.map(|v| ChatUser {
-        chat: Cow::Borrowed(current_chat),
-        user: Cow::Borrowed(v),
-    });
-    let (text, entities, buttons) = if let Ok(mut md) =
-        MarkupBuilder::from_murkdown_button(&text, chatuser.as_ref(), None, &callback, false, false)
-            .await
-    {
-        for ex in extra_buttons {
-            md.buttons.button(ex);
-        }
-        md.build_owned()
-    } else {
-        (text, Vec::new(), InlineKeyboardBuilder::default())
-    };
-    match media_type {
-        MediaType::Sticker => {
-            TG.client()
-                .build_send_sticker(
-                    chat,
-                    FileData::String(
-                        media_id.ok_or_else(|| current_chat.fail_err("invalid media"))?,
-                    ),
-                )
-                .build()
-                .await
-        }
-        MediaType::Photo => {
-            TG.client()
-                .build_send_photo(
-                    chat,
-                    FileData::String(
-                        media_id.ok_or_else(|| current_chat.fail_err("invalid media"))?,
-                    ),
-                )
-                .build()
-                .await
-        }
-        MediaType::Document => {
-            TG.client()
-                .build_send_document(
-                    chat,
-                    FileData::String(
-                        media_id.ok_or_else(|| current_chat.fail_err("invalid media"))?,
-                    ),
-                )
-                .build()
-                .await
-        }
-        MediaType::Video => {
-            TG.client()
-                .build_send_video(
-                    chat,
-                    FileData::String(
-                        media_id.ok_or_else(|| current_chat.fail_err("invalid media"))?,
-                    ),
-                )
-                .build()
-                .await
-        }
-        MediaType::Text => {
-            TG.client()
-                .build_send_message(chat, &text)
-                .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
-                    buttons.build(),
-                ))
-                .entities(&entities)
-                .build()
-                .await
-        }
-    }?;
-    Ok(())
-}
-
-pub async fn edit_media_reply_chatuser<F>(
-    current_message: &Message,
-    media_type: MediaType,
-    text: Option<String>,
-    media_id: Option<String>,
-    callback: F,
-) -> Result<()>
-where
-    F: for<'b> Fn(String, &'b InlineKeyboardButton) -> BoxFuture<'b, Result<()>> + Send + Sync,
-{
-    let chat = current_message.get_chat().get_id();
-    if should_ignore_chat(chat).await? {
-        return Ok(());
-    }
-
-    let text = text.unwrap_or_else(|| "".to_owned());
-    let (text, entities, buttons) = if let Ok(md) = MarkupBuilder::from_murkdown_button(
-        &text,
-        current_message.get_chatuser().as_ref(),
-        None,
-        &callback,
-        false,
-        false,
-    )
-    .await
-    {
-        md.build_owned()
-    } else {
-        (text, Vec::new(), InlineKeyboardBuilder::default())
-    };
-
-    if current_message.get_text().is_some() != (media_type == MediaType::Text) {
-        TG.client
-            .build_delete_message(
-                current_message.get_chat().get_id(),
-                current_message.get_message_id(),
-            )
-            .build()
-            .await?;
-        return send_media_reply_chatuser(
-            current_message.get_chat_ref(),
-            media_type,
-            Some(text),
-            media_id,
-            current_message.get_from_ref(),
-            vec![],
-            callback,
-        )
-        .await;
-    }
-    let buttons = buttons.build();
-    let input_media = match media_type {
-        MediaType::Sticker => {
-            TG.client
-                .build_delete_message(chat, current_message.get_message_id())
-                .build()
-                .await?;
-            TG.client()
-                .build_send_sticker(
-                    chat,
-                    FileData::String(
-                        media_id.ok_or_else(|| current_message.fail_err("invalid media"))?,
-                    ),
-                )
-                .build()
-                .await?;
-            None
-        }
-        MediaType::Photo => Some(InputMedia::InputMediaPhoto(InputMediaPhoto::new(Some(
-            InputFile::String(media_id.ok_or_else(|| current_message.fail_err("invalid media"))?),
-        )))),
-        MediaType::Document => Some(InputMedia::InputMediaDocument(InputMediaDocument::new(
-            Some(InputFile::String(
-                media_id.ok_or_else(|| current_message.fail_err("invalid media"))?,
-            )),
-        ))),
-        MediaType::Video => Some(InputMedia::InputMediaVideo(InputMediaVideo::new(Some(
-            InputFile::String(media_id.ok_or_else(|| current_message.fail_err("invalid media"))?),
-        )))),
-        MediaType::Text => {
-            TG.client
-                .build_edit_message_text(&text)
-                .message_id(current_message.get_message_id())
-                .chat_id(current_message.get_chat().get_id())
-                .entities(&entities)
-                .reply_markup(&buttons)
-                .build()
-                .await?;
-            None
-        }
-    };
-
-    if let Some(input_media) = input_media {
-        TG.client
-            .build_edit_message_media(&input_media)
-            .message_id(current_message.get_message_id())
-            .chat_id(current_message.get_chat().get_id())
-            .build()
-            .await?;
-
-        TG.client
-            .build_edit_message_caption()
-            .message_id(current_message.get_message_id())
-            .chat_id(current_message.get_chat().get_id())
-            .caption(&text)
-            .caption_entities(&entities)
-            .reply_markup(&buttons)
-            .build()
-            .await?;
-    }
-    Ok(())
-}
-pub async fn send_media_reply<F>(
-    message: &Message,
-    media_type: MediaType,
-    text: Option<String>,
-    media_id: Option<String>,
-    extra_entities: Option<Vec<MessageEntity>>,
-    callback: F,
-) -> Result<()>
-where
-    F: for<'b> Fn(String, &'b InlineKeyboardButton) -> BoxFuture<'b, Result<()>> + Send + Sync,
-{
-    let chat = message.get_chat().get_id();
-    if should_ignore_chat(chat).await? {
-        return Ok(());
-    }
-
-    let text = text.unwrap_or_else(|| "".to_owned());
-    let (text, entities, buttons) = if let Some(extra) = extra_entities {
-        let (text, entities) = retro_fillings(
-            text,
-            extra,
-            None,
-            &message
-                .get_chatuser()
-                .ok_or_else(|| BotError::Generic("No chatuser".to_owned()))?,
-        )
-        .await?;
-        (text, entities, InlineKeyboardBuilder::default())
-    } else {
-        if let Ok(md) = MarkupBuilder::from_murkdown_button(
-            &text,
-            message.get_chatuser().as_ref(),
-            None,
-            &callback,
-            false,
-            false,
-        )
-        .await
-        {
-            md.build_owned()
-        } else {
-            (text, Vec::new(), InlineKeyboardBuilder::default())
-        }
-    };
-    let buttons = buttons.build();
-    let buttons = EReplyMarkup::InlineKeyboardMarkup(buttons);
-
-    match media_type {
-        MediaType::Sticker => {
-            TG.client()
-                .build_send_sticker(
-                    chat,
-                    FileData::String(media_id.ok_or_else(|| message.fail_err("invalid media"))?),
-                )
-                .reply_to_message_id(message.get_message_id())
-                .build()
-                .await
-        }
-        MediaType::Photo => {
-            TG.client()
-                .build_send_photo(
-                    chat,
-                    FileData::String(media_id.ok_or_else(|| message.fail_err("invalid media"))?),
-                )
-                .caption(&text)
-                .caption_entities(&entities)
-                .reply_markup(&buttons)
-                .reply_to_message_id(message.get_message_id())
-                .build()
-                .await
-        }
-        MediaType::Document => {
-            TG.client()
-                .build_send_document(
-                    chat,
-                    FileData::String(media_id.ok_or_else(|| message.fail_err("invalid media"))?),
-                )
-                .reply_markup(&buttons)
-                .caption_entities(&entities)
-                .caption(&text)
-                .reply_to_message_id(message.get_message_id())
-                .build()
-                .await
-        }
-        MediaType::Video => {
-            TG.client()
-                .build_send_video(
-                    chat,
-                    FileData::String(media_id.ok_or_else(|| message.fail_err("invalid media"))?),
-                )
-                .reply_to_message_id(message.get_message_id())
-                .caption(&text)
-                .reply_markup(&buttons)
-                .caption_entities(&entities)
-                .build()
-                .await
-        }
-        MediaType::Text => {
-            TG.client()
-                .build_send_message(chat, &text)
-                .reply_to_message_id(message.get_message_id())
-                .reply_markup(&buttons)
-                .entities(&entities)
-                .build()
-                .await
-        }
-    }?;
-    Ok(())
 }

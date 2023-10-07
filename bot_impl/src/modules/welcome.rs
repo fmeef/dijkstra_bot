@@ -75,9 +75,12 @@ async fn get_model<'a>(
     };
 
     let (text, entity_id) = if let Some(text) = text {
-        let builder = MarkupBuilder::from_murkdown(text, extra, false, false).await?;
-        let (text, entities, buttons) = builder.build_owned();
-
+        let (text, entities, buttons) = MarkupBuilder::new(extra)
+            .set_text(text.to_owned())
+            .filling(false)
+            .header(false)
+            .build_murkdown_nofail()
+            .await;
         log::info!("welcome get with buttons {:?}", buttons.get());
         let entity_id = entity::insert(DB.deref(), &entities, buttons).await?;
         (Some(text), Some(entity_id))

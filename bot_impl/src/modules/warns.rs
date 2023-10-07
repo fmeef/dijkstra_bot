@@ -1,4 +1,5 @@
 use crate::tg::command::{Cmd, Context};
+use crate::tg::markdown::remove_fillings;
 use crate::tg::user::{GetUser, Username};
 use crate::util::error::Fail;
 
@@ -78,6 +79,7 @@ pub async fn warns(context: &Context) -> Result<()> {
                             w.reason.unwrap_or_else(|| lang_fmt!(lang, "noreason"))
                         )
                     })
+                    .map(|v| remove_fillings(&v))
                     .collect::<Vec<String>>()
                     .join("\n");
 
@@ -95,10 +97,7 @@ pub async fn clear<'a>(ctx: &Context) -> Result<()> {
     let message = ctx.message()?;
     ctx.is_group_or_die().await?;
     self_admin_or_die(&message.get_chat()).await?;
-    message
-        .get_from()
-        .admin_or_die(message.get_chat_ref())
-        .await?;
+    ctx.check_permissions(|p| p.can_restrict_members).await?;
     ctx.action_message(|ctx, user, _| async move {
         clear_warns(ctx.message()?.get_chat_ref(), user).await?;
 

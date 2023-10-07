@@ -11,7 +11,7 @@ tokio = { version = "1.32.0", features = ["full", "net", "socket2", "io-util", "
 migration = { path = "migration" }
 bot_impl = { path = "bot_impl" }
 openssl = { version = "0.10.57", features = ["vendored"] }
-clap = { version = "4.4.4", features = ["derive"] }
+clap = { version = "4.4.6", features = ["derive"] }
 markdown = "0.3.0"
 rustls-webpki = "0.101.6"
-time = "0.3.28"
+time = "0.3.29"

@@ -2,26 +2,24 @@
 //! There are two APIs here, a markdown like "murkdown" formatting language and
 //! a builder api for manually generating formatted text
 
-use botapi::gen_methods::CallSendMessage;
+use crate::persist::core::button;
+use crate::util::error::{BotError, Result};
 use botapi::gen_types::{
-    EReplyMarkup, InlineKeyboardButton, InlineKeyboardButtonBuilder, MessageEntity,
+    Chat, EReplyMarkup, InlineKeyboardButton, InlineKeyboardButtonBuilder, MessageEntity,
     MessageEntityBuilder, User,
 };
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use itertools::Itertools;
-use markdown::{Block, ListItem, Span};
-use uuid::Uuid;
-
-use crate::persist::core::button;
-use crate::statics::TG;
-use crate::util::error::{BotError, Result};
 use lazy_static::lazy_static;
+use markdown::{Block, ListItem, Span};
 use pomelo::pomelo;
 use regex::Regex;
 use std::fmt::Display;
+use std::sync::Arc;
 use std::{iter::Peekable, str::Chars};
 use thiserror::Error;
+use uuid::Uuid;
 
 /// Custom error type for murkdown parse failure. TODO: add additional context here
 #[derive(Debug, Error)]
@@ -384,16 +382,51 @@ impl<'a> Lexer<'a> {
     }
 }
 
+pub type ButtonFn = Arc<
+    dyn for<'b> Fn(String, &'b InlineKeyboardButton) -> BoxFuture<'b, Result<()>> + Send + Sync,
+>;
+
+#[derive(Clone)]
+struct OwnedChatUser {
+    chat: Chat,
+    user: User,
+}
+
+impl<'a, T> From<T> for OwnedChatUser
+where
+    T: AsRef<ChatUser<'a>>,
+{
+    fn from(value: T) -> Self {
+        let value = value.as_ref();
+        Self {
+            user: value.user.to_owned().into_owned(),
+            chat: value.chat.to_owned().into_owned(),
+        }
+    }
+}
+
+impl<'a> From<&'a ChatUser<'a>> for OwnedChatUser {
+    fn from(value: &'a ChatUser<'a>) -> Self {
+        Self {
+            user: value.user.to_owned().into_owned(),
+            chat: value.chat.to_owned().into_owned(),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct MarkupBuilder {
     existing_entities: Option<Vec<MessageEntity>>,
-    entities: Vec<MessageEntity>,
+    pub entities: Vec<MessageEntity>,
     pub buttons: InlineKeyboardBuilder,
     pub header: Option<Header>,
     pub footer: Option<String>,
-    offset: i64,
-    text: String,
-    filling: bool,
+    pub offset: i64,
+    pub text: String,
+    pub filling: bool,
+    pub enabled_header: bool,
+    button_function: ButtonFn,
+    chatuser: Option<OwnedChatUser>,
 }
 
 pub fn button_deeplink_key(key: &str) -> String {
@@ -446,11 +479,14 @@ impl MarkupBuilder {
             header: None,
             footer: None,
             filling: false,
+            enabled_header: false,
+            button_function: Arc::new(|_, _| async move { Ok(()) }.boxed()),
+            chatuser: None,
         }
     }
 
-    async fn rules<'a>(&'a mut self, chatuser: Option<&'a ChatUser<'a>>) -> Result<()> {
-        if let Some(ref chatuser) = chatuser {
+    async fn rules<'a>(&'a mut self) -> Result<()> {
+        if let Some(ref chatuser) = self.chatuser {
             let url = post_deep_link(chatuser.chat.get_id(), |k| rules_deeplink_key(k)).await?;
 
             let button = InlineKeyboardButtonBuilder::new("Get rules".to_owned())
@@ -461,24 +497,19 @@ impl MarkupBuilder {
         Ok(())
     }
 
-    pub async fn button<'a, F>(
-        &'a mut self,
-        hint: String,
-        button_text: String,
-        chatuser: Option<&'a ChatUser<'a>>,
-        callback: &'a F,
-    ) -> Result<()>
-    where
-        F: for<'b> Fn(String, &'b InlineKeyboardButton) -> BoxFuture<'b, Result<()>> + Send + Sync,
-    {
-        if let Some(ref chatuser) = chatuser {
+    pub async fn button<'a>(&'a mut self, hint: String, button_text: String) -> Result<()> {
+        if let Some(ref chatuser) = self.chatuser {
             log::info!(
                 "building button for note: {} with chat {}",
                 button_text,
                 chatuser.chat.name_humanreadable()
             );
         }
-        let is_dm = chatuser.map(|v| is_dm(&v.chat)).unwrap_or(true);
+        let is_dm = self
+            .chatuser
+            .as_ref()
+            .map(|v| is_dm(&v.chat))
+            .unwrap_or(true);
         let button = if button_text.starts_with("#") && button_text.len() > 1 && is_dm {
             let tail = &button_text[1..];
 
@@ -486,10 +517,13 @@ impl MarkupBuilder {
                 .set_callback_data(Uuid::new_v4().to_string())
                 .build();
 
-            callback(tail.to_owned(), &button).await?;
+            (*self.button_function)(tail.to_owned(), &button).await?;
             button
         } else if !is_dm && button_text.starts_with("#") && button_text.len() > 1 {
-            let chat = chatuser.ok_or_else(|| BotError::Generic("missing chatuser".to_owned()))?;
+            let chat = self
+                .chatuser
+                .as_ref()
+                .ok_or_else(|| BotError::Generic("missing chatuser".to_owned()))?;
             let chat = chat.chat.get_id();
             let tail = &button_text[1..];
 
@@ -507,50 +541,45 @@ impl MarkupBuilder {
         Ok(())
     }
 
-    fn parse_tgspan<'a, F>(
+    fn parse_tgspan<'a>(
         &'a mut self,
         span: Vec<TgSpan>,
-        message: Option<&'a ChatUser<'a>>,
-        callback: &'a F,
         topplevel: bool,
-    ) -> BoxFuture<Result<(i64, i64, i64)>>
-    where
-        F: for<'b> Fn(String, &'b InlineKeyboardButton) -> BoxFuture<'b, Result<()>> + Send + Sync,
-    {
+    ) -> BoxFuture<Result<(i64, i64, i64)>> {
         async move {
             let mut diff = 0;
             let mut size = 0;
             for span in span {
-                match (span, message) {
+                match (span, self.chatuser.as_ref()) {
                     (TgSpan::Code(code), _) => {
                         self.code(&code);
                     }
                     (TgSpan::Italic(s), _) => {
-                        let (s, e, d) = self.parse_tgspan(s, message, callback, false).await?;
+                        let (s, e, d) = self.parse_tgspan(s, false).await?;
                         diff += d;
                         size += e;
                         self.manual("italic", s, e);
                     }
                     (TgSpan::Bold(s), _) => {
-                        let (s, e, d) = self.parse_tgspan(s, message, callback, false).await?;
+                        let (s, e, d) = self.parse_tgspan(s, false).await?;
                         diff += d;
                         size += e;
                         self.manual("bold", s, e);
                     }
                     (TgSpan::Strikethrough(s), _) => {
-                        let (s, e, d) = self.parse_tgspan(s, message, callback, false).await?;
+                        let (s, e, d) = self.parse_tgspan(s, false).await?;
                         diff += d;
                         size += e;
                         self.manual("strikethrough", s, e);
                     }
                     (TgSpan::Underline(s), _) => {
-                        let (s, e, d) = self.parse_tgspan(s, message, callback, false).await?;
+                        let (s, e, d) = self.parse_tgspan(s, false).await?;
                         diff += d;
                         size += e;
                         self.manual("underline", s, e);
                     }
                     (TgSpan::Spoiler(s), _) => {
-                        let (s, e, d) = self.parse_tgspan(s, message, callback, false).await?;
+                        let (s, e, d) = self.parse_tgspan(s, false).await?;
                         diff += d;
                         size += e;
                         self.manual("spoiler", s, e);
@@ -559,17 +588,17 @@ impl MarkupBuilder {
                         diff += hint.encode_utf16().count() as i64
                             + button.encode_utf16().count() as i64
                             + "<>()".encode_utf16().count() as i64;
-                        self.button(hint, button, message, callback).await?;
+                        self.button(hint, button).await?;
                     }
                     (TgSpan::NewlineButton(hint, button), _) => {
                         diff += hint.encode_utf16().count() as i64
                             + button.encode_utf16().count() as i64
                             + "<>()".encode_utf16().count() as i64;
                         self.buttons.newline();
-                        self.button(hint, button, message, callback).await?;
+                        self.button(hint, button).await?;
                     }
                     (TgSpan::Link(hint, link), _) => {
-                        let (s, e, d) = self.parse_tgspan(hint, message, callback, false).await?;
+                        let (s, e, d) = self.parse_tgspan(hint, false).await?;
                         diff += d;
 
                         diff += link.encode_utf16().count() as i64
@@ -586,16 +615,16 @@ impl MarkupBuilder {
                         diff += s.encode_utf16().count() as i64;
                         self.text(s);
                     }
-                    (TgSpan::Filling(filling), Some(chatuser)) if self.filling => {
+                    (TgSpan::Filling(filling), Some(ref chatuser)) if self.filling => {
                         match filling.as_str() {
                             "username" => {
-                                let user = chatuser.user.as_ref().to_owned();
+                                let user = chatuser.user.clone();
                                 let name = user.name_humanreadable();
                                 size += name.encode_utf16().count() as i64;
                                 self.text_mention(name, user, None);
                             }
                             "first" => {
-                                let first = chatuser.user.get_first_name();
+                                let first = chatuser.user.get_first_name().into_owned();
                                 size += first.encode_utf16().count() as i64;
                                 self.text(first);
                             }
@@ -609,7 +638,7 @@ impl MarkupBuilder {
                                 self.text(last);
                             }
                             "mention" => {
-                                let user = chatuser.user.as_ref().to_owned();
+                                let user = chatuser.user.clone();
                                 let first = user.get_first_name().into_owned();
                                 size += first.encode_utf16().count() as i64;
                                 self.text_mention(first, user, None);
@@ -625,7 +654,7 @@ impl MarkupBuilder {
                                 self.text(id);
                             }
                             "rules" => {
-                                self.rules(Some(chatuser)).await?;
+                                self.rules().await?;
                             }
                             s => {
                                 let s = format!("{{{}}}", s);
@@ -756,115 +785,195 @@ impl MarkupBuilder {
         s
     }
 
-    pub async fn from_tgspan<'a, F>(
+    pub async fn from_tgspan<'a>(
         tgspan: Vec<TgSpan>,
         chatuser: Option<&'a ChatUser<'a>>,
         existing: Option<Vec<MessageEntity>>,
-        callback: F,
-    ) -> Result<Self>
-    where
-        F: for<'b> Fn(String, &'b InlineKeyboardButton) -> BoxFuture<'b, Result<()>> + Send + Sync,
-    {
+    ) -> Result<Self> {
         let mut s = Self::new(existing);
-        s.parse_tgspan(tgspan, chatuser, &callback, true).await?;
+        s.chatuser = chatuser.map(|v| v.into());
+        s.parse_tgspan(tgspan, true).await?;
         Ok(s)
     }
 
-    /// Parses murkdown and constructs a builder with the corresponding text and
-    /// entities
-    pub async fn from_murkdown<T>(
-        text: T,
-        existing: Option<Vec<MessageEntity>>,
-        header: bool,
-        filling: bool,
-    ) -> Result<Self>
-    where
-        T: AsRef<str>,
-    {
-        Self::from_murkdown_internal(
-            text,
-            None,
-            existing,
-            &|_, _| async move { Ok(()) }.boxed(),
-            header,
-            filling,
-        )
-        .await
-    }
+    // /// Parses murkdown and constructs a builder with the corresponding text and
+    // /// entities
+    // pub async fn from_murkdown<T>(
+    //     text: T,
+    //     existing: Option<Vec<MessageEntity>>,
+    //     header: bool,
+    //     filling: bool,
+    // ) -> Result<Self>
+    // where
+    //     T: AsRef<str>,
+    // {
+    //     Self::from_murkdown_internal(text, None, existing, header, filling).await
+    // }
 
-    /// Parses murkdown and constructs a builder with the corresponding text and
-    /// entities. The provided ChatUser value is used to perform automated formfilling
-    pub async fn from_murkdown_chatuser<'a, T>(
-        text: T,
-        chatuser: Option<&'a ChatUser<'a>>,
-        existing: Option<Vec<MessageEntity>>,
-        header: bool,
-        filling: bool,
-    ) -> Result<Self>
-    where
-        T: AsRef<str>,
-    {
-        Self::from_murkdown_internal(
-            text,
-            chatuser,
-            existing,
-            &|_, _| async move { Ok(()) }.boxed(),
-            header,
-            filling,
-        )
-        .await
-    }
+    // /// Parses murkdown and constructs a builder with the corresponding text and
+    // /// entities. The provided ChatUser value is used to perform automated formfilling
+    // pub async fn from_murkdown_chatuser<'a, T>(
+    //     text: T,
+    //     chatuser: Option<&'a ChatUser<'a>>,
+    //     existing: Option<Vec<MessageEntity>>,
+    //     header: bool,
+    //     filling: bool,
+    // ) -> Result<Self>
+    // where
+    //     T: AsRef<str>,
+    // {
+    //     Self::from_murkdown_internal(text, chatuser, existing, header, filling).await
+    // }
 
-    /// parses murkdown with a callback called on every button requiring a callback
-    pub async fn from_murkdown_button<'a, T, F>(
-        text: T,
-        chatuser: Option<&'a ChatUser<'a>>,
-        existing: Option<Vec<MessageEntity>>,
-        callback: &F,
-        header: bool,
-        filling: bool,
-    ) -> Result<Self>
-    where
-        T: AsRef<str>,
-        F: for<'b> Fn(String, &'b InlineKeyboardButton) -> BoxFuture<'b, Result<()>> + Send + Sync,
-    {
-        Self::from_murkdown_internal(text, chatuser, existing, callback, header, filling).await
-    }
+    // /// parses murkdown with a callback called on every button requiring a callback
+    // pub async fn from_murkdown_button<'a, T>(
+    //     text: T,
+    //     chatuser: Option<&'a ChatUser<'a>>,
+    //     existing: Option<Vec<MessageEntity>>,
+    //     header: bool,
+    //     filling: bool,
+    // ) -> Result<Self>
+    // where
+    //     T: AsRef<str>,
+    // {
+    //     Self::from_murkdown_internal(text, chatuser, existing, header, filling).await
+    // }
 
-    async fn from_murkdown_internal<'a, T, F>(
+    // async fn from_murkdown_internal<'a, T>(
+    //     text: T,
+    //     chatuser: Option<&'a ChatUser<'a>>,
+    //     existing: Option<Vec<MessageEntity>>,
+    //     header: bool,
+    //     filling: bool,
+    // ) -> Result<Self>
+    // where
+    //     T: AsRef<str>,
+    // {
+    //     let text = text.as_ref();
+    //     let mut s = Self::new(existing);
+    //     s.chatuser = chatuser.map(|v| v.into());
+    //     s.filling = filling;
+    //     let mut parser = Parser::new();
+    //     let mut tokenizer = Lexer::new(text, header);
+    //     while let Some(token) = tokenizer.next_token() {
+    //         parser.parse(token)?;
+    //     }
+    //     let res = parser.end_of_input()?;
+    //     s.header = res.header;
+    //     s.footer = res.body.iter().rev().find_map(|p| {
+    //         if let TgSpan::Filling(f) = p {
+    //             Some(f.to_owned())
+    //         } else {
+    //             None
+    //         }
+    //     });
+    //     s.parse_tgspan(res.body, true).await?;
+    //     if let Some(ref existing) = s.existing_entities {
+    //         s.entities.extend_from_slice(&existing.as_slice());
+    //     }
+    //     Ok(s)
+    // }
+
+    pub async fn append<'a, T>(
+        &'a mut self,
         text: T,
-        chatuser: Option<&'a ChatUser<'a>>,
         existing: Option<Vec<MessageEntity>>,
-        callback: &F,
-        header: bool,
-        filling: bool,
-    ) -> Result<Self>
+    ) -> Result<&'a mut Self>
     where
         T: AsRef<str>,
-        F: for<'b> Fn(String, &'b InlineKeyboardButton) -> BoxFuture<'b, Result<()>> + Send + Sync,
     {
         let text = text.as_ref();
-        let mut s = Self::new(existing);
-        s.filling = filling;
+        if let (Some(existing), Some(ref existingnew)) = (self.existing_entities.as_mut(), existing)
+        {
+            existing.extend_from_slice(&existingnew);
+        }
         let mut parser = Parser::new();
-        let mut tokenizer = Lexer::new(text, header);
+        let mut tokenizer = Lexer::new(text, false);
         while let Some(token) = tokenizer.next_token() {
             parser.parse(token)?;
         }
         let res = parser.end_of_input()?;
-        s.header = res.header;
-        s.footer = res.body.iter().rev().find_map(|p| {
-            if let TgSpan::Filling(f) = p {
-                Some(f.to_owned())
-            } else {
-                None
-            }
-        });
-        s.parse_tgspan(res.body, chatuser, &callback, true).await?;
-        if let Some(ref existing) = s.existing_entities {
-            s.entities.extend_from_slice(&existing.as_slice());
+        self.parse_tgspan(res.body, true).await?;
+        if let Some(ref existing) = self.existing_entities {
+            self.entities.extend_from_slice(&existing.as_slice());
         }
-        Ok(s)
+        Ok(self)
+    }
+
+    pub fn chatuser<'a>(mut self, chatuser: Option<&ChatUser<'a>>) -> Self {
+        self.chatuser = chatuser.map(|v| v.into());
+        self
+    }
+
+    pub fn callback<F>(mut self, callback: F) -> Self
+    where
+        F: for<'b> Fn(String, &'b InlineKeyboardButton) -> BoxFuture<'b, Result<()>>
+            + Send
+            + Sync
+            + 'static,
+    {
+        self.button_function = Arc::new(callback);
+        self
+    }
+
+    pub fn build<'a>(&'a self) -> (&'a str, &'a Vec<MessageEntity>) {
+        (&self.text, &self.entities)
+    }
+
+    pub async fn build_murkdown<'a>(
+        mut self,
+    ) -> Result<(String, Vec<MessageEntity>, InlineKeyboardBuilder)> {
+        let mut parser = Parser::new();
+        let mut tokenizer = Lexer::new(&self.text, self.enabled_header);
+        while let Some(token) = tokenizer.next_token() {
+            parser.parse(token)?;
+        }
+        let res = parser.end_of_input()?;
+        self.offset = 0;
+        self.text.clear();
+        self.parse_tgspan(res.body, true).await?;
+
+        if let Some(ref existing) = self.existing_entities {
+            self.entities.extend_from_slice(&existing.as_slice());
+        }
+        Ok((self.text, self.entities, self.buttons))
+    }
+
+    async fn nofail_internal(&mut self) -> Result<()> {
+        let mut parser = Parser::new();
+        let mut tokenizer = Lexer::new(&self.text, self.enabled_header);
+        while let Some(token) = tokenizer.next_token() {
+            parser.parse(token)?;
+        }
+        let res = parser.end_of_input()?;
+        self.offset = 0;
+        self.text.clear();
+        self.parse_tgspan(res.body, true).await?;
+
+        if let Some(ref existing) = self.existing_entities {
+            self.entities.extend_from_slice(&existing.as_slice());
+        }
+        Ok(())
+    }
+
+    pub async fn build_murkdown_nofail<'a>(
+        mut self,
+    ) -> (String, Vec<MessageEntity>, InlineKeyboardBuilder) {
+        if let Ok(()) = self.nofail_internal().await {
+            (self.text, self.entities, self.buttons)
+        } else {
+            (self.text, self.entities, self.buttons)
+        }
+    }
+
+    pub fn filling(mut self, filling: bool) -> Self {
+        self.filling = filling;
+        self
+    }
+
+    pub fn header(mut self, header: bool) -> Self {
+        self.enabled_header = header;
+        self
     }
 
     /// Appends new unformated text
@@ -874,6 +983,10 @@ impl MarkupBuilder {
         self
     }
 
+    pub fn set_text(mut self, text: String) -> Self {
+        self.text = text;
+        self
+    }
     fn manual(&mut self, entity_type: &str, start: i64, end: i64) {
         let entity = MessageEntityBuilder::new(start, end)
             .set_type(entity_type.to_owned())
@@ -1053,18 +1166,8 @@ impl MarkupBuilder {
         self
     }
 
-    /// return references to message text and MessageEntities
-    pub fn build<'a>(&'a self) -> (&'a str, &'a Vec<MessageEntity>) {
-        (&self.text, &self.entities)
-    }
-
-    /// Consume this builder and return owned text and MessageEntities in Vec form
-    pub fn build_owned(self) -> (String, Vec<MessageEntity>, InlineKeyboardBuilder) {
-        (self.text, self.entities, self.buttons)
-    }
-
-    pub fn build_filter(
-        self,
+    pub async fn build_filter(
+        mut self,
     ) -> (
         String,
         Vec<MessageEntity>,
@@ -1072,18 +1175,32 @@ impl MarkupBuilder {
         Option<Header>,
         Option<String>,
     ) {
-        (
-            self.text,
-            self.entities,
-            self.buttons,
-            self.header,
-            self.footer,
-        )
+        if let Ok(()) = self.nofail_internal().await {
+            (
+                self.text,
+                self.entities,
+                self.buttons,
+                self.header,
+                self.footer,
+            )
+        } else {
+            (
+                self.text,
+                self.entities,
+                self.buttons,
+                self.header,
+                self.footer,
+            )
+        }
     }
 }
 
 lazy_static! {
     static ref FILLER_REGEX: Regex = Regex::new(r"\{\w*\}").unwrap();
+}
+
+pub fn remove_fillings(text: &str) -> String {
+    FILLER_REGEX.replace_all(text, "").into_owned()
 }
 
 pub async fn retro_fillings<'a>(
@@ -1307,9 +1424,9 @@ where
 /// Type used by proc macros for hygiene purposes and to get the borrow checker
 /// to not complain. Don't use this manually
 pub struct EntityMessage {
-    builder: MarkupBuilder,
-    chat: i64,
-    reply_markup: Option<EReplyMarkup>,
+    pub builder: MarkupBuilder,
+    pub chat: i64,
+    pub reply_markup: Option<EReplyMarkup>,
 }
 
 impl EntityMessage {
@@ -1321,30 +1438,43 @@ impl EntityMessage {
         }
     }
 
+    // pub async fn new_append<'a>(
+    //     chat: i64,
+    //     text: &str,
+    //     chatuser: &ChatUser<'a>,
+    //     entities: Vec<MessageEntity>,
+    //     kb: InlineKeyboardBuilder,
+    // ) -> Result<Self> {
+    //     let mut builder = MarkupBuilder::new(Some(entities));
+
+    //     Ok(Self {
+    //         builder,
+    //         chat,
+    //         reply_markup: Some(EReplyMarkup::InlineKeyboardMarkup(kb.build())),
+    //     })
+    // }
+
     pub fn reply_markup(mut self, reply_markup: EReplyMarkup) -> Self {
         self.reply_markup = Some(reply_markup);
         self
     }
 
-    pub fn builder<'a>(&'a mut self) -> &'a mut MarkupBuilder {
-        &mut self.builder
-    }
-    pub fn call<'a>(&'a mut self) -> CallSendMessage<'a> {
-        let (text, entities) = self.builder.build();
-        let call = TG
-            .client
-            .build_send_message(self.chat, text)
-            .entities(entities);
-        if let Some(ref reply_markup) = self.reply_markup {
-            call.reply_markup(reply_markup)
-        } else {
-            call
-        }
-    }
+    // pub fn call<'a>(self) -> CallSendMessage<'a> {
+    //     let (text, entities, _) = self.builder.build_murkdown();
+    //     let call = TG
+    //         .client
+    //         .build_send_message(self.chat, text)
+    //         .entities(entities);
+    //     if let Some(ref reply_markup) = self.reply_markup {
+    //         call.reply_markup(reply_markup)
+    //     } else {
+    //         call
+    //     }
+    // }
 
-    pub fn textentities<'a>(&'a self) -> (&'a str, &'a Vec<MessageEntity>) {
-        self.builder.build()
-    }
+    // pub fn textentities<'a>(&'a self) -> (&'a str, &'a Vec<MessageEntity>) {
+    //     self.builder.build()
+    // }
 }
 
 #[allow(dead_code)]

@@ -9,10 +9,10 @@ name = "migration"
 path = "src/lib.rs"
 
 [dependencies]
-time = "0.3.28"
+time = "0.3.29"
 sea-schema = { version = "0.14.1", default-features = false, features = [ "debug-print"] }
 sea-orm-migration = "0.12.3"
-sea-query = { version = "0.30.1", features = ["uuid", "bigdecimal", "with-bigdecimal", "with-chrono", "with-json", "backend-postgres", "sea-query-derive", "backend-postgres", "derive", "with-uuid", "thread-safe"] }
+sea-query = { version = "0.30.2", features = ["uuid", "bigdecimal", "with-bigdecimal", "with-chrono", "with-json", "backend-postgres", "sea-query-derive", "backend-postgres", "derive", "with-uuid", "thread-safe"] }
 bot_impl = { path = "../bot_impl" }
 botapi = { path = "../bot_impl/botapi-rs" }
 tggen = { path = "../bot_impl/botapi-rs/generate" }

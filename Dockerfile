@@ -56,7 +56,7 @@ FROM rust:latest AS dev
 ENV USER=bobot
 ENV UID=10001
 
-RUN apt update && apt install -y postgresql-client redis fish gdb lld libssl-dev 
+RUN apt update && apt install -y postgresql-client redis fish gdb lld libssl-dev valgrind
 RUN rustup default stable && rustup component add rustfmt && \
  rustup toolchain install nightly && \	
  rustup component add rustfmt --toolchain nightly && \

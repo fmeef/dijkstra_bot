@@ -16,6 +16,7 @@ clearedlock: 'Cleared lock "{}"
   '
 cleartime: Cleared warn time for {}
 clearwarns: Cleared warns for user {}
+failwarn: Failed to warn this user, I haven't seen them in the last 48 hours
 commandnotfound: Command not found
 currentlang: Choose a language from the list
 defaultgoodbye: Goodbye {{mention}}
@@ -159,9 +160,7 @@ warnmute: That's {} warnings! User {} muted
 warnreason: 'Yowzers! Warned user {} with {}/{} warns
 
   [*Reason:]
-
-  {}
-
+  
   '
 warns: 'Warns for user {}:
 

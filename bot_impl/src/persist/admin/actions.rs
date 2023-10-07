@@ -29,27 +29,16 @@ pub struct Model {
     pub user_id: i64,
     #[sea_orm(primary_key)]
     pub chat_id: i64,
-    #[sea_orm(default = true)]
     pub pending: bool,
-    #[sea_orm(default = false)]
     pub is_banned: bool,
-    #[sea_orm(default = true)]
     pub can_send_messages: bool,
-    #[sea_orm(default = true)]
     pub can_send_audio: bool,
-    #[sea_orm(default = true)]
     pub can_send_video: bool,
-    #[sea_orm(default = true)]
     pub can_send_photo: bool,
-    #[sea_orm(default = true)]
     pub can_send_document: bool,
-    #[sea_orm(default = true)]
     pub can_send_voice_note: bool,
-    #[sea_orm(default = true)]
     pub can_send_video_note: bool,
-    #[sea_orm(default = true)]
     pub can_send_poll: bool,
-    #[sea_orm(default = true)]
     pub can_send_other: bool,
     pub action: Option<ActionType>,
     pub expires: Option<chrono::DateTime<Utc>>,
@@ -57,12 +46,6 @@ pub struct Model {
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {}
-
-impl Related<super::actions::Entity> for Entity {
-    fn to() -> RelationDef {
-        panic!("no relations")
-    }
-}
 
 impl ActionType {
     pub fn from_str<T: AsRef<str>>(s: T, chat: i64) -> crate::util::error::Result<Self> {

@@ -85,12 +85,12 @@ async fn listadmins(ctx: &Context) -> Result<()> {
     let admins = message.get_chat().get_cached_admins().await?;
     let header = lang_fmt!(lang, "foundadmins", admins.len());
     let mut builder = EntityMessage::new(message.get_chat().get_id());
-    builder.builder().text(header);
+    builder.builder.text(header);
     let body = stream::iter(admins.values().filter(|p| !p.is_anon_admin()))
         .then(|v| async move { v.get_user().mention().await })
         .try_fold(builder, |mut entities, value| async move {
-            entities.builder().text("\n");
-            entities.builder().regular(value);
+            entities.builder.text("\n");
+            entities.builder.regular(value);
             Ok(entities)
         })
         .await?;
