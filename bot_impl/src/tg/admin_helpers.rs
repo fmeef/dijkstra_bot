@@ -2000,8 +2000,7 @@ impl Context {
         let dialog = dialog_or_default(message.get_chat_ref()).await?;
         let lang = get_chat_lang(message.get_chat().get_id()).await?;
         let time = dialog.warn_time.map(|t| Duration::seconds(t));
-        let (count, model) =
-            warn_user(message, user, reason.map(|v| v.to_owned()), &time, None).await?;
+        let (count, model) = warn_user(message, user, reason.map(|v| v.to_owned()), &time).await?;
         let name = user.mention().await?;
         let mut text = if let Some(_) = reason {
             entity_fmt!(
@@ -2170,7 +2169,6 @@ pub async fn warn_user(
     user: i64,
     reason: Option<String>,
     duration: &Option<Duration>,
-    entity_id: Option<i64>,
 ) -> Result<(i32, warns::Model)> {
     let chat_id = message.get_chat().get_id();
     let duration = duration.map(|v| Utc::now().checked_add_signed(v)).flatten();
@@ -2180,7 +2178,6 @@ pub async fn warn_user(
         chat_id: Set(chat_id),
         reason: Set(reason),
         expires: Set(duration),
-        entity_id: Set(entity_id),
     };
     let model = warns::Entity::insert(model)
         .exec_with_returning(DB.deref())
