@@ -1378,6 +1378,7 @@ pub struct EntityMessage {
     pub builder: MarkupBuilder,
     pub chat: i64,
     pub reply_markup: Option<EReplyMarkup>,
+    pub disable_murkdown: bool,
 }
 
 impl EntityMessage {
@@ -1386,6 +1387,7 @@ impl EntityMessage {
             builder: MarkupBuilder::new(None),
             chat,
             reply_markup: None,
+            disable_murkdown: false,
         }
     }
 
@@ -1394,18 +1396,35 @@ impl EntityMessage {
         self
     }
 
+    pub fn disable_murkdown(mut self, disable: bool) -> Self {
+        self.disable_murkdown = disable;
+        self
+    }
+
     pub async fn call<'a>(&'a mut self) -> CallSendMessage<'a> {
-        let (text, entities, buttons) = self.builder.build_murkdown_nofail_ref().await;
-        let call = TG
-            .client
-            .build_send_message(self.chat, text)
-            .entities(entities);
-        if let Some(ref reply_markup) = self.reply_markup {
-            call.reply_markup(reply_markup)
-        } else if let Some(buttons) = buttons {
-            call.reply_markup(buttons)
+        if self.disable_murkdown {
+            let call = TG
+                .client
+                .build_send_message(self.chat, &self.builder.text)
+                .entities(&self.builder.entities);
+            if let Some(ref reply_markup) = self.reply_markup {
+                call.reply_markup(reply_markup)
+            } else {
+                call
+            }
         } else {
-            call
+            let (text, entities, buttons) = self.builder.build_murkdown_nofail_ref().await;
+            let call = TG
+                .client
+                .build_send_message(self.chat, text)
+                .entities(entities);
+            if let Some(ref reply_markup) = self.reply_markup {
+                call.reply_markup(reply_markup)
+            } else if let Some(buttons) = buttons {
+                call.reply_markup(buttons)
+            } else {
+                call
+            }
         }
     }
 
