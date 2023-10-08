@@ -728,7 +728,6 @@ async fn delete<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
 }
 
 async fn list_notes(ctx: &Context) -> Result<()> {
-    ctx.check_permissions(|p| p.can_manage_chat).await?;
     let message = ctx.message()?;
     let notes = refresh_notes(message.get_chat().get_id()).await?;
     let m = [lang_fmt!(
