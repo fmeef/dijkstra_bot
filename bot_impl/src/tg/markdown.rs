@@ -1335,9 +1335,14 @@ impl MarkupBuilder {
         self.text.clear();
         self.parse_tgspan(res.body, true).await?;
 
+        if self.enabled_header {
+            self.header = res.header;
+        }
+
         if let Some(ref existing) = self.existing_entities {
             self.entities.extend_from_slice(&existing.as_slice());
         }
+
         Ok((self.text, self.entities, self.buttons))
     }
 
@@ -1351,6 +1356,10 @@ impl MarkupBuilder {
         self.offset = 0;
         self.text.clear();
         self.parse_tgspan(res.body, true).await?;
+
+        if self.enabled_header {
+            self.header = res.header;
+        }
 
         if let Some(ref existing) = self.existing_entities {
             self.entities.extend_from_slice(&existing.as_slice());

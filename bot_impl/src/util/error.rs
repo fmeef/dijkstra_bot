@@ -227,13 +227,13 @@ pub enum BotError {
 
 impl<T> From<tokio::sync::mpsc::error::SendError<T>> for BotError {
     fn from(value: tokio::sync::mpsc::error::SendError<T>) -> Self {
-        value.into()
+        BotError::Generic(value.to_string())
     }
 }
 
 impl From<TransactionError<BotError>> for BotError {
     fn from(value: TransactionError<BotError>) -> Self {
-        value.into()
+        BotError::Generic(value.to_string())
     }
 }
 
