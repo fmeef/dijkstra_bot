@@ -93,7 +93,7 @@ async fn handle_markdown(message: &Message) -> Result<bool> {
 
 pub async fn handle_update(ctx: &Context) -> Result<()> {
     if let Some(&Cmd { cmd, message, .. }) = ctx.cmd() {
-        log::info!("piracy command {}", cmd);
+        // log::info!("piracy command {}", cmd);
         match cmd {
             //            "crash" => TG.client().close().await?,
             "crash" => {
