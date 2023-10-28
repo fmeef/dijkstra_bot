@@ -212,7 +212,7 @@ pub mod entities {
         use sea_orm::entity::prelude::*;
         use serde::{Deserialize, Serialize};
 
-        #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+        #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize, Eq, Hash)]
         #[sea_orm(table_name = "triggers")]
         pub struct Model {
             #[sea_orm(primary_key, column_type = "Text")]
@@ -241,7 +241,10 @@ pub mod entities {
 
     pub mod filters {
 
-        use std::{collections::HashMap, ops::Deref};
+        use std::{
+            collections::{HashMap, HashSet},
+            ops::Deref,
+        };
 
         use super::triggers;
         use crate::{
@@ -422,9 +425,9 @@ pub mod entities {
         pub type FiltersMap = HashMap<
             Model,
             (
-                Vec<EntityWithUser>,
-                Vec<button::Model>,
-                Vec<triggers::Model>,
+                HashSet<EntityWithUser>,
+                HashSet<button::Model>,
+                HashSet<triggers::Model>,
             ),
         >;
 
@@ -487,18 +490,18 @@ pub mod entities {
                     if let Some(filter) = filter {
                         let (entitylist, buttonlist, triggerlist) = acc
                             .entry(filter)
-                            .or_insert_with(|| (Vec::new(), Vec::new(), Vec::new()));
+                            .or_insert_with(|| (HashSet::new(), HashSet::new(), HashSet::new()));
 
                         if let Some(button) = button {
-                            buttonlist.push(button);
+                            buttonlist.insert(button);
                         }
 
                         if let Some(entity) = entity {
-                            entitylist.push(entity);
+                            entitylist.insert(entity);
                         }
 
                         if let Some(trigger) = trigger {
-                            triggerlist.push(trigger);
+                            triggerlist.insert(trigger);
                         }
                     }
                     acc
@@ -610,7 +613,7 @@ async fn get_filter(
                         .map(|e| e.get())
                         .map(|(e, u)| e.to_entity(u))
                         .collect(),
-                    get_markup_for_buttons(button),
+                    get_markup_for_buttons(button.into_iter().collect()),
                 )
             })
             .next();
@@ -683,7 +686,7 @@ async fn update_cache_from_db(message: &Message) -> Result<()> {
                 for (filter, (entities, buttons, triggers)) in res.into_iter() {
                     let key = get_filter_key(message, filter.id);
                     log::info!("triggers {}", triggers.len());
-                    let kb = get_markup_for_buttons(buttons);
+                    let kb = get_markup_for_buttons(buttons.into_iter().collect());
                     let entities = entities
                         .into_iter()
                         .map(|v| v.get())

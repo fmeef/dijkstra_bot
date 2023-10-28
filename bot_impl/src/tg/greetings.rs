@@ -718,8 +718,8 @@ impl Context {
                             .map(|e| e.get())
                             .map(|(e, u)| e.to_entity(u))
                             .collect(),
-                        get_markup_for_buttons(button),
-                        get_markup_for_buttons(gb_button),
+                        get_markup_for_buttons(button.into_iter().collect()),
+                        get_markup_for_buttons(gb_button.into_iter().collect()),
                     )
                 })
                 .next();

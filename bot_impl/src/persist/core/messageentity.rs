@@ -8,7 +8,7 @@ use crate::tg::admin_helpers::insert_user;
 
 use super::users;
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, DeriveEntityModel)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, DeriveEntityModel, Eq, Hash)]
 #[sea_orm(table_name = "message_entity")]
 pub struct Model {
     #[sea_orm(primary_key)]
@@ -24,7 +24,7 @@ pub struct Model {
     pub owner_id: i64,
 }
 
-#[derive(FromQueryResult, Debug)]
+#[derive(FromQueryResult, Debug, PartialEq, Eq, Hash)]
 pub struct EntityWithUser {
     // entity fields
     pub tg_type: DbMarkupType,
@@ -135,7 +135,7 @@ impl Related<super::super::core::users::Entity> for Entity {
     }
 }
 
-#[derive(EnumIter, DeriveActiveEnum, Serialize, Deserialize, PartialEq, Debug, Clone)]
+#[derive(EnumIter, DeriveActiveEnum, Serialize, Deserialize, PartialEq, Debug, Clone, Eq, Hash)]
 #[sea_orm(rs_type = "i32", db_type = "Integer")]
 pub enum DbMarkupType {
     #[sea_orm(num_value = 1)]

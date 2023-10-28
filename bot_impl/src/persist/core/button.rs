@@ -5,7 +5,7 @@ use botapi::gen_types::{InlineKeyboardButton, InlineKeyboardButtonBuilder};
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, DeriveEntityModel)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, DeriveEntityModel, Eq, Hash)]
 #[sea_orm(table_name = "button")]
 pub struct Model {
     pub button_text: String,

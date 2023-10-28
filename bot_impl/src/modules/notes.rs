@@ -131,7 +131,10 @@ pub mod entities {
     }
 
     pub mod notes {
-        use std::{collections::HashMap, ops::Deref};
+        use std::{
+            collections::{HashMap, HashSet},
+            ops::Deref,
+        };
 
         use crate::{
             persist::core::{
@@ -201,7 +204,6 @@ pub mod entities {
             pub button_text: Option<String>,
             pub callback_data: Option<String>,
             pub button_url: Option<String>,
-            pub owner_id: Option<i64>,
             pub pos_x: Option<i32>,
             pub pos_y: Option<i32>,
             pub b_owner_id: Option<i64>,
@@ -215,6 +217,7 @@ pub mod entities {
             pub user: Option<i64>,
             pub language: Option<String>,
             pub emoji_id: Option<String>,
+            pub owner_id: Option<i64>,
 
             // user fields
             pub user_id: Option<i64>,
@@ -284,9 +287,9 @@ pub mod entities {
             }
         }
 
-        pub type FiltersMap = HashMap<Model, (Vec<EntityWithUser>, Vec<button::Model>)>;
+        pub type NotesMap = HashMap<Model, (HashSet<EntityWithUser>, HashSet<button::Model>)>;
 
-        pub async fn get_filters_join<F>(filter: F) -> crate::util::error::Result<FiltersMap>
+        pub async fn get_filters_join<F>(filter: F) -> crate::util::error::Result<NotesMap>
         where
             F: IntoCondition,
         {
@@ -339,19 +342,19 @@ pub mod entities {
                 .await?;
 
             let res = res.into_iter().map(|v| v.get()).fold(
-                FiltersMap::new(),
+                NotesMap::new(),
                 |mut acc, (filter, button, entity)| {
                     if let Some(filter) = filter {
                         let (entitylist, buttonlist) = acc
                             .entry(filter)
-                            .or_insert_with(|| (Vec::new(), Vec::new()));
+                            .or_insert_with(|| (HashSet::new(), HashSet::new()));
 
                         if let Some(button) = button {
-                            buttonlist.push(button);
+                            buttonlist.insert(button);
                         }
 
                         if let Some(entity) = entity {
-                            entitylist.push(entity);
+                            entitylist.insert(entity);
                         }
                     }
                     acc
@@ -558,6 +561,9 @@ async fn print(message: &Context, name: String) -> Result<()> {
 
 async fn print_chat(ctx: &Context, name: String, chat: i64) -> Result<()> {
     if let Some((note, entities, buttons)) = get_note_by_name(name, chat).await? {
+        if let Some(buttons) = buttons.as_ref() {
+            log::info!("note buttons {:?}", buttons.get());
+        }
         print_note(ctx, note, entities, buttons, chat).await?;
         Ok(())
     } else {
@@ -621,7 +627,7 @@ async fn refresh_notes(
                         .map(|e| e.get())
                         .map(|(e, u)| e.to_entity(u))
                         .collect(),
-                    get_markup_for_buttons(button),
+                    get_markup_for_buttons(button.into_iter().collect()),
                 )
             })
             .collect_vec();
@@ -675,6 +681,7 @@ async fn get_note_by_name(
             Ok(res
                 .into_iter()
                 .map(|(note, (entity, button))| {
+                    log::info!("note from database {:?}", button);
                     (
                         note,
                         entity
@@ -682,7 +689,7 @@ async fn get_note_by_name(
                             .map(|e| e.get())
                             .map(|(e, u)| e.to_entity(u))
                             .collect(),
-                        get_markup_for_buttons(button),
+                        get_markup_for_buttons(button.into_iter().collect()),
                     )
                 })
                 .next())

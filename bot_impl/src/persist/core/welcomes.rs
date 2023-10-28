@@ -1,4 +1,7 @@
-use std::{collections::HashMap, ops::Deref};
+use std::{
+    collections::{HashMap, HashSet},
+    ops::Deref,
+};
 
 use crate::{persist::core::media::*, statics::DB};
 use sea_orm::{entity::prelude::*, FromQueryResult, QueryOrder, QuerySelect};
@@ -257,10 +260,10 @@ struct ButtonAlias;
 pub type FiltersMap = HashMap<
     Model,
     (
-        Vec<EntityWithUser>,
-        Vec<EntityWithUser>,
-        Vec<button::Model>,
-        Vec<button::Model>,
+        HashSet<EntityWithUser>,
+        HashSet<EntityWithUser>,
+        HashSet<button::Model>,
+        HashSet<button::Model>,
     ),
 >;
 
@@ -431,24 +434,30 @@ where
         |mut acc, (filter, button, gb_button, entity, goodbye)| {
             //        log::info!("got entity {:?} goodbye {:?}", entity, goodbye);
             if let Some(filter) = filter {
-                let (entitylist, goodbyelist, buttonlist, gb_buttonlist) = acc
-                    .entry(filter)
-                    .or_insert_with(|| (Vec::new(), Vec::new(), Vec::new(), Vec::new()));
+                let (entitylist, goodbyelist, buttonlist, gb_buttonlist) =
+                    acc.entry(filter).or_insert_with(|| {
+                        (
+                            HashSet::new(),
+                            HashSet::new(),
+                            HashSet::new(),
+                            HashSet::new(),
+                        )
+                    });
 
                 if let Some(button) = button {
-                    buttonlist.push(button);
+                    buttonlist.insert(button);
                 }
 
                 if let Some(entity) = entity {
-                    entitylist.push(entity);
+                    entitylist.insert(entity);
                 }
 
                 if let Some(goodbye) = goodbye {
-                    goodbyelist.push(goodbye);
+                    goodbyelist.insert(goodbye);
                 }
 
                 if let Some(gb) = gb_button {
-                    gb_buttonlist.push(gb);
+                    gb_buttonlist.insert(gb);
                 }
             }
             acc
