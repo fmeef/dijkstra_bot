@@ -2,14 +2,18 @@
 //! handling callbacks for clicked buttons, and handling deep links
 
 use crate::persist::core::button;
+use crate::persist::core::media::SendMediaReply;
 use crate::statics::ME;
 use crate::util::error::Result;
 use crate::{statics::TG, util::error::BotError};
 use botapi::gen_types::{
     CallbackQuery, InlineKeyboardButton, InlineKeyboardButtonBuilder, InlineKeyboardMarkup,
 };
+use futures::future::BoxFuture;
 use futures::Future;
 use serde::{Deserialize, Serialize};
+
+use super::command::Context;
 
 const MAX_BUTTONS: usize = 8;
 

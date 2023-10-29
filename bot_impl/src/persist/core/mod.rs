@@ -9,6 +9,7 @@ pub mod entity;
 pub mod media;
 pub mod messageentity;
 pub mod module_schemas;
+pub mod notes;
 pub mod prelude;
 pub mod rules;
 pub mod users;

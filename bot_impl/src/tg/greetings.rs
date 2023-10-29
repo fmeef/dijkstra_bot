@@ -41,6 +41,7 @@ use super::admin_helpers::{kick, DeleteAfterTime, UpdateHelpers, UserChanged};
 use super::button::{get_url, InlineKeyboardBuilder, OnPush};
 use super::command::Context;
 use super::markdown::get_markup_for_buttons;
+use super::notes::handle_transition;
 use super::permissions::{IsAdmin, IsGroupAdmin};
 
 pub fn auth_key(chat: i64) -> String {
@@ -161,8 +162,26 @@ pub async fn welcome_members(
     } else {
         vec![]
     };
+    let c = ctx.clone();
+    let chat = upd.get_chat().get_id();
     SendMediaReply::new(ctx, model.media_type.unwrap_or(MediaType::Text))
-        .button_callback(|_, _| async move { Ok(()) }.boxed())
+        .button_callback(move |note, button| {
+            let c = c.clone();
+            async move {
+                button.on_push(move |b| async move {
+                    TG.client
+                        .build_answer_callback_query(b.get_id_ref())
+                        .build()
+                        .await?;
+
+                    handle_transition(&c, chat, note, b).await?;
+                    Ok(())
+                });
+
+                Ok(())
+            }
+            .boxed()
+        })
         .text(Some(text))
         .media_id(model.media_id)
         .extra_entities(entities)

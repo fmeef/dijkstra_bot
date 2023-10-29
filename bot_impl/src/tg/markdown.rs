@@ -1666,7 +1666,7 @@ pub async fn retro_fillings<'a>(
         let filling = &mat.as_str()[1..mat.len() - 1];
         let regular = &text[prev..mat.start()];
         res.push_str(regular);
-        pos += regular.encode_utf16().count() as i64 + 1;
+        pos += regular.encode_utf16().count() as i64;
         prev = mat.end();
         log::info!("matching {}: {}", filling, pos);
         let (text, entity) = match filling {
@@ -1675,7 +1675,6 @@ pub async fn retro_fillings<'a>(
                 let name = user.name_humanreadable();
                 let start = pos;
                 let len = name.encode_utf16().count() as i64;
-                pos += len;
                 (
                     name,
                     Some(
@@ -1703,7 +1702,6 @@ pub async fn retro_fillings<'a>(
                 let first = user.get_first_name().into_owned();
                 let start = pos;
                 let len = first.encode_utf16().count() as i64;
-                pos += len;
                 (
                     first,
                     Some(
@@ -1745,9 +1743,18 @@ pub async fn retro_fillings<'a>(
 
         let diff = text.encode_utf16().count() as i64 - mat.as_str().encode_utf16().count() as i64;
         res.push_str(&text);
-
+        pos += text.encode_utf16().count() as i64;
+        log::info!(
+            "retro_fillings pos {} diff {} text {} mat {} regular {}",
+            pos,
+            diff,
+            text,
+            mat.as_str(),
+            regular
+        );
         for v in offsets.as_mut_slice() {
             if v.0 >= pos - text.encode_utf16().count() as i64 {
+                log::info!("reloacating {:?}", v);
                 v.0 += diff;
             }
         }
@@ -1768,6 +1775,7 @@ pub async fn retro_fillings<'a>(
         })
         .chain(extra_entities)
         .collect::<Vec<MessageEntity>>();
+    log::info!("retro_fillings final {}", res.encode_utf16().count());
     Ok((res, newoffsets))
 }
 
@@ -2150,5 +2158,10 @@ mod test {
         let out = decompiler.decompile();
 
         assert!(out == t || out == t_rev);
+    }
+
+    #[test]
+    fn retro_fillings_wide() {
+        let dumpling = "🥟";
     }
 }

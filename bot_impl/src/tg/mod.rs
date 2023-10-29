@@ -5,5 +5,6 @@ pub mod command;
 pub mod dialog;
 pub mod greetings;
 pub mod markdown;
+pub mod notes;
 pub mod permissions;
 pub mod user;
