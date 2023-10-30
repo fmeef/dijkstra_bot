@@ -7,4 +7,5 @@ pub mod greetings;
 pub mod markdown;
 pub mod notes;
 pub mod permissions;
+pub mod rosemd;
 pub mod user;
