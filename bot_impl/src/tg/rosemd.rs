@@ -196,7 +196,7 @@ pub struct RoseMdDecompiler<'a> {
 }
 
 impl<'a> RoseMdDecompiler<'a> {
-    fn new(
+    pub fn new(
         out: &'a str,
         entities: &'a Vec<MessageEntity>,
         buttons: &'a Vec<InlineKeyboardButton>,
@@ -213,7 +213,7 @@ impl<'a> RoseMdDecompiler<'a> {
         }
     }
 
-    fn decompile(mut self) -> String {
+    pub fn decompile(mut self) -> String {
         let mut out = String::new();
         for (offset, ch) in self.out.into_utf16_chars().into_iter().enumerate() {
             if let Some(entity) = self.entities.remove(&(offset as i64)) {
@@ -270,7 +270,7 @@ impl<'a> RoseMdDecompiler<'a> {
 }
 
 impl RoseMdParser {
-    fn new(chars: &str) -> Self {
+    pub fn new(chars: &str) -> Self {
         let mut prefixes = HashMap::with_capacity(1);
         prefixes.insert("url".to_owned(), "buttonurl:".to_owned());
         Self {
@@ -281,7 +281,7 @@ impl RoseMdParser {
         }
     }
 
-    fn parse(&self) -> (String, Vec<MessageEntity>, InlineKeyboardBuilder) {
+    pub fn parse(&self) -> (String, Vec<MessageEntity>, InlineKeyboardBuilder) {
         self.parse_ch(&self.chars, 0)
     }
 
@@ -308,7 +308,7 @@ impl RoseMdParser {
                     text.push(chars[x + 1]);
                     continue;
                 }
-                println!("regular {} ", ch);
+
                 text.push(ch);
                 continue;
             }
@@ -389,12 +389,12 @@ impl RoseMdParser {
                             "```" => Some(b.set_type("pre".to_owned()).build()),
                             _ => None,
                         } {
-                            println!(
-                                "parsed nested {} {} {}",
-                                entity.get_tg_type_ref(),
-                                x,
-                                offset
-                            );
+                            // println!(
+                            //     "parsed nested {} {} {}",
+                            //     entity.get_tg_type_ref(),
+                            //     x,
+                            //     offset
+                            // );
 
                             res.push(entity);
                         }

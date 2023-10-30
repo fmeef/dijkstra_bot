@@ -17,7 +17,6 @@ use lazy_static::lazy_static;
 use markdown::{Block, ListItem, Span};
 use pomelo::pomelo;
 use regex::Regex;
-use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Display;
 use std::sync::Arc;
 use std::{iter::Peekable, str::Chars};
@@ -1458,8 +1457,13 @@ impl EntityMessage {
     }
 }
 
-#[allow(dead_code)]
+#[allow(dead_code, unused_imports)]
 mod test {
+    use std::borrow::Cow;
+
+    use botapi::gen_types::{ChatBuilder, UserBuilder};
+    use futures::executor::block_on;
+
     use super::*;
     const MARKDOWN_TEST: &str = "what
         [*bold]
@@ -1588,8 +1592,33 @@ mod test {
         }
     }
 
-    #[test]
-    fn retro_fillings_wide() {
+    #[tokio::test]
+    async fn retro_fillings_wide() {
         let dumpling = "🥟";
+        let test = "[*Hi] there {mention} welcome [*to] {chatname} [*bold]";
+        let (test, entities, mut buttons) = MarkupBuilder::new(None)
+            .set_text(test.to_owned())
+            .filling(false)
+            .header(false)
+            .build_murkdown()
+            .await
+            .unwrap();
+        let chatuser = ChatUser {
+            chat: Cow::Owned(
+                ChatBuilder::new(0)
+                    .set_title("goth group".to_owned())
+                    .build(),
+            ),
+            user: Cow::Owned(UserBuilder::new(1, false, dumpling.to_owned()).build()),
+        };
+
+        let (test, entities) = retro_fillings(test, entities, Some(&mut buttons), &chatuser)
+            .await
+            .unwrap();
+        let len = test.encode_utf16().count() as i64;
+        assert_eq!(entities.len(), 4);
+        for entity in entities {
+            assert!(entity.get_offset() + entity.get_length() <= len);
+        }
     }
 }

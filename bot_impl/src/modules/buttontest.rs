@@ -1,8 +1,9 @@
+use crate::metadata::metadata;
 use crate::statics::TG;
 use crate::tg::command::{Cmd, Context};
+use crate::tg::rosemd::{RoseMdDecompiler, RoseMdParser};
 use crate::util::error::Result;
 use crate::util::string::Speak;
-use crate::{metadata::metadata, tg::markdown::MarkupBuilder};
 use botapi::gen_types::Message;
 use sea_orm_migration::MigrationTrait;
 
@@ -79,11 +80,26 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
 async fn handle_markdown(message: &Message) -> Result<bool> {
     if let Some(message) = message.get_reply_to_message() {
         if let Some(text) = message.get_text() {
-            let md = MarkupBuilder::from_markdown(text, None);
-            let (msg, entities) = md.build();
+            let md = RoseMdParser::new(&text);
+            let (msg, entities, _) = md.parse();
             TG.client()
-                .build_send_message(message.get_chat().get_id(), msg)
-                .entities(entities)
+                .build_send_message(message.get_chat().get_id(), &msg)
+                .entities(&entities)
+                .build()
+                .await?;
+        }
+    }
+    Ok(false)
+}
+
+async fn handle_decompile(message: &Message) -> Result<bool> {
+    if let Some(message) = message.get_reply_to_message() {
+        if let (Some(text), Some(entities)) = (message.get_text(), message.get_entities_ref()) {
+            let buttons = vec![];
+            let md = RoseMdDecompiler::new(&text, entities, &buttons);
+            let msg = md.decompile();
+            TG.client()
+                .build_send_message(message.get_chat().get_id(), &msg)
                 .build()
                 .await?;
         }
@@ -103,6 +119,9 @@ pub async fn handle_update(ctx: &Context) -> Result<()> {
             }
             "markdown" => {
                 handle_markdown(message).await?;
+            }
+            "decompile" => {
+                handle_decompile(message).await?;
             }
             "murkdown" => {
                 // handle_murkdown(message).await?;
