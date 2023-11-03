@@ -473,33 +473,28 @@ impl RoseMdParser {
                                 let content = content.trim_start_matches("/");
 
                                 let sameline = content.ends_with(&self.same_line_suffix);
-                                if sameline
+                                let content = if sameline
                                     || builder.get().len() == 1
                                         && builder.get().first().unwrap().len() == 0
                                 {
-                                    let content = content.trim_end_matches(&self.same_line_suffix);
-                                    let bt = if content.starts_with("#") {
-                                        InlineKeyboardButtonBuilder::new(nested_text.to_owned())
-                                            .build()
-                                    } else {
-                                        InlineKeyboardButtonBuilder::new(nested_text.to_owned())
-                                            .set_url(content.to_owned())
-                                            .build()
-                                    };
-
-                                    builder.button(bt);
+                                    content.trim_end_matches(&self.same_line_suffix)
                                 } else {
-                                    let bt = if content.starts_with("#") {
+                                    builder.newline();
+                                    content
+                                };
+
+                                if content.starts_with("#") {
+                                    let bt =
                                         InlineKeyboardButtonBuilder::new(nested_text.to_owned())
-                                            .build()
-                                    } else {
+                                            .build();
+                                    builder.button_raw(bt, Some(content.to_owned()));
+                                } else {
+                                    let bt =
                                         InlineKeyboardButtonBuilder::new(nested_text.to_owned())
                                             .set_url(content.to_owned())
-                                            .build()
-                                    };
-
-                                    builder.newline().button(bt);
-                                }
+                                            .build();
+                                    builder.button(bt);
+                                };
                                 builder.merge(nested_buttons);
                                 builder.merge(follow_buttons);
                                 return (text, res, builder);
@@ -577,6 +572,28 @@ mod test {
         println!("{:?}", buttons);
         assert_eq!(text.trim(), "thing");
         assert_eq!(buttons.get().len(), 1);
+    }
+
+    #[test]
+    fn parse_note_button() {
+        let t = "thing [thing](buttonurl://#note)";
+        let md = RoseMdParser::new(t, true);
+        let (text, _, buttons) = md.parse();
+        println!("{:?}", buttons);
+        assert_eq!(text.trim(), "thing");
+        assert_eq!(buttons.get().len(), 1);
+        assert_eq!(
+            buttons
+                .get()
+                .first()
+                .unwrap()
+                .first()
+                .unwrap()
+                .raw_text
+                .as_ref()
+                .map(|v| v.as_str()),
+            Some("#note")
+        );
     }
 
     #[test]
