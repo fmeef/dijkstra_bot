@@ -1,6 +1,8 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 
-use botapi::gen_types::{InlineKeyboardButton, MessageEntity, MessageEntityBuilder};
+use botapi::gen_types::{
+    InlineKeyboardButton, InlineKeyboardButtonBuilder, MessageEntity, MessageEntityBuilder,
+};
 
 use super::button::InlineKeyboardBuilder;
 
@@ -135,7 +137,7 @@ fn get_valid_link_end(chars: &[char]) -> Option<usize> {
 
 fn find_link_sections_idx(chars: &[char]) -> Option<(usize, usize)> {
     let mut text_end = 0;
-    let mut link_end = 0;
+    let mut link_end;
     let mut offset = 0;
     let mut found_text_end = false;
 
@@ -150,10 +152,10 @@ fn find_link_sections_idx(chars: &[char]) -> Option<(usize, usize)> {
         } else {
             return None;
         }
+    }
 
-        if !found_text_end {
-            return None;
-        }
+    if !found_text_end {
+        return None;
     }
 
     offset = text_end;
@@ -185,13 +187,13 @@ pub struct RoseMdParser {
     prefixes: HashMap<String, String>,
     same_line_suffix: String,
     chars: Vec<char>,
-    current: HashSet<char>,
+    enable_buttons: bool,
 }
 
 pub struct RoseMdDecompiler<'a> {
     out: &'a str,
     entities: BTreeMap<i64, Vec<&'a MessageEntity>>,
-    buttons: &'a Vec<InlineKeyboardButton>,
+    buttons: &'a Vec<Vec<InlineKeyboardButton>>,
     current: BTreeMap<i64, Vec<&'a MessageEntity>>,
 }
 
@@ -199,7 +201,7 @@ impl<'a> RoseMdDecompiler<'a> {
     pub fn new(
         out: &'a str,
         entities: &'a Vec<MessageEntity>,
-        buttons: &'a Vec<InlineKeyboardButton>,
+        buttons: &'a Vec<Vec<InlineKeyboardButton>>,
     ) -> Self {
         Self {
             out,
@@ -218,11 +220,11 @@ impl<'a> RoseMdDecompiler<'a> {
         for (offset, ch) in self.out.into_utf16_chars().into_iter().enumerate() {
             if let Some(entity) = self.entities.remove(&(offset as i64)) {
                 for entity in entity.into_iter().rev() {
-                    println!(
-                        "match entity: {} {}",
-                        entity.get_tg_type_ref(),
-                        entity.get_offset()
-                    );
+                    // println!(
+                    //     "match entity: {} {}",
+                    //     entity.get_tg_type_ref(),
+                    //     entity.get_offset()
+                    // );
                     match entity.get_tg_type_ref() {
                         "spoiler" => out.push_str("||"),
                         "italic" => out.push('_'),
@@ -265,19 +267,36 @@ impl<'a> RoseMdDecompiler<'a> {
                 }
             }
         }
+
+        for buttons in self.buttons {
+            for (x, button) in buttons.iter().enumerate() {
+                let same = if x < self.buttons.len() - 1 {
+                    ":same"
+                } else {
+                    ""
+                };
+                let url = button.get_url_ref().unwrap_or(button.get_text_ref());
+                out.push_str(&format!(
+                    "[{}](buttonurl://{}{})",
+                    button.get_text(),
+                    url,
+                    same
+                ));
+            }
+        }
         out
     }
 }
 
 impl RoseMdParser {
-    pub fn new(chars: &str) -> Self {
+    pub fn new(chars: &str, enable_buttons: bool) -> Self {
         let mut prefixes = HashMap::with_capacity(1);
         prefixes.insert("url".to_owned(), "buttonurl:".to_owned());
         Self {
             prefixes,
             same_line_suffix: "same".to_owned(),
             chars: chars.into_utf16_chars(),
-            current: HashSet::new(),
+            enable_buttons,
         }
     }
 
@@ -444,7 +463,48 @@ impl RoseMdParser {
                             offset + nested_text.encode_utf16().count() as i64,
                         );
 
-                        //TODO: handle buttons
+                        if self.enable_buttons {
+                            for (_, prefix) in self.prefixes.iter() {
+                                if !content.starts_with(prefix) {
+                                    continue;
+                                }
+
+                                let content = content.trim_start_matches(prefix);
+                                let content = content.trim_start_matches("/");
+
+                                let sameline = content.ends_with(&self.same_line_suffix);
+                                if sameline
+                                    || builder.get().len() == 1
+                                        && builder.get().first().unwrap().len() == 0
+                                {
+                                    let content = content.trim_end_matches(&self.same_line_suffix);
+                                    let bt = if content.starts_with("#") {
+                                        InlineKeyboardButtonBuilder::new(nested_text.to_owned())
+                                            .build()
+                                    } else {
+                                        InlineKeyboardButtonBuilder::new(nested_text.to_owned())
+                                            .set_url(content.to_owned())
+                                            .build()
+                                    };
+
+                                    builder.button(bt);
+                                } else {
+                                    let bt = if content.starts_with("#") {
+                                        InlineKeyboardButtonBuilder::new(nested_text.to_owned())
+                                            .build()
+                                    } else {
+                                        InlineKeyboardButtonBuilder::new(nested_text.to_owned())
+                                            .set_url(content.to_owned())
+                                            .build()
+                                    };
+
+                                    builder.newline().button(bt);
+                                }
+                                builder.merge(nested_buttons);
+                                builder.merge(follow_buttons);
+                                return (text, res, builder);
+                            }
+                        }
 
                         let e = MessageEntityBuilder::new(
                             offset,
@@ -484,12 +544,13 @@ impl RoseMdParser {
     }
 }
 
+#[allow(unused_imports)]
 mod test {
     use super::*;
     #[test]
     fn parse_bold() {
         let t = "*bold*";
-        let md = RoseMdParser::new(t);
+        let md = RoseMdParser::new(t, true);
         let (text, entities, _) = md.parse();
 
         assert_eq!(text, "bold");
@@ -500,7 +561,7 @@ mod test {
     #[test]
     fn parse_link() {
         let t = "[thing](https://example.com)";
-        let md = RoseMdParser::new(t);
+        let md = RoseMdParser::new(t, true);
         let (text, entities, _) = md.parse();
 
         assert_eq!(text, "thing");
@@ -509,9 +570,36 @@ mod test {
     }
 
     #[test]
+    fn parse_button() {
+        let t = "thing [thing](buttonurl://https://example.com)";
+        let md = RoseMdParser::new(t, true);
+        let (text, _, buttons) = md.parse();
+        println!("{:?}", buttons);
+        assert_eq!(text.trim(), "thing");
+        assert_eq!(buttons.get().len(), 1);
+    }
+
+    #[test]
+    fn decompile_button() {
+        let t = "thing [thing](buttonurl://https://example.com)";
+        let md = RoseMdParser::new(t, true);
+        let (text, entities, buttons) = md.parse();
+        println!("{:?}", buttons);
+        assert_eq!(text.trim(), "thing");
+        assert_eq!(buttons.get().len(), 1);
+        let b = buttons.build();
+        let b = b.get_inline_keyboard_ref();
+        let mut decompiler = RoseMdDecompiler::new(&text, &entities, &b);
+        let out = decompiler.decompile();
+
+        println!("{}", out);
+        assert_eq!(out, t);
+    }
+
+    #[test]
     fn decompile_link() {
         let t = "[thing](https://example.com)";
-        let md = RoseMdParser::new(t);
+        let md = RoseMdParser::new(t, true);
         let (text, entities, _) = md.parse();
 
         assert_eq!(text, "thing");
@@ -528,7 +616,7 @@ mod test {
     #[test]
     fn parse_many() {
         let t = "*bold* ~strike~ *||boldspoiler||*";
-        let md = RoseMdParser::new(t);
+        let md = RoseMdParser::new(t, true);
         let (text, entities, _) = md.parse();
 
         assert_eq!(text, "bold strike boldspoiler");
@@ -539,7 +627,7 @@ mod test {
     #[test]
     fn decompile_bold() {
         let t = "*bold*";
-        let md = RoseMdParser::new(t);
+        let md = RoseMdParser::new(t, true);
         let (text, entities, buttons) = md.parse();
 
         assert_eq!(text, "bold");
@@ -564,7 +652,7 @@ mod test {
     fn decompile_many() {
         let t = "*bold* ~strike~ *||boldspoiler||*";
         let t_rev = "*bold* ~strike~ ||*boldspoiler*||";
-        let md = RoseMdParser::new(t);
+        let md = RoseMdParser::new(t, true);
         let (text, entities, buttons) = md.parse();
         println!("got entities {:?}", entities);
         assert_eq!(text, "bold strike boldspoiler");

@@ -80,7 +80,7 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
 async fn handle_markdown(message: &Message) -> Result<bool> {
     if let Some(message) = message.get_reply_to_message() {
         if let Some(text) = message.get_text() {
-            let md = RoseMdParser::new(&text);
+            let md = RoseMdParser::new(&text, true);
             let (msg, entities, _) = md.parse();
             TG.client()
                 .build_send_message(message.get_chat().get_id(), &msg)

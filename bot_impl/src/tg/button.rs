@@ -2,23 +2,20 @@
 //! handling callbacks for clicked buttons, and handling deep links
 
 use crate::persist::core::button;
-use crate::persist::core::media::SendMediaReply;
 use crate::statics::ME;
 use crate::util::error::Result;
 use crate::{statics::TG, util::error::BotError};
 use botapi::gen_types::{
     CallbackQuery, InlineKeyboardButton, InlineKeyboardButtonBuilder, InlineKeyboardMarkup,
 };
-use futures::future::BoxFuture;
+
 use futures::Future;
 use serde::{Deserialize, Serialize};
-
-use super::command::Context;
 
 const MAX_BUTTONS: usize = 8;
 
 /// Builds an inline keyboard with buttons for attaching to a message
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct InlineKeyboardBuilder(Vec<Vec<button::Model>>);
 
 impl Default for InlineKeyboardBuilder {
@@ -60,19 +57,44 @@ impl InlineKeyboardBuilder {
             if v.len() < MAX_BUTTONS {
                 v.push(button::Model::from_button_orphan(
                     v.len() as i32,
-                    len,
+                    len - 1,
                     &button,
                     raw_text,
                 ));
                 self
             } else {
                 log::info!("adding button newline {}", button.get_text());
-                self.newline().button(button)
+                self.newline().button_raw(button, raw_text)
             }
         } else {
             log::info!("button fell off end");
             self
         }
+    }
+
+    pub fn merge(&mut self, builder: InlineKeyboardBuilder) -> &mut Self {
+        for (idx, row) in builder.into_inner().into_iter().enumerate() {
+            for button in row {
+                if let Some(n) = self.0.get_mut(idx) {
+                    if n.len() < MAX_BUTTONS {
+                        n.push(button);
+                    } else {
+                        self.0.push(vec![button]);
+                    }
+                } else {
+                    if let Some(v) = self.0.last_mut() {
+                        if v.len() < MAX_BUTTONS {
+                            v.push(button);
+                        } else {
+                            self.0.push(vec![button]);
+                        }
+                    } else {
+                        log::info!("merge button fell off end");
+                    }
+                }
+            }
+        }
+        self
     }
 
     pub fn button(&mut self, button: InlineKeyboardButton) -> &mut Self {
@@ -158,5 +180,24 @@ impl OnPush for InlineKeyboardButton {
         Fut: Future<Output = Result<bool>> + Send + 'static,
     {
         TG.register_button_multi(self, func);
+    }
+}
+
+#[allow(unused_imports)]
+mod test {
+
+    use super::*;
+    #[test]
+    fn button_add() {
+        let mut builder = InlineKeyboardBuilder::default();
+        for x in 0..MAX_BUTTONS + 1 {
+            builder.button(InlineKeyboardButtonBuilder::new("test".to_owned()).build());
+        }
+
+        assert_eq!(builder.row_len(), 1);
+        println!("{:?}", builder.get());
+        let last = builder.get().last().map(|v| v.first()).flatten().unwrap();
+        assert_eq!(last.pos_x, 0);
+        assert_eq!(last.pos_y, 1);
     }
 }
