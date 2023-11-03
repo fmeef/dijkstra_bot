@@ -190,7 +190,7 @@ mod test {
     #[test]
     fn button_add() {
         let mut builder = InlineKeyboardBuilder::default();
-        for x in 0..MAX_BUTTONS + 1 {
+        for _ in 0..MAX_BUTTONS + 1 {
             builder.button(InlineKeyboardButtonBuilder::new("test".to_owned()).build());
         }
 

@@ -589,7 +589,7 @@ mod test {
         assert_eq!(buttons.get().len(), 1);
         let b = buttons.build();
         let b = b.get_inline_keyboard_ref();
-        let mut decompiler = RoseMdDecompiler::new(&text, &entities, &b);
+        let decompiler = RoseMdDecompiler::new(&text, &entities, &b);
         let out = decompiler.decompile();
 
         println!("{}", out);
@@ -607,7 +607,7 @@ mod test {
         assert_eq!(entities[0].get_tg_type_ref(), "text_link");
 
         let v = Vec::new();
-        let mut decompiler = RoseMdDecompiler::new(&text, &entities, &v);
+        let decompiler = RoseMdDecompiler::new(&text, &entities, &v);
         let out = decompiler.decompile();
 
         assert_eq!(out, t);
@@ -633,8 +633,10 @@ mod test {
         assert_eq!(text, "bold");
         assert_eq!(entities.len(), 1);
         assert_eq!(entities[0].get_tg_type_ref(), "bold");
-        let v = Vec::new();
-        let mut decompiler = RoseMdDecompiler::new(&text, &entities, &v);
+
+        let b = buttons.build();
+        let b = b.get_inline_keyboard_ref();
+        let decompiler = RoseMdDecompiler::new(&text, &entities, &b);
         let out = decompiler.decompile();
 
         assert_eq!(out, t);
@@ -659,8 +661,9 @@ mod test {
         assert_eq!(entities.len(), 4);
         assert_eq!(entities[0].get_tg_type_ref(), "bold");
 
-        let v = Vec::new();
-        let mut decompiler = RoseMdDecompiler::new(&text, &entities, &v);
+        let b = buttons.build();
+        let b = b.get_inline_keyboard_ref();
+        let decompiler = RoseMdDecompiler::new(&text, &entities, &b);
         let out = decompiler.decompile();
 
         assert!(out == t || out == t_rev);
