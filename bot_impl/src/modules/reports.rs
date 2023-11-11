@@ -9,7 +9,6 @@ use crate::{metadata::metadata, util::error::Result};
 use botapi::gen_types::{MessageEntity, MessageEntityBuilder};
 
 use macros::{lang_fmt, textentity_fmt};
-use sea_orm_migration::MigrationTrait;
 
 metadata!("Reports",
     r#"
@@ -18,10 +17,6 @@ metadata!("Reports",
     { command = "report", help = "Reports a user"}
 
 );
-
-pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
-    vec![]
-}
 
 pub async fn report(ctx: &Context) -> Result<()> {
     if let Some(chat) = ctx.chat() {

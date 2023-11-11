@@ -1,4 +1,5 @@
 use self::entities::{default_locks, locks};
+use crate::metadata::ModuleHelpers;
 use crate::persist::admin::actions::ActionType;
 use crate::persist::admin::approvals;
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache};
@@ -27,6 +28,7 @@ metadata!("Locks",
     Are blue star check mark users ruining your group with their endless pop-psychobabble and
     coin scams? Lock the group to keep the premiums out.
     "#,
+    Helper,
     { command = "lock", help = "Engage a lock" },
     { command = "unlock", help = "Disable a lock"},
     { command = "locks", help = "Get a list of active locks"},
@@ -398,6 +400,27 @@ pub fn get_lock_key(chat: i64, locktype: &LockType) -> String {
 
 pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![Box::new(Migration), Box::new(MigrationActionType)]
+}
+
+struct Helper;
+
+#[async_trait::async_trait]
+impl ModuleHelpers for Helper {
+    async fn export(&self, _: i64) -> Result<Option<serde_json::Value>> {
+        Ok(None)
+    }
+
+    async fn import(&self, _: i64, _: serde_json::Value) -> Result<()> {
+        Ok(())
+    }
+
+    fn supports_export(&self) -> Option<&'static str> {
+        None
+    }
+
+    fn get_migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+        get_migrations()
+    }
 }
 
 async fn get_lock(message: &Message, locktype: LockType) -> Result<Option<locks::Model>> {

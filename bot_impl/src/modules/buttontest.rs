@@ -1,4 +1,4 @@
-use crate::metadata::metadata;
+use crate::metadata::{metadata, ModuleHelpers};
 use crate::statics::TG;
 use crate::tg::command::{Cmd, Context};
 use crate::tg::rosemd::{RoseMdDecompiler, RoseMdParser};
@@ -11,6 +11,7 @@ metadata!("Antipiracy",
     r#"
     This is just a debugging module, it will be removed eventually. 
     "#,
+    Helper,
     { command = "report", help = "Report a pirate for termination" },
     { command = "crash", help = "Intentionally trigger a floodwait for debugging"},
     { command = "markdown", help = "Reply to a message to parse as markdown"},
@@ -37,8 +38,30 @@ Suspendisse potenti. Quisque volutpat nunc felis, nec laoreet ex pharetra vitae.
 Suspendisse sit amet pharetra turpis, eu mollis nunc. Sed volutpat aliquet consectetur. Pellentesque non est eu ante dignissim pellentesque. Maecenas finibus dapibus consectetur. Vivamus lobortis metus nisi, at maximus orci pretium sed. Proin volutpat eros odio, sit amet imperdiet augue hendrerit nec. Aenean ullamcorper venenatis enim sed tincidunt. Pellentesque aliquam tellus sit amet cursus pulvinar. Aenean pharetra augue elit, id aliquet lacus pellentesque sit amet. Etiam quam.
 "#;
 
-pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
-    vec![]
+pub async fn get_metadata() -> Result<Option<serde_json::Value>> {
+    let v = serde_json::to_value(&())?;
+    Ok(Some(v))
+}
+
+struct Helper;
+
+#[async_trait::async_trait]
+impl ModuleHelpers for Helper {
+    async fn export(&self, _: i64) -> Result<Option<serde_json::Value>> {
+        get_metadata().await
+    }
+
+    async fn import(&self, _: i64, _: serde_json::Value) -> Result<()> {
+        Ok(())
+    }
+
+    fn supports_export(&self) -> Option<&'static str> {
+        None
+    }
+
+    fn get_migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+        vec![]
+    }
 }
 
 // async fn handle_murkdown(message: &Message) -> Result<bool> {

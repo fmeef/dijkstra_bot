@@ -13,7 +13,6 @@ use crate::{
 
 use botapi::gen_types::Message;
 use macros::{inline_lang, lang_fmt};
-use sea_orm_migration::MigrationTrait;
 use uuid::Uuid;
 
 metadata! {
@@ -26,10 +25,6 @@ metadata! {
 
 inline_lang! {
     { "en" => r#"testfmef: "thingy""# }
-}
-
-pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
-    vec![]
 }
 
 async fn handle_terminal_state(current: Uuid, conv: Conversation, chat: i64) -> Result<()> {

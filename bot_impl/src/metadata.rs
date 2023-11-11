@@ -2,6 +2,7 @@
 //! modules are registered with a name, description, and command list
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 lazy_static! {
     pub static ref NEWLINE: Regex = Regex::new(r#"(  +\n[^\S\r\n]*)"#).unwrap();
@@ -45,6 +46,7 @@ macro_rules! metadata {
                 sections: ::std::collections::HashMap::new()
             });
     };
+
     ($name:expr, $description:expr
         $( , { sub = $sub:expr, content = $content:expr } )*
         $( , { command = $command:expr, help = $help:expr } )*
@@ -57,7 +59,29 @@ macro_rules! metadata {
                     name: $name.into(),
                     description,
                     commands: ::std::collections::HashMap::new(),
-                    sections: ::std::collections::HashMap::new()
+                    sections: ::std::collections::HashMap::new(),
+                    state: None
+                };
+                $(c.commands.insert($command.into(), $help.into());)*
+                $(c.sections.insert($sub.into(), $content.into());)*
+                c
+            });
+    };
+
+    ($name:expr, $description:expr, $serialize:expr
+        $( , { sub = $sub:expr, content = $content:expr } )*
+        $( , { command = $command:expr, help = $help:expr } )*
+    ) => {
+        pub const METADATA: ::once_cell::sync::Lazy<crate::metadata::Metadata> =
+            ::once_cell::sync::Lazy::new(|| {
+                let description = crate::metadata::markdownify($description);
+
+                let mut c = crate::metadata::Metadata {
+                    name: $name.into(),
+                    description,
+                    commands: ::std::collections::HashMap::new(),
+                    sections: ::std::collections::HashMap::new(),
+                    state: Some(::std::sync::Arc::new($serialize))
                 };
                 $(c.commands.insert($command.into(), $help.into());)*
                 $(c.sections.insert($sub.into(), $content.into());)*
@@ -65,9 +89,13 @@ macro_rules! metadata {
             });
     };
 }
+use async_trait::async_trait;
 use lazy_static::lazy_static;
 pub(crate) use metadata;
 use regex::Regex;
+use sea_orm_migration::MigrationTrait;
+
+use crate::util::error::Result;
 
 /// metadata for a single module
 #[derive(Clone)]
@@ -76,4 +104,13 @@ pub struct Metadata {
     pub description: String,
     pub commands: HashMap<String, String>,
     pub sections: HashMap<String, String>,
+    pub state: Option<Arc<dyn ModuleHelpers + Send + Sync>>,
+}
+
+#[async_trait]
+pub trait ModuleHelpers {
+    async fn export(&self, chat: i64) -> Result<Option<serde_json::Value>>;
+    async fn import(&self, chat: i64, value: serde_json::Value) -> Result<()>;
+    fn supports_export(&self) -> Option<&'static str>;
+    fn get_migrations(&self) -> Vec<Box<dyn MigrationTrait>>;
 }

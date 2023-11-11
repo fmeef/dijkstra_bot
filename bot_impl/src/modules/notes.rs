@@ -1,4 +1,4 @@
-use crate::metadata::metadata;
+use crate::metadata::{metadata, ModuleHelpers};
 use crate::persist::redis::RedisCache;
 use crate::statics::{DB, REDIS, TG};
 
@@ -11,6 +11,7 @@ use crate::tg::command::{
 use crate::tg::markdown::{button_deeplink_key, MarkupBuilder};
 use crate::tg::notes::{get_hash_key, get_note_by_name, handle_transition, refresh_notes};
 use crate::tg::permissions::IsGroupAdmin;
+use crate::tg::rosemd::RoseMdDecompiler;
 use crate::tg::user::Username;
 use crate::util::error::{BotError, Fail, Result};
 use crate::util::string::Speak;
@@ -21,6 +22,7 @@ use lazy_static::__Deref;
 use macros::lang_fmt;
 use redis::AsyncCommands;
 use sea_orm::EntityTrait;
+use serde::{Deserialize, Serialize};
 
 use crate::persist::core::{entity, media::*, notes};
 
@@ -29,12 +31,82 @@ metadata!("Notes",
     Easily store and retrive text, media, and other content by keywords. 
     Useful for storing answers to often asked questions or searching uploaded media.     
     "#,
+    Helper,
     { sub = "Examples", content = r#"teset"# },
     { command = "save", help = "Saves a note" },
     { command = "get", help = "Get a note" },
     { command = "delete", help = "Delete a note" },
     { command = "notes", help = "List all notes for the current chat"}
 );
+
+#[derive(Serialize, Deserialize)]
+struct ExportNotes {
+    notes: Vec<NotesItem>,
+    private_notes: bool,
+}
+
+#[derive(Serialize, Deserialize)]
+struct NotesItem {
+    data_id: String,
+    name: String,
+    text: String,
+    #[serde(rename = "type")]
+    note_type: i64,
+}
+
+struct Helper;
+
+#[async_trait::async_trait]
+impl ModuleHelpers for Helper {
+    async fn export(&self, chat: i64) -> Result<Option<serde_json::Value>> {
+        let notes = refresh_notes(chat).await?;
+        let items: Vec<NotesItem> = notes
+            .into_iter()
+            .map(|(note, (model, entities, buttons))| {
+                let buttons = if let Some(buttons) = buttons {
+                    buttons
+                } else {
+                    InlineKeyboardBuilder::default()
+                }
+                .build();
+                let text = if let Some(text) = &model.text {
+                    text
+                } else {
+                    ""
+                };
+                let text =
+                    RoseMdDecompiler::new(text, &entities, buttons.get_inline_keyboard_ref())
+                        .decompile()
+                        .replace("\n", "\\n");
+                NotesItem {
+                    data_id: model.media_id.unwrap_or_else(|| String::new()),
+                    name: note,
+                    text,
+                    note_type: model.media_type.get_rose_type(),
+                }
+            })
+            .collect();
+
+        let out = ExportNotes {
+            private_notes: false,
+            notes: items,
+        };
+
+        Ok(Some(serde_json::to_value(&out)?))
+    }
+
+    async fn import(&self, _: i64, _: serde_json::Value) -> Result<()> {
+        Ok(())
+    }
+
+    fn supports_export(&self) -> Option<&'static str> {
+        Some("notes")
+    }
+
+    fn get_migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+        vec![]
+    }
+}
 
 async fn get_model<'a>(message: &'a Message, args: &'a TextArgs<'a>) -> Result<notes::Model> {
     let input_type = get_content(message, args)?;
@@ -106,9 +178,6 @@ async fn get_model<'a>(message: &'a Message, args: &'a TextArgs<'a>) -> Result<n
     };
 
     Ok(res)
-}
-pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
-    vec![]
 }
 
 async fn handle_command<'a>(ctx: &Context) -> Result<()> {

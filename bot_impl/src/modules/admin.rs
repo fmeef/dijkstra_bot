@@ -12,7 +12,7 @@ use crate::{
 use futures::{stream, StreamExt, TryStreamExt};
 
 use macros::{entity_fmt, lang_fmt};
-use sea_orm_migration::MigrationTrait;
+
 metadata!("Admin",
     r#"
     Manage admins using the bot. Promote or demote users without having to google how to do it on iOS.
@@ -31,9 +31,6 @@ metadata!("Admin",
     { command = "promote", help = "Promote a user to admin"},
     { command = "demote", help = "Demote a user" }
 );
-pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
-    vec![]
-}
 
 async fn promote(context: &Context) -> Result<()> {
     context.check_permissions(|v| v.can_promote_members).await?;

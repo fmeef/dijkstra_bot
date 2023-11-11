@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use crate::metadata::ModuleHelpers;
 use crate::persist::admin::actions::ActionType;
 use crate::persist::redis::default_cache_query;
 use crate::persist::redis::CachedQueryTrait;
@@ -52,6 +53,7 @@ use sea_orm::QueryFilter;
 use sea_orm_migration::{MigrationName, MigrationTrait};
 metadata!("Blocklists",
     r#"Censor specific words in your group!. Supports globbing to match partial words."#,
+    Helper,
     { command = "addblocklist", help = "\\<trigger\\> \\<reply\\> {action}: Add a blocklist" },
     { command = "blocklist", help = "List all blocklists" },
     { command = "rmblocklist", help = "Stop a blocklist by trigger" },
@@ -231,6 +233,27 @@ pub mod entities {
 
 pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![Box::new(Migration)]
+}
+
+struct Helper;
+
+#[async_trait::async_trait]
+impl ModuleHelpers for Helper {
+    async fn export(&self, _: i64) -> Result<Option<serde_json::Value>> {
+        Ok(None)
+    }
+
+    async fn import(&self, _: i64, _: serde_json::Value) -> Result<()> {
+        Ok(())
+    }
+
+    fn supports_export(&self) -> Option<&'static str> {
+        None
+    }
+
+    fn get_migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+        get_migrations()
+    }
 }
 
 fn get_blocklist_key(message: &Message, id: i64) -> String {

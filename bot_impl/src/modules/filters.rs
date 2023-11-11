@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use crate::metadata::metadata;
+use crate::metadata::ModuleHelpers;
 
 use crate::persist::core::entity;
 use crate::persist::core::media::get_media_type;
@@ -46,6 +47,7 @@ metadata!("Filters",
     Respond to keywords with canned messages. This module is guaranteed to cause spam in the support chat
     about how the bot is "alive" or an "AI"
     "#,
+    Helper,
     { command = "filter", help = "\\<trigger\\> \\<reply\\>: Trigger a reply when soemone says something" },
     { command = "filters", help = "List all filters" },
     { command = "stop", help = "Stop a filter" },
@@ -516,6 +518,27 @@ pub mod entities {
 
 pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![Box::new(Migration), Box::new(MigrationEntityInDb)]
+}
+
+struct Helper;
+
+#[async_trait::async_trait]
+impl ModuleHelpers for Helper {
+    async fn export(&self, _: i64) -> Result<Option<serde_json::Value>> {
+        Ok(None)
+    }
+
+    async fn import(&self, _: i64, _: serde_json::Value) -> Result<()> {
+        Ok(())
+    }
+
+    fn supports_export(&self) -> Option<&'static str> {
+        None
+    }
+
+    fn get_migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+        get_migrations()
+    }
 }
 
 fn get_filter_key(message: &Message, id: i64) -> String {

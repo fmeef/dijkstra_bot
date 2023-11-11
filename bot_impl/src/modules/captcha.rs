@@ -15,7 +15,7 @@ use base64::engine::general_purpose;
 use base64::Engine;
 use botapi::gen_types::{Chat, User};
 use redis::AsyncCommands;
-use sea_orm_migration::{MigrationName, MigrationTrait};
+use sea_orm_migration::MigrationName;
 use uuid::Uuid;
 
 metadata!("Captcha",
@@ -55,10 +55,6 @@ async fn captchakick_cmd<'a>(ctx: &Context, args: &'a TextArgs<'a>) -> Result<()
         }
     }
     Ok(())
-}
-
-pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
-    vec![]
 }
 
 async fn handle_command<'a>(ctx: &Context) -> Result<()> {

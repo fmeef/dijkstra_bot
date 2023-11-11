@@ -233,7 +233,7 @@ impl<'a> RoseMdDecompiler<'a> {
                         "strikethrough" => out.push('~'),
                         "code" => out.push('`'),
                         "pre" => out.push_str("```"),
-                        "text_link" => out.push('['),
+                        "text_link" | "text_mention" => out.push('['),
                         _ => (),
                     };
 
@@ -260,6 +260,11 @@ impl<'a> RoseMdDecompiler<'a> {
                         "text_link" => {
                             if let Some(url) = entity.get_url_ref() {
                                 out.push_str(&format!("]({})", url));
+                            }
+                        }
+                        "text_mention" => {
+                            if let Some(user) = entity.get_user_ref() {
+                                out.push_str(&format!("](tg://user?id={})", user.get_id()));
                             }
                         }
                         _ => (),

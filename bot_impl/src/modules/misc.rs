@@ -6,18 +6,12 @@ use crate::tg::user::GetUser;
 use crate::util::error::Result;
 use crate::{metadata::metadata, util::string::Speak};
 
-use sea_orm_migration::MigrationTrait;
-
 metadata!("Misc",
    r#"
     Random helper functions to make your life easier.
     "#,
    { command = "id", help = "Gets the id for a user" }
 );
-
-pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
-    vec![]
-}
 
 async fn get_id(ctx: &Context) -> Result<()> {
     ctx.action_message(|ctx, user, _| async move {

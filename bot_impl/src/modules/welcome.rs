@@ -1,6 +1,5 @@
 use crate::persist::core::media::get_media_type;
 use crate::persist::core::{entity, welcomes};
-use crate::persist::migrate::ManagerHelper;
 use crate::statics::{DB, REDIS};
 use crate::tg::command::{Cmd, Context, TextArgs};
 use crate::tg::markdown::MarkupBuilder;
@@ -8,14 +7,13 @@ use crate::tg::permissions::*;
 use crate::util::error::{BotError, Result};
 use crate::util::string::Lang;
 use crate::{metadata::metadata, util::string::Speak};
-use async_trait::async_trait;
 use botapi::gen_types::Message;
 use lazy_static::__Deref;
 use macros::lang_fmt;
 use redis::AsyncCommands;
 use sea_orm::entity::ActiveValue::{NotSet, Set};
-use sea_orm::{DbErr, EntityTrait};
-use sea_orm_migration::{MigrationName, MigrationTrait, SchemaManager};
+use sea_orm::EntityTrait;
+
 use sea_query::OnConflict;
 
 metadata!("Welcome",
@@ -34,30 +32,6 @@ metadata!("Welcome",
     { command = "setgoodbye", help = "Sets the goodbye message for when a user leaves"},
     { command = "resetwelcome", help = "Resets welcome and goodbye messages to default" }
 );
-
-struct Migration;
-
-impl MigrationName for Migration {
-    fn name(&self) -> &str {
-        "m20230312_000001_create_welcomes"
-    }
-}
-
-#[async_trait]
-impl MigrationTrait for Migration {
-    async fn up(&self, _: &SchemaManager) -> std::result::Result<(), DbErr> {
-        Ok(())
-    }
-
-    async fn down(&self, manager: &SchemaManager) -> std::result::Result<(), DbErr> {
-        manager.drop_table_auto(welcomes::Entity).await?;
-        Ok(())
-    }
-}
-
-pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
-    vec![]
-}
 
 async fn get_model<'a>(
     message: &'a Message,

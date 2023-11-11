@@ -10,7 +10,6 @@ use crate::{
 
 use humantime::format_duration;
 use macros::{entity_fmt, lang_fmt};
-use sea_orm_migration::MigrationTrait;
 
 metadata!("Warns",
     r#"
@@ -30,9 +29,6 @@ metadata!("Warns",
     { command = "warnlimit", help = "Sets the number of warns before an action is taken." }
 );
 
-pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
-    vec![]
-}
 pub async fn warn(context: &Context) -> Result<()> {
     context
         .check_permissions(|p| p.can_restrict_members)

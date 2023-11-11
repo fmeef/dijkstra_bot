@@ -10,7 +10,6 @@ use crate::{
 use botapi::gen_types::ChatPermissionsBuilder;
 
 use macros::{entity_fmt, lang_fmt};
-use sea_orm_migration::MigrationTrait;
 
 metadata!("Bans",
     r#"
@@ -36,10 +35,6 @@ metadata!("Bans",
     { command = "unban", help = "Unbans a user"},
     { command = "kick", help = "Kicks a user, they can join again"}
 );
-
-pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
-    vec![]
-}
 
 pub async fn unban_cmd(ctx: &Context) -> Result<()> {
     ctx.check_permissions(|p| p.can_restrict_members).await?;

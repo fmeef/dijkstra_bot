@@ -35,6 +35,18 @@ pub enum MediaType {
     Video,
 }
 
+impl MediaType {
+    pub fn get_rose_type(&self) -> i64 {
+        match self {
+            Self::Sticker => 1,
+            Self::Photo => 2,
+            Self::Document => 8,
+            Self::Video => 3,
+            Self::Text => 0,
+        }
+    }
+}
+
 pub fn get_media_type<'a>(message: &'a Message) -> Result<(Option<String>, MediaType)> {
     if let Some(photo) = message
         .get_photo()

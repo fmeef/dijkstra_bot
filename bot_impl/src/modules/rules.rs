@@ -16,7 +16,6 @@ use lazy_static::__Deref;
 
 use macros::lang_fmt;
 use sea_orm::EntityTrait;
-use sea_orm_migration::MigrationTrait;
 use sea_query::OnConflict;
 
 metadata!("Rules",
@@ -29,10 +28,6 @@ metadata!("Rules",
     { command = "setrules", help = "Sets the current rules for this chat" },
     { command = "rules", help = "Gets the rules in dm"}
 );
-
-pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
-    vec![]
-}
 
 fn rules_model(ctx: &Context) -> Result<rules::Model> {
     let message = ctx.message()?;

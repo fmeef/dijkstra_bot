@@ -11,7 +11,6 @@ use crate::util::string::Speak;
 use botapi::gen_types::UserBuilder;
 
 use macros::entity_fmt;
-use sea_orm_migration::MigrationTrait;
 metadata!("Approvals",
     r#"
     Approvals are a tool to allow specific users to be ignored by automated admin actions  
@@ -20,10 +19,6 @@ metadata!("Approvals",
     { command = "unapprove", help = "Removals approval" },
     { command = "listapprovals", help = "List all approvals for current chat"}
 );
-
-pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
-    vec![]
-}
 
 async fn cmd_approve<'a>(ctx: &Context) -> Result<()> {
     ctx.check_permissions(|p| p.can_restrict_members).await?;

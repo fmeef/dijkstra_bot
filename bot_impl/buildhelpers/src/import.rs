@@ -135,6 +135,7 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
     let mods = module_globs.clone().into_iter();
     let updates = module_globs.clone().into_iter();
     let funcs = module_globs.iter();
+    let exports = module_globs.iter();
     let modules = module_globs.iter();
     let output = quote! {
         #( mod #mods; )*
@@ -142,9 +143,23 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
         pub fn get_migrations() -> ::std::vec::Vec<::std::boxed::Box<dyn ::sea_orm_migration::prelude::MigrationTrait>> {
             let mut v = ::std::vec::Vec::<::std::boxed::Box<dyn ::sea_orm_migration::prelude::MigrationTrait>>::new();
             #(
-                v.append(&mut #funcs::get_migrations());
+                if let Some(ref md) = #funcs::METADATA.state {
+                    v.append(&mut md.get_migrations());
+                }
             )*
             v
+        }
+
+        pub async fn all_export(chat: i64) -> crate::util::error::Result<crate::tg::import_export::RoseExport> {
+            let mut v = crate::tg::import_export::RoseExport::new();
+            #(
+                if let Some(ref md) = #exports::METADATA.state {
+                    if let (Some(export), Some(name)) = (md.export(chat).await?, md.supports_export()) {
+                        v.data.insert(name.to_owned(), export);
+                    }
+                }
+            )*
+            Ok(v)
         }
 
         pub fn get_metadata() -> ::std::vec::Vec<crate::metadata::Metadata> {
@@ -156,7 +171,8 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
                         name: #doc_globs.to_owned(),
                         description: crate::metadata::markdownify(std::include_str!(#doc_names)),
                         commands: ::std::collections::HashMap::new(),
-                        sections: #vecs
+                        sections: #vecs,
+                        state: None
                     }
             ),*]
         }

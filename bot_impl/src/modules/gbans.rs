@@ -6,8 +6,6 @@ use crate::tg::user::GetUser;
 use crate::util::error::Result;
 use crate::{metadata::metadata, util::string::Speak};
 
-use sea_orm_migration::MigrationTrait;
-
 metadata!("Global Bans",
     r#"
     Global bans \(gbans\) ban a user across every chat the bot is in. This is a drastic action
@@ -16,10 +14,6 @@ metadata!("Global Bans",
     { command = "gban", help = "Ban a user in all chats" },
     { command = "ungban", help = "Unban a user in all chats" }
 );
-
-pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
-    vec![]
-}
 
 async fn ungban(ctx: &Context) -> Result<()> {
     ctx.check_permissions(|p| p.is_support).await?;

@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use self::entities::tags::ModelRedis;
-use crate::metadata::metadata;
+use crate::metadata::{metadata, ModuleHelpers};
 use crate::persist::redis as r;
 use crate::statics::{DB, REDIS, TG};
 use crate::tg::admin_helpers::is_dm;
@@ -48,6 +48,7 @@ metadata!("Sticker Organizer",
     r#"
     Use this bot in inline mode to organize your stickers
     "#,
+    Helper,
     { command = "upload", help = "Uploads a sticker" },
     { command = "list", help = "Lists available stickers"},
     { command = "deletesticker", help = "Deletes a sticker by uuid"}
@@ -250,6 +251,27 @@ pub mod entities {
 
 pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![Box::new(Migration)]
+}
+
+struct Helper;
+
+#[async_trait::async_trait]
+impl ModuleHelpers for Helper {
+    async fn export(&self, _: i64) -> Result<Option<serde_json::Value>> {
+        Ok(None)
+    }
+
+    async fn import(&self, _: i64, _: serde_json::Value) -> Result<()> {
+        Ok(())
+    }
+
+    fn supports_export(&self) -> Option<&'static str> {
+        None
+    }
+
+    fn get_migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
+        get_migrations()
+    }
 }
 
 async fn handle_inline(query: &InlineQuery) -> Result<()> {

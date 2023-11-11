@@ -19,8 +19,6 @@ use itertools::Itertools;
 use macros::{entity_fmt, lang_fmt};
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
-use sea_orm_migration::MigrationTrait;
-
 use sea_query::OnConflict;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -46,10 +44,6 @@ metadata!("Federations",
     { command = "fedimport", help = "Import a list of fbans to your current federation using Rose bot's json format" },
     { command = "fedexport", help = "Export your federation's fbans in Rose bot's json format" }
 );
-
-pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
-    vec![]
-}
 
 async fn fban(ctx: &Context) -> Result<()> {
     if ctx.message()?.get_sender_chat().is_some() {
