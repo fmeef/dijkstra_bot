@@ -82,6 +82,7 @@ kicked: Kicked user {}
 kickme: BLUE TEXT MUST CLICK
 lackingadminrights: User {} lacking admin rights
 listnotes: Notes for {}
+clearnotes: Cleared all notes for chat {}
 lockban: 'User {{mention}} banned!
 
   [*Reason:]
@@ -168,3 +169,13 @@ warns: 'Warns for user {}:
 warnsline: 'Reason: {}'
 welcome: Welcome to {}, a modular group management bot written in pythonb and asynctio
 welcomeinvalid: Invalid argument, use on/off/yes/no
+
+taintreplace: Replace
+taintdelete: Delete
+taintmessage: |
+  The content you requested contains media from another bot. This media cannot be displayed on the
+  current bot and needs to be updated. Press the delete button to remove this content forever, or press
+  the update button and forward the correct media to this bot's dm
+taintforward: |
+  Please locate a message containing the correct media and forward it to this bot's dm
+taintupdatednote: Media id has been updated for {} notes

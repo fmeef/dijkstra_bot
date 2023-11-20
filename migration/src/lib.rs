@@ -17,6 +17,7 @@ mod m20230828_202520_user_names;
 mod m20230910_204018_entity_in_db;
 mod m20231029_015614_notes;
 mod m20231029_032907_notes_entity;
+mod m20231117_045213_taint;
 
 pub struct Migrator;
 
@@ -38,6 +39,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20230312_000001_create_welcomes::Migration),
             Box::new(m20230214_000001_create_captcha::Migration),
             Box::new(m20230910_204018_entity_in_db::Migration),
+            Box::new(m20231117_045213_taint::Migration),
         ];
         core_migrations.append(&mut module_migrations);
         core_migrations.append(&mut vec![Box::new(m20230629_231657_tags_idx::Migration)]);

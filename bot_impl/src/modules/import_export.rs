@@ -1,9 +1,16 @@
-use crate::metadata::metadata;
-use crate::tg::command::{Cmd, Context};
-use crate::util::error::Result;
-use crate::util::string::Speak;
+use botapi::gen_types::FileData;
+use reqwest::multipart::Part;
 
-use super::all_export;
+use crate::metadata::metadata;
+use crate::statics::TG;
+use crate::tg::admin_helpers::FileGetter;
+use crate::tg::command::{Cmd, Context};
+use crate::tg::permissions::IsGroupAdmin;
+use crate::tg::user::Username;
+use crate::util::error::Result;
+use crate::util::string::{should_ignore_chat, Speak};
+
+use super::{all_export, all_import};
 
 metadata!("Import/Export",
     r#"
@@ -16,12 +23,38 @@ metadata!("Import/Export",
 
 pub async fn handle_update(ctx: &Context) -> Result<()> {
     if let Some(&Cmd { cmd, message, .. }) = ctx.cmd() {
-        // log::info!("piracy command {}", cmd);
         match cmd {
-            //            "crash" => TG.client().close().await?,
             "export" => {
-                let v = all_export(message.get_chat().get_id()).await?;
-                ctx.reply(serde_json::to_string_pretty(&v)?).await?;
+                ctx.check_permissions(|p| p.can_manage_chat).await?;
+                if !should_ignore_chat(message.get_chat().get_id()).await? {
+                    let v = all_export(message.get_chat().get_id()).await?;
+                    let out = serde_json::to_string_pretty(&v)?;
+
+                    let bytes = FileData::Part(Part::text(out).file_name("export.txt"));
+                    TG.client
+                        .build_send_document(message.get_chat().get_id(), bytes)
+                        .build()
+                        .await?;
+                }
+            }
+            "import" => {
+                ctx.check_permissions(|p| p.can_change_info.and(p.can_restrict_members))
+                    .await?;
+                ctx.action_message_message(|ctx, message, _| async move {
+                    if let Some(file) = message.get_document() {
+                        let text = file.get_text().await?;
+                        all_import(message.get_chat().get_id(), &text).await?;
+                        ctx.reply(format!(
+                            "Imported data for chat {}",
+                            message.get_chat().name_humanreadable()
+                        ))
+                        .await?;
+                    } else {
+                        ctx.reply("Please select a json file").await?;
+                    }
+                    Ok(())
+                })
+                .await?;
             }
             _ => (),
         };

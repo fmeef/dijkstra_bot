@@ -1408,6 +1408,21 @@ impl EntityMessage {
         }
     }
 
+    pub fn from_text<T>(chat: i64, text: T) -> Self
+    where
+        T: AsRef<str>,
+    {
+        let mut s = Self {
+            builder: MarkupBuilder::new(None),
+            chat,
+            reply_markup: None,
+            disable_murkdown: false,
+        };
+
+        s.builder.text(text);
+        s
+    }
+
     pub fn reply_markup(mut self, reply_markup: EReplyMarkup) -> Self {
         self.reply_markup = Some(reply_markup);
         self

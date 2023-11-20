@@ -8,10 +8,13 @@ use crate::tg::command::{
     get_content, handle_deep_link, Cmd, Context, InputType, TextArg, TextArgs,
 };
 
+use crate::tg::import_export::{is_tainted, set_taint_vec};
 use crate::tg::markdown::{button_deeplink_key, MarkupBuilder};
-use crate::tg::notes::{get_hash_key, get_note_by_name, handle_transition, refresh_notes};
+use crate::tg::notes::{
+    clear_notes, get_hash_key, get_note_by_name, handle_transition, refresh_notes,
+};
 use crate::tg::permissions::IsGroupAdmin;
-use crate::tg::rosemd::RoseMdDecompiler;
+use crate::tg::rosemd::{RoseMdDecompiler, RoseMdParser};
 use crate::tg::user::Username;
 use crate::util::error::{BotError, Fail, Result};
 use crate::util::string::Speak;
@@ -21,7 +24,8 @@ use futures::FutureExt;
 use lazy_static::__Deref;
 use macros::lang_fmt;
 use redis::AsyncCommands;
-use sea_orm::EntityTrait;
+use sea_orm::ActiveValue::{NotSet, Set};
+use sea_orm::{ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter};
 use serde::{Deserialize, Serialize};
 
 use crate::persist::core::{entity, media::*, notes};
@@ -39,13 +43,13 @@ metadata!("Notes",
     { command = "notes", help = "List all notes for the current chat"}
 );
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 struct ExportNotes {
     notes: Vec<NotesItem>,
     private_notes: bool,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 struct NotesItem {
     data_id: String,
     name: String,
@@ -95,7 +99,43 @@ impl ModuleHelpers for Helper {
         Ok(Some(serde_json::to_value(&out)?))
     }
 
-    async fn import(&self, _: i64, _: serde_json::Value) -> Result<()> {
+    async fn import(&self, chat: i64, value: serde_json::Value) -> Result<()> {
+        let notes: ExportNotes = serde_json::from_value(value)?;
+        clear_notes(chat).await?;
+        let mut res = Vec::new();
+        for note in notes.notes {
+            let (text, entities, buttons) =
+                RoseMdParser::new(&note.text.replace("\\n", "\n"), true).parse();
+            let entity_id = if entities.len() > 0 {
+                Some(entity::insert(DB.deref(), &entities, buttons).await?)
+            } else {
+                None
+            };
+            let model = notes::Model {
+                name: note.name,
+                chat,
+                text: Some(text),
+                protect: false,
+                media_type: MediaType::from_rose_type(note.note_type),
+                entity_id,
+                media_id: if note.data_id.len() == 0 {
+                    None
+                } else {
+                    Some(note.data_id)
+                },
+            };
+
+            res.push(model);
+        }
+        log::info!("importing notes: {:?}", res);
+        let taint = res
+            .iter()
+            .filter_map(|v| v.media_id.clone().map(|m| (m, v.media_type.clone())));
+        set_taint_vec(taint.collect()).await?;
+        let res = res.into_iter().map(|v| v.into_active_model());
+        notes::Entity::insert_many(res).exec(DB.deref()).await?;
+
+        refresh_notes(chat).await?;
         Ok(())
     }
 
@@ -193,6 +233,7 @@ async fn handle_command<'a>(ctx: &Context) -> Result<()> {
             "get" => get(ctx).await,
             "delete" => delete(message, args).await,
             "notes" => list_notes(ctx).await,
+            "clearnotes" => clear_notes_cmd(ctx).await,
             "start" => {
                 let note: Option<(i64, String)> =
                     handle_deep_link(ctx, |k| button_deeplink_key(k)).await?;
@@ -216,6 +257,21 @@ async fn print_note(
     note_chat: i64,
 ) -> Result<()> {
     let c = ctx.clone();
+    if let Some(media_id) = note.media_id.as_ref() {
+        if is_tainted(&media_id).await? {
+            return ctx
+                .update_taint(
+                    "notes",
+                    note.media_id.unwrap(),
+                    note.media_type,
+                    move |_| async move {
+                        delete_by_id(note.name, note_chat).await?;
+                        Ok(())
+                    },
+                )
+                .await;
+        }
+    }
     SendMediaReply::new(ctx, note.media_type)
         .button_callback(move |note, button| {
             let c = c.clone();
@@ -244,6 +300,15 @@ async fn print_note(
 
 async fn print(message: &Context, name: String) -> Result<()> {
     print_chat(message, name, message.message()?.get_chat().get_id()).await
+}
+
+async fn clear_notes_cmd(ctx: &Context) -> Result<()> {
+    ctx.check_permissions(|p| p.can_change_info).await?;
+    let chat = ctx.message()?.get_chat();
+    clear_notes(chat.get_id()).await?;
+    ctx.reply(lang_fmt!(ctx, "clearnotes", chat.name_humanreadable()))
+        .await?;
+    Ok(())
 }
 
 async fn print_chat(ctx: &Context, name: String, chat: i64) -> Result<()> {
@@ -280,15 +345,20 @@ async fn get<'a>(ctx: &Context) -> Result<()> {
     }
 }
 
+async fn delete_by_id(name: String, chat: i64) -> Result<()> {
+    let hash_key = get_hash_key(chat);
+    REDIS.sq(|q| q.hdel(&hash_key, &name)).await?;
+    notes::Entity::delete_by_id((name, chat))
+        .exec(DB.deref())
+        .await?;
+    Ok(())
+}
+
 async fn delete<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
     message.check_permissions(|p| p.can_change_info).await?;
     let model = get_model(message, args).await?;
     let name = model.name.clone();
-    let hash_key = get_hash_key(message.get_chat().get_id());
-    REDIS.sq(|q| q.hdel(&hash_key, &model.name)).await?;
-    notes::Entity::delete_by_id((model.name, message.get_chat().get_id()))
-        .exec(DB.deref())
-        .await?;
+    delete_by_id(model.name, message.get_chat().get_id()).await?;
     message.speak(format!("Deleted note {}", name)).await?;
     Ok(())
 }
@@ -342,6 +412,30 @@ async fn save<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
 
 pub async fn handle_update<'a>(cmd: &Context) -> Result<()> {
     if let Ok(message) = cmd.message() {
+        if let Some((media_id, new_id, media_type)) = cmd.handle_taint("notes").await? {
+            log::info!("updating taint for notes: {} {}", media_id, new_id);
+
+            let note = notes::Entity::update_many()
+                .filter(
+                    notes::Column::MediaId
+                        .eq(Some(media_id.as_str()))
+                        .and(notes::Column::MediaType.eq(media_type)),
+                )
+                .set(notes::ActiveModel {
+                    name: NotSet,
+                    chat: NotSet,
+                    text: NotSet,
+                    media_id: Set(Some(media_id)),
+                    media_type: NotSet,
+                    protect: NotSet,
+                    entity_id: NotSet,
+                })
+                .exec_with_returning(DB.deref())
+                .await?;
+
+            cmd.reply(lang_fmt!(cmd, "taintupdatednote", note.len()))
+                .await?;
+        }
         if let Some(text) = message.get_text_ref() {
             if text.starts_with("#") && text.len() > 1 {
                 let tail = &text[1..];

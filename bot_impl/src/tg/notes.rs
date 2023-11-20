@@ -1,16 +1,17 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, ops::Deref};
 
 use botapi::gen_types::{CallbackQuery, MessageEntity};
 use futures::{future::BoxFuture, FutureExt};
 use itertools::Itertools;
-use sea_orm::ColumnTrait;
+use redis::AsyncCommands;
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QuerySelect};
 
 use crate::{
     persist::{
-        core::{media::SendMediaReply, notes},
+        core::{entity, media::SendMediaReply, notes},
         redis::{CachedQuery, CachedQueryTrait, RedisStr},
     },
-    statics::{CONFIG, REDIS, TG},
+    statics::{CONFIG, DB, REDIS, TG},
     tg::button::OnPush,
     util::error::{BotError, Result},
 };
@@ -82,6 +83,29 @@ pub async fn refresh_notes(
             .collect())
     }
 }
+
+pub async fn clear_notes(chat: i64) -> Result<()> {
+    let key = get_hash_key(chat);
+    let ids: Vec<Option<i64>> = notes::Entity::find()
+        .select_only()
+        .filter(notes::Column::Chat.eq(chat))
+        .columns([notes::Column::EntityId])
+        .into_tuple()
+        .all(DB.deref())
+        .await?;
+    notes::Entity::delete_many()
+        .filter(notes::Column::Chat.eq(chat))
+        .exec(DB.deref())
+        .await?;
+
+    entity::Entity::delete_many()
+        .filter(entity::Column::Id.is_in(ids))
+        .exec(DB.deref())
+        .await?;
+    REDIS.sq(|q| q.del(key)).await?;
+    Ok(())
+}
+
 pub async fn get_note_by_name(
     name: String,
     chat: i64,

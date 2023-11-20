@@ -18,6 +18,33 @@ use botapi::gen_types::{
 use futures::future::BoxFuture;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
+
+pub trait GetMediaId {
+    fn get_media_id<'a>(&'a self) -> Option<(&'a str, MediaType)>;
+}
+
+impl GetMediaId for Message {
+    fn get_media_id<'a>(&'a self) -> Option<(&'a str, MediaType)> {
+        if let Some(image) = self.get_photo_ref().map(|p| p.first()).flatten() {
+            return Some((image.get_file_id_ref(), MediaType::Photo));
+        }
+
+        if let Some(document) = self.get_document_ref() {
+            return Some((document.get_file_id_ref(), MediaType::Document));
+        }
+
+        if let Some(sticker) = self.get_sticker_ref() {
+            return Some((sticker.get_file_id_ref(), MediaType::Sticker));
+        }
+
+        if let Some(video) = self.get_video_ref() {
+            return Some((video.get_file_id_ref(), MediaType::Video));
+        }
+
+        None
+    }
+}
+
 #[derive(
     EnumIter, DeriveActiveEnum, Serialize, Deserialize, Clone, PartialEq, Eq, Hash, Debug, Iden,
 )]
@@ -43,6 +70,16 @@ impl MediaType {
             Self::Document => 8,
             Self::Video => 3,
             Self::Text => 0,
+        }
+    }
+
+    pub fn from_rose_type(t: i64) -> Self {
+        match t {
+            1 => Self::Sticker,
+            2 => Self::Photo,
+            8 => Self::Document,
+            3 => Self::Video,
+            _ => Self::Text,
         }
     }
 }

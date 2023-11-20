@@ -136,6 +136,7 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
     let updates = module_globs.clone().into_iter();
     let funcs = module_globs.iter();
     let exports = module_globs.iter();
+    let imports = module_globs.iter();
     let modules = module_globs.iter();
     let output = quote! {
         #( mod #mods; )*
@@ -156,6 +157,20 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
                 if let Some(ref md) = #exports::METADATA.state {
                     if let (Some(export), Some(name)) = (md.export(chat).await?, md.supports_export()) {
                         v.data.insert(name.to_owned(), export);
+                    }
+                }
+            )*
+            Ok(v)
+        }
+
+        pub async fn all_import(chat: i64, json: &str) -> crate::util::error::Result<crate::tg::import_export::RoseExport> {
+            let mut v: crate::tg::import_export::RoseExport = ::serde_json::from_str(json)?;
+            #(
+                if let Some(ref md) = #imports::METADATA.state {
+                    if let Some(name) = md.supports_export() {
+                        if let Some(value) = v.data.remove(name) {
+                            md.import(chat, value).await?;
+                        }
                     }
                 }
             )*
