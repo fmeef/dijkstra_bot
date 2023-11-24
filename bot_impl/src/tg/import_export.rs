@@ -2,7 +2,7 @@ use std::{collections::HashMap, ops::Deref};
 
 use botapi::gen_types::{EReplyMarkup, InlineKeyboardButtonBuilder, UpdateExt};
 use chrono::Duration;
-use futures::{Future, FutureExt};
+use futures::{future::BoxFuture, Future, FutureExt};
 use macros::lang_fmt;
 use redis::AsyncCommands;
 use sea_orm::{ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, TransactionTrait};
@@ -172,10 +172,10 @@ struct UpdateTaint {
 }
 
 impl Context {
-    pub async fn handle_taint<'a>(
-        &'a self,
-        scope: &str,
-    ) -> Result<Option<(String, &'a str, MediaType)>> {
+    pub async fn handle_taint<'a, F>(&'a self, scope: &str, cb: F) -> Result<()>
+    where
+        for<'b> F: FnOnce(&'b str, &'b str, MediaType) -> BoxFuture<'b, Result<()>>,
+    {
         if if let Some(chat) = self.chat() {
             is_dm(chat)
         } else {
@@ -190,10 +190,24 @@ impl Context {
                             (media_id, message.get_media_id())
                         {
                             let taint: UpdateTaint = media_id.get()?;
-                            if scope == taint.scope && taint.media_type == new_media_type {
+                            if scope == taint.scope {
+                                if taint.media_type != new_media_type {
+                                    self.speak(lang_fmt!(
+                                        self,
+                                        "wrongmediatype",
+                                        new_media_type,
+                                        taint.media_type
+                                    ))
+                                    .await?;
+                                    return Ok(());
+                                }
+
+                                log::info!("handle taint {} {}", taint.media_id, new_media_id);
+
+                                cb(&taint.media_id, new_media_id, new_media_type).await?;
                                 REDIS.sq(|q| q.del(&key)).await?;
                                 remove_taint(&taint.media_id).await?;
-                                return Ok(Some((taint.media_id, new_media_id, new_media_type)));
+                                return Ok(());
                             }
                         }
                     }
@@ -201,7 +215,7 @@ impl Context {
                 _ => (),
             };
         }
-        Ok(None)
+        Ok(())
     }
 
     /// Initiates a request to replace a "taintend" media id. Returns true if the user

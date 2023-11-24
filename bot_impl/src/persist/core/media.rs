@@ -62,6 +62,18 @@ pub enum MediaType {
     Video,
 }
 
+impl std::fmt::Display for MediaType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Sticker => f.write_str("sticker"),
+            Self::Photo => f.write_str("photo"),
+            Self::Document => f.write_str("document"),
+            Self::Text => f.write_str("text"),
+            Self::Video => f.write_str("video"),
+        }
+    }
+}
+
 impl MediaType {
     pub fn get_rose_type(&self) -> i64 {
         match self {
