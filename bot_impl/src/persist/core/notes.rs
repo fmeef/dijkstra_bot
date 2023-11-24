@@ -1,4 +1,3 @@
-
 use std::{
     collections::{HashMap, HashSet},
     ops::Deref,
@@ -17,6 +16,8 @@ use crate::{
 use sea_orm::{entity::prelude::*, FromQueryResult, QueryOrder, QuerySelect};
 use sea_query::{IntoCondition, JoinType};
 use serde::{Deserialize, Serialize};
+
+use super::taint;
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize, Eq, Hash)]
 #[sea_orm(table_name = "notes")]
 pub struct Model {
@@ -31,6 +32,21 @@ pub struct Model {
     #[sea_orm(default = false)]
     pub protect: bool,
     pub entity_id: Option<i64>,
+}
+
+impl Model {
+    pub fn get_taint(&self, reason: Option<String>) -> Option<taint::Model> {
+        if let Some(ref media_id) = self.media_id {
+            Some(taint::Model {
+                media_id: media_id.clone(),
+                scope: crate::tg::notes::MODULE_NAME.to_owned(),
+                media_type: self.media_type.clone(),
+                notes: reason,
+            })
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

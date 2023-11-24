@@ -18,6 +18,8 @@ use crate::{
 
 use super::{button::InlineKeyboardBuilder, command::Context, markdown::get_markup_for_buttons};
 
+pub const MODULE_NAME: &str = "notes";
+
 #[inline(always)]
 pub fn get_hash_key(chat: i64) -> String {
     format!("ncch:{}", chat)

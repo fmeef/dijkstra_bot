@@ -127,9 +127,7 @@ impl ModuleHelpers for Helper {
             res.push(model);
         }
         log::info!("importing notes: {:?}", res);
-        let taint = res
-            .iter()
-            .filter_map(|v| v.media_id.clone().map(|m| (m, v.media_type.clone())));
+        let taint = res.iter().filter_map(|v| v.get_taint(Some(v.name.clone())));
         set_taint_vec(taint.collect()).await?;
         let res = res.into_iter().map(|v| v.into_active_model());
         notes::Entity::insert_many(res).exec(DB.deref()).await?;
@@ -139,7 +137,7 @@ impl ModuleHelpers for Helper {
     }
 
     fn supports_export(&self) -> Option<&'static str> {
-        Some("notes")
+        Some(crate::tg::notes::MODULE_NAME)
     }
 
     fn get_migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
@@ -260,7 +258,7 @@ async fn print_note(
         if is_tainted(&media_id).await? {
             return ctx
                 .update_taint(
-                    "notes",
+                    crate::tg::notes::MODULE_NAME,
                     note.media_id.unwrap(),
                     note.media_type,
                     move |_| async move {
@@ -412,34 +410,37 @@ async fn save<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
 pub async fn handle_update<'a>(cmd: &Context) -> Result<()> {
     if let Ok(message) = cmd.message() {
         let c = cmd.clone();
-        cmd.handle_taint("notes", |media_id, new_id, media_type| {
-            async move {
-                log::info!("updating taint for notes: {} {}", media_id, new_id);
+        cmd.handle_taint(
+            crate::tg::notes::MODULE_NAME,
+            |media_id, new_id, media_type| {
+                async move {
+                    log::info!("updating taint for notes: {} {}", media_id, new_id);
 
-                let note = notes::Entity::update_many()
-                    .filter(
-                        notes::Column::MediaId
-                            .eq(Some(media_id))
-                            .and(notes::Column::MediaType.eq(media_type)),
-                    )
-                    .set(notes::ActiveModel {
-                        name: NotSet,
-                        chat: NotSet,
-                        text: NotSet,
-                        media_id: Set(Some(new_id.to_owned())),
-                        media_type: NotSet,
-                        protect: NotSet,
-                        entity_id: NotSet,
-                    })
-                    .exec_with_returning(DB.deref())
-                    .await?;
+                    let note = notes::Entity::update_many()
+                        .filter(
+                            notes::Column::MediaId
+                                .eq(Some(media_id))
+                                .and(notes::Column::MediaType.eq(media_type)),
+                        )
+                        .set(notes::ActiveModel {
+                            name: NotSet,
+                            chat: NotSet,
+                            text: NotSet,
+                            media_id: Set(Some(new_id.to_owned())),
+                            media_type: NotSet,
+                            protect: NotSet,
+                            entity_id: NotSet,
+                        })
+                        .exec_with_returning(DB.deref())
+                        .await?;
 
-                c.reply(lang_fmt!(c, "taintupdatednote", note.len()))
-                    .await?;
-                Ok(())
-            }
-            .boxed()
-        })
+                    c.reply(lang_fmt!(c, "taintupdatednote", note.len()))
+                        .await?;
+                    Ok(())
+                }
+                .boxed()
+            },
+        )
         .await?;
         if let Some(text) = message.get_text_ref() {
             if text.starts_with("#") && text.len() > 1 {

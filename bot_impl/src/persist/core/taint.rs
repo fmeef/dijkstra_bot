@@ -11,7 +11,9 @@ use super::media::MediaType;
 pub struct Model {
     #[sea_orm(primary_key)]
     pub media_id: String,
+    pub scope: String,
     pub media_type: MediaType,
+    pub notes: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

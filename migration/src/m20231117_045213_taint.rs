@@ -12,6 +12,8 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(taint::Entity)
                     .col(ColumnDef::new(taint::Column::MediaId).text().primary_key())
+                    .col(ColumnDef::new(taint::Column::Scope).text().not_null())
+                    .col(ColumnDef::new(taint::Column::Notes).text().null())
                     .col(
                         ColumnDef::new(taint::Column::MediaType)
                             .integer()

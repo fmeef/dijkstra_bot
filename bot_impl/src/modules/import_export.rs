@@ -21,6 +21,12 @@ metadata!("Import/Export",
     { command = "export", help = "Export data for the current chat"}
 );
 
+async fn get_taint(ctx: &Context) -> Result<()> {
+    ctx.check_permissions(|p| p.can_manage_chat).await?;
+
+    Ok(())
+}
+
 pub async fn handle_update(ctx: &Context) -> Result<()> {
     if let Some(&Cmd { cmd, message, .. }) = ctx.cmd() {
         match cmd {

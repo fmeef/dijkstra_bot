@@ -66,22 +66,16 @@ pub async fn is_tainted(media_id: &str) -> Result<bool> {
     Ok(out.is_some())
 }
 
-pub async fn set_taint(media_id: String, media_type: MediaType) -> Result<()> {
-    let key = get_taint_key(&media_id);
-    let res = taint::Entity::insert(
-        taint::Model {
-            media_id,
-            media_type,
-        }
-        .into_active_model(),
-    )
-    .on_conflict(
-        OnConflict::column(taint::Column::MediaId)
-            .do_nothing()
-            .to_owned(),
-    )
-    .exec_without_returning(DB.deref())
-    .await?;
+pub async fn set_taint(model: taint::Model) -> Result<()> {
+    let key = get_taint_key(&model.media_id);
+    let res = taint::Entity::insert(model.into_active_model())
+        .on_conflict(
+            OnConflict::column(taint::Column::MediaId)
+                .do_nothing()
+                .to_owned(),
+        )
+        .exec_without_returning(DB.deref())
+        .await?;
 
     if res > 0 {
         REDIS.sq(|q| q.del(&key)).await?;
@@ -89,30 +83,27 @@ pub async fn set_taint(media_id: String, media_type: MediaType) -> Result<()> {
     Ok(())
 }
 
-pub async fn set_taint_vec(media_id: Vec<(String, MediaType)>) -> Result<()> {
+pub async fn set_taint_vec(media_id: Vec<taint::Model>) -> Result<()> {
     DB.transaction::<_, (), BotError>(|tx| {
         async move {
             // cry here, sea_orm doesn't support returning multiple rows via postgres
             // INSERT...RETURNING clause
             let existing = taint::Entity::find()
-                .filter(taint::Column::MediaId.is_not_in(media_id.iter().map(|(v, _)| v)))
+                .filter(
+                    taint::Column::MediaId.is_not_in(media_id.iter().map(|v| v.media_id.as_str())),
+                )
                 .all(tx)
                 .await?;
-            let res =
-                taint::Entity::insert_many(media_id.into_iter().map(|(media_id, media_type)| {
-                    taint::Model {
-                        media_id,
-                        media_type,
-                    }
-                    .into_active_model()
-                }))
-                .on_conflict(
-                    OnConflict::column(taint::Column::MediaId)
-                        .do_nothing()
-                        .to_owned(),
-                )
-                .exec_without_returning(tx)
-                .await?;
+            let res = taint::Entity::insert_many(
+                media_id.into_iter().map(|model| model.into_active_model()),
+            )
+            .on_conflict(
+                OnConflict::column(taint::Column::MediaId)
+                    .do_nothing()
+                    .to_owned(),
+            )
+            .exec_without_returning(tx)
+            .await?;
 
             if res > 0 {
                 for key in existing {
