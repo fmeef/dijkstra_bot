@@ -4,12 +4,13 @@ use botapi::gen_types::FileData;
 use itertools::Itertools;
 use reqwest::multipart::Part;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+use uuid::Uuid;
 
 use crate::metadata::metadata;
 use crate::persist::core::taint;
 use crate::statics::{DB, TG};
 use crate::tg::admin_helpers::FileGetter;
-use crate::tg::command::{Cmd, Context};
+use crate::tg::command::{Cmd, Context, TextArgs};
 use crate::tg::permissions::IsGroupAdmin;
 use crate::tg::user::Username;
 use crate::util::error::Result;
@@ -63,8 +64,21 @@ async fn get_taint(ctx: &Context) -> Result<()> {
     Ok(())
 }
 
+async fn update_taint<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
+    ctx.check_permissions(|p| p.can_change_info).await?;
+    let uuid = Uuid::parse_str(args.text)?;
+    ctx.update_taint_id(uuid).await?;
+    Ok(())
+}
+
 pub async fn handle_update(ctx: &Context) -> Result<()> {
-    if let Some(&Cmd { cmd, message, .. }) = ctx.cmd() {
+    if let Some(&Cmd {
+        cmd,
+        message,
+        ref args,
+        ..
+    }) = ctx.cmd()
+    {
         match cmd {
             "export" => {
                 ctx.check_permissions(|p| p.can_manage_chat).await?;
@@ -100,6 +114,9 @@ pub async fn handle_update(ctx: &Context) -> Result<()> {
             }
             "taint" => {
                 get_taint(ctx).await?;
+            }
+            "fixtaint" => {
+                update_taint(ctx, args).await?;
             }
             _ => (),
         };

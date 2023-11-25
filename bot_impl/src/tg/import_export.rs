@@ -226,12 +226,42 @@ impl Context {
         Ok(())
     }
 
+    pub async fn update_taint_id(&self, id: Uuid) -> Result<()> {
+        let model = taint::Entity::find_by_id(id)
+            .one(DB.deref())
+            .await?
+            .ok_or_else(|| {
+                BotError::Generic("The missing media id specified does not exist".to_owned())
+            })?;
+        let message = self.message()?;
+        if let Some(user) = message.get_from().map(|v| v.get_id()) {
+            let ctx = UpdateTaint {
+                media_id: model.media_id,
+                media_type: model.media_type,
+                scope: model.scope,
+            };
+
+            log::info!("posting taint handler for {}", ctx.media_id);
+            let key = get_patch_taint_key(user);
+            let ctx = ctx.to_redis()?;
+            REDIS
+                .pipe(|q| {
+                    q.set(&key, ctx)
+                        .expire(&key, Duration::minutes(45).num_seconds() as usize)
+                })
+                .await?;
+            self.reply(lang_fmt!(self, "taintforward")).await?;
+        }
+
+        Ok(())
+    }
+
     /// Initiates a request to replace a "taintend" media id. Returns true if the user
     /// requested to delete the media, false if the user should forward the updated media
     /// to the bot's dm
     pub async fn update_taint<'a, F, Fut>(
         &self,
-        scope: &'static str,
+        scope: String,
         media_id: String,
         media_type: MediaType,
         cb: F,

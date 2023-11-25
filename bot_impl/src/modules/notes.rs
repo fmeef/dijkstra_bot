@@ -258,7 +258,7 @@ async fn print_note(
         if is_tainted(media_id, crate::tg::notes::MODULE_NAME, note_chat).await? {
             return ctx
                 .update_taint(
-                    crate::tg::notes::MODULE_NAME,
+                    crate::tg::notes::MODULE_NAME.to_owned(),
                     note.media_id.unwrap(),
                     note.media_type,
                     move |_| async move {
