@@ -46,7 +46,7 @@ async fn get_taint(ctx: &Context) -> Result<()> {
                 .map(|t| {
                     let notes = t.notes.unwrap_or_else(|| "".to_owned());
                     let media = t.id;
-                    format!("{} - {}", media, notes)
+                    format!("[`{}] - {}", media, notes)
                 })
                 .join("\n");
             format!("[*{}:]\n{}", scope, contents)
