@@ -1,8 +1,13 @@
+use std::ops::Deref;
+
 use botapi::gen_types::FileData;
+use itertools::Itertools;
 use reqwest::multipart::Part;
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 
 use crate::metadata::metadata;
-use crate::statics::TG;
+use crate::persist::core::taint;
+use crate::statics::{DB, TG};
 use crate::tg::admin_helpers::FileGetter;
 use crate::tg::command::{Cmd, Context};
 use crate::tg::permissions::IsGroupAdmin;
@@ -23,7 +28,38 @@ metadata!("Import/Export",
 
 async fn get_taint(ctx: &Context) -> Result<()> {
     ctx.check_permissions(|p| p.can_manage_chat).await?;
+    let message = ctx.message()?;
+    let taints = taint::Entity::find()
+        .filter(taint::Column::Chat.eq(message.get_chat().get_id()))
+        // .group_by(taint::Column::Scope)
+        .order_by_asc(taint::Column::Scope)
+        .all(DB.deref())
+        .await?;
 
+    let m = taints.into_iter().group_by(|v| v.scope.clone());
+
+    let m = m
+        .into_iter()
+        .map(|(scope, t)| {
+            let contents = t
+                .into_iter()
+                .map(|t| {
+                    let notes = t.notes.unwrap_or_else(|| "".to_owned());
+                    let media = t.id;
+                    format!("{} - {}", media, notes)
+                })
+                .join("\n");
+            format!("[*{}:]\n{}", scope, contents)
+        })
+        .join("\n");
+
+    let m = format!(
+        "Broken media for {} by module:\n\n{}",
+        message.get_chat().name_humanreadable(),
+        m
+    );
+
+    ctx.reply(m).await?;
     Ok(())
 }
 
@@ -61,6 +97,9 @@ pub async fn handle_update(ctx: &Context) -> Result<()> {
                     Ok(())
                 })
                 .await?;
+            }
+            "taint" => {
+                get_taint(ctx).await?;
             }
             _ => (),
         };

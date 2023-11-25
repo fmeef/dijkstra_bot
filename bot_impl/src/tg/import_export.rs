@@ -54,10 +54,21 @@ fn get_taint_key(media_id: &str) -> String {
     format!("tt:{}", media_id)
 }
 
-pub async fn is_tainted(media_id: &str) -> Result<bool> {
-    let key = get_taint_key(media_id);
+pub async fn is_tainted(media_id: &str, scope: &str, chat: i64) -> Result<bool> {
+    let key = get_taint_key(&media_id);
     let out = default_cache_query(
-        |_, _| async move { Ok(taint::Entity::find_by_id(media_id).one(DB.deref()).await?) },
+        |_, _| async move {
+            Ok(taint::Entity::find()
+                .filter(
+                    taint::Column::MediaId.eq(media_id).and(
+                        taint::Column::Scope
+                            .eq(scope)
+                            .and(taint::Column::Chat.eq(chat)),
+                    ),
+                )
+                .one(DB.deref())
+                .await?)
+        },
         Duration::seconds(CONFIG.timing.cache_timeout as i64),
     )
     .query(&key, &())
@@ -70,13 +81,16 @@ pub async fn set_taint(model: taint::Model) -> Result<()> {
     let key = get_taint_key(&model.media_id);
     let res = taint::Entity::insert(model.into_active_model())
         .on_conflict(
-            OnConflict::column(taint::Column::MediaId)
-                .do_nothing()
-                .to_owned(),
+            OnConflict::columns([
+                taint::Column::MediaId,
+                taint::Column::Scope,
+                taint::Column::Chat,
+            ])
+            .do_nothing()
+            .to_owned(),
         )
         .exec_without_returning(DB.deref())
         .await?;
-
     if res > 0 {
         REDIS.sq(|q| q.del(&key)).await?;
     }
@@ -98,17 +112,20 @@ pub async fn set_taint_vec(media_id: Vec<taint::Model>) -> Result<()> {
                 media_id.into_iter().map(|model| model.into_active_model()),
             )
             .on_conflict(
-                OnConflict::column(taint::Column::MediaId)
-                    .do_nothing()
-                    .to_owned(),
+                OnConflict::columns([
+                    taint::Column::MediaId,
+                    taint::Column::Scope,
+                    taint::Column::Chat,
+                ])
+                .do_nothing()
+                .to_owned(),
             )
             .exec_without_returning(tx)
             .await?;
-
             if res > 0 {
                 for key in existing {
-                    let key = get_taint_key(&key.media_id);
-                    REDIS.sq(|q| q.del(&key)).await?;
+                    let k = get_taint_key(&key.media_id);
+                    REDIS.sq(|q| q.del(&k)).await?;
                 }
             }
 

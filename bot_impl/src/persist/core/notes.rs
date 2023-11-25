@@ -42,6 +42,8 @@ impl Model {
                 scope: crate::tg::notes::MODULE_NAME.to_owned(),
                 media_type: self.media_type.clone(),
                 notes: reason,
+                chat: self.chat,
+                id: Uuid::new_v4(),
             })
         } else {
             None

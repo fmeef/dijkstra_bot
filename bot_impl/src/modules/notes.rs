@@ -255,7 +255,7 @@ async fn print_note(
 ) -> Result<()> {
     let c = ctx.clone();
     if let Some(media_id) = note.media_id.as_ref() {
-        if is_tainted(&media_id).await? {
+        if is_tainted(media_id, crate::tg::notes::MODULE_NAME, note_chat).await? {
             return ctx
                 .update_taint(
                     crate::tg::notes::MODULE_NAME,
