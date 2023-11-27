@@ -181,3 +181,9 @@ taintforward: |
 taintupdatednote: Media id has been updated for {} notes
 wrongmediatype: The media you sent is the wrong media type {}, it needs to be {}
 wrongmediaid: The media you forwarded is not the original media. 
+taintdetected: |
+  Imported data for chat {}
+  
+  WHOOPS! Your imported data contains media from another bot. 
+  Use /taint to list this media and /fixtaint to replace it.
+imported: Imported data for chat {}

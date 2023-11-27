@@ -2,8 +2,9 @@ use std::ops::Deref;
 
 use botapi::gen_types::FileData;
 use itertools::Itertools;
+use macros::lang_fmt;
 use reqwest::multipart::Part;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 use uuid::Uuid;
 
 use crate::metadata::metadata;
@@ -100,11 +101,26 @@ pub async fn handle_update(ctx: &Context) -> Result<()> {
                     if let Some(file) = message.get_document() {
                         let text = file.get_text().await?;
                         all_import(message.get_chat().get_id(), &text).await?;
-                        ctx.reply(format!(
-                            "Imported data for chat {}",
-                            message.get_chat().name_humanreadable()
-                        ))
-                        .await?;
+                        let taint = taint::Entity::find()
+                            .filter(taint::Column::Chat.eq(message.get_chat().get_id()))
+                            .count(DB.deref())
+                            .await?;
+
+                        if taint == 0 {
+                            ctx.reply(lang_fmt!(
+                                ctx,
+                                "imported",
+                                message.get_chat().name_humanreadable()
+                            ))
+                            .await?;
+                        } else {
+                            ctx.reply(lang_fmt!(
+                                ctx,
+                                "taintdetected",
+                                message.get_chat().name_humanreadable()
+                            ))
+                            .await?;
+                        }
                     } else {
                         ctx.reply("Please select a json file").await?;
                     }
