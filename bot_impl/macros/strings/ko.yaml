@@ -11,6 +11,7 @@ banned: 금지된 사용자 {}
 cachewait: 관리자 캐시는 10분마다 한 번만 새로 고칠 수 있습니다.
 channeldenied: 익명 채널은 관리자가 아니며 권한이 거부되었습니다.
 clearedlock: 잠금 "{}"이 지워졌습니다.
+clearnotes: '{} 채팅 메모를 모두 지웠습니다.'
 cleartime: '{}에 대한 경고 시간이 지워졌습니다.'
 clearwarns: 사용자 {}에 대한 경고가 지워졌습니다.
 commandnotfound: 명령어를 찾을수 없음
@@ -27,6 +28,7 @@ failfpromote: '사용자 승격 실패: {}'
 failmute: '이 사용자의 권한을 변경하지 못했습니다. 나는 지난 48시간 동안 그들과 교류하지 않았습니다.
 
   내가 그들과 소통할 수 있도록 그들의 메시지 중 하나를 나에게 전달해 주세요.'
+failwarn: 이 사용자에게 경고하지 못했습니다. 지난 48시간 동안 본 적이 없습니다.
 fban: 잘 잤어요! {}에서 F금지된 사용자 {}
 fbanreason: '잘 탔어요!
 
@@ -57,6 +59,7 @@ gbanned: '잘 잤어요!
   사용자 {}가 {}에 대해 금지되었습니다.'
 getrules: 채팅 규칙 받기 {{rules}}
 helpbutton: 도움이 필요하면 클릭하세요!
+imported: 채팅을 위해 가져온 데이터 {}
 invalid_help: 잘못된 도움말 페이지 {}
 invalidlang: 잘못된 언어가 선택되었습니다.
 joinfed: 채팅 {}을 위해 Feed {}에 가입했습니다.
@@ -119,6 +122,23 @@ specifytime: 이 명령에 대한 시간을 지정해야 합니다.
 specifyuser: 사용자를 지정해야 합니다.
 startcmd: 사용 가능한 명령 목록을 얻으려면 /help를 보내십시오.
 subscribefed: 성공적으로 구독하여 {}를 {}에 제공했습니다.
+taintdelete: 삭제
+taintdetected: '채팅을 위해 가져온 데이터 {}
+
+
+  으악! 가져온 데이터에는 다른 봇의 미디어가 포함되어 있습니다.
+
+  /taint를 사용하여 이 미디어를 나열하고 /fixtaint를 사용하여 교체합니다.'
+taintforward: '올바른 미디어가 포함된 메시지를 찾아 이 봇의 DM으로 전달해 주세요.
+
+  이 미디어는 {} 유형이어야 합니다.'
+taintmessage: '요청한 콘텐츠에는 다른 봇의 미디어가 포함되어 있습니다. 이 미디어는 다음 장치에 표시할 수 없습니다.
+
+  현재 봇이므로 업데이트가 필요합니다. 이 콘텐츠를 완전히 제거하려면 삭제 버튼을 누르거나
+
+  업데이트 버튼을 누르고 올바른 미디어를 이 봇의 DM으로 전달하세요.'
+taintreplace: 바꾸다
+taintupdatednote: '{} 메모의 미디어 ID가 업데이트되었습니다.'
 test: '잘못된 머크다운: {}'
 thing: 물건
 unapproved: 승인되지 않은 사용자 {}
@@ -145,3 +165,5 @@ warns: '사용자 {}에 대해 경고합니다.
 warnsline: '이유: {}'
 welcome: pythonb 및 asynctio로 작성된 모듈식 그룹 관리 봇인 {}에 오신 것을 환영합니다.
 welcomeinvalid: 잘못된 인수입니다. on/off/yes/no를 사용하세요.
+wrongmediaid: 전달한 미디어는 원본 미디어가 아닙니다.
+wrongmediatype: 보낸 미디어가 잘못된 미디어 유형 {}입니다. {}이어야 합니다.

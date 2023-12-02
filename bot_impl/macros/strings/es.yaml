@@ -12,6 +12,7 @@ banned: Usuario prohibido {}
 cachewait: La caché de administrador solo se puede actualizar una vez cada 10 minutos.
 channeldenied: El canal anónimo no es administrador, permiso denegado
 clearedlock: Bloqueo borrado "{}"
+clearnotes: Se borraron todas las notas del chat {}
 cleartime: Hora de advertencia borrada para {}
 clearwarns: Advertencias borradas para el usuario {}
 commandnotfound: Comando no encontrado
@@ -31,6 +32,7 @@ failmute: 'No se pudieron cambiar los permisos de este usuario. No he interactua
   con ellos en las últimas 48 horas.
 
   Por favor reenvíame uno de sus mensajes para permitirme interactuar con ellos.'
+failwarn: No se pudo advertir a este usuario, no lo he visto en las últimas 48 horas
 fban: ¡Buen viaje! Usuario bloqueado {} en {}
 fbanreason: '¡Buen viaje!
 
@@ -61,6 +63,7 @@ gbanned: '¡Buen viaje!
   Usuario {} gbaneado por {}'
 getrules: Obtenga las reglas del chat {{rules}}
 helpbutton: ¡Haz clic en mí para obtener ayuda!
+imported: Datos importados para chat {}
 invalid_help: Página de ayuda no válida {}
 invalidlang: Idioma no válido seleccionado
 joinfed: Se unió a feed {} para chatear {}
@@ -127,6 +130,26 @@ specifytime: Debes especificar una hora para este comando.
 specifyuser: Necesitas especificar un usuario
 startcmd: Envíe /help para obtener una lista de comandos disponibles
 subscribefed: Suscrito correctamente envió {} a {}
+taintdelete: Borrar
+taintdetected: 'Datos importados para chat {}
+
+
+  ¡Vaya! Sus datos importados contienen medios de otro bot.
+
+  Utilice /taint para listar este medio y /fixtaint para reemplazarlo.'
+taintforward: 'Localice un mensaje que contenga el medio correcto y reenvíelo al DM
+  de este bot.
+
+  Este medio debe ser del tipo {}'
+taintmessage: 'El contenido que solicitó contiene medios de otro bot. Este medio no
+  se puede mostrar en el
+
+  bot actual y necesita ser actualizado. Presione el botón Eliminar para eliminar
+  este contenido para siempre, o presione
+
+  el botón de actualización y reenviar los medios correctos al DM de este bot'
+taintreplace: Reemplazar
+taintupdatednote: La identificación del medio se ha actualizado para las notas {}.
 test: 'Anochecer no válido: {}'
 thing: cosa
 unapproved: Usuario no aprobado {}
@@ -155,3 +178,5 @@ warnsline: 'Razón: {}'
 welcome: Bienvenido a {}, un bot modular de administración de grupos escrito en pythonb
   y asynctio
 welcomeinvalid: Argumento no válido, use encendido/apagado/sí/no
+wrongmediaid: Los medios que reenvió no son los medios originales.
+wrongmediatype: El medio que envió es del tipo incorrecto {}, debe ser {}

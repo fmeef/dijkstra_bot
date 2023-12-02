@@ -11,6 +11,7 @@ banned: 被禁止的用戶 {}
 cachewait: 管理緩存只能每 10 分鐘刷新一次
 channeldenied: 匿名頻道不是管理員，權限被拒絕
 clearedlock: 清除鎖“{}”
+clearnotes: 清除所有聊天記錄{}
 cleartime: 已清除 {} 的警告時間
 clearwarns: 已清除用戶 {} 的警告
 commandnotfound: 找不到命令
@@ -27,6 +28,7 @@ failfpromote: 未能提升用戶：{}
 failmute: '無法更改該用戶的權限。過去 48 小時內我沒有與他們互動。
 
   請向我轉發他們的一條消息，以便我與他們互動'
+failwarn: 未能警告該用戶，我在過去 48 小時內沒有見過他們
 fban: 甩掉包袱！在 {} 中禁止用戶 {}
 fbanreason: '騎得好！
 
@@ -57,6 +59,7 @@ gbanned: '甩掉包袱！
   用戶 {} 被禁止 {}'
 getrules: 獲取聊天規則{{rules}}
 helpbutton: 點我尋求幫助！
+imported: 導入聊天資料{}
 invalid_help: 幫助頁面無效{}
 invalidlang: 選擇的語言無效
 joinfed: 已加入 feed {} 進行聊天 {}
@@ -119,6 +122,23 @@ specifytime: 您需要指定執行此命令的時間
 specifyuser: 您需要指定一個用戶
 startcmd: 發送 /help 以獲取可用命令的列表
 subscribefed: 已成功將 {} 訂閱到 {}
+taintdelete: 刪除
+taintdetected: '導入聊天資料{}
+
+
+  哎呀！您匯入的資料包含來自另一個機器人的媒體。
+
+  使用 /taint 列出此媒體並使用 /fixtaint 替換它。'
+taintforward: '請找到包含正確媒體的訊息並將其轉發到該機器人的DM。
+
+  此媒體類型必須為{}'
+taintmessage: '您要求的內容包含來自另一個機器人的媒體。該媒體無法顯示在
+
+  目前的機器人，需要更新。按刪除按鈕永久刪除此內容，或按
+
+  更新按鈕並將正確的媒體轉發到該機器人的 DM'
+taintreplace: 代替
+taintupdatednote: '{} 筆記的媒體 ID 已更新'
 test: 無效的靜音：{}
 thing: 事物
 unapproved: 未經批准的用戶 {}
@@ -145,3 +165,5 @@ warns: '針對用戶 {} 的警告：
 warnsline: 原因： {}
 welcome: 歡迎使用 {}，這是一個用 pythonb 和 asynctio 編寫的模塊化群組管理機器人
 welcomeinvalid: 參數無效，請使用 on/off/yes/no
+wrongmediaid: 您轉發的媒體並非原始媒體。
+wrongmediatype: 您發送的媒體類型錯誤{}，需要是{}

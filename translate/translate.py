@@ -8,7 +8,7 @@ import re
 import os
 
 FORM = re.compile(r'{}')
-MAGIC_WORD = '@@@@@@' # eldritch phrase that can't be translated
+MAGIC_WORD = re.compile(r'@@@*') # eldritch phrase that can't be translated
 class ValueToHashtag:
     """
     Google translate apparently *sometimes* leave hashtags untranslated.
@@ -20,14 +20,14 @@ class ValueToHashtag:
         self.lines: List[str] = []
     
     def value_to_hashtag(self, value: str) -> str:
-        value = value.replace('{}', MAGIC_WORD)
+        value = MAGIC_WORD.sub('{}', value)
         trans = self.t.translate(value, self.lang)
         self.lines.append(trans.text)
         return trans.text
 
     def get_lines(self):
         for line in self.lines:
-            yield line.replace(MAGIC_WORD, '{}')           
+            yield MAGIC_WORD.sub('{}', line)           
             
 def translate(source: str, langs: List[str]):
     with open(source, 'r') as f:
