@@ -177,7 +177,8 @@ taintmessage: |
   current bot and needs to be updated. Press the delete button to remove this content forever, or press
   the update button and forward the correct media to this bot's dm
 taintforward: |
-  Please locate a message containing the correct media and forward it to this bot's dm
+  Please locate a message containing the correct media and forward it to this bot's dm.
+  This media must be type {}
 taintupdatednote: Media id has been updated for {} notes
 wrongmediatype: The media you sent is the wrong media type {}, it needs to be {}
 wrongmediaid: The media you forwarded is not the original media. 

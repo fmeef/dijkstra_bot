@@ -1,6 +1,8 @@
+use std::collections::HashMap;
 use std::ops::Deref;
 
-use botapi::gen_types::FileData;
+use botapi::gen_types::{EReplyMarkup, FileData};
+use convert_case::{Case, Casing};
 use itertools::Itertools;
 use macros::lang_fmt;
 use reqwest::multipart::Part;
@@ -12,9 +14,11 @@ use crate::persist::core::taint;
 use crate::statics::{DB, TG};
 use crate::tg::admin_helpers::FileGetter;
 use crate::tg::command::{Cmd, Context, TextArgs};
+use crate::tg::dialog::ConversationState;
+use crate::tg::markdown::EntityMessage;
 use crate::tg::permissions::IsGroupAdmin;
 use crate::tg::user::Username;
-use crate::util::error::Result;
+use crate::util::error::{Fail, Result};
 use crate::util::string::{should_ignore_chat, Speak};
 
 use super::{all_export, all_import};
@@ -28,15 +32,29 @@ metadata!("Import/Export",
     { command = "export", help = "Export data for the current chat"}
 );
 
-async fn get_taint(ctx: &Context) -> Result<()> {
+#[allow(dead_code)]
+async fn get_taint<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
     ctx.check_permissions(|p| p.can_manage_chat).await?;
     let message = ctx.message()?;
-    let taints = taint::Entity::find()
-        .filter(taint::Column::Chat.eq(message.get_chat().get_id()))
-        // .group_by(taint::Column::Scope)
-        .order_by_asc(taint::Column::Scope)
-        .all(DB.deref())
-        .await?;
+    let taints = if let Some(filter) = args.args.first() {
+        let filter = format!("{}%", filter.get_text()); // need wildcard at the end because b-tree index
+        log::info!("filtering {}", filter);
+        taint::Entity::find()
+            .filter(
+                taint::Column::Chat
+                    .eq(message.get_chat().get_id())
+                    .and(taint::Column::Scope.like(filter)),
+            )
+            .order_by_asc(taint::Column::Scope)
+            .all(DB.deref())
+            .await?
+    } else {
+        taint::Entity::find()
+            .filter(taint::Column::Chat.eq(message.get_chat().get_id()))
+            .order_by_asc(taint::Column::Scope)
+            .all(DB.deref())
+            .await?
+    };
 
     let m = taints.into_iter().group_by(|v| v.scope.clone());
 
@@ -62,6 +80,63 @@ async fn get_taint(ctx: &Context) -> Result<()> {
     );
 
     ctx.reply(m).await?;
+    Ok(())
+}
+
+#[allow(dead_code)]
+async fn get_taint_menu(ctx: &Context) -> Result<()> {
+    ctx.check_permissions(|p| p.can_manage_chat).await?;
+    let message = ctx.message()?;
+    let taints = taint::Entity::find()
+        .filter(taint::Column::Chat.eq(message.get_chat().get_id()))
+        // .group_by(taint::Column::Scope)
+        .order_by_asc(taint::Column::Scope)
+        .all(DB.deref())
+        .await?;
+
+    let m: HashMap<&str, Vec<&taint::Model>> =
+        taints.iter().fold(HashMap::new(), |mut acc, val| {
+            let vec = acc.entry(val.scope.as_str()).or_insert_with(|| Vec::new());
+            vec.push(&val);
+            acc
+        });
+    let text = "Select a module to recover media from";
+    let mut state = ConversationState::new_prefix(
+        "import".to_owned(),
+        text.to_owned(),
+        message.get_chat().get_id(),
+        message
+            .get_from()
+            .map(|u| u.get_id())
+            .ok_or_else(|| message.fail_err("User does not exist"))?,
+        "button",
+    )?;
+
+    let start = state.get_start()?.state_id;
+    for (key, value) in m {
+        let contents = value
+            .into_iter()
+            .map(|t| {
+                let notes = t.notes.as_ref().map(|v| v.as_str()).unwrap_or("");
+                let media = t.id;
+                format!("[`{}] - {}", media, notes)
+            })
+            .join("\n");
+        let s = state.add_state(contents);
+        state.add_transition(start, s, key, &key.to_case(Case::Title));
+        state.add_transition(s, start, "back", "Back");
+    }
+
+    let conversation = state.build();
+    conversation.write_self().await?;
+
+    ctx.reply_fmt(
+        EntityMessage::from_text(message.get_chat().get_id(), text).reply_markup(
+            EReplyMarkup::InlineKeyboardMarkup(conversation.get_current_markup(3).await?),
+        ),
+    )
+    .await?;
+
     Ok(())
 }
 
@@ -129,7 +204,7 @@ pub async fn handle_update(ctx: &Context) -> Result<()> {
                 .await?;
             }
             "taint" => {
-                get_taint(ctx).await?;
+                get_taint(ctx, args).await?;
             }
             "fixtaint" => {
                 update_taint(ctx, args).await?;

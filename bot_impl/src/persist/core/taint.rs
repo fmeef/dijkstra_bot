@@ -19,6 +19,7 @@ pub struct Model {
     pub chat: i64,
     pub media_type: MediaType,
     pub notes: Option<String>,
+    pub details: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

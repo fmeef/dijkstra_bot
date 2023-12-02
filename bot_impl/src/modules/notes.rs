@@ -410,37 +410,38 @@ async fn save<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
 pub async fn handle_update<'a>(cmd: &Context) -> Result<()> {
     if let Ok(message) = cmd.message() {
         let c = cmd.clone();
-        cmd.handle_taint(
-            crate::tg::notes::MODULE_NAME,
-            |media_id, new_id, media_type| {
-                async move {
-                    log::info!("updating taint for notes: {} {}", media_id, new_id);
+        cmd.handle_taint(crate::tg::notes::MODULE_NAME, |taint, new_id| {
+            async move {
+                log::info!("updating taint for notes: {} {}", taint.media_id, new_id);
 
-                    let note = notes::Entity::update_many()
-                        .filter(
-                            notes::Column::MediaId
-                                .eq(Some(media_id))
-                                .and(notes::Column::MediaType.eq(media_type)),
-                        )
-                        .set(notes::ActiveModel {
-                            name: NotSet,
-                            chat: NotSet,
-                            text: NotSet,
-                            media_id: Set(Some(new_id.to_owned())),
-                            media_type: NotSet,
-                            protect: NotSet,
-                            entity_id: NotSet,
-                        })
-                        .exec_with_returning(DB.deref())
-                        .await?;
+                let note = notes::Entity::update_many()
+                    .filter(
+                        notes::Column::MediaId
+                            .eq(Some(taint.media_id.as_str()))
+                            .and(notes::Column::MediaType.eq(taint.media_type.clone())),
+                    )
+                    .set(notes::ActiveModel {
+                        name: NotSet,
+                        chat: NotSet,
+                        text: NotSet,
+                        media_id: Set(Some(new_id.to_owned())),
+                        media_type: NotSet,
+                        protect: NotSet,
+                        entity_id: NotSet,
+                    })
+                    .exec_with_returning(DB.deref())
+                    .await?;
 
-                    c.reply(lang_fmt!(c, "taintupdatednote", note.len()))
-                        .await?;
-                    Ok(())
-                }
-                .boxed()
-            },
-        )
+                let key = get_hash_key(taint.chat);
+
+                REDIS.sq(|q| q.del(&key)).await?;
+
+                c.reply(lang_fmt!(c, "taintupdatednote", note.len()))
+                    .await?;
+                Ok(())
+            }
+            .boxed()
+        })
         .await?;
         if let Some(text) = message.get_text_ref() {
             if text.starts_with("#") && text.len() > 1 {

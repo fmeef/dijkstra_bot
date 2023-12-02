@@ -15,6 +15,7 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(taint::Column::MediaId).text())
                     .col(ColumnDef::new(taint::Column::Scope).text().not_null())
                     .col(ColumnDef::new(taint::Column::Notes).text().null())
+                    .col(ColumnDef::new(taint::Column::Details).text().null())
                     .col(ColumnDef::new(taint::Column::Chat).big_integer().not_null())
                     .col(
                         ColumnDef::new(taint::Column::MediaType)
@@ -28,6 +29,17 @@ impl MigrationTrait for Migration {
                             .col(taint::Column::Chat)
                             .unique(),
                     )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                IndexCreateStatement::new()
+                    .table(taint::Entity)
+                    .col(taint::Column::Scope)
+                    .name("scope_search_index")
+                    .index_type(IndexType::BTree)
                     .to_owned(),
             )
             .await?;
@@ -79,6 +91,15 @@ impl MigrationTrait for Migration {
         //     )
         //     .await?;
         // manager.drop_table_auto(taint_chats::Entity).await?;
+
+        manager
+            .drop_index(
+                IndexDropStatement::new()
+                    .table(taint::Entity)
+                    .name("scope_search_index")
+                    .to_owned(),
+            )
+            .await?;
         manager.drop_table_auto(taint::Entity).await?;
         Ok(())
     }

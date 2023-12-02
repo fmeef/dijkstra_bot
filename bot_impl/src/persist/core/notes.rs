@@ -44,6 +44,7 @@ impl Model {
                 notes: reason,
                 chat: self.chat,
                 id: Uuid::new_v4(),
+                details: self.text.clone(),
             })
         } else {
             None

@@ -173,16 +173,17 @@ fn get_patch_taint_key(user: i64) -> String {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct UpdateTaint {
-    media_id: String,
-    media_type: MediaType,
-    scope: String,
+pub struct UpdateTaint {
+    pub media_id: String,
+    pub media_type: MediaType,
+    pub scope: String,
+    pub chat: i64,
 }
 
 impl Context {
     pub async fn handle_taint<'a, F>(&'a self, scope: &str, cb: F) -> Result<()>
     where
-        for<'b> F: FnOnce(&'b str, &'b str, MediaType) -> BoxFuture<'b, Result<()>>,
+        for<'b> F: FnOnce(&'b UpdateTaint, &'b str) -> BoxFuture<'b, Result<()>>,
     {
         if if let Some(chat) = self.chat() {
             is_dm(chat)
@@ -212,7 +213,7 @@ impl Context {
 
                                 log::info!("handle taint {} {}", taint.media_id, new_media_id);
 
-                                cb(&taint.media_id, new_media_id, new_media_type).await?;
+                                cb(&taint, new_media_id).await?;
                                 REDIS.sq(|q| q.del(&key)).await?;
                                 remove_taint(&taint.media_id).await?;
                                 return Ok(());
@@ -239,18 +240,20 @@ impl Context {
                 media_id: model.media_id,
                 media_type: model.media_type,
                 scope: model.scope,
+                chat: message.get_chat().get_id(),
             };
 
             log::info!("posting taint handler for {}", ctx.media_id);
             let key = get_patch_taint_key(user);
-            let ctx = ctx.to_redis()?;
+            let c = ctx.to_redis()?;
             REDIS
                 .pipe(|q| {
-                    q.set(&key, ctx)
+                    q.set(&key, c)
                         .expire(&key, Duration::minutes(45).num_seconds() as usize)
                 })
                 .await?;
-            self.reply(lang_fmt!(self, "taintforward")).await?;
+            self.reply(lang_fmt!(self, "taintforward", ctx.media_type))
+                .await?;
         }
 
         Ok(())
@@ -281,7 +284,7 @@ impl Context {
                 .set_callback_data(Uuid::new_v4().to_string())
                 .build();
             let id = media_id.clone();
-            let taintmessage = lang_fmt!(self, "taintforward");
+            let taintmessage = lang_fmt!(self, "taintforward", media_type);
             replace.on_push(move |c| async move {
                 if let Some(message) = c.get_message() {
                     TG.client
@@ -290,23 +293,25 @@ impl Context {
                         .chat_id(message.get_chat().get_id())
                         .build()
                         .await?;
+
+                    let ctx = UpdateTaint {
+                        media_id,
+                        media_type,
+                        scope: scope.to_owned(),
+                        chat: message.get_chat().get_id(),
+                    };
+
+                    log::info!("posting taint handler for {}", ctx.media_id);
+                    let key = get_patch_taint_key(user);
+                    let ctx = ctx.to_redis()?;
+                    REDIS
+                        .pipe(|q| {
+                            q.set(&key, ctx)
+                                .expire(&key, Duration::minutes(45).num_seconds() as usize)
+                        })
+                        .await?;
                 }
 
-                let ctx = UpdateTaint {
-                    media_id,
-                    media_type,
-                    scope: scope.to_owned(),
-                };
-
-                log::info!("posting taint handler for {}", ctx.media_id);
-                let key = get_patch_taint_key(user);
-                let ctx = ctx.to_redis()?;
-                REDIS
-                    .pipe(|q| {
-                        q.set(&key, ctx)
-                            .expire(&key, Duration::minutes(45).num_seconds() as usize)
-                    })
-                    .await?;
                 Ok(())
             });
 
