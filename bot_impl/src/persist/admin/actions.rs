@@ -4,10 +4,10 @@
 
 use crate::util::error::BotError;
 use chrono::Utc;
-use sea_orm::entity::prelude::*;
+use sea_orm::{entity::prelude::*, IntoActiveValue};
 use serde::{Deserialize, Serialize};
 
-#[derive(EnumIter, DeriveActiveEnum, Serialize, Deserialize, Clone, Debug)]
+#[derive(EnumIter, DeriveActiveEnum, Serialize, Deserialize, Clone, Debug, Hash)]
 #[sea_orm(rs_type = "i32", db_type = "Integer")]
 pub enum ActionType {
     #[sea_orm(num_value = 1)]
@@ -20,6 +20,12 @@ pub enum ActionType {
     Warn,
     #[sea_orm(num_value = 5)]
     Delete,
+}
+
+impl IntoActiveValue<ActionType> for ActionType {
+    fn into_active_value(self) -> sea_orm::ActiveValue<ActionType> {
+        sea_orm::ActiveValue::Set(self)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, DeriveEntityModel)]

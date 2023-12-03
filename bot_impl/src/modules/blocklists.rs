@@ -36,6 +36,7 @@ use botapi::gen_types::Message;
 use botapi::gen_types::User;
 use chrono::Duration;
 use entities::{blocklists, triggers};
+use futures::FutureExt;
 use humantime::format_duration;
 use itertools::Itertools;
 use lazy_static::__Deref;
@@ -45,10 +46,12 @@ use redis::AsyncCommands;
 use regex::Regex;
 use sea_orm::entity::ActiveValue;
 use sea_orm::sea_query::OnConflict;
+use sea_orm::ActiveValue::Set;
 use sea_orm::ColumnTrait;
 use sea_orm::EntityTrait;
 use sea_orm::IntoActiveModel;
 use sea_orm::QueryFilter;
+use sea_orm::TransactionTrait;
 use sea_orm_migration::{MigrationName, MigrationTrait};
 use serde::{Deserialize, Serialize};
 
@@ -68,8 +71,6 @@ impl MigrationName for Migration {
         "m20230222_000001_create_blocklists"
     }
 }
-
-const SCOPE: &str = "blocklists";
 
 pub mod entities {
     use crate::persist::{admin::actions::ActionType, migrate::ManagerHelper};
@@ -203,7 +204,7 @@ pub mod entities {
         use sea_orm::entity::prelude::*;
         use serde::{Deserialize, Serialize};
 
-        #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+        #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize, Hash)]
         #[sea_orm(table_name = "blocklists")]
         pub struct Model {
             #[sea_orm(primary_key, unique, autoincrement = true)]
@@ -213,6 +214,26 @@ pub mod entities {
             pub action: ActionType,
             pub reason: Option<String>,
             pub duration: Option<i64>,
+        }
+
+        #[derive(DeriveIntoActiveModel, Hash, Eq, PartialEq, Clone)]
+        pub struct ModelModel {
+            #[sea_orm(primary_key)]
+            pub chat: i64,
+            pub action: ActionType,
+            pub reason: Option<String>,
+            pub duration: Option<i64>,
+        }
+
+        impl Into<ModelModel> for Model {
+            fn into(self) -> ModelModel {
+                ModelModel {
+                    chat: self.chat,
+                    action: self.action,
+                    reason: self.reason,
+                    duration: self.duration,
+                }
+            }
         }
 
         #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -251,6 +272,10 @@ struct BlockListsExport {
 struct BlocklistFilter {
     name: String,
     reason: String,
+}
+
+lazy_static! {
+    static ref FILLER_REGEX: Regex = Regex::new(r#"\{([^}]+)\}"#).unwrap();
 }
 
 struct Helper;
@@ -307,12 +332,80 @@ impl ModuleHelpers for Helper {
 
     async fn import(&self, chat: i64, value: serde_json::Value) -> Result<()> {
         let blocklists: BlockListsExport = serde_json::from_value(value)?;
+        if let Some(filters) = blocklists.filters {
+            let mut models = HashMap::<blocklists::ModelModel, Vec<String>>::new();
 
+            for blocklist in filters {
+                let reason = if blocklist.reason.len() == 0 {
+                    None
+                } else {
+                    Some(blocklist.reason)
+                };
+                let mut action = ActionType::Delete;
+                let mut duration = None;
+                if let Some(reason) = &reason {
+                    for filler in FILLER_REGEX.find_iter(reason) {
+                        let mut filler = filler.as_str().split_whitespace();
+                        let (a, d) = match filler.next() {
+                            Some("mute") => (ActionType::Mute, None),
+                            _ => continue,
+                        };
+
+                        action = a;
+                        duration = d;
+                    }
+                }
+                let model = blocklists::ModelModel {
+                    chat,
+                    action,
+                    reason,
+                    duration,
+                };
+                let v = models.entry(model).or_insert_with(|| Vec::new());
+                v.push(blocklist.name);
+            }
+
+            DB.transaction::<_, _, BotError>(|tx| {
+                async move {
+                    blocklists::Entity::insert_many(
+                        models.keys().map(|v| v.clone().into_active_model()),
+                    )
+                    .on_empty_do_nothing()
+                    .exec(tx)
+                    .await?;
+
+                    let res = blocklists::Entity::find()
+                        .filter(blocklists::Column::Chat.eq(chat))
+                        .all(tx)
+                        .await?;
+
+                    for model in res {
+                        let id = model.id;
+                        let modelmodel: blocklists::ModelModel = model.into();
+
+                        if let Some(trigger) = models.remove(&modelmodel) {
+                            let trigger =
+                                trigger.into_iter().map(|trigger| triggers::ActiveModel {
+                                    blocklist_id: Set(id),
+                                    trigger: Set(trigger),
+                                });
+
+                            triggers::Entity::insert_many(trigger).exec(tx).await?;
+                        }
+                    }
+                    Ok(())
+                }
+                .boxed()
+            })
+            .await?;
+
+            delete_all(chat).await?;
+        }
         Ok(())
     }
 
     fn supports_export(&self) -> Option<&'static str> {
-        None
+        Some("blocklists")
     }
 
     fn get_migrations(&self) -> Vec<Box<dyn MigrationTrait>> {
@@ -688,8 +781,7 @@ async fn list_triggers(message: &Message) -> Result<()> {
     Ok(())
 }
 
-async fn stopall(ctx: &Context, chat: i64) -> Result<()> {
-    ctx.check_permissions(|p| p.can_change_info).await?;
+async fn delete_all(chat: i64) -> Result<()> {
     blocklists::Entity::delete_many()
         .filter(blocklists::Column::Chat.eq(chat))
         .exec(DB.deref())
@@ -697,6 +789,12 @@ async fn stopall(ctx: &Context, chat: i64) -> Result<()> {
 
     let key = get_blocklist_hash_key(chat);
     REDIS.sq(|q| q.del(&key)).await?;
+    Ok(())
+}
+
+async fn stopall(ctx: &Context, chat: i64) -> Result<()> {
+    ctx.check_permissions(|p| p.can_change_info).await?;
+    delete_all(chat).await?;
     ctx.reply("Stopped all blocklist items").await?;
     Ok(())
 }
@@ -727,4 +825,16 @@ pub async fn handle_update<'a>(cmd: &Context) -> Result<()> {
     handle_command(cmd).await?;
 
     Ok(())
+}
+
+#[allow(unused_imports)]
+mod test {
+    use super::FILLER_REGEX;
+
+    #[test]
+    fn regex_match() {
+        let mut m = FILLER_REGEX.find_iter("{filler} {filler2}");
+        assert_eq!(m.next().map(|m| m.as_str()), Some("{filler}"));
+        assert_eq!(m.next().map(|m| m.as_str()), Some("{filler2}"));
+    }
 }
