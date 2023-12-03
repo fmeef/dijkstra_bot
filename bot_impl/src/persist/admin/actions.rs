@@ -53,7 +53,6 @@ impl ActionType {
             BotError::speak(format!("Invalid action {}", s.as_ref()), chat)
         })
     }
-
     pub fn get_name(&self) -> &str {
         match self {
             ActionType::Mute => "mute",

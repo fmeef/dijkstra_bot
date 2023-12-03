@@ -61,7 +61,7 @@ RUN rustup default stable && rustup component add rustfmt && \
  rustup toolchain install nightly && \	
  rustup component add rustfmt --toolchain nightly && \
  cargo install sea-orm-cli cargo-edit
-RUN git clone https://github.com/rust-lang/rust-analyzer.git /opt/rust-analyzer && \
+RUN git clone https://github.com/tamasfe/rust-analyzer.git /opt/rust-analyzer -b feat/better-ignored-macros2 && \
     cd /opt/rust-analyzer && \
    rustup override set nightly && \
    cargo xtask install --server && cargo clean
@@ -80,14 +80,19 @@ RUN adduser \
 RUN mkdir -p /bobot/target && chown -R bobot:bobot /bobot && \
 chown -R bobot:bobot /usr/local && mkdir -p /bobot/migration/target && \
 chown -R bobot:bobot /bobot/migration/target && mkdir -p /bobot/bot_impl/target && \
-chown -R bobot:bobot /bobot
+chown -R bobot:bobot /bobot && \
+chown -R bobot:bobot /home/bobot/. && \
+chown -R bobot:bobot /opt/helix/runtime
 
 USER bobot:bobot
+
+
 RUN mkdir -p /home/bobot/.config/helix && ln -sf /opt/helix/runtime /home/bobot/.config/helix/runtime
 VOLUME /bobot
 WORKDIR /bobot
 RUN rustup default stable
 ENV COLORTERM=truecolor
 ENV TERM xterm-256color
-COPY helix.toml /home/bobot/.config/helix/config.toml
+COPY --chown=bobot:bobot helix.toml /home/bobot/.config/helix/config.toml
+COPY --chown=bobot:bobot languages.toml /home/bobot/.config/helix/languages.toml
 CMD [ "/usr/bin/fish" ]

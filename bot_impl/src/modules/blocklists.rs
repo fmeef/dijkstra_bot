@@ -49,8 +49,9 @@ use sea_orm::ColumnTrait;
 use sea_orm::EntityTrait;
 use sea_orm::IntoActiveModel;
 use sea_orm::QueryFilter;
-
 use sea_orm_migration::{MigrationName, MigrationTrait};
+use serde::{Deserialize, Serialize};
+
 metadata!("Blocklists",
     r#"Censor specific words in your group!. Supports globbing to match partial words."#,
     Helper,
@@ -67,6 +68,8 @@ impl MigrationName for Migration {
         "m20230222_000001_create_blocklists"
     }
 }
+
+const SCOPE: &str = "blocklists";
 
 pub mod entities {
     use crate::persist::{admin::actions::ActionType, migrate::ManagerHelper};
@@ -235,15 +238,77 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![Box::new(Migration)]
 }
 
+#[derive(Serialize, Deserialize)]
+struct BlockListsExport {
+    action: String,
+    action_duration: i64,
+    default_reason: String,
+    filters: Option<Vec<BlocklistFilter>>,
+    should_delete: bool,
+}
+
+#[derive(Serialize, Deserialize)]
+struct BlocklistFilter {
+    name: String,
+    reason: String,
+}
+
 struct Helper;
 
 #[async_trait::async_trait]
 impl ModuleHelpers for Helper {
-    async fn export(&self, _: i64) -> Result<Option<serde_json::Value>> {
-        Ok(None)
+    async fn export(&self, chat: i64) -> Result<Option<serde_json::Value>> {
+        let res = blocklists::Entity::find()
+            .filter(blocklists::Column::Chat.eq(chat))
+            .find_with_related(triggers::Entity)
+            .all(DB.deref())
+            .await?;
+
+        let items: Vec<BlocklistFilter> = res
+            .into_iter()
+            .flat_map(|(blocklist, trigger)| {
+                trigger.into_iter().map(move |trigger| {
+                    let action = match blocklist.action {
+                        ActionType::Mute => {
+                            if let Some(duration) = blocklist.duration {
+                                format!("{{tmute {}}}", duration)
+                            } else {
+                                "{mute}".to_owned()
+                            }
+                        }
+                        ActionType::Ban => "{ban}".to_owned(),
+                        ActionType::Shame => "".to_owned(),
+                        ActionType::Warn => "".to_owned(),
+                        ActionType::Delete => "{del}".to_owned(),
+                        _ => "".to_owned(),
+                    };
+                    BlocklistFilter {
+                        name: trigger.trigger,
+                        reason: blocklist
+                            .reason
+                            .clone()
+                            .map(|reason| format!("{} {}", reason, action))
+                            .unwrap_or_else(|| "".to_owned()),
+                    }
+                })
+            })
+            .collect();
+        let out = BlockListsExport {
+            filters: if items.len() == 0 { None } else { Some(items) },
+            action_duration: 0,
+            default_reason: "".to_owned(),
+            should_delete: true,
+            action: "nothing".to_owned(),
+        };
+
+        let out = serde_json::to_value(&out)?;
+
+        Ok(Some(out))
     }
 
-    async fn import(&self, _: i64, _: serde_json::Value) -> Result<()> {
+    async fn import(&self, chat: i64, value: serde_json::Value) -> Result<()> {
+        let blocklists: BlockListsExport = serde_json::from_value(value)?;
+
         Ok(())
     }
 

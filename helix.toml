@@ -5,3 +5,4 @@ display-signature-help-docs = false
 insert = "bar"
 normal = "block"
 select = "underline"
+
