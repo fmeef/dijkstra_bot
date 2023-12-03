@@ -58,10 +58,10 @@ ENV UID=10001
 
 RUN apt update && apt install -y postgresql-client redis fish gdb lld libssl-dev valgrind
 RUN rustup default stable && rustup component add rustfmt && \
- rustup toolchain install nightly && \	
+ rustup toolchain install nightly && \
  rustup component add rustfmt --toolchain nightly && \
  cargo install sea-orm-cli cargo-edit
-RUN git clone https://github.com/tamasfe/rust-analyzer.git /opt/rust-analyzer -b feat/better-ignored-macros2 && \
+RUN git clone https://github.com/rust-lang/rust-analyzer.git /opt/rust-analyzer && \
     cd /opt/rust-analyzer && \
    rustup override set nightly && \
    cargo xtask install --server && cargo clean
