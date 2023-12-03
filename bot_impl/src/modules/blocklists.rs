@@ -280,7 +280,6 @@ impl ModuleHelpers for Helper {
                         ActionType::Shame => "".to_owned(),
                         ActionType::Warn => "".to_owned(),
                         ActionType::Delete => "{del}".to_owned(),
-                        _ => "".to_owned(),
                     };
                     BlocklistFilter {
                         name: trigger.trigger,
@@ -325,8 +324,8 @@ fn get_blocklist_key(message: &Message, id: i64) -> String {
     format!("blockl:{}:{}", message.get_chat().get_id(), id)
 }
 
-fn get_blocklist_hash_key(message: &Message) -> String {
-    format!("bcache:{}", message.get_chat().get_id())
+fn get_blocklist_hash_key(chat: i64) -> String {
+    format!("bcache:{}", chat)
 }
 
 async fn delete_trigger(message: &Message, trigger: &str) -> Result<()> {
@@ -334,7 +333,7 @@ async fn delete_trigger(message: &Message, trigger: &str) -> Result<()> {
         .check_permissions(|p| p.can_restrict_members.and(p.can_change_info))
         .await?;
     let trigger = &trigger.to_lowercase();
-    let hash_key = get_blocklist_hash_key(message);
+    let hash_key = get_blocklist_hash_key(message.get_chat().get_id());
     let key: Option<i64> = REDIS
         .query(|mut q| async move {
             let id: Option<i64> = q.hdel(&hash_key, trigger).await?;
@@ -404,7 +403,7 @@ lazy_static! {
 #[allow(dead_code)]
 async fn search_cache(message: &Message, text: &str) -> Result<Option<blocklists::Model>> {
     update_cache_from_db(message).await?;
-    let hash_key = get_blocklist_hash_key(message);
+    let hash_key = get_blocklist_hash_key(message.get_chat().get_id());
     REDIS
         .query(|mut q| async move {
             let mut iter: redis::AsyncIter<(String, i64)> = q.hscan(&hash_key).await?;
@@ -420,7 +419,7 @@ async fn search_cache(message: &Message, text: &str) -> Result<Option<blocklists
 }
 
 async fn update_cache_from_db(message: &Message) -> Result<()> {
-    let hash_key = get_blocklist_hash_key(message);
+    let hash_key = get_blocklist_hash_key(message.get_chat().get_id());
     let k: usize = REDIS.sq(|q| q.exists(&hash_key)).await?;
     if k == 0 {
         let res = blocklists::Entity::find()
@@ -498,7 +497,7 @@ async fn insert_blocklist(
     )
     .exec(DB.deref())
     .await?;
-    let hash_key = get_blocklist_hash_key(message);
+    let hash_key = get_blocklist_hash_key(message.get_chat().get_id());
     let id = model.id.clone();
     REDIS
         .pipe(|p| {
@@ -671,7 +670,7 @@ async fn handle_trigger(ctx: &Context) -> Result<()> {
 
 async fn list_triggers(message: &Message) -> Result<()> {
     message.check_permissions(|p| p.can_manage_chat).await?;
-    let hash_key = get_blocklist_hash_key(message);
+    let hash_key = get_blocklist_hash_key(message.get_chat().get_id());
     update_cache_from_db(message).await?;
     let res: Option<HashMap<String, i64>> = REDIS.sq(|q| q.hgetall(&hash_key)).await?;
     if let Some(map) = res {
@@ -689,16 +688,16 @@ async fn list_triggers(message: &Message) -> Result<()> {
     Ok(())
 }
 
-async fn stopall(message: &Message) -> Result<()> {
-    message.check_permissions(|p| p.can_change_info).await?;
+async fn stopall(ctx: &Context, chat: i64) -> Result<()> {
+    ctx.check_permissions(|p| p.can_change_info).await?;
     blocklists::Entity::delete_many()
-        .filter(blocklists::Column::Chat.eq(message.get_chat().get_id()))
+        .filter(blocklists::Column::Chat.eq(chat))
         .exec(DB.deref())
         .await?;
 
-    let key = get_blocklist_hash_key(message);
+    let key = get_blocklist_hash_key(chat);
     REDIS.sq(|q| q.del(&key)).await?;
-    message.reply("Stopped all blocklist items").await?;
+    ctx.reply("Stopped all blocklist items").await?;
     Ok(())
 }
 
@@ -714,7 +713,7 @@ async fn handle_command<'a>(ctx: &Context) -> Result<()> {
             "addblocklist" => command_blocklist(ctx, &args).await?,
             "rmblocklist" => delete_trigger(message, args.text).await?,
             "blocklist" => list_triggers(message).await?,
-            "rmallblocklists" => stopall(message).await?,
+            "rmallblocklists" => stopall(ctx, ctx.message()?.get_chat().get_id()).await?,
             _ => handle_trigger(ctx).await?,
         };
     }
