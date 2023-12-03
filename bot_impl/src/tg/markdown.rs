@@ -161,6 +161,8 @@ pomelo! {
     %type Space char;
     %type text String;
     %type wstr String;
+    %type blocklist String;
+    %type blockstr String;
 
     input    ::= header(A) Eof {
         FilterCommond {
@@ -231,7 +233,7 @@ pomelo! {
 
     //footer   ::= LCurly Str(A) RCurly Eof { A }
     header   ::= Start multi(V)  { Header::List(V.into_iter().map(|v| v.get_text()).collect()) }
-    header   ::= Start Str(S) { Header::Arg(S) }
+    header   ::= Start blockstr(S) { Header::Arg(S) }
     header   ::= Start quote(S) { Header::Arg(S) }
     fw     ::= Str(A) { ParsedArg::Arg(A) }
     ign      ::= fw(W) { W }
@@ -245,10 +247,19 @@ pomelo! {
     //   L
     // }
 
+    blocklist ::= text(S) { S }
+    blocklist ::= text(mut S) Star { S.push_str("*"); S }
+    blocklist ::= text(mut S) Star blocklist(V) { S.push_str("*"); S.push_str(&V); S }
+
+
+    blockstr ::= Str(S) { S }
+    blockstr ::= Str(mut S) Star { S.push_str("*"); S }
+    blockstr ::= Str(mut S) Star blockstr(V) { S.push_str("*"); S.push_str(&V); S }
+
     text     ::= Str(S) { S }
     text     ::= text(mut T) Whitespace(W) Str(S) { T.push_str(&W); T.push_str(&S); T }
 
-    quote    ::= Quote text(A) Quote { A }
+    quote    ::= Quote blocklist(A) Quote { A }
     multi    ::= LParen list(A) RParen {A }
     list     ::= ign(A) { vec![A] }
     list     ::= list(mut L) Comma ign(A) { L.push(A); L }
