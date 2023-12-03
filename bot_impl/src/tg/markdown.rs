@@ -233,7 +233,7 @@ pomelo! {
 
     //footer   ::= LCurly Str(A) RCurly Eof { A }
     header   ::= Start multi(V)  { Header::List(V.into_iter().map(|v| v.get_text()).collect()) }
-    header   ::= Start blockstr(S) { Header::Arg(S) }
+    header   ::= Start Str(S) { Header::Arg(S) }
     header   ::= Start quote(S) { Header::Arg(S) }
     fw     ::= Str(A) { ParsedArg::Arg(A) }
     ign      ::= fw(W) { W }
@@ -247,19 +247,19 @@ pomelo! {
     //   L
     // }
 
-    blocklist ::= text(S) { S }
-    blocklist ::= text(mut S) Star { S.push_str("*"); S }
-    blocklist ::= text(mut S) Star blocklist(V) { S.push_str("*"); S.push_str(&V); S }
+    // blocklist ::= text(S) { S }
+    // blocklist ::= text(mut S) Star { S.push_str("*"); S }
+    // blocklist ::= text(mut S) Star blocklist(V) { S.push_str("*"); S.push_str(&V); S }
 
 
-    blockstr ::= Str(S) { S }
-    blockstr ::= Str(mut S) Star { S.push_str("*"); S }
-    blockstr ::= Str(mut S) Star blockstr(V) { S.push_str("*"); S.push_str(&V); S }
+    // blockstr ::= Str(S) { S }
+    // blockstr ::= Str(mut S) Star { S.push_str("*"); S }
+    // blockstr ::= Str(mut S) Star blockstr(V) { S.push_str("*"); S.push_str(&V); S }
 
     text     ::= Str(S) { S }
     text     ::= text(mut T) Whitespace(W) Str(S) { T.push_str(&W); T.push_str(&S); T }
 
-    quote    ::= Quote blocklist(A) Quote { A }
+    quote    ::= Quote text(A) Quote { A }
     multi    ::= LParen list(A) RParen {A }
     list     ::= ign(A) { vec![A] }
     list     ::= list(mut L) Comma ign(A) { L.push(A); L }
@@ -281,11 +281,11 @@ pub struct Lexer<'a> {
     pos: usize,
     end: bool,
     header: bool,
+    escape: bool,
 }
 
 fn is_valid(token: char, header: bool) -> bool {
     match token {
-        '\\' => true,
         '_' => true,
         '|' => true,
         '~' => true,
@@ -314,6 +314,7 @@ impl<'a> Lexer<'a> {
             pos: 0,
             end: false,
             header,
+            escape: false,
         }
     }
 
@@ -326,8 +327,15 @@ impl<'a> Lexer<'a> {
         }
         if let Some(char) = self.s.next() {
             //     log::info!("parsing {}", char);
-            match char {
-                '\\' => self.s.next().map(|char| Token::Str(char.to_string())),
+            let c = match char {
+                '\\' => {
+                    if let Some(ch) = self.s.next() {
+                        log::warn!("parsing escape {}", ch);
+                        self.rawbuf.push(ch);
+                        self.escape = true;
+                    }
+                    self.next_token()
+                }
                 '_' => {
                     if let Some('_') = self.s.peek() {
                         self.s.next();
@@ -362,13 +370,17 @@ impl<'a> Lexer<'a> {
                     if let Some(c) = self.s.peek() {
                         if is_valid(*c, self.header) || (char.is_whitespace() != c.is_whitespace())
                         {
+                            log::warn!("string end {}", c);
                             let s = self.rawbuf.clone();
                             self.rawbuf.clear();
 
                             if char.is_whitespace() {
                                 return Some(Token::Whitespace(s));
                             }
-                            return Some(Token::Str(s));
+                            if self.escape {
+                                self.escape = false;
+                                return Some(Token::Str(s));
+                            }
                         }
                     } else {
                         let s = self.rawbuf.clone();
@@ -377,7 +389,9 @@ impl<'a> Lexer<'a> {
                     }
                     self.next_token()
                 }
-            }
+            };
+            log::warn!("TOKEN: {:?}", c);
+            c
         } else {
             if !self.end {
                 self.end = true;
@@ -873,6 +887,8 @@ impl MarkupBuilder {
             self.entities.extend_from_slice(&existing.as_slice());
         }
 
+        log::warn!("parsed {}", self.text);
+
         Ok((self.text, self.entities, self.buttons))
     }
 
@@ -894,6 +910,8 @@ impl MarkupBuilder {
         if let Some(ref existing) = self.existing_entities {
             self.entities.extend_from_slice(&existing.as_slice());
         }
+
+        log::warn!("parsed {}", self.text);
         Ok(())
     }
 
