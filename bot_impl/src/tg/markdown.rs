@@ -19,7 +19,6 @@ use pomelo::pomelo;
 use regex::Regex;
 use std::fmt::Display;
 use std::sync::Arc;
-use std::{iter::Peekable, str::Chars};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -277,8 +276,6 @@ use super::user::Username;
 /// Lexer to get murkdown tokens
 pub struct Lexer {
     s: Vec<char>,
-    pos: usize,
-    end: bool,
     header: bool,
     escape: bool,
     rawbuf: String,
@@ -307,10 +304,9 @@ fn is_valid(token: char, header: bool) -> bool {
 
 impl Lexer {
     pub fn new(input: &str, header: bool) -> Self {
+        log::warn!("new lexer {}", input);
         Self {
             s: input.chars().collect(),
-            pos: 0,
-            end: false,
             header,
             escape: false,
             rawbuf: String::new(),
@@ -325,12 +321,26 @@ impl Lexer {
         };
         for (idx, char) in self.s.iter().enumerate() {
             //     log::info!("parsing {}", char);
+            //            println!("parsing {} {}", char, idx);
             if self.escape {
                 self.escape = false;
-                if self.rawbuf.trim().len() == 0 {
-                    output.push(Token::Str(char.to_string()));
+                self.rawbuf.push(*char);
+                if let Some(c) = self.s.get(idx + 1) {
+                    if is_valid(*c, self.header) || (char.is_whitespace() != c.is_whitespace()) {
+                        log::warn!("string end {}", c);
+                        let s = self.rawbuf.clone();
+                        self.rawbuf.clear();
+
+                        if char.is_whitespace() {
+                            //println!("regular whitespace");
+                            output.push(Token::Whitespace(s));
+                        } else {
+                            output.push(Token::Str(s));
+                        }
+                    }
                 } else {
-                    self.rawbuf.push(*char);
+                    let s = self.rawbuf.drain(..).collect();
+                    output.push(Token::Str(s));
                 }
                 continue;
             }
@@ -373,30 +383,26 @@ impl Lexer {
                     if let Some(c) = self.s.get(idx + 1) {
                         if is_valid(*c, self.header) || (char.is_whitespace() != c.is_whitespace())
                         {
-                            if !self.escape {
-                                log::warn!("string end {}", c);
-                                let s = self.rawbuf.clone();
-                                self.rawbuf.clear();
+                            log::warn!("string end {}", c);
+                            let s = self.rawbuf.clone();
+                            self.rawbuf.clear();
 
-                                if char.is_whitespace() {
-                                    output.push(Token::Whitespace(s));
-                                } else {
-                                    output.push(Token::Str(s));
-                                }
+                            if char.is_whitespace() {
+                                // println!("regular whitespace");
+                                output.push(Token::Whitespace(s));
                             } else {
-                                self.escape = false;
+                                output.push(Token::Str(s));
                             }
                         }
                     } else {
-                        let s = self.rawbuf.clone();
-                        self.rawbuf.clear();
+                        let s = self.rawbuf.drain(..).collect();
                         output.push(Token::Str(s));
                     }
                 }
             };
         }
         output.push(Token::Eof);
-        println!("output {:?}", output);
+        //println!("output {:?}", output);
         output
     }
 }
@@ -404,6 +410,31 @@ impl Lexer {
 pub type ButtonFn = Arc<
     dyn for<'b> Fn(String, &'b InlineKeyboardButton) -> BoxFuture<'b, Result<()>> + Send + Sync,
 >;
+
+pub trait Escape {
+    fn escape(&self, header: bool) -> String;
+}
+
+impl<T> Escape for T
+where
+    T: AsRef<str>,
+{
+    fn escape(&self, header: bool) -> String {
+        let s = self.as_ref();
+        s.split_inclusive(|c| is_valid(c, header))
+            .flat_map(|v| {
+                let end = &v[v.len() - 1..v.len()];
+                if end.chars().all(|v| is_valid(v, header)) {
+                    let tail = &v[..v.len() - 1];
+                    vec![tail, "\\", end]
+                } else {
+                    vec![v]
+                }
+                .into_iter()
+            })
+            .collect()
+    }
+}
 
 #[derive(Clone)]
 struct OwnedChatUser {
@@ -886,7 +917,7 @@ impl MarkupBuilder {
             self.entities.extend_from_slice(&existing.as_slice());
         }
 
-        log::warn!("parsed {}", self.text);
+        log::warn!("parsed {} {}", self.text, self.text.len());
 
         Ok((self.text, self.entities, self.buttons))
     }
@@ -910,7 +941,7 @@ impl MarkupBuilder {
             self.entities.extend_from_slice(&existing.as_slice());
         }
 
-        log::warn!("parsed {}", self.text);
+        log::warn!("parsed {} {}", self.text, self.text.len());
         Ok(())
     }
 
@@ -967,7 +998,8 @@ impl MarkupBuilder {
     /// Appends new unformated text
     pub fn text<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
         self.text.push_str(text.as_ref());
-        self.offset += text.as_ref().encode_utf16().count() as i64;
+        self.offset +=
+            (text.as_ref().encode_utf16().count() - text.as_ref().matches("\\").count()) as i64;
         self
     }
 
@@ -984,9 +1016,10 @@ impl MarkupBuilder {
 
     /// Appends a markup value
     pub fn regular<'a, T: AsRef<str>>(&'a mut self, entity_type: Markup<T>) -> &'a mut Self {
-        let n = entity_type.get_text().encode_utf16().count() as i64;
+        let text = entity_type.get_text();
+        let n = (text.encode_utf16().count() - text.matches("\\").count()) as i64;
 
-        self.text.push_str(entity_type.get_text());
+        self.text.push_str(&text);
         match entity_type.markup_type {
             MarkupType::Text => {}
             _ => {
@@ -1017,7 +1050,8 @@ impl MarkupBuilder {
         advance: Option<i64>,
     ) -> &'a mut Self {
         let text = text.as_ref();
-        let n = text.encode_utf16().count() as i64;
+        let n = (text.encode_utf16().count() - text.matches("\\").count()) as i64;
+
         let entity = MessageEntityBuilder::new(self.offset, n)
             .set_type("text_link".to_owned())
             .set_url(link)
@@ -1036,7 +1070,7 @@ impl MarkupBuilder {
         advance: Option<i64>,
     ) -> &'a Self {
         let text = text.as_ref();
-        let n = text.encode_utf16().count() as i64;
+        let n = (text.encode_utf16().count() - text.matches("\\").count()) as i64;
         let entity = MessageEntityBuilder::new(self.offset, n)
             .set_type("text_mention".to_owned())
             .set_user(mention)
@@ -1055,7 +1089,7 @@ impl MarkupBuilder {
         advance: Option<i64>,
     ) -> &'a Self {
         let text = text.as_ref();
-        let n = text.encode_utf16().count() as i64;
+        let n = (text.encode_utf16().count() - text.matches("\\").count()) as i64;
         let entity = MessageEntityBuilder::new(self.offset, n)
             .set_type("pre".to_owned())
             .set_language(language)
@@ -1074,7 +1108,8 @@ impl MarkupBuilder {
         advance: Option<i64>,
     ) -> &'a Self {
         let text = text.as_ref();
-        let n = text.encode_utf16().count() as i64;
+
+        let n = (text.encode_utf16().count() - text.matches("\\").count()) as i64;
         let entity = MessageEntityBuilder::new(self.offset, n)
             .set_type("custom_emoji".to_owned())
             .set_custom_emoji_id(emoji_id)
@@ -1328,6 +1363,7 @@ pub async fn retro_fillings<'a>(
 
 /// Represents metadata for a single MessageEntity. Useful when programatically
 /// constructing formatted text using MarkupBuilder
+#[derive(Clone, Debug, Hash)]
 pub struct Markup<T: AsRef<str>> {
     markup_type: MarkupType,
     text: T,
@@ -1335,6 +1371,7 @@ pub struct Markup<T: AsRef<str>> {
 }
 
 /// Enum with varients for every kind of MessageEntity
+#[derive(Clone, Debug, Hash)]
 pub enum MarkupType {
     Text,
     StrikeThrough,
@@ -1474,13 +1511,8 @@ impl EntityMessage {
             }
         } else {
             let (text, entities, buttons) = self.builder.build_murkdown_nofail_ref().await;
-            if let Some(EReplyMarkup::InlineKeyboardMarkup(ref buttons)) = buttons {
-                log::info!(
-                    "call {} {}",
-                    buttons.get_inline_keyboard_ref().len(),
-                    self.reply_markup.is_some()
-                );
-            }
+            log::info!("call {} {}", text, self.reply_markup.is_some());
+
             let call = TG
                 .client
                 .build_send_message(self.chat, text)
@@ -1620,6 +1652,13 @@ mod test {
     #[test]
     fn nested_bold() {
         test_parse(NESTED_BOLD);
+    }
+
+    #[test]
+    fn escape_trait() {
+        let test = "This is a | string";
+        let res = test.escape(false);
+        assert_eq!(res, "This is a \\| string");
     }
 
     #[test]
