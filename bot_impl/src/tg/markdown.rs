@@ -233,7 +233,7 @@ pomelo! {
 
     //footer   ::= LCurly Str(A) RCurly Eof { A }
     header   ::= Start multi(V)  { Header::List(V.into_iter().map(|v| v.get_text()).collect()) }
-    header   ::= Start Str(S) { Header::Arg(S) }
+    header   ::= Start blockstr(S) { Header::Arg(S) }
     header   ::= Start quote(S) { Header::Arg(S) }
     fw     ::= Str(A) { ParsedArg::Arg(A) }
     ign      ::= fw(W) { W }
@@ -247,19 +247,19 @@ pomelo! {
     //   L
     // }
 
-    // blocklist ::= text(S) { S }
-    // blocklist ::= text(mut S) Star { S.push_str("*"); S }
-    // blocklist ::= text(mut S) Star blocklist(V) { S.push_str("*"); S.push_str(&V); S }
+    blocklist ::= text(S) { S }
+    blocklist ::= text(mut S) Star { S.push_str("*"); S }
+    blocklist ::= text(mut S) Star blocklist(V) { S.push_str("*"); S.push_str(&V); S }
 
 
-    // blockstr ::= Str(S) { S }
-    // blockstr ::= Str(mut S) Star { S.push_str("*"); S }
-    // blockstr ::= Str(mut S) Star blockstr(V) { S.push_str("*"); S.push_str(&V); S }
+    blockstr ::= Str(S) { S }
+    blockstr ::= Str(mut S) Star { S.push_str("*"); S }
+    blockstr ::= Str(mut S) Star blockstr(V) { S.push_str("*"); S.push_str(&V); S }
 
     text     ::= Str(S) { S }
     text     ::= text(mut T) Whitespace(W) Str(S) { T.push_str(&W); T.push_str(&S); T }
 
-    quote    ::= Quote text(A) Quote { A }
+    quote    ::= Quote blocklist(A) Quote { A }
     multi    ::= LParen list(A) RParen {A }
     list     ::= ign(A) { vec![A] }
     list     ::= list(mut L) Comma ign(A) { L.push(A); L }
@@ -275,13 +275,13 @@ use super::command::post_deep_link;
 use super::user::Username;
 
 /// Lexer to get murkdown tokens
-pub struct Lexer<'a> {
-    s: Peekable<Chars<'a>>,
-    rawbuf: String,
+pub struct Lexer {
+    s: Vec<char>,
     pos: usize,
     end: bool,
     header: bool,
     escape: bool,
+    rawbuf: String,
 }
 
 fn is_valid(token: char, header: bool) -> bool {
@@ -305,100 +305,99 @@ fn is_valid(token: char, header: bool) -> bool {
     }
 }
 
-impl<'a> Lexer<'a> {
-    pub fn new(input: &'a str, header: bool) -> Self {
-        let chars = input.chars().peekable();
+impl Lexer {
+    pub fn new(input: &str, header: bool) -> Self {
         Self {
-            s: chars,
-            rawbuf: String::new(),
+            s: input.chars().collect(),
             pos: 0,
             end: false,
             header,
             escape: false,
+            rawbuf: String::new(),
         }
     }
 
-    pub fn next_token(&mut self) -> Option<Token> {
-        self.pos += 1;
-        if self.pos == 1 {
-            if self.header {
-                return Some(Token::Start);
-            }
-        }
-        if let Some(char) = self.s.next() {
+    pub fn next_token(&mut self) -> Vec<Token> {
+        let mut output = if self.header {
+            vec![Token::Start]
+        } else {
+            Vec::new()
+        };
+        for (idx, char) in self.s.iter().enumerate() {
             //     log::info!("parsing {}", char);
-            let c = match char {
+            if self.escape {
+                self.escape = false;
+                if self.rawbuf.trim().len() == 0 {
+                    output.push(Token::Str(char.to_string()));
+                } else {
+                    self.rawbuf.push(*char);
+                }
+                continue;
+            }
+            match char {
                 '\\' => {
-                    if let Some(ch) = self.s.next() {
-                        log::warn!("parsing escape {}", ch);
-                        self.rawbuf.push(ch);
-                        self.escape = true;
-                    }
-                    self.next_token()
+                    log::warn!("parsing escape {}", char);
+
+                    self.escape = true;
+                    continue;
                 }
                 '_' => {
-                    if let Some('_') = self.s.peek() {
-                        self.s.next();
-                        Some(Token::DoubleUnderscore)
+                    if let Some('_') = self.s.get(idx + 1) {
+                        output.push(Token::DoubleUnderscore);
+                        continue;
                     } else {
-                        Some(Token::Underscore)
+                        output.push(Token::Underscore);
                     }
                 }
                 '|' => {
-                    if let Some('|') = self.s.peek() {
-                        self.s.next();
-                        Some(Token::DoubleBar)
-                    } else {
-                        self.next_token()
+                    if let Some('|') = self.s.get(idx + 1) {
+                        output.push(Token::DoubleBar);
+                        continue;
                     }
                 }
-                '~' => Some(Token::Tilde),
-                '`' => Some(Token::Tick),
-                '*' => Some(Token::Star),
-                '[' => Some(Token::LSBracket),
-                ']' => Some(Token::RSBracket),
-                '(' => Some(Token::LParen),
-                ')' => Some(Token::RParen),
-                '{' => Some(Token::LCurly),
-                '}' => Some(Token::RCurly),
-                '<' => Some(Token::LTBracket),
-                '>' => Some(Token::RTBracket),
-                ',' if self.header => Some(Token::Comma),
-                '"' if self.header => Some(Token::Quote),
+                '~' => output.push(Token::Tilde),
+                '`' => output.push(Token::Tick),
+                '*' => output.push(Token::Star),
+                '[' => output.push(Token::LSBracket),
+                ']' => output.push(Token::RSBracket),
+                '(' => output.push(Token::LParen),
+                ')' => output.push(Token::RParen),
+                '{' => output.push(Token::LCurly),
+                '}' => output.push(Token::RCurly),
+                '<' => output.push(Token::LTBracket),
+                '>' => output.push(Token::RTBracket),
+                ',' if self.header => output.push(Token::Comma),
+                '"' if self.header => output.push(Token::Quote),
                 _ => {
-                    self.rawbuf.push(char);
-                    if let Some(c) = self.s.peek() {
+                    self.rawbuf.push(*char);
+                    if let Some(c) = self.s.get(idx + 1) {
                         if is_valid(*c, self.header) || (char.is_whitespace() != c.is_whitespace())
                         {
-                            log::warn!("string end {}", c);
-                            let s = self.rawbuf.clone();
-                            self.rawbuf.clear();
+                            if !self.escape {
+                                log::warn!("string end {}", c);
+                                let s = self.rawbuf.clone();
+                                self.rawbuf.clear();
 
-                            if char.is_whitespace() {
-                                return Some(Token::Whitespace(s));
-                            }
-                            if self.escape {
+                                if char.is_whitespace() {
+                                    output.push(Token::Whitespace(s));
+                                } else {
+                                    output.push(Token::Str(s));
+                                }
+                            } else {
                                 self.escape = false;
-                                return Some(Token::Str(s));
                             }
                         }
                     } else {
                         let s = self.rawbuf.clone();
                         self.rawbuf.clear();
-                        return Some(Token::Str(s));
+                        output.push(Token::Str(s));
                     }
-                    self.next_token()
                 }
             };
-            log::warn!("TOKEN: {:?}", c);
-            c
-        } else {
-            if !self.end {
-                self.end = true;
-                return Some(Token::Eof);
-            }
-            None
         }
+        output.push(Token::Eof);
+        println!("output {:?}", output);
+        output
     }
 }
 
@@ -835,7 +834,7 @@ impl MarkupBuilder {
         }
         let mut parser = Parser::new();
         let mut tokenizer = Lexer::new(text, false);
-        while let Some(token) = tokenizer.next_token() {
+        for token in tokenizer.next_token() {
             parser.parse(token)?;
         }
         let res = parser.end_of_input()?;
@@ -871,7 +870,7 @@ impl MarkupBuilder {
     ) -> Result<(String, Vec<MessageEntity>, InlineKeyboardBuilder)> {
         let mut parser = Parser::new();
         let mut tokenizer = Lexer::new(&self.text, self.enabled_header);
-        while let Some(token) = tokenizer.next_token() {
+        for token in tokenizer.next_token() {
             parser.parse(token)?;
         }
         let res = parser.end_of_input()?;
@@ -895,7 +894,7 @@ impl MarkupBuilder {
     async fn nofail_internal(&mut self) -> Result<()> {
         let mut parser = Parser::new();
         let mut tokenizer = Lexer::new(&self.text, self.enabled_header);
-        while let Some(token) = tokenizer.next_token() {
+        for token in tokenizer.next_token() {
             parser.parse(token)?;
         }
         let res = parser.end_of_input()?;
@@ -1527,7 +1526,7 @@ mod test {
     fn test_parse(markdown: &str) -> FilterCommond {
         let mut parser = Parser::new();
         let mut tokenizer = Lexer::new(markdown, false);
-        while let Some(token) = tokenizer.next_token() {
+        for token in tokenizer.next_token() {
             parser.parse(token).unwrap();
         }
 
@@ -1538,7 +1537,7 @@ mod test {
     fn button() {
         let mut tokenizer = Lexer::new("<button>(https://example.com)", false);
         let mut parser = Parser::new();
-        while let Some(token) = tokenizer.next_token() {
+        for token in tokenizer.next_token() {
             parser.parse(token).unwrap();
         }
 
@@ -1548,33 +1547,35 @@ mod test {
     #[test]
     fn tokenize_test() {
         let mut tokenizer = Lexer::new(MARKDOWN_SIMPLE, false);
-        if let Some(Token::LSBracket) = tokenizer.next_token() {
+        let tokens = tokenizer.next_token();
+        let mut tokens = tokens.iter();
+        if let Some(Token::LSBracket) = tokens.next() {
         } else {
             panic!("got invalid token");
         }
 
-        if let Some(Token::Star) = tokenizer.next_token() {
+        if let Some(Token::Star) = tokens.next() {
         } else {
             panic!("got invalid token");
         }
 
-        if let Some(Token::Str(s)) = tokenizer.next_token() {
+        if let Some(Token::Str(s)) = tokens.next() {
             assert_eq!(s, "bold");
         } else {
             panic!("got invalid token");
         }
 
-        if let Some(Token::RSBracket) = tokenizer.next_token() {
+        if let Some(Token::RSBracket) = tokens.next() {
         } else {
             panic!("got invalid token");
         }
 
-        if let Some(Token::Eof) = tokenizer.next_token() {
+        if let Some(Token::Eof) = tokens.next() {
         } else {
             panic!("Missing Eof");
         }
 
-        if let Some(_) = tokenizer.next_token() {
+        if let Some(_) = tokens.next() {
             assert!(false);
         }
     }
