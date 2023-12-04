@@ -304,7 +304,6 @@ fn is_valid(token: char, header: bool) -> bool {
 
 impl Lexer {
     pub fn new(input: &str, header: bool) -> Self {
-        log::warn!("new lexer {}", input);
         Self {
             s: input.chars().collect(),
             header,
@@ -327,7 +326,6 @@ impl Lexer {
                 self.rawbuf.push(*char);
                 if let Some(c) = self.s.get(idx + 1) {
                     if is_valid(*c, self.header) || (char.is_whitespace() != c.is_whitespace()) {
-                        log::warn!("string end {}", c);
                         let s = self.rawbuf.clone();
                         self.rawbuf.clear();
 
@@ -346,8 +344,6 @@ impl Lexer {
             }
             match char {
                 '\\' => {
-                    log::warn!("parsing escape {}", char);
-
                     self.escape = true;
                     continue;
                 }
@@ -383,7 +379,6 @@ impl Lexer {
                     if let Some(c) = self.s.get(idx + 1) {
                         if is_valid(*c, self.header) || (char.is_whitespace() != c.is_whitespace())
                         {
-                            log::warn!("string end {}", c);
                             let s = self.rawbuf.clone();
                             self.rawbuf.clear();
 
@@ -421,10 +416,13 @@ where
 {
     fn escape(&self, header: bool) -> String {
         let s = self.as_ref();
-        s.split_inclusive(|c| is_valid(c, header))
+        s.split_inclusive(|c| is_valid(c, header) && c != '}' && c != '{')
             .flat_map(|v| {
                 let end = &v[v.len() - 1..v.len()];
-                if end.chars().all(|v| is_valid(v, header)) {
+                if end
+                    .chars()
+                    .all(|v| is_valid(v, header) && v != '}' && v != '{')
+                {
                     let tail = &v[..v.len() - 1];
                     vec![tail, "\\", end]
                 } else {
@@ -917,8 +915,6 @@ impl MarkupBuilder {
             self.entities.extend_from_slice(&existing.as_slice());
         }
 
-        log::warn!("parsed {} {}", self.text, self.text.len());
-
         Ok((self.text, self.entities, self.buttons))
     }
 
@@ -941,7 +937,6 @@ impl MarkupBuilder {
             self.entities.extend_from_slice(&existing.as_slice());
         }
 
-        log::warn!("parsed {} {}", self.text, self.text.len());
         Ok(())
     }
 
@@ -997,9 +992,9 @@ impl MarkupBuilder {
 
     /// Appends new unformated text
     pub fn text<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
+        self.offset += text.as_ref().encode_utf16().count() as i64;
+        let text = text.escape(self.enabled_header);
         self.text.push_str(text.as_ref());
-        self.offset +=
-            (text.as_ref().encode_utf16().count() - text.as_ref().matches("\\").count()) as i64;
         self
     }
 
@@ -1017,7 +1012,9 @@ impl MarkupBuilder {
     /// Appends a markup value
     pub fn regular<'a, T: AsRef<str>>(&'a mut self, entity_type: Markup<T>) -> &'a mut Self {
         let text = entity_type.get_text();
-        let n = (text.encode_utf16().count() - text.matches("\\").count()) as i64;
+
+        let n = text.encode_utf16().count() as i64;
+        let text = text.escape(self.enabled_header);
 
         self.text.push_str(&text);
         match entity_type.markup_type {
@@ -1050,15 +1047,15 @@ impl MarkupBuilder {
         advance: Option<i64>,
     ) -> &'a mut Self {
         let text = text.as_ref();
-        let n = (text.encode_utf16().count() - text.matches("\\").count()) as i64;
-
+        let n = text.encode_utf16().count() as i64;
+        let text = text.escape(self.enabled_header);
         let entity = MessageEntityBuilder::new(self.offset, n)
             .set_type("text_link".to_owned())
             .set_url(link)
             .build();
         self.offset += advance.unwrap_or(n);
         self.entities.push(entity);
-        self.text.push_str(text);
+        self.text.push_str(&text);
         self
     }
 
@@ -1070,14 +1067,15 @@ impl MarkupBuilder {
         advance: Option<i64>,
     ) -> &'a Self {
         let text = text.as_ref();
-        let n = (text.encode_utf16().count() - text.matches("\\").count()) as i64;
+        let n = text.encode_utf16().count() as i64;
+        let text = text.escape(self.enabled_header);
         let entity = MessageEntityBuilder::new(self.offset, n)
             .set_type("text_mention".to_owned())
             .set_user(mention)
             .build();
         self.offset += advance.unwrap_or(n);
         self.entities.push(entity);
-        self.text.push_str(text);
+        self.text.push_str(&text);
         self
     }
 
@@ -1089,14 +1087,15 @@ impl MarkupBuilder {
         advance: Option<i64>,
     ) -> &'a Self {
         let text = text.as_ref();
-        let n = (text.encode_utf16().count() - text.matches("\\").count()) as i64;
+        let n = text.encode_utf16().count() as i64;
+        let text = text.escape(self.enabled_header);
         let entity = MessageEntityBuilder::new(self.offset, n)
             .set_type("pre".to_owned())
             .set_language(language)
             .build();
         self.offset += advance.unwrap_or(n);
         self.entities.push(entity);
-        self.text.push_str(text);
+        self.text.push_str(&text);
         self
     }
 
@@ -1108,15 +1107,15 @@ impl MarkupBuilder {
         advance: Option<i64>,
     ) -> &'a Self {
         let text = text.as_ref();
-
-        let n = (text.encode_utf16().count() - text.matches("\\").count()) as i64;
+        let n = text.encode_utf16().count() as i64;
+        let text = text.escape(self.enabled_header);
         let entity = MessageEntityBuilder::new(self.offset, n)
             .set_type("custom_emoji".to_owned())
             .set_custom_emoji_id(emoji_id)
             .build();
         self.offset += advance.unwrap_or(n);
         self.entities.push(entity);
-        self.text.push_str(text);
+        self.text.push_str(&text);
         self
     }
 
@@ -1695,6 +1694,8 @@ mod test {
             ),
             user: Cow::Owned(UserBuilder::new(1, false, dumpling.to_owned()).build()),
         };
+
+        println!("text: {}", test);
 
         let (test, entities) = retro_fillings(test, entities, Some(&mut buttons), &chatuser)
             .await

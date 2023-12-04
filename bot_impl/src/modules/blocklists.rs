@@ -16,7 +16,6 @@ use crate::tg::admin_helpers::parse_duration_str;
 use crate::tg::command::Cmd;
 use crate::tg::command::Context;
 use crate::tg::command::TextArgs;
-use crate::tg::markdown::Escape;
 use crate::tg::markdown::Header;
 use crate::tg::markdown::MarkupBuilder;
 use crate::tg::markdown::MarkupType;
@@ -670,11 +669,8 @@ async fn command_blocklist<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()>
         .join("\n - ");
     //  let filters = format!("\n{}", filters);
 
-    let esc = filters.escape(false);
+    let text = MarkupType::Code.text(&filters);
 
-    log::info!("adding blocklist print {}", esc);
-
-    let text = MarkupType::Code.text(esc);
     message
         .get_chat()
         .speak_fmt(entity_fmt!(ctx, "addblocklist", text))
