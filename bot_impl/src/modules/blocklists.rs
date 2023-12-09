@@ -42,6 +42,7 @@ use itertools::Itertools;
 use lazy_static::__Deref;
 use lazy_static::lazy_static;
 use macros::entity_fmt;
+use macros::update_handler;
 use redis::AsyncCommands;
 use regex::Regex;
 use sea_orm::entity::ActiveValue;
@@ -832,6 +833,7 @@ async fn handle_command<'a>(ctx: &Context) -> Result<()> {
     Ok(())
 }
 
+#[update_handler]
 pub async fn handle_update<'a>(cmd: &Context) -> Result<()> {
     handle_command(cmd).await?;
 

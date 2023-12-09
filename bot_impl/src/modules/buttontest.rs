@@ -5,6 +5,7 @@ use crate::tg::rosemd::{RoseMdDecompiler, RoseMdParser};
 use crate::util::error::Result;
 use crate::util::string::Speak;
 use botapi::gen_types::Message;
+use macros::update_handler;
 use sea_orm_migration::MigrationTrait;
 
 metadata!("Antipiracy",
@@ -130,6 +131,7 @@ async fn handle_decompile(message: &Message) -> Result<bool> {
     Ok(false)
 }
 
+#[update_handler]
 pub async fn handle_update(ctx: &Context) -> Result<()> {
     if let Some(&Cmd { cmd, message, .. }) = ctx.cmd() {
         // log::info!("piracy command {}", cmd);

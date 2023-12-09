@@ -14,6 +14,7 @@ use crate::util::string::Speak;
 use base64::engine::general_purpose;
 use base64::Engine;
 use botapi::gen_types::{Chat, User};
+use macros::update_handler;
 use redis::AsyncCommands;
 use sea_orm_migration::MigrationName;
 use uuid::Uuid;
@@ -109,6 +110,7 @@ async fn handle_command<'a>(ctx: &Context) -> Result<()> {
     Ok(())
 }
 
+#[update_handler]
 pub async fn handle_update<'a>(cmd: &Context) -> Result<()> {
     handle_command(cmd).await?;
     Ok(())

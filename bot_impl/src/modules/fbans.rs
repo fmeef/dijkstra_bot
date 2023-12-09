@@ -16,7 +16,7 @@ use crate::{metadata::metadata, util::string::Speak};
 use botapi::bot::Part;
 use botapi::gen_types::{FileData, Message};
 use itertools::Itertools;
-use macros::{entity_fmt, lang_fmt};
+use macros::{entity_fmt, lang_fmt, update_handler};
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use sea_query::OnConflict;
@@ -373,6 +373,7 @@ async fn export_fbans(ctx: &Context) -> Result<()> {
     Ok(())
 }
 
+#[update_handler]
 pub async fn handle_update(ctx: &Context) -> Result<()> {
     if let Some(&Cmd { cmd, ref args, .. }) = ctx.cmd() {
         match cmd {

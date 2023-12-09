@@ -11,7 +11,7 @@ use crate::{
 
 use futures::{stream, StreamExt, TryStreamExt};
 
-use macros::{entity_fmt, lang_fmt};
+use macros::{entity_fmt, lang_fmt, update_handler};
 
 metadata!("Admin",
     r#"
@@ -105,10 +105,13 @@ async fn admincache(ctx: &Context) -> Result<()> {
 
     Ok(())
 }
+
+#[update_handler]
 pub async fn handle_update<'a>(cmd: &Context) -> Result<()> {
     handle_command(cmd).await?;
     Ok(())
 }
+
 async fn handle_command<'a>(ctx: &Context) -> Result<()> {
     if let Some(&Cmd { cmd, .. }) = ctx.cmd() {
         match cmd {

@@ -1,3 +1,5 @@
+use macros::update_handler;
+
 use crate::persist::admin::gbans;
 use crate::tg::admin_helpers::gban_user;
 use crate::tg::command::{Cmd, Context};
@@ -52,6 +54,7 @@ async fn gban(ctx: &Context) -> Result<()> {
     Ok(())
 }
 
+#[update_handler]
 pub async fn handle_update(ctx: &Context) -> Result<()> {
     if let Some(&Cmd { cmd, .. }) = ctx.cmd() {
         match cmd {

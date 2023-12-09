@@ -1,4 +1,4 @@
-use core::panic;
+use core::{panic};
 use std::{collections::HashMap, sync::RwLock};
 
 use convert_case::{Case, Casing};
@@ -407,4 +407,18 @@ pub fn lang_fmt(tokens: TokenStream) -> TokenStream {
     let args = input.format;
     let m = get_match(&ctx, key, args);
     TokenStream::from(quote! { #m })
+}
+
+#[proc_macro_attribute]
+pub fn update_handler(_: TokenStream, item: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(item as syn::ItemFn);
+    let name = &input.sig.ident;
+    quote! {
+        #input    
+        pub mod update_handler {
+            pub async fn handle_update(context: & crate::tg::command::Context) -> crate::util::error::Result<()> {
+                super:: #name (context).await
+            }
+        }
+    }.into()
 }

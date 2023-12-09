@@ -9,7 +9,7 @@ use crate::{
 };
 
 use humantime::format_duration;
-use macros::{entity_fmt, lang_fmt};
+use macros::{entity_fmt, lang_fmt, update_handler};
 
 metadata!("Warns",
     r#"
@@ -173,6 +173,7 @@ async fn handle_command<'a>(ctx: &Context) -> Result<()> {
     Ok(())
 }
 
+#[update_handler]
 pub async fn handle_update<'a>(cmd: &Context) -> Result<()> {
     handle_command(cmd).await?;
 

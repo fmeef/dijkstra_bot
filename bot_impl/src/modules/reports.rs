@@ -8,7 +8,7 @@ use crate::util::string::{should_ignore_chat, Speak};
 use crate::{metadata::metadata, util::error::Result};
 use botapi::gen_types::{MessageEntity, MessageEntityBuilder};
 
-use macros::{lang_fmt, textentity_fmt};
+use macros::{lang_fmt, textentity_fmt, update_handler};
 
 metadata!("Reports",
     r#"
@@ -97,6 +97,7 @@ async fn handle_command(ctx: &Context) -> Result<()> {
     Ok(())
 }
 
+#[update_handler]
 pub async fn handle_update(cmd: &Context) -> Result<()> {
     handle_command(cmd).await?;
 

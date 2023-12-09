@@ -10,7 +10,7 @@ use crate::metadata::metadata;
 use crate::util::string::Speak;
 use botapi::gen_types::UserBuilder;
 
-use macros::entity_fmt;
+use macros::{entity_fmt, update_handler};
 metadata!("Approvals",
     r#"
     Approvals are a tool to allow specific users to be ignored by automated admin actions  
@@ -90,6 +90,7 @@ async fn handle_command<'a>(ctx: &Context) -> Result<()> {
     Ok(())
 }
 
+#[update_handler]
 pub async fn handle_update<'a>(cmd: &Context) -> Result<()> {
     handle_command(cmd).await?;
 

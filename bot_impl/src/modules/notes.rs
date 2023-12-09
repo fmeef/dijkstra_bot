@@ -22,7 +22,7 @@ use ::sea_orm_migration::prelude::*;
 use botapi::gen_types::{Message, MessageEntity};
 use futures::FutureExt;
 use lazy_static::__Deref;
-use macros::lang_fmt;
+use macros::{lang_fmt, update_handler};
 use redis::AsyncCommands;
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter};
@@ -407,6 +407,7 @@ async fn save<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
     Ok(())
 }
 
+#[update_handler]
 pub async fn handle_update<'a>(cmd: &Context) -> Result<()> {
     if let Ok(message) = cmd.message() {
         let c = cmd.clone();

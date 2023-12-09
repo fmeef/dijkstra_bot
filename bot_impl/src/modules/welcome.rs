@@ -9,7 +9,7 @@ use crate::util::string::Lang;
 use crate::{metadata::metadata, util::string::Speak};
 use botapi::gen_types::Message;
 use lazy_static::__Deref;
-use macros::lang_fmt;
+use macros::{lang_fmt, update_handler};
 use redis::AsyncCommands;
 use sea_orm::entity::ActiveValue::{NotSet, Set};
 use sea_orm::EntityTrait;
@@ -226,6 +226,7 @@ async fn reset_welcome(message: &Message, lang: &Lang) -> Result<()> {
     Ok(())
 }
 
+#[update_handler]
 pub async fn handle_update<'a>(cmd: &Context) -> Result<()> {
     handle_command(cmd).await?;
     Ok(())

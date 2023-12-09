@@ -18,6 +18,7 @@ use ::redis::AsyncCommands;
 use ::sea_orm::entity::prelude::*;
 use ::sea_orm::{ActiveModelTrait, IntoActiveModel, QuerySelect, Set};
 use ::sea_orm_migration::prelude::*;
+use macros::update_handler;
 
 use crate::util::error::Result;
 use botapi::gen_types::{
@@ -322,6 +323,7 @@ async fn handle_message(ctx: &Context) -> Result<()> {
     Ok(())
 }
 
+#[update_handler]
 pub async fn handle_update(cmd: &Context) -> Result<()> {
     let update = cmd.update();
     let _ = match update {

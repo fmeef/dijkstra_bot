@@ -14,7 +14,7 @@ use chrono::Duration;
 use futures::FutureExt;
 use lazy_static::__Deref;
 
-use macros::lang_fmt;
+use macros::{lang_fmt, update_handler};
 use sea_orm::EntityTrait;
 use sea_query::OnConflict;
 
@@ -117,6 +117,7 @@ async fn get_rule(chat_id: i64) -> Result<Option<rules::Model>> {
     Ok(rules)
 }
 
+#[update_handler]
 pub async fn handle_update(ctx: &Context) -> Result<()> {
     if let Some(&Cmd { cmd, .. }) = ctx.cmd() {
         match cmd {

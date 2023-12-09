@@ -246,7 +246,7 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
                     };
                     match help {
                         Ok(false) => {#(
-                            if let Err(err) = #updates::handle_update(&ctx).await {
+                            if let Err(err) = #updates::update_handler::handle_update(&ctx).await {
                                 err.record_stats();
                                 match err.get_message().await {
                                     Err(err) => {

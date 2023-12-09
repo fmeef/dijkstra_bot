@@ -4,7 +4,7 @@ use std::ops::Deref;
 use botapi::gen_types::{EReplyMarkup, FileData};
 use convert_case::{Case, Casing};
 use itertools::Itertools;
-use macros::lang_fmt;
+use macros::{lang_fmt, update_handler};
 use reqwest::multipart::Part;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 use uuid::Uuid;
@@ -147,6 +147,7 @@ async fn update_taint<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
     Ok(())
 }
 
+#[update_handler]
 pub async fn handle_update(ctx: &Context) -> Result<()> {
     if let Some(&Cmd {
         cmd,

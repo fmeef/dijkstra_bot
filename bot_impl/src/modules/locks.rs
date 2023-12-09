@@ -15,7 +15,7 @@ use botapi::gen_types::{Chat, Message, UpdateExt, User};
 use chrono::Duration;
 use entities::locks::LockType;
 use lazy_static::__Deref;
-use macros::lang_fmt;
+use macros::{lang_fmt, update_handler};
 use redis::AsyncCommands;
 use sea_orm::prelude::*;
 use sea_orm::sea_query::OnConflict;
@@ -785,6 +785,7 @@ async fn handle_user_event(update: &UpdateExt, ctx: &Context) -> Result<()> {
     Ok(())
 }
 
+#[update_handler]
 pub async fn handle_update<'a>(cmd: &Context) -> Result<()> {
     handle_user_event(cmd.update(), cmd).await?;
     handle_command(cmd).await?;

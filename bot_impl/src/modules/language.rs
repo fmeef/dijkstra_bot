@@ -12,7 +12,7 @@ use crate::{
 };
 
 use botapi::gen_types::Message;
-use macros::{inline_lang, lang_fmt};
+use macros::{inline_lang, lang_fmt, update_handler};
 use uuid::Uuid;
 
 metadata! {
@@ -116,7 +116,7 @@ async fn handle_command(ctx: &Context) -> Result<()> {
     Ok(())
 }
 
-#[allow(dead_code)]
+#[update_handler]
 pub async fn handle_update<'a>(cmd: &Context) -> Result<()> {
     handle_command(cmd).await?;
 

@@ -1,3 +1,5 @@
+use macros::update_handler;
+
 use crate::tg::command::{Cmd, Context};
 use crate::tg::dialog::get_user_chats;
 use crate::tg::markdown::EntityMessage;
@@ -45,6 +47,7 @@ pub async fn allchats(ctx: &Context) -> Result<()> {
     Ok(())
 }
 
+#[update_handler]
 pub async fn handle_update(ctx: &Context) -> Result<()> {
     if let Some(&Cmd { cmd, .. }) = ctx.cmd() {
         match cmd {

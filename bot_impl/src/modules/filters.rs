@@ -29,6 +29,7 @@ use futures::FutureExt;
 use itertools::Itertools;
 use lazy_static::__Deref;
 use macros::entity_fmt;
+use macros::update_handler;
 use redis::AsyncCommands;
 use sea_orm::entity::ActiveValue;
 use sea_orm::sea_query::OnConflict;
@@ -939,6 +940,7 @@ async fn handle_command(ctx: &Context) -> Result<()> {
     Ok(())
 }
 
+#[update_handler]
 pub async fn handle_update(cmd: &Context) -> Result<()> {
     handle_command(cmd).await?;
 

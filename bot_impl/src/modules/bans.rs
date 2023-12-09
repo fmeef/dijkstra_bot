@@ -9,7 +9,7 @@ use crate::{
 };
 use botapi::gen_types::ChatPermissionsBuilder;
 
-use macros::{entity_fmt, lang_fmt};
+use macros::{entity_fmt, lang_fmt, update_handler};
 
 metadata!("Bans",
     r#"
@@ -183,6 +183,7 @@ async fn handle_command<'a>(ctx: &Context) -> Result<()> {
     Ok(())
 }
 
+#[update_handler]
 pub async fn handle_update<'a>(ctx: &Context) -> Result<()> {
     handle_command(ctx).await
 }
