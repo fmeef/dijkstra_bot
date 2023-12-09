@@ -46,7 +46,7 @@ use redis::AsyncCommands;
 use regex::Regex;
 use sea_orm::entity::ActiveValue;
 use sea_orm::sea_query::OnConflict;
-use sea_orm::ActiveValue::Set;
+use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::ColumnTrait;
 use sea_orm::EntityTrait;
 use sea_orm::IntoActiveModel;
@@ -216,9 +216,8 @@ pub mod entities {
             pub duration: Option<i64>,
         }
 
-        #[derive(DeriveIntoActiveModel, Hash, Eq, PartialEq, Clone)]
+        #[derive(Hash, Eq, PartialEq, Clone, DeriveIntoActiveModel, Debug)]
         pub struct ModelModel {
-            #[sea_orm(primary_key)]
             pub chat: i64,
             pub action: ActionType,
             pub reason: Option<String>,
@@ -367,9 +366,19 @@ impl ModuleHelpers for Helper {
 
             DB.transaction::<_, _, BotError>(|tx| {
                 async move {
-                    blocklists::Entity::insert_many(
-                        models.keys().map(|v| v.clone().into_active_model()),
-                    )
+                    delete_all(chat).await?;
+
+                    log::info!("import blocklists {:?}", models);
+                    blocklists::Entity::insert_many(models.keys().map(|v| {
+                        let v = v.clone();
+                        blocklists::ActiveModel {
+                            id: NotSet,
+                            chat: Set(v.chat),
+                            action: Set(v.action),
+                            reason: Set(v.reason),
+                            duration: Set(v.duration),
+                        }
+                    }))
                     .on_empty_do_nothing()
                     .exec(tx)
                     .await?;
@@ -398,8 +407,6 @@ impl ModuleHelpers for Helper {
                 .boxed()
             })
             .await?;
-
-            delete_all(chat).await?;
         }
         Ok(())
     }
@@ -501,6 +508,9 @@ async fn search_cache(message: &Message, text: &str) -> Result<Option<blocklists
         .query(|mut q| async move {
             let mut iter: redis::AsyncIter<(String, i64)> = q.hscan(&hash_key).await?;
             while let Some((key, item)) = iter.next_item().await {
+                if key.len() == 0 {
+                    continue;
+                }
                 let glob = WildMatch::new(&key);
                 if glob.matches(text) {
                     return get_blocklist(message, item).await;
@@ -522,7 +532,7 @@ async fn update_cache_from_db(message: &Message) -> Result<()> {
             .await?;
         REDIS
             .try_pipe(|p| {
-                p.hset(&hash_key, "empty", 0);
+                p.hset(&hash_key, "", 0);
                 for (filter, triggers) in res.into_iter() {
                     let key = get_blocklist_key(message, filter.id);
                     let filter_st = RedisStr::new(&filter)?;
@@ -769,6 +779,7 @@ async fn list_triggers(message: &Message) -> Result<()> {
     if let Some(map) = res {
         let vals = map
             .into_iter()
+            .filter(|v| v.0.len() > 0)
             .map(|(key, _)| format!("\t- {}", key))
             .collect_vec()
             .join("\n");

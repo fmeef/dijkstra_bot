@@ -205,11 +205,13 @@ pomelo! {
     main     ::= Whitespace(_) words?(A) { A.unwrap_or_else(Vec::new) }
 
 
+
         //main     ::= words?(A) { A.unwrap_or_else(Vec::new) }
 
 
 
     words    ::= words(mut L) Whitespace(S) word(W) { L.push(super::TgSpan::Raw(S)); L.push(W); L }
+
     words    ::= words(mut L) word(W) { L.push(W); L }
     words    ::= word(C) { vec![C] }
     word      ::= Str(S) { super::TgSpan::Raw(S) }
@@ -226,6 +228,8 @@ pomelo! {
 
     wstr      ::= Str(S) { S }
     wstr      ::= Str(S) Whitespace(W) wstr(mut L){ L.push_str(&S); L.push_str(&W); L}
+    wstr      ::= Str(mut S) Whitespace(W) { S.push_str(&W); S}
+
 
 
 //   footer     ::= Fmuf { "".to_owned() }
@@ -246,17 +250,14 @@ pomelo! {
     //   L
     // }
 
-    blocklist ::= text(S) { S }
-    blocklist ::= text(mut S) Star { S.push_str("*"); S }
-    blocklist ::= text(mut S) Star blocklist(V) { S.push_str("*"); S.push_str(&V); S }
+    blocklist ::= wstr(S) { S }
+    blocklist ::= wstr(mut S) Star { S.push_str("*"); S }
+    blocklist ::= wstr(mut S) Star blocklist(V) { S.push_str("*"); S.push_str(&V); S }
 
 
     blockstr ::= Str(S) { S }
     blockstr ::= Str(mut S) Star { S.push_str("*"); S }
     blockstr ::= Str(mut S) Star blockstr(V) { S.push_str("*"); S.push_str(&V); S }
-
-    text     ::= Str(S) { S }
-    text     ::= text(mut T) Whitespace(W) Str(S) { T.push_str(&W); T.push_str(&S); T }
 
     quote    ::= Quote blocklist(A) Quote { A }
     multi    ::= LParen list(A) RParen {A }
@@ -305,7 +306,7 @@ fn is_valid(token: char, header: bool) -> bool {
 impl Lexer {
     pub fn new(input: &str, header: bool) -> Self {
         Self {
-            s: input.chars().collect(),
+            s: input.trim().chars().collect(),
             header,
             escape: false,
             rawbuf: String::new(),
@@ -320,7 +321,7 @@ impl Lexer {
         };
         for (idx, char) in self.s.iter().enumerate() {
             //     log::info!("parsing {}", char);
-            //            println!("parsing {} {}", char, idx);
+
             if self.escape {
                 self.escape = false;
                 self.rawbuf.push(*char);
@@ -329,16 +330,20 @@ impl Lexer {
                         let s = self.rawbuf.clone();
                         self.rawbuf.clear();
 
-                        if char.is_whitespace() {
-                            //println!("regular whitespace");
+                        if char.is_whitespace() && s.len() > 0 && s.trim().len() == 0 {
                             output.push(Token::Whitespace(s));
                         } else {
                             output.push(Token::Str(s));
                         }
                     }
                 } else {
-                    let s = self.rawbuf.drain(..).collect();
-                    output.push(Token::Str(s));
+                    let s: String = self.rawbuf.drain(..).collect();
+
+                    if char.is_whitespace() && s.len() > 0 && s.trim().len() == 0 {
+                        output.push(Token::Whitespace(s));
+                    } else {
+                        output.push(Token::Str(s));
+                    }
                 }
                 continue;
             }
@@ -351,7 +356,7 @@ impl Lexer {
                     if let Some('_') = self.s.get(idx + 1) {
                         output.push(Token::DoubleUnderscore);
                         continue;
-                    } else {
+                    } else if idx > 0 && self.s.get(idx - 1).map(|v| *v != '_').unwrap_or(true) {
                         output.push(Token::Underscore);
                     }
                 }
@@ -382,22 +387,26 @@ impl Lexer {
                             let s = self.rawbuf.clone();
                             self.rawbuf.clear();
 
-                            if char.is_whitespace() {
-                                // println!("regular whitespace");
+                            if char.is_whitespace() && s.len() > 0 && s.trim().len() == 0 {
                                 output.push(Token::Whitespace(s));
                             } else {
                                 output.push(Token::Str(s));
                             }
                         }
                     } else {
-                        let s = self.rawbuf.drain(..).collect();
-                        output.push(Token::Str(s));
+                        let s: String = self.rawbuf.drain(..).collect();
+
+                        if char.is_whitespace() && s.len() > 0 && s.trim().len() == 0 {
+                            output.push(Token::Whitespace(s));
+                        } else {
+                            output.push(Token::Str(s));
+                        }
                     }
                 }
             };
         }
         output.push(Token::Eof);
-        //println!("output {:?}", output);
+
         output
     }
 }
@@ -993,11 +1002,10 @@ impl MarkupBuilder {
     /// Appends new unformated text
     pub fn text<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
         self.offset += text.as_ref().encode_utf16().count() as i64;
-        let text = text.escape(self.enabled_header);
+        //        let text = text.escape(self.enabled_header);
         self.text.push_str(text.as_ref());
         self
     }
-
     pub fn set_text(mut self, text: String) -> Self {
         self.text = text;
         self
@@ -1014,7 +1022,7 @@ impl MarkupBuilder {
         let text = entity_type.get_text();
 
         let n = text.encode_utf16().count() as i64;
-        let text = text.escape(self.enabled_header);
+        //        let text = text.escape(self.enabled_header);
 
         self.text.push_str(&text);
         match entity_type.markup_type {
@@ -1048,7 +1056,7 @@ impl MarkupBuilder {
     ) -> &'a mut Self {
         let text = text.as_ref();
         let n = text.encode_utf16().count() as i64;
-        let text = text.escape(self.enabled_header);
+        //        let text = text.escape(self.enabled_header);
         let entity = MessageEntityBuilder::new(self.offset, n)
             .set_type("text_link".to_owned())
             .set_url(link)
@@ -1068,7 +1076,7 @@ impl MarkupBuilder {
     ) -> &'a Self {
         let text = text.as_ref();
         let n = text.encode_utf16().count() as i64;
-        let text = text.escape(self.enabled_header);
+        //        let text = text.escape(self.enabled_header);
         let entity = MessageEntityBuilder::new(self.offset, n)
             .set_type("text_mention".to_owned())
             .set_user(mention)
@@ -1088,7 +1096,7 @@ impl MarkupBuilder {
     ) -> &'a Self {
         let text = text.as_ref();
         let n = text.encode_utf16().count() as i64;
-        let text = text.escape(self.enabled_header);
+        //       let text = text.escape(self.enabled_header);
         let entity = MessageEntityBuilder::new(self.offset, n)
             .set_type("pre".to_owned())
             .set_language(language)
@@ -1108,7 +1116,7 @@ impl MarkupBuilder {
     ) -> &'a Self {
         let text = text.as_ref();
         let n = text.encode_utf16().count() as i64;
-        let text = text.escape(self.enabled_header);
+        //        let text = text.escape(self.enabled_header);
         let entity = MessageEntityBuilder::new(self.offset, n)
             .set_type("custom_emoji".to_owned())
             .set_custom_emoji_id(emoji_id)
@@ -1636,7 +1644,7 @@ mod test {
                 counter += 1;
             }
         }
-        assert_eq!(counter, 6);
+        assert_eq!(counter, 5);
     }
 
     #[test]
@@ -1705,5 +1713,19 @@ mod test {
         for entity in entities {
             assert!(entity.get_offset() + entity.get_length() <= len);
         }
+    }
+
+    #[tokio::test]
+    async fn parse_help() {
+        let test = r#"
+    [__underline text]
+        "#;
+        MarkupBuilder::new(None)
+            .set_text(test.to_owned())
+            .filling(false)
+            .header(false)
+            .build_murkdown()
+            .await
+            .unwrap();
     }
 }

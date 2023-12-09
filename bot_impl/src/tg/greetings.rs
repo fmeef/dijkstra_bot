@@ -693,6 +693,7 @@ impl Context {
 
         let key = captcha_state_key(message.get_chat_ref());
         if let Ok(model) = captchastate::Entity::update(model).exec(DB.deref()).await {
+            log::info!("set captcha mode {:?}", model.captcha_type);
             model.cache(key).await?;
             message.reply("mode set").await?;
         } else {

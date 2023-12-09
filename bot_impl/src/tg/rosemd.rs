@@ -60,14 +60,14 @@ fn string_index(chars: &[char], idx: &str) -> Option<usize> {
 fn valid_start(chars: &[char], pos: usize) -> bool {
     let r = (pos == 0 || !chars[pos - 1].is_alphanumeric())
         && !(pos == chars.len() - 1 || chars[pos + 1].is_whitespace());
-    // println!("valid_start {}", r);
+
     r
 }
 
 fn valid_end(chars: &[char], pos: usize) -> bool {
     let r = !(pos == 0 || chars[pos - 1].is_whitespace())
         && (pos == chars.len() - 1 || !chars[pos + 1].is_alphanumeric());
-    // println!("valid_end {}", r);
+
     r
 }
 
@@ -85,22 +85,19 @@ fn is_escaped(chars: &[char], pos: usize) -> bool {
         break;
     }
     let r = (pos - i) % 2 == 0;
-    // println!("is_escaped {}", r);
+
     r
 }
 
 fn get_valid_end(chars: &[char], item: &str) -> Option<usize> {
-    // println!("get_valid_end {}", item);
     let mut offset = 0;
     while offset < chars.len() {
         if let Some(idx) = string_index(&chars[offset..], item) {
-            // println!("get_valid_end string_index {}", idx);
             let mut end = offset + idx;
             if valid_end(chars, end)
                 && valid_end(chars, end + item.encode_utf16().count() - 1)
                 && !is_escaped(chars, end)
             {
-                // println!("get_valid_end got");
                 let mut idx = string_index(&chars[end + 1..], item);
                 while let Some(0) = idx {
                     end += 1;
@@ -220,7 +217,6 @@ impl<'a> RoseMdDecompiler<'a> {
         for (offset, ch) in self.out.into_utf16_chars().into_iter().enumerate() {
             if let Some(entity) = self.entities.remove(&(offset as i64)) {
                 for entity in entity.into_iter().rev() {
-                    // println!(
                     //     "match entity: {} {}",
                     //     entity.get_tg_type_ref(),
                     //     entity.get_offset()
@@ -246,7 +242,7 @@ impl<'a> RoseMdDecompiler<'a> {
             }
 
             out.push(ch);
-            // println!("writing {}", offset);
+
             if let Some(v) = self.current.remove(&((offset + 1) as i64)) {
                 for entity in v.into_iter().rev() {
                     match entity.get_tg_type_ref() {
@@ -320,7 +316,6 @@ impl RoseMdParser {
         let mut i = chars.iter().enumerate();
         while let Some((mut x, ch)) = i.next() {
             let mut ch = *ch;
-            // println!("parsing {} {}", x, ch);
 
             if !is_valid_rose(ch.to_string().as_str()) {
                 text.push(ch);
@@ -381,7 +376,6 @@ impl RoseMdParser {
                     }
 
                     if let Some(idx) = get_valid_end(&chars[x + 1..], &item) {
-                        // println!("got valid end idx {}", idx);
                         let start = x + 1;
                         let end = x + idx + 1;
 
@@ -413,7 +407,6 @@ impl RoseMdParser {
                             "```" => Some(b.set_type("pre".to_owned()).build()),
                             _ => None,
                         } {
-                            // println!(
                             //     "parsed nested {} {} {}",
                             //     entity.get_tg_type_ref(),
                             //     x,
@@ -507,7 +500,7 @@ impl RoseMdParser {
                         }
 
                         let e = MessageEntityBuilder::new(
-                            offset,
+                            offset + text.encode_utf16().count() as i64,
                             nested_text.encode_utf16().count() as i64,
                         )
                         .set_type("text_link".to_owned())
