@@ -277,7 +277,7 @@ impl MigrationName for MigrationActionType {
 }
 
 macro_rules! locks {
-    ( $( { $name:expr, $description:expr, $lock:expr, $predicate:expr } ),* ) => {
+    ( $( lock!( $name:expr, $description:expr, $lock:expr, $predicate:expr ) );* ) => {
 
         static AVAILABLE_LOCKS: ::once_cell::sync::Lazy<::std::collections::HashMap<String, String>> =
                 ::once_cell::sync::Lazy::new(|| {
@@ -336,7 +336,7 @@ macro_rules! locks {
 }
 
 locks! {
-    {"code", "Pre formatted code", LockType::Code, |message| {
+    lock!("code", "Pre formatted code", LockType::Code, |message| {
         if let Some(entities) = message.get_entities_ref() {
             for entity in entities {
                 match entity.get_tg_type_ref() {
@@ -348,15 +348,15 @@ locks! {
         }
         false
 
-    }},
-    {"premium", "Messages from premium users", LockType::Premium, |message| {
+    });
+    lock!("premium", "Messages from premium users", LockType::Premium, |message| {
        if let Some(user) = message.get_from() {
             user.get_is_premium().unwrap_or(false)
         } else {
             false
         }
-    }},
-    {"url", "http/https urls, as defined by telegram", LockType::Link, |message| {
+    });
+    lock!("url", "http/https urls, as defined by telegram", LockType::Link, |message| {
         if let Some(entities) = message.get_entities_ref() {
             for entity in entities {
                 match entity.get_tg_type_ref() {
@@ -367,17 +367,17 @@ locks! {
             }
         }
         false
-    }},
-    {"photo", "Photo messages", LockType::Photo, |message| {
+    });
+    lock!("photo", "Photo messages", LockType::Photo, |message| {
         message.get_photo().is_some()
-    }},
-    {"video", "Video messages", LockType::Video, |message| {
+    });
+    lock!("video", "Video messages", LockType::Video, |message| {
         message.get_video().is_some()
-    }},
-    {"anonchannel", "Users speaking through anonymous channels", LockType::AnonChannel, |message| {
+    });
+    lock!("anonchannel", "Users speaking through anonymous channels", LockType::AnonChannel, |message| {
         message.get_sender_chat().is_some()
-    }},
-    {"command", "Bot commands", LockType::Command, |message| {
+    });
+    lock!("command", "Bot commands", LockType::Command, |message| {
         if let Some(entities) = message.get_entities_ref() {
             for entity in entities {
                 match entity.get_tg_type_ref() {
@@ -387,11 +387,11 @@ locks! {
             }
         }
         false
-    }},
-    {"forward", "Forwarded messages", LockType::Forward, |message| {
+    });
+    lock!("forward", "Forwarded messages", LockType::Forward, |message| {
         message.get_forward_from().is_some()
-    }},
-    {"sticker", "Stickers", LockType::Sticker, |message| message.get_sticker().is_some() }
+    });
+    lock!("sticker", "Stickers", LockType::Sticker, |message| message.get_sticker().is_some())
 }
 
 pub fn get_lock_key(chat: i64, locktype: &LockType) -> String {

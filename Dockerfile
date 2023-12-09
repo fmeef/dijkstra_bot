@@ -79,7 +79,8 @@ RUN adduser \
 
 RUN mkdir -p /bobot/target && chown -R bobot:bobot /bobot && \
 chown -R bobot:bobot /usr/local && mkdir -p /bobot/migration/target && \
-chown -R bobot:bobot /bobot/migration/target && mkdir -p /bobot/bot_impl/target && \
+chown -R bobot:bobot /bobot/migration/target && mkdir -p /bobot/macros/target && \
+mkdir -p /bobot/buildhelpers/target && \
 chown -R bobot:bobot /bobot && \
 chown -R bobot:bobot /home/bobot/. && \
 chown -R bobot:bobot /opt/helix/runtime
