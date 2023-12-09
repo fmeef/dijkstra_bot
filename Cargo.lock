@@ -362,70 +362,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bot_impl"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "async_nursery",
- "base64 0.21.5",
- "bb8",
- "bb8-redis",
- "botapi",
- "buildhelpers",
- "bytes",
- "captcha",
- "chrono",
- "clap",
- "confy",
- "convert_case",
- "dashmap",
- "futures",
- "glob",
- "glob-match",
- "globset",
- "governor",
- "higher-order-closure",
- "humantime",
- "hyper",
- "itertools 0.11.0",
- "lazy_static",
- "log",
- "lz4_flex",
- "macros",
- "markdown",
- "nonblock-logger",
- "once_cell",
- "openssl",
- "pomelo",
- "prometheus",
- "prometheus-hyper",
- "rand",
- "redis",
- "regex",
- "reqwest",
- "rmp-serde",
- "rustls-webpki",
- "rusty_pool",
- "sea-orm",
- "sea-orm-migration",
- "sea-query",
- "seq-macro",
- "serde",
- "serde_json",
- "strum",
- "thiserror",
- "time",
- "tokio",
- "unicase",
- "unicase_serde",
- "uuid",
- "warp",
- "wildmatch",
- "yoke",
-]
-
-[[package]]
 name = "botapi"
 version = "0.0.34"
 dependencies = [
@@ -819,17 +755,66 @@ dependencies = [
 
 [[package]]
 name = "dijkstra"
-version = "0.3.9"
+version = "0.1.0"
 dependencies = [
- "bot_impl",
+ "anyhow",
+ "async-trait",
+ "async_nursery",
+ "base64 0.21.5",
+ "bb8",
+ "bb8-redis",
+ "botapi",
+ "buildhelpers",
+ "bytes",
+ "captcha",
+ "chrono",
  "clap",
- "dotenv",
+ "confy",
+ "convert_case",
+ "dashmap",
+ "futures",
+ "glob",
+ "glob-match",
+ "globset",
+ "governor",
+ "higher-order-closure",
+ "humantime",
+ "hyper",
+ "itertools 0.11.0",
+ "lazy_static",
+ "log",
+ "lz4_flex",
+ "macros",
  "markdown",
- "migration",
+ "nonblock-logger",
+ "once_cell",
  "openssl",
+ "pomelo",
+ "prometheus",
+ "prometheus-hyper",
+ "rand",
+ "redis",
+ "regex",
+ "reqwest",
+ "rmp-serde",
  "rustls-webpki",
+ "rusty_pool",
+ "sea-orm",
+ "sea-orm-migration",
+ "sea-query",
+ "seq-macro",
+ "serde",
+ "serde_json",
+ "strum",
+ "thiserror",
  "time",
  "tokio",
+ "unicase",
+ "unicase_serde",
+ "uuid",
+ "warp",
+ "wildmatch",
+ "yoke",
 ]
 
 [[package]]
@@ -851,12 +836,6 @@ dependencies = [
  "redox_users",
  "winapi",
 ]
-
-[[package]]
-name = "dotenv"
-version = "0.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77c90badedccf4105eca100756a0b1289e191f6fcbdadd3cee1d2f614f97da8f"
 
 [[package]]
 name = "dotenvy"
@@ -1686,24 +1665,6 @@ name = "memchr"
 version = "2.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f665ee40bc4a3c5590afb1e9677db74a508659dfd71e126420da8274909a0167"
-
-[[package]]
-name = "migration"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "bot_impl",
- "botapi",
- "chrono",
- "openssl",
- "rustls-webpki",
- "sea-orm-migration",
- "sea-query",
- "sea-schema",
- "tggen",
- "time",
- "tokio",
-]
 
 [[package]]
 name = "mime"
@@ -2893,7 +2854,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0cd9561232bd1b82ea748b581f15909d11de0db6563ddcf28c5d908aee8282f1"
 dependencies = [
  "futures",
- "log",
  "sea-query",
  "sea-schema-derive",
 ]

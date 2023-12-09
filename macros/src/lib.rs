@@ -267,7 +267,7 @@ pub fn string_fmt(tokens: TokenStream) -> TokenStream {
 }
 
 fn get_current_crate() -> impl ToTokens {
-    let c = crate_name("bot_impl").expect("bot_impl crate not found");
+    let c = crate_name("dijkstra").expect("dijkstra crate not found");
     match c {
         FoundCrate::Itself => quote! { crate },
         FoundCrate::Name(name) => {

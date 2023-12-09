@@ -1,4 +1,4 @@
-use bot_impl::persist::{
+use dijkstra::persist::{
     admin::{actions, warns},
     migrate::ManagerHelper,
 };

@@ -13,9 +13,9 @@ time = "0.3.30"
 sea-schema = { version = "0.14.1", default-features = false, features = [ "debug-print"] }
 sea-orm-migration = "0.12.6"
 sea-query = { version = "0.30.4", features = ["uuid", "bigdecimal", "with-bigdecimal", "with-chrono", "with-json", "backend-postgres", "sea-query-derive", "backend-postgres", "derive", "with-uuid", "thread-safe"] }
-bot_impl = { path = "../bot_impl" }
-botapi = { path = "../bot_impl/botapi-rs" }
-tggen = { path = "../bot_impl/botapi-rs/generate" }
+dijkstra = { path = "../" }
+botapi = { path = "../botapi-rs" }
+tggen = { path = "../botapi-rs/generate" }
 async-trait = "0.1.74"
 openssl = { version = "0.10.60", features=["vendored"]}
 tokio = { version = "1.34.0", features = ["net", "socket2", "io-util", "tokio-macros"] }

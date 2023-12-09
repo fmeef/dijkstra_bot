@@ -1,6 +1,6 @@
 use chrono::Duration;
 
-use bot_impl::persist::{
+use dijkstra::persist::{
     admin::{
         authorized,
         captchastate::{self, CaptchaType},

@@ -1,4 +1,4 @@
-use bot_impl::persist::{core::notes, migrate::ManagerHelper};
+use dijkstra::persist::{core::notes, migrate::ManagerHelper};
 use sea_orm_migration::prelude::*;
 
 pub struct Migration;

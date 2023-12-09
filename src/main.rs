@@ -1,3 +1,3 @@
 pub fn main() {
-    bot_impl::run();
+    dijkstra::run();
 }

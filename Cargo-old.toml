@@ -1,0 +1,17 @@
+[package]
+name = "dijkstra"
+version = "0.3.9"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+dotenv = "0.15.0"
+tokio = { version = "1.34.0", features = ["full", "net", "socket2", "io-util", "tokio-macros"] }
+migration = { path = "migration" }
+bot_impl = { path = "bot_impl" }
+openssl = { version = "0.10.60", features = ["vendored"] }
+clap = { version = "4.4.11", features = ["derive"] }
+markdown = "0.3.0"
+rustls-webpki = "0.101.7"
+time = "0.3.30"

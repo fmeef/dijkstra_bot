@@ -1,4 +1,4 @@
-use bot_impl::persist::{
+use dijkstra::persist::{
     core::{button, entity, messageentity, users, welcomes},
     migrate::ManagerHelper,
 };

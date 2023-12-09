@@ -1,4 +1,4 @@
-use bot_impl::persist::core::users;
+use dijkstra::persist::core::users;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]

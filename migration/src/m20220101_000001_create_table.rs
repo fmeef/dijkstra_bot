@@ -1,5 +1,5 @@
-use bot_impl::persist::core::*;
-use bot_impl::persist::migrate::ManagerHelper;
+use dijkstra::persist::core::*;
+use dijkstra::persist::migrate::ManagerHelper;
 use sea_orm_migration::prelude::*;
 
 pub struct Migration;
@@ -176,19 +176,19 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
-            .drop_table_auto(bot_impl::persist::core::dialogs::Entity)
+            .drop_table_auto(dijkstra::persist::core::dialogs::Entity)
             .await?;
         manager
-            .drop_table_auto(bot_impl::persist::core::conversation_transitions::Entity)
+            .drop_table_auto(dijkstra::persist::core::conversation_transitions::Entity)
             .await?;
         manager
-            .drop_table_auto(bot_impl::persist::core::conversation_states::Entity)
+            .drop_table_auto(dijkstra::persist::core::conversation_states::Entity)
             .await?;
         manager
-            .drop_table_auto(bot_impl::persist::core::conversations::Entity)
+            .drop_table_auto(dijkstra::persist::core::conversations::Entity)
             .await?;
         manager
-            .drop_table_auto(bot_impl::persist::core::chat_members::Entity)
+            .drop_table_auto(dijkstra::persist::core::chat_members::Entity)
             .await?;
         Ok(())
     }

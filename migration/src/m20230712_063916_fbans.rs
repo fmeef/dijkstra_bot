@@ -1,4 +1,4 @@
-use bot_impl::persist::{
+use dijkstra::persist::{
     admin::{fbans, fedadmin, federations, gbans},
     core::{chat_members, dialogs, users},
     migrate::ManagerHelper,
