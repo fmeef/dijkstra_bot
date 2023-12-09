@@ -1,10 +1,10 @@
-use core::{panic};
 use std::{collections::HashMap, sync::RwLock};
 
 use convert_case::{Case, Casing};
 use include_dir::{include_dir, Dir};
 use lazy_static::lazy_static;
 use proc_macro::TokenStream;
+use proc_macro_crate::{crate_name, FoundCrate};
 use quote::{format_ident, quote, ToTokens};
 use serde::Deserialize;
 use syn::{
@@ -266,6 +266,17 @@ pub fn string_fmt(tokens: TokenStream) -> TokenStream {
     TokenStream::from(res)
 }
 
+fn get_current_crate() -> impl ToTokens {
+    let c = crate_name("bot_impl").expect("bot_impl crate not found");
+    match c {
+        FoundCrate::Itself => quote! { crate },
+        FoundCrate::Name(name) => {
+            let name = format_ident!("{}", name);
+            quote! { :: #name }
+        }
+    }
+}
+
 #[proc_macro]
 pub fn textentity_fmt(tokens: TokenStream) -> TokenStream {
     let input = parse_macro_input!(tokens as LangLocaleInput);
@@ -273,10 +284,10 @@ pub fn textentity_fmt(tokens: TokenStream) -> TokenStream {
     let ctx = input.ctx;
     let args = input.format;
     let m = get_entity_match(&ctx, key, args);
-
+    let c = get_current_crate();
     let res = quote! {
         {
-            let mut builder = crate::tg::markdown::EntityMessage::new(#ctx.try_get()?.chat.get_id());
+            let mut builder = #c ::tg::markdown::EntityMessage::new(#ctx.try_get()?.chat.get_id());
             #m;
             builder
         }
@@ -292,9 +303,10 @@ pub fn entity_fmt(tokens: TokenStream) -> TokenStream {
     let args = input.format;
     let m = get_entity_match(&ctx, key, args);
 
+    let c = get_current_crate();
     let res = quote! {
         {
-            let mut builder = crate::tg::markdown::EntityMessage::new(#ctx.try_get()?.chat.get_id());
+            let mut builder = #c ::tg::markdown::EntityMessage::new(#ctx.try_get()?.chat.get_id());
             #m;
             builder
         }
@@ -309,10 +321,10 @@ pub fn message_fmt(tokens: TokenStream) -> TokenStream {
     let ctx = input.ctx;
     let args = input.format;
     let m = get_match(&ctx, key, args);
-
+    let c = get_current_crate();
     let res = quote! {
         {
-            crate::statics::TG.client()
+            #c ::statics::TG.client()
                 .build_send_message(#ctx.try_get()?.chat.get_id(), &#m)
         }
     };
@@ -335,8 +347,8 @@ fn get_entity_match(ctx: &Expr, key: LitStr, args: Punctuated<Expr, Comma>) -> i
     if format.len() != args.len() {
         panic!("wrong number of arguments {:?} {}", format, args.len());
     }
-
-    let arms = STRINGS.iter() 
+    let c = get_current_crate();
+    let arms = STRINGS.iter()
           .map(|v| (v.to_case(Case::UpperCamel), v))
         .map(|(v,u)| {
             let v = format_ident!("{}", v);
@@ -344,18 +356,20 @@ fn get_entity_match(ctx: &Expr, key: LitStr, args: Punctuated<Expr, Comma>) -> i
             if let Some(format) = locale.langs.get(u.as_str()).unwrap().strings.get(&key.value()) {
                 let format = format.split("{}").collect::<Vec<&str>>();
                 quote! {
-                    crate::langs::Lang::#v => builder.builder #(.text(#format).regular(#idents.into()))*.text(#last).build()
+                    #c ::langs::Lang::#v => builder.builder #(.text(#format).regular(#idents.into()))*.text(#last).build()
                 }
             } else {
                 quote! {
-                    crate::langs::Lang::#v => builder.builder #(.text(#format).regular(#idents.into()))*.text(#last).build()
+                    #c ::langs::Lang::#v => builder.builder #(.text(#format).regular(#idents.into()))*.text(#last).build()
                 }
             }
         });
+
+    let c = get_current_crate();
     quote! {
         match #ctx.lang() {
             #( #arms ),*,
-            crate::langs::Lang::Invalid => ("invalid", &(*crate::tg::markdown::EMPTY_ENTITIES))
+            #c ::langs::Lang::Invalid => ("invalid", &(* #c ::tg::markdown::EMPTY_ENTITIES))
         }
     }
 }
@@ -370,31 +384,31 @@ fn get_match(language: &Expr, key: LitStr, args: Punctuated<Expr, Comma>) -> imp
         .get(&key.value())
         .expect("invalid resource");
 
-    let arms = STRINGS.iter()
-        .map(|thing| {
-            (
-                thing,
-                thing.to_case(Case::UpperCamel),
-            )
-        })
+    let c = get_current_crate();
+    let arms = STRINGS
+        .iter()
+        .map(|thing| (thing, thing.to_case(Case::UpperCamel)))
         .map(|(u, v)| (u, format_ident!("{}", v)))
         .map(|(u, v)| {
             let idents = args.iter();
             if let Some(format) = locale.langs.get(u).unwrap().strings.get(&key.value()) {
                 quote! {
-                    crate::langs::Lang::#v => format!(#format, #( #idents ),*)
+                    #c ::langs::Lang::#v => format!(#format, #( #idents ),*)
                 }
             } else {
                 quote! {
 
-                     crate::langs::Lang::#v => format!(#format, #( #idents ),*)
+                     #c ::langs::Lang::#v => format!(#format, #( #idents ),*)
                 }
             }
         });
+
+    let c = get_current_crate();
+
     quote! {
         match #language.lang() {
             #( #arms ),*,
-            crate::langs::Lang::Invalid => "invalid".to_owned()
+            #c ::langs::Lang::Invalid => "invalid".to_owned()
         }
     }
 }
@@ -413,10 +427,13 @@ pub fn lang_fmt(tokens: TokenStream) -> TokenStream {
 pub fn update_handler(_: TokenStream, item: TokenStream) -> TokenStream {
     let input = parse_macro_input!(item as syn::ItemFn);
     let name = &input.sig.ident;
+
+    let c = get_current_crate();
+
     quote! {
-        #input    
+        #input
         pub mod update_handler {
-            pub async fn handle_update(context: & crate::tg::command::Context) -> crate::util::error::Result<()> {
+            pub async fn handle_update(context: & #c ::tg::command::Context) -> #c ::util::error::Result<()> {
                 super:: #name (context).await
             }
         }
