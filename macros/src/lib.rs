@@ -16,7 +16,7 @@ use syn::{
     Expr, LitStr, Token,
 };
 
-static STRINGS_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/strings");
+static STRINGS_DIR: Dir<'_> = include_dir!("$DIJKSTRA_STRINGS_DIR");
 
 lazy_static! {
     static ref LOCALE: RwLock<Locale> = RwLock::new(get_locale());

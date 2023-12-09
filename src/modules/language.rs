@@ -46,7 +46,7 @@ async fn handle_terminal_state(current: Uuid, conv: Conversation, chat: i64) -> 
             }
         }
     } else {
-        log::warn!("setlang with invalid state");
+        log::info!("setlang with invalid state");
     }
     Ok(())
 }
@@ -64,7 +64,7 @@ async fn get_lang_conversation(message: &Message, current: &Lang) -> Result<Conv
 
     let start = state.get_start()?.state_id;
     get_langs().iter().for_each(|lang| {
-        log::warn!("supported lang: {:?}", lang);
+        // log::warn!("supported lang: {:?}", lang);
         let success = state.add_state(lang.into_code());
         state.add_transition(start, success, lang.into_code(), lang.into_code());
     });

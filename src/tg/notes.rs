@@ -210,8 +210,6 @@ pub fn handle_transition<'a>(
                         .ok_or_else(|| BotError::Generic("message missing".to_owned()))?,
                 )
                 .await?;
-        } else {
-            log::warn!("note missing!");
         }
 
         Ok(())

@@ -1,0 +1,2 @@
+[env]
+DIJKSTRA_STRINGS_DIR = { value = "./strings", relative=true, force=true }

@@ -285,7 +285,6 @@ fn insert_incorrect(
                 Ok(true)
             }
         } else {
-            log::warn!("message not found");
             Ok(true)
         }
     });
