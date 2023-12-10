@@ -107,7 +107,7 @@ notinfed: El chat {} no está en una federación. Utilice /joinfed como administ
   para unirse a uno
 notsupergroup: Este grupo debe actualizarse a un supergrupo.
 onlyone: Sólo se permite una federación por usuario
-permdenied: Permiso denegado, al usuario le falta el permiso "{}"
+permdenied: 'Permiso denegado: al usuario actual le falta el permiso "{}"'
 promote: Usuario prometido {}
 provebutton: Haga clic en el botón para demostrar que es administrador
 refreshac: Caché de administrador actualizada correctamente
@@ -117,7 +117,7 @@ reported: ¡Reporté al usuario {} a los administradores!
 reported_nomention: ¡Reportado a los administradores!
 resetwelcome: Configuración de bienvenida borrada
 restrict: Usuario restringido {}
-savednote: Nota guardada {} en el chat {}
+savednote: Nota guardada con nombre {} en el chat {}
 saverules: Reglas guardadas para el chat {{chatname}}
 sendsticker: Enviar una pegatina para subir
 setdefaultaction: Establecer acción predeterminada
@@ -149,7 +149,7 @@ taintmessage: 'El contenido que solicitó contiene medios de otro bot. Este medi
 
   el botón de actualización y reenviar los medios correctos al DM de este bot'
 taintreplace: Reemplazar
-taintupdatednote: La identificación del medio se ha actualizado para las notas {}.
+taintupdatednote: La identificación del medio se actualizó para {} notas.
 test: 'Anochecer no válido: {}'
 thing: cosa
 unapproved: Usuario no aprobado {}
@@ -168,15 +168,12 @@ warnmode: Establezca el modo de advertencia en {} para chatear {}
 warnmute: ¡Esas son {} advertencias! Usuario {} silenciado
 warnreason: '¡Yowzers! Usuario advertido {} con {}/{} advertencias
 
-  [*Razón:]
-
-  {}'
+  [*Razón:]'
 warns: 'Advertencias para el usuario {}:
 
   {}'
 warnsline: 'Razón: {}'
-welcome: Bienvenido a {}, un bot modular de administración de grupos escrito en pythonb
-  y asynctio
+welcome: Bienvenido a {}, un bot modular de gestión de grupos escrito en Rust
 welcomeinvalid: Argumento no válido, use encendido/apagado/sí/no
 wrongmediaid: Los medios que reenvió no son los medios originales.
-wrongmediatype: El medio que envió es del tipo incorrecto {}, debe ser {}
+wrongmediatype: El medio que envió es del tipo de medio incorrecto {}, debe ser {}

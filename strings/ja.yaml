@@ -11,7 +11,7 @@ banned: 禁止されたユーザー {}
 cachewait: 管理キャッシュは 10 分に 1 回のみ更新できます
 channeldenied: 匿名チャンネルは管理者ではないため、許可が拒否されました
 clearedlock: ロック「{}」をクリアしました
-clearnotes: チャット {} のメモをすべてクリアしました
+clearnotes: チャットのメモをすべてクリアしました {}
 cleartime: '{} の警告時間をクリアしました'
 clearwarns: ユーザー {} の警告をクリアしました
 commandnotfound: コマンドが見つかりません
@@ -94,12 +94,12 @@ norules: 'このチャットにはルールはありません。完全な無政�
   コース'
 notdm: このコマンドはDM内でのみ使用できます
 notfbanned: ユーザー {} は禁止されていません
-notfedadmin: あなたはフェデレーション {} のフェデラル管理者ではありません。 fban を発行できるのは fedadmins だけです
+notfedadmin: あなたはフェデレーション {} のフェデラル管理者ではありません。 fban を発行できるのは fedadmin だけです
 notfmember: このチャットはフィードのメンバーではありません
 notinfed: チャット {} はフェデレーションに属していません。 /joinfed を管理者として使用して参加します
 notsupergroup: このグループはスーパーグループにアップグレードする必要があります
 onlyone: ユーザーごとに許可されるフェデレーションは 1 つだけです
-permdenied: 権限が拒否されました。ユーザーには「{}」権限がありません
+permdenied: '権限が拒否されました: 現在のユーザーには「{}」権限がありません'
 promote: 昇格されたユーザー {}
 provebutton: ボタンをクリックして管理者であることを証明してください
 refreshac: 管理キャッシュが正常に更新されました
@@ -109,7 +109,7 @@ reported: ユーザー {} を管理者に報告しました。
 reported_nomention: 管理者に報告しました!
 resetwelcome: ウェルカム設定をクリアしました
 restrict: 制限されたユーザー {}
-savednote: チャット {} にメモ {} を保存しました
+savednote: チャット {} に {} という名前のメモを保存しました
 saverules: チャット {{chatname}} の保存済みルール
 sendsticker: ステッカーを送信してアップロードする
 setdefaultaction: デフォルトのアクションを設定する
@@ -138,7 +138,7 @@ taintmessage: 'リクエストしたコンテンツには、別のボットか�
 
   更新ボタンを押して、正しいメディアをこのボットの dm に転送してください'
 taintreplace: 交換する
-taintupdatednote: '{} ノートのメディア ID が更新されました'
+taintupdatednote: '{} ノートのメディア ID が更新されました。'
 test: '無効なマークダウン: {}'
 thing: もの
 unapproved: 未承認のユーザー {}
@@ -156,14 +156,12 @@ warnmode: チャット {} の警告モードを {} に設定します
 warnmute: それは {} の警告です。ユーザー {} がミュートされました
 warnreason: 'ヤウザーズ！ {}/{} の警告を持つユーザー {} に警告
 
-  [*理由：]
-
-  {}'
+  [*理由：]'
 warns: 'ユーザー {} に警告します:
 
   {}'
 warnsline: 理由： {}
-welcome: Pythonb と asynctio で書かれたモジュール式のグループ管理ボットである {} へようこそ
+welcome: Rust で書かれたモジュール式のグループ管理ボットである {} へようこそ
 welcomeinvalid: 引数が無効です。on/off/yes/no を使用してください
 wrongmediaid: 転送したメディアはオリジナルのメディアではありません。
-wrongmediatype: 送信したメディアのメディア タイプが間違っています {}。{} にする必要があります
+wrongmediatype: 送信したメディアは間違ったメディア タイプ {} です。{} にする必要があります

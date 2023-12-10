@@ -11,7 +11,7 @@ banned: 금지된 사용자 {}
 cachewait: 관리자 캐시는 10분마다 한 번만 새로 고칠 수 있습니다.
 channeldenied: 익명 채널은 관리자가 아니며 권한이 거부되었습니다.
 clearedlock: 잠금 "{}"이 지워졌습니다.
-clearnotes: '{} 채팅 메모를 모두 지웠습니다.'
+clearnotes: 채팅에 대한 모든 메모를 지웠습니다. {}
 cleartime: '{}에 대한 경고 시간이 지워졌습니다.'
 clearwarns: 사용자 {}에 대한 경고가 지워졌습니다.
 commandnotfound: 명령어를 찾을수 없음
@@ -58,8 +58,8 @@ gbanned: '잘 잤어요!
 
   사용자 {}가 {}에 대해 금지되었습니다.'
 getrules: 채팅 규칙 받기 {{rules}}
-helpbutton: 도움이 필요하면 클릭하세요!
-imported: 채팅을 위해 가져온 데이터 {}
+helpbutton: 도움이 필요하시면 저를 클릭해주세요!
+imported: 채팅용으로 가져온 데이터 {}
 invalid_help: 잘못된 도움말 페이지 {}
 invalidlang: 잘못된 언어가 선택되었습니다.
 joinfed: 채팅 {}을 위해 Feed {}에 가입했습니다.
@@ -80,7 +80,7 @@ lockwarn: '사용자 {{mention}}이(가) 경고했습니다!
   [*이유:]
 
   {}'
-muteadmin: 관리자를 음소거하지 않겠습니다
+muteadmin: 관리자를 음소거하지 않겠습니다.
 mutemyself: 나는 나 자신을 음소거하지 않을 것이다
 muteuser: 음소거된 사용자 {}
 nan: 숫자를 입력하세요
@@ -99,7 +99,7 @@ notfmember: 이 채팅은 Fed 회원이 아닙니다.
 notinfed: 채팅 {}이 페더레이션에 속하지 않습니다. /joinfed를 관리자로 사용하여 가입하세요.
 notsupergroup: 이 그룹은 슈퍼그룹으로 업그레이드되어야 합니다.
 onlyone: 사용자당 하나의 페더레이션만 허용됩니다.
-permdenied: 권한이 거부되었습니다. 사용자에게 "{}" 권한이 없습니다.
+permdenied: '권한 거부됨: 현재 사용자에게 "{}" 권한이 없습니다.'
 promote: 홍보된 사용자 {}
 provebutton: 버튼을 클릭하여 귀하가 관리자임을 증명하세요
 refreshac: 관리자 캐시를 새로 고쳤습니다.
@@ -109,7 +109,7 @@ reported: 사용자 {}을(를) 관리자에게 신고했습니다!
 reported_nomention: 관리자에게 신고했습니다!
 resetwelcome: 환영 구성을 지웠습니다.
 restrict: 제한된 사용자 {}
-savednote: 채팅 {}에 메모 {}를 저장했습니다.
+savednote: 채팅 {}에 이름이 {}인 메모를 저장했습니다.
 saverules: '{{chatname}} 채팅에 대한 저장된 규칙'
 sendsticker: 업로드할 스티커를 보내세요
 setdefaultaction: 기본 동작 설정
@@ -123,7 +123,7 @@ specifyuser: 사용자를 지정해야 합니다.
 startcmd: 사용 가능한 명령 목록을 얻으려면 /help를 보내십시오.
 subscribefed: 성공적으로 구독하여 {}를 {}에 제공했습니다.
 taintdelete: 삭제
-taintdetected: '채팅을 위해 가져온 데이터 {}
+taintdetected: '채팅용으로 가져온 데이터 {}
 
 
   으악! 가져온 데이터에는 다른 봇의 미디어가 포함되어 있습니다.
@@ -138,7 +138,7 @@ taintmessage: '요청한 콘텐츠에는 다른 봇의 미디어가 포함되어
 
   업데이트 버튼을 누르고 올바른 미디어를 이 봇의 DM으로 전달하세요.'
 taintreplace: 바꾸다
-taintupdatednote: '{} 메모의 미디어 ID가 업데이트되었습니다.'
+taintupdatednote: '{} 노트에 대한 미디어 ID가 업데이트되었습니다.'
 test: '잘못된 머크다운: {}'
 thing: 물건
 unapproved: 승인되지 않은 사용자 {}
@@ -156,14 +156,12 @@ warnmode: 채팅에 대해 경고 모드를 {}로 설정합니다. {}
 warnmute: 그것은 {} 경고입니다! 사용자 {}이 음소거되었습니다.
 warnreason: '요저! {}/{} 경고로 사용자 {}에게 경고함
 
-  [*이유:]
-
-  {}'
+  [*이유:]'
 warns: '사용자 {}에 대해 경고합니다.
 
   {}'
 warnsline: '이유: {}'
-welcome: pythonb 및 asynctio로 작성된 모듈식 그룹 관리 봇인 {}에 오신 것을 환영합니다.
+welcome: Rust로 작성된 모듈식 그룹 관리 봇인 {}에 오신 것을 환영합니다.
 welcomeinvalid: 잘못된 인수입니다. on/off/yes/no를 사용하세요.
 wrongmediaid: 전달한 미디어는 원본 미디어가 아닙니다.
-wrongmediatype: 보낸 미디어가 잘못된 미디어 유형 {}입니다. {}이어야 합니다.
+wrongmediatype: 보낸 미디어는 잘못된 미디어 유형입니다. {}. {}이어야 합니다.
