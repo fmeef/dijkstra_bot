@@ -76,11 +76,22 @@ pub struct Persistence {
 pub struct Config {
     /// telegram bot api token
     pub bot_token: String,
+    pub modules: Modules,
     pub persistence: Persistence,
     pub webhook: WebhookConfig,
     pub logging: LogConfig,
     pub timing: Timing,
     pub admin: Admin,
+}
+
+/// Configuration for loadable modules
+#[derive(Serialize, Deserialize)]
+pub struct Modules {
+    /// List of modules to disable
+    pub disabled: HashSet<String>,
+
+    /// Allowlist of modules to enable, overrides the disabled option
+    pub enabled: HashSet<String>,
 }
 
 /// Serializable timing config
@@ -97,6 +108,23 @@ pub struct Timing {
 
     /// how long to ignore chat when triggering antiflood
     pub ignore_chat_time: usize,
+}
+
+pub fn module_enabled(module: &str) -> bool {
+    if CONFIG.modules.enabled.len() == 0 {
+        !CONFIG.modules.disabled.contains(module)
+    } else {
+        CONFIG.modules.enabled.contains(module)
+    }
+}
+
+impl Default for Modules {
+    fn default() -> Self {
+        Self {
+            disabled: HashSet::new(),
+            enabled: HashSet::new(),
+        }
+    }
 }
 
 impl LogConfig {
@@ -157,6 +185,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             bot_token: "changeme".to_owned(),
+            modules: Modules::default(),
             persistence: Persistence::default(),
             logging: LogConfig::default(),
             webhook: WebhookConfig::default(),

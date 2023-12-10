@@ -1,5 +1,9 @@
 bot_token = 'changeme'
 
+[modules]
+disabled = [ "stickers" ]
+enabled = []
+
 [persistence]
 database_connection = 'postgresql://bobot:changeme@db/bobot'
 redis_connection = 'redis://redis'

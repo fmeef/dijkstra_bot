@@ -108,9 +108,9 @@ fn glob_docs<T: AsRef<str>>(spec: T, file_ext: &str) -> Vec<(String, Vec<(String
 }
 
 pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
-    let module_globs = glob_modules(&input, ".rs");
-    let module_globs = module_globs
-        .into_iter()
+    let module_names = glob_modules(&input, ".rs");
+    let module_globs = module_names
+        .iter()
         .map(|name| quote::format_ident!("{}", name))
         .collect::<Vec<Ident>>();
     let doc_globs = glob_docs(&input, ".mud");
@@ -178,18 +178,26 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
         }
 
         pub fn get_metadata() -> ::std::vec::Vec<crate::metadata::Metadata> {
-            vec![#(
-                 (*#modules::METADATA).clone()
-            ),*
-            ,#(
-                crate::metadata::Metadata {
+            let mut metadata = Vec::new();
+            #(
+                if crate::statics::module_enabled(#module_names) {
+                 metadata.push((*#modules::METADATA).clone());
+                }
+            )*
+
+            #(
+                if crate::statics::module_enabled(#module_names) {
+                metadata.push(crate::metadata::Metadata {
                         name: #doc_globs.to_owned(),
                         description: crate::metadata::markdownify(std::include_str!(#doc_names)),
                         commands: ::std::collections::HashMap::new(),
                         sections: #vecs,
                         state: None
-                    }
-            ),*]
+                    });
+                }
+            )*
+
+            metadata
         }
 
         pub async fn process_updates(
@@ -246,21 +254,23 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
                     };
                     match help {
                         Ok(false) => {#(
-                            if let Err(err) = #updates::update_handler::handle_update(&ctx).await {
-                                err.record_stats();
-                                match err.get_message().await {
-                                    Err(err) => {
-                                        log::error!("failed to send error message: {}, what the FLOOP", err);
-                                        err.record_stats();
-                                    }
-                                    Ok(v) => if ! v {
-                                        if let Some(chat) = ctx.chat() {
-                                            if let Err(err) = chat.speak(err.to_string()).await {
-                                                log::error!("triple fault! {}", err);
-                                            }
+                            if ! crate::statics::module_enabled(#module_names) {
+                                if let Err(err) = #updates::update_handler::handle_update(&ctx).await {
+                                    err.record_stats();
+                                    match err.get_message().await {
+                                        Err(err) => {
+                                            log::error!("failed to send error message: {}, what the FLOOP", err);
+                                            err.record_stats();
                                         }
+                                        Ok(v) => if ! v {
+                                            if let Some(chat) = ctx.chat() {
+                                                if let Err(err) = chat.speak(err.to_string()).await {
+                                                    log::error!("triple fault! {}", err);
+                                                }
+                                            }
 
-                                        log::error!("handle_update {} error: {}", #updates::METADATA.name, err);
+                                            log::error!("handle_update {} error: {}", #updates::METADATA.name, err);
+                                        }
                                     }
                                 }
                             }

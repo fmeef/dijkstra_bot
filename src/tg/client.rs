@@ -27,7 +27,7 @@ use super::{
 use crate::{
     metadata::{markdownify, Metadata},
     modules,
-    statics::ME,
+    statics::{module_enabled, ME},
     tg::{admin_helpers::IntoChatUser, markdown::MarkupBuilder},
     util::{
         callback::{MultiCallback, MultiCb, SingleCallback, SingleCb},
@@ -92,16 +92,19 @@ impl MetadataCollection {
         )?;
 
         let start = state.get_start()?.state_id;
-        self.modules.iter().for_each(|(_, n)| {
-            let s = state.add_state(self.get_module_text(&n.name));
-            state.add_transition(start, s, n.name.to_lowercase(), n.name.to_case(Case::Title));
-            state.add_transition(s, start, "back", "Back");
-            n.sections.iter().for_each(|(sub, content)| {
-                let sb = state.add_state(content);
-                state.add_transition(s, sb, sub.to_lowercase(), sub.to_case(Case::Title));
-                state.add_transition(sb, s, "back", "Back");
+        self.modules
+            .iter()
+            .filter(|p| module_enabled(p.0))
+            .for_each(|(_, n)| {
+                let s = state.add_state(self.get_module_text(&n.name));
+                state.add_transition(start, s, n.name.to_lowercase(), n.name.to_case(Case::Title));
+                state.add_transition(s, start, "back", "Back");
+                n.sections.iter().for_each(|(sub, content)| {
+                    let sb = state.add_state(content);
+                    state.add_transition(s, sb, sub.to_lowercase(), sub.to_case(Case::Title));
+                    state.add_transition(sb, s, "back", "Back");
+                });
             });
-        });
 
         let conversation = state.build();
         conversation.write_self().await?;
