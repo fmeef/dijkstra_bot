@@ -6,14 +6,17 @@ use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache};
 use crate::statics::{CONFIG, DB, REDIS};
 use crate::tg::admin_helpers::ban_message;
 use crate::tg::command::{Cmd, Context, TextArg, TextArgs};
+use crate::tg::dialog::is_chat_member;
 use crate::tg::permissions::*;
-use crate::tg::user::Username;
+use crate::tg::user::{get_user_username, Username};
 use crate::util::error::{BotError, Result};
 use crate::util::string::{get_chat_lang, Lang};
 use crate::{metadata::metadata, statics::TG, util::string::Speak};
 use botapi::gen_types::{Chat, Message, UpdateExt, User};
 use chrono::Duration;
 use entities::locks::LockType;
+use futures::future::BoxFuture;
+use futures::FutureExt;
 use lazy_static::__Deref;
 use macros::{lang_fmt, update_handler};
 use redis::AsyncCommands;
@@ -214,6 +217,10 @@ pub mod entities {
             Forward,
             #[sea_orm(num_value = 9)]
             Sticker,
+            #[sea_orm(num_value = 10)]
+            InviteLink,
+            #[sea_orm(num_value = 11)]
+            ExtUsers,
         }
 
         impl LockType {
@@ -228,6 +235,8 @@ pub mod entities {
                     Self::Command => "Bot commands",
                     Self::Forward => "Forwarded messages",
                     Self::Sticker => "Stickers",
+                    Self::InviteLink => "Links to groups or channels",
+                    Self::ExtUsers => "Users not participating in this chat",
                 }
             }
         }
@@ -277,14 +286,25 @@ impl MigrationName for MigrationActionType {
 }
 
 macro_rules! locks {
-    ( $( lock!( $name:expr, $description:expr, $lock:expr, $predicate:expr ) );* ) => {
+    ( $(
+        $( lock!( $name:expr, $description:expr, $lock:expr, $predicate:expr ) )?
+        $( async_lock!( $async_name:expr, $async_description:expr, $async_lock:expr, $async_predicate:expr ) )?
+    );+ ) => {
 
         static AVAILABLE_LOCKS: ::once_cell::sync::Lazy<::std::collections::HashMap<String, String>> =
                 ::once_cell::sync::Lazy::new(|| {
            let mut map = ::std::collections::HashMap::new();
             $(
+            $(
               map.insert($name.to_owned(), $description.to_owned());
+            )?
+
+
+            $(
+              map.insert($async_name.to_owned(), $async_description.to_owned());
+            )?
             )+
+
             map
         });
 
@@ -296,6 +316,7 @@ macro_rules! locks {
             match update {
                 UpdateExt::Message(ref message) => {
                     $(
+                    $(
                     update_action(
                         message,
                         $lock,
@@ -304,7 +325,21 @@ macro_rules! locks {
                         $predicate,
                     )
                     .await?;
+                    )?
+
+
+                    $(
+                    update_action_async(
+                        message,
+                        $async_lock,
+                        &mut action,
+                        &mut locks,
+                        $async_predicate,
+                    )
+                    .await?;
+                    )?
                     )+
+
                 }
                 _ => (),
             }
@@ -323,7 +358,10 @@ macro_rules! locks {
                     .map(|v| ActionType::from_str(v.get_text(), chat).ok())
                     .flatten();
                 let arg = match args.args.first() {
-                    $( Some(TextArg::Arg($name)) => Some($lock)),+,
+                    $(
+                    $( Some(TextArg::Arg($name)) => Some($lock))?
+                    $( Some(TextArg::Arg($async_name)) => Some($async_lock))?
+                    ),+
                     _ => None,
                 };
 
@@ -391,7 +429,10 @@ locks! {
     lock!("forward", "Forwarded messages", LockType::Forward, |message| {
         message.get_forward_from().is_some()
     });
-    lock!("sticker", "Stickers", LockType::Sticker, |message| message.get_sticker().is_some())
+    lock!("sticker", "Stickers", LockType::Sticker, |message| message.get_sticker().is_some());
+    async_lock!("invitelink", "Invite Links", LockType::InviteLink, |message| is_invite(message));
+    async_lock!("external_users", "External Users", LockType::ExtUsers, |message| is_out_of_chat_user(message));
+
 }
 
 pub fn get_lock_key(chat: i64, locktype: &LockType) -> String {
@@ -400,6 +441,87 @@ pub fn get_lock_key(chat: i64, locktype: &LockType) -> String {
 
 pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![Box::new(Migration), Box::new(MigrationActionType)]
+}
+
+fn is_tg_link<T: AsRef<str>>(url: T) -> bool {
+    let url = url.as_ref();
+    let url = url.strip_prefix("http://").unwrap_or(&url);
+    let url = url.strip_prefix("https://").unwrap_or(url);
+    return url.starts_with("t.me") || url.starts_with("tg://");
+}
+
+fn is_out_of_chat_user<'a>(message: &'a Message) -> BoxFuture<'a, Result<bool>> {
+    async move {
+        if let Some(entities) = message.get_entities_ref() {
+            for entity in entities {
+                match entity.get_tg_type_ref() {
+                    "text_mention" => {
+                        if let Some(user) = entity.get_user() {
+                            return Ok(
+                                !is_chat_member(user.get_id(), message.get_chat().get_id()).await?
+                            );
+                        }
+                    }
+                    "text_link" => {
+                        if let Some(url) = entity.get_url() {
+                            return Ok(is_tg_link(url));
+                        }
+                    }
+                    "mention" => {
+                        if let Some(user) = message.get_text() {
+                            let user = user.strip_prefix("@").unwrap_or(&user);
+                            return if let Some(user) = get_user_username(user).await? {
+                                Ok(!is_chat_member(user.get_id(), message.get_chat().get_id())
+                                    .await?)
+                            } else {
+                                Ok(true)
+                            };
+                        } else {
+                            return Ok(false);
+                        }
+                    }
+                    "url" => {
+                        if let Some(url) = message.get_text() {
+                            return Ok(is_tg_link(url));
+                        }
+                    }
+                    _ => (),
+                }
+            }
+        }
+        Ok(false)
+    }
+    .boxed()
+}
+
+fn is_invite<'a>(message: &'a Message) -> BoxFuture<'a, Result<bool>> {
+    async move {
+        if let Some(entities) = message.get_entities_ref() {
+            for entity in entities {
+                match entity.get_tg_type_ref() {
+                    "text_link" => {
+                        if let Some(url) = entity.get_url() {
+                            return Ok(is_tg_link(url));
+                        }
+                    }
+                    "mention" => {
+                        if let Some(user) = message.get_text() {
+                            //TODO: cache this manybe?
+                            return Ok(TG.client.get_chat(user.into_owned()).await.is_ok());
+                        }
+                    }
+                    "url" => {
+                        if let Some(url) = message.get_text() {
+                            return Ok(is_tg_link(url));
+                        }
+                    }
+                    _ => (),
+                }
+            }
+        }
+        Ok(false)
+    }
+    .boxed()
 }
 
 struct Helper;
@@ -720,6 +842,46 @@ where
             }
             log::info!("encountered locked media! {}", locktype.get_name());
             locks.push(locktype);
+        }
+    }
+    Ok(())
+}
+
+#[inline(always)]
+async fn update_action_async<F>(
+    message: &Message,
+    locktype: LockType,
+    action: &mut Option<ActionType>,
+    locks: &mut Vec<LockType>,
+    p: F,
+) -> Result<()>
+where
+    F: for<'b> FnOnce(&'b Message) -> BoxFuture<'b, Result<bool>>,
+{
+    match p(message).await {
+        Ok(true) => {
+            if let Some(newaction) = get_lock(message, locktype.clone()).await? {
+                let newaction = if let Some(action) = newaction.lock_action {
+                    Some(action)
+                } else {
+                    Some(
+                        get_default_settings(message.get_chat_ref())
+                            .await?
+                            .lock_action,
+                    )
+                };
+
+                if newaction > *action {
+                    *action = newaction;
+                }
+                log::info!("encountered locked media! {}", locktype.get_name());
+                locks.push(locktype);
+            }
+        }
+        Ok(false) => (),
+        Err(err) => {
+            log::info!("lock error for {}", locktype.get_name());
+            err.record_stats();
         }
     }
 

@@ -1505,7 +1505,7 @@ impl EntityMessage {
         self
     }
 
-    pub async fn call<'a>(&'a mut self) -> CallSendMessage<'a> {
+    pub async fn call<'a>(&'a mut self) -> CallSendMessage<'a, i64> {
         if self.disable_murkdown {
             let call = TG
                 .client
