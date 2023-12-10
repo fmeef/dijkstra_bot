@@ -231,7 +231,7 @@ impl TgClient {
         };
         let token = token.into();
         Self {
-            client: Bot::new(token.clone()).unwrap(),
+            client: Bot::new_auto_wait(token.clone(), true).unwrap(),
             token,
             modules: Arc::new(metadata),
             button_events: Arc::new(DashMap::new()),

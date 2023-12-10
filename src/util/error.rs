@@ -284,6 +284,13 @@ impl BotError {
                 if let Some(error_code) = error.error_code {
                     crate::persist::metrics::count_error_code(error_code);
                 }
+                if let Some(ref extra) = error.floods {
+                    for error in extra {
+                        if let Some(error_code) = error.error_code {
+                            crate::persist::metrics::count_error_code(error_code);
+                        }
+                    }
+                }
             }
         }
     }
