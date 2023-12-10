@@ -306,7 +306,8 @@ fn get_choices<'a>(
 ) -> Vec<InlineKeyboardButton> {
     let mut rng = thread_rng();
     let mut res = Vec::<InlineKeyboardButton>::with_capacity(times);
-    let pos = rng.gen_range(0..times);
+    let pos = rng.gen_range(0..=times);
+    log::info!("selected captcha correct pos {}", pos);
     let incorrect_chat = unmute_chat.get_id();
     for _ in 0..pos {
         insert_incorrect(
