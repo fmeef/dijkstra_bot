@@ -3,23 +3,33 @@ addfilter: 필터 {}를 추가했습니다.
 anonban: 익명 채널은 사용자를 fban할 수 없습니다.
 anonfed: 익명 채널은 페더레이션을 생성할 수 없습니다.
 approved: 승인된 사용자 {}
+backtochat: 채팅으로 돌아가기
 baddm: 이 명령은 DM에서는 작동하지 않습니다
 banadmin: 관리자를 차단하지 않겠습니다
 banchat: 금지된 익명 채널 {}, 그들은 말할 수 없지만 여전히 어딘가에 숨어 있습니다...
 banmyself: 나는 나 자신을 금지하지 않을 것이다
 banned: 금지된 사용자 {}
 cachewait: 관리자 캐시는 10분마다 한 번만 새로 고칠 수 있습니다.
+captcha: 보안 문자
+captchamode: 보안 문자 모드를 {}로 설정
+captchanotauthorized: 이 보안문자를 완료할 권한이 없습니다.
+captchanotenabled: 보안 문자가 활성화되지 않았습니다
+captchawarning: 이 보안 문자를 올바르게 풀지 않으면 밈적 살해 인자에 의해 제거됩니다
 channeldenied: 익명 채널은 관리자가 아니며 권한이 거부되었습니다.
 clearedlock: 잠금 "{}"이 지워졌습니다.
 clearnotes: 채팅에 대한 모든 메모를 지웠습니다. {}
 cleartime: '{}에 대한 경고 시간이 지워졌습니다.'
 clearwarns: 사용자 {}에 대한 경고가 지워졌습니다.
 commandnotfound: 명령어를 찾을수 없음
+correctchoice: 올바른 선택!
 currentlang: 목록에서 언어를 선택하세요
 defaultgoodbye: 안녕히 계세요 {{멘션}}
 defaultwelcome: 안녕하세요. {{mention}}, {{chatname}}에 오신 것을 환영합니다.
 demote: 강등된 사용자 {}
+disabledcaptcha: 비활성화된 보안문자
+disablekick: 보안 문자 킥이 비활성화되었습니다.
 dmhelp: 도움이 필요하시면 오후에 저에게 연락해주세요!
+enablekick: 보안 문자 킥을 활성화했습니다. 보안 문자를 풀지 못한 사용자는 그룹에서 제거됩니다.
 erranonchannelfed: 익명 채널은 피드를 소유할 수 없습니다. 기본 계정에서 이 명령을 실행해 보세요.
 failban: '사용자를 차단하지 못했습니다. 지난 48시간 동안 해당 사용자와 상호작용하지 않았습니다. 그들의 메시지 중 하나를 나에게 전달해주세요
 
@@ -60,7 +70,9 @@ gbanned: '잘 잤어요!
 getrules: 채팅 규칙 받기 {{rules}}
 helpbutton: 도움이 필요하시면 저를 클릭해주세요!
 imported: 채팅용으로 가져온 데이터 {}
+incorrect: 잘못된 선택입니다. 시도 횟수가 {}회 남았습니다.
 invalid_help: 잘못된 도움말 페이지 {}
+invalidargument: 잘못된 명령입니다. "on" 또는 "off"를 사용하십시오.
 invalidlang: 잘못된 언어가 선택되었습니다.
 joinfed: 채팅 {}을 위해 Feed {}에 가입했습니다.
 kickadmin: 나는 관리자를 쫓아낼 생각이 없습니다
@@ -97,9 +109,13 @@ notfbanned: 사용자 {}이(가) 금지되지 않았습니다.
 notfedadmin: 귀하는 페더레이션 {}의 fedadmin이 아닙니다. fedadmin만 fban을 발행할 수 있습니다.
 notfmember: 이 채팅은 Fed 회원이 아닙니다.
 notinfed: 채팅 {}이 페더레이션에 속하지 않습니다. /joinfed를 관리자로 사용하여 가입하세요.
+notries: 남은 시도 없음
+notrieskick: 더 이상 시도할 수 없습니다. 채팅에서 쫓겨났습니다.
+notrieskickchat: 더 이상 시도할 수 없습니다. 귀하는 {}에서 쫓겨났습니다.
 notsupergroup: 이 그룹은 슈퍼그룹으로 업그레이드되어야 합니다.
 onlyone: 사용자당 하나의 페더레이션만 허용됩니다.
 permdenied: '권한 거부됨: 현재 사용자에게 "{}" 권한이 없습니다.'
+pressme: 음소거를 해제하려면 저를 누르세요.
 promote: 홍보된 사용자 {}
 provebutton: 버튼을 클릭하여 귀하가 관리자임을 증명하세요
 refreshac: 관리자 캐시를 새로 고쳤습니다.
@@ -118,6 +134,7 @@ setlang: 언어를 설정했습니다.
 setlock: 채팅 "{}"에 대해 잠금 "{}" 설정
 setlockaction: 잠금 동작을 "{}"로 설정
 setwelcome: 그룹 환영을 {}으로 설정
+solvecaptcha: 계속하려면 이 보안문자를 풀어보세요.
 specifytime: 이 명령에 대한 시간을 지정해야 합니다.
 specifyuser: 사용자를 지정해야 합니다.
 startcmd: 사용 가능한 명령 목록을 얻으려면 /help를 보내십시오.
@@ -148,6 +165,7 @@ unfban: 금지되지 않은 사용자 {}
 unfbanperm: unfban을 사용하려면 fedadmin이어야 합니다.
 unmuteuser: 음소거 해제된 사용자 {}
 usernotfound: 사용자를 찾을 수 없습니다. 최근에 본 사용자만 상호작용할 수 있습니다.
+userunmuted: 사용자가 음소거 해제되었습니다.
 warn: 'Yowzers!: {}/{} 경고로 사용자 {}에게 경고했습니다.'
 warnadmin: 나는 관리자에게 경고하지 않을 것입니다! 도대체 도대체 뭐야?
 warnban: 그것은 {} 경고입니다! 사용자 {}이(가) 금지되었습니다.

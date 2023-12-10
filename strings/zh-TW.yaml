@@ -3,23 +3,33 @@ addfilter: 添加了過濾器 {}
 anonban: 匿名管道不能禁止用戶
 anonfed: 匿名頻道無法建立聯盟
 approved: 已批准的使用者{}
+backtochat: 返回聊天
 baddm: 該指令在 dm 中不起作用
 banadmin: 我不會禁止管理員
 banchat: 匿名頻道 {} 已被禁止，他們將無法說話，但仍潛伏在某處...
 banmyself: 我不會禁止自己
 banned: 被禁止的使用者 {}
 cachewait: 管理快取只能每 10 分鐘刷新一次
+captcha: 驗證碼
+captchamode: 將驗證碼模式設定為 {}
+captchanotauthorized: 您無權完成此驗證碼。
+captchanotenabled: 驗證碼未啟用
+captchawarning: 如果您沒有正確解決此驗證碼，您將被模因殺劑終止
 channeldenied: 匿名頻道不是管理員，權限被拒絕
 clearedlock: 清除鎖“{}”
 clearnotes: 清除了所有聊天記錄{}
 cleartime: 已清除 {} 的警告時間
 clearwarns: 已清除使用者 {} 的警告
 commandnotfound: 找不到指令
+correctchoice: 正確的選擇！
 currentlang: 從清單中選擇一種語言
 defaultgoodbye: 再見{{提及}}
 defaultwelcome: 您好{{mention}}，歡迎來到{{chatname}}
 demote: 已降級的使用者 {}
+disabledcaptcha: 停用驗證碼
+disablekick: 禁用驗證碼踢。
 dmhelp: 請pm聯繫我尋求協助！
+enablekick: 啟用驗證碼踢。未能解決驗證碼的用戶將被從群組中刪除。
 erranonchannelfed: 匿名頻道不能擁有聯邦調查局。嘗試從您的主帳戶執行此命令
 failban: '未能禁止用戶，我在過去 48 小時內沒有與他們互動。請向我轉發他們的一則訊息
 
@@ -60,7 +70,9 @@ gbanned: '甩掉包袱！
 getrules: 取得聊天規則{{rules}}
 helpbutton: 點我尋求幫助！
 imported: 匯入的聊天資料{}
+incorrect: 選擇不正確，您還剩 {} 次嘗試
 invalid_help: 幫助頁面無效{}
+invalidargument: 無效命令，請使用“on”或“off”
 invalidlang: 選擇的語言無效
 joinfed: 已加入 feed {} 進行聊天 {}
 kickadmin: 我不會踢管理員
@@ -97,9 +109,13 @@ notfbanned: 使用者 {} 未被禁止
 notfedadmin: 您不是聯邦 {} 中的聯邦管理員。只有聯邦管理員才能發布 fban
 notfmember: 此聊天不是聯邦成員
 notinfed: 聊天 {} 不在聯合中。使用 /joinfed 作為管理員加入其中
+notries: 沒有剩餘嘗試次數
+notrieskick: 沒有剩餘的嘗試機會，您已被踢出聊天室。
+notrieskickchat: 沒有剩餘的嘗試機會，您已從 {} 中踢出
 notsupergroup: 該組必須升級為超級組
 onlyone: 每個使用者僅允許一個聯盟
 permdenied: 權限被拒絕：目前使用者缺少“{}”權限
+pressme: 按我取消靜音！
 promote: 晉升用戶{}
 provebutton: 點擊按鈕以證明您是管理員
 refreshac: 成功刷新管理快取
@@ -118,6 +134,7 @@ setlang: 設定語言成功
 setlock: 為聊天“{}”設定鎖定“{}”
 setlockaction: 將鎖定操作設為“{}”
 setwelcome: 設定群組歡迎加入 {}
+solvecaptcha: 解決此驗證碼以繼續
 specifytime: 您需要指定執行此命令的時間
 specifyuser: 您需要指定一個用戶
 startcmd: 發送 /help 以取得可用命令的列表
@@ -148,6 +165,7 @@ unfban: 解除封鎖的使用者 {}
 unfbanperm: 您需要成為聯邦管理員才能取消聯邦禁令
 unmuteuser: 取消靜音的使用者 {}
 usernotfound: 未找到用戶。只有最近見過的用戶才能與之互動
+userunmuted: 用戶已取消靜音！
 warn: Yowzers!：警告使用者 {}，並發出 {}/{} 警告
 warnadmin: 我不會警告管理員！到底是什麼鬼啊
 warnban: 這是 {} 條警告！使用者 {} 被禁止

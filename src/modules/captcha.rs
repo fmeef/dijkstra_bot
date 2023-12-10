@@ -14,7 +14,7 @@ use crate::util::string::Speak;
 use base64::engine::general_purpose;
 use base64::Engine;
 use botapi::gen_types::{Chat, User};
-use macros::update_handler;
+use macros::{lang_fmt, update_handler};
 use redis::AsyncCommands;
 use sea_orm_migration::MigrationName;
 use uuid::Uuid;
@@ -44,14 +44,14 @@ async fn captchakick_cmd<'a>(ctx: &Context, args: &'a TextArgs<'a>) -> Result<()
     match args.as_slice() {
         ArgSlice { text: "off", .. } => {
             ctx.captchakick(None).await?;
-            message.reply("Disabled captcha kick").await?;
+            message.reply(lang_fmt!(ctx, "enablekick")).await?;
         }
         slice => {
             if let Some(time) = ctx.parse_duration(&Some(slice))? {
                 ctx.captchakick(Some(time.num_seconds())).await?;
-                message.reply("Enabled captcha kick").await?;
+                message.reply(lang_fmt!(ctx, "disablekick")).await?;
             } else {
-                message.reply("Invalid argument").await?;
+                message.reply(lang_fmt!(ctx, "invalidargument")).await?;
             }
         }
     }
@@ -99,7 +99,7 @@ async fn handle_command<'a>(ctx: &Context) -> Result<()> {
                                 send_captcha(message, cchat, ctx).await?;
                             }
                         } else {
-                            ctx.reply("Not authorized to complete this captcha").await?;
+                            ctx.reply(lang_fmt!(ctx, "captchanotauthorized")).await?;
                         }
                     }
                 }

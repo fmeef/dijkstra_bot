@@ -3,23 +3,33 @@ addfilter: フィルタを追加しました {}
 anonban: 匿名チャネルはユーザーを禁止できません
 anonfed: 匿名チャネルはフェデレーションを作成できません
 approved: 承認されたユーザー {}
+backtochat: チャットに戻る
 baddm: このコマンドはDMでは機能しません
 banadmin: 管理者を禁止するつもりはありません
 banchat: 匿名チャンネル {} は禁止されました。彼らは話すことはできませんが、まだどこかに潜んでいます...
 banmyself: 自分自身を禁止するつもりはありません
 banned: 禁止されたユーザー {}
 cachewait: 管理キャッシュは 10 分に 1 回のみ更新できます
+captcha: キャプチャ
+captchamode: キャプチャ モードを {} に設定します
+captchanotauthorized: このキャプチャを完了する権限がありません。
+captchanotenabled: キャプチャが有効になっていません
+captchawarning: このキャプチャを正しく解決しないと、ミーム キル エージェントによって終了されます。
 channeldenied: 匿名チャンネルは管理者ではないため、許可が拒否されました
 clearedlock: ロック「{}」をクリアしました
 clearnotes: チャットのメモをすべてクリアしました {}
 cleartime: '{} の警告時間をクリアしました'
 clearwarns: ユーザー {} の警告をクリアしました
 commandnotfound: コマンドが見つかりません
+correctchoice: 正しい選択です！
 currentlang: リストから言語を選択してください
 defaultgoodbye: さようなら{{メンション}}
 defaultwelcome: こんにちは、{{mention}}、{{chatname}} へようこそ
 demote: 降格されたユーザー {}
+disabledcaptcha: 無効化されたキャプチャ
+disablekick: キャプチャキックを無効にしました。
 dmhelp: 助けが必要な場合は午後に連絡してください。
+enablekick: キャプチャキックを有効にしました。キャプチャの解決に失敗したユーザーはグループから削除されます。
 erranonchannelfed: 匿名チャネルはフィードを所有できません。メインアカウントからこのコマンドを実行してみてください
 failban: 'ユーザーを禁止できませんでした。過去 48 時間、ユーザーとやり取りしていません。彼らのメッセージを私に転送してください
 
@@ -60,7 +70,9 @@ gbanned: 'いい厄介払い！
 getrules: チャット ルールを取得します {{rules}}
 helpbutton: クリックして助けてください！
 imported: チャット用にインポートされたデータ {}
+incorrect: 選択が間違っています。残りの試行回数は {} 回です
 invalid_help: 無効なヘルプ ページ {}
+invalidargument: 無効なコマンドです。「on」または「off」を使用してください。
 invalidlang: 無効な言語が選択されました
 joinfed: フィード {} のチャット {} に参加しました
 kickadmin: 管理者を追い出すつもりはない
@@ -97,9 +109,13 @@ notfbanned: ユーザー {} は禁止されていません
 notfedadmin: あなたはフェデレーション {} のフェデラル管理者ではありません。 fban を発行できるのは fedadmin だけです
 notfmember: このチャットはフィードのメンバーではありません
 notinfed: チャット {} はフェデレーションに属していません。 /joinfed を管理者として使用して参加します
+notries: 残りの試行回数はありません
+notrieskick: 残りの試行回数はなくなりました。チャットから除外されました。
+notrieskickchat: 残りの試行回数はありません。{} から追い出されています
 notsupergroup: このグループはスーパーグループにアップグレードする必要があります
 onlyone: ユーザーごとに許可されるフェデレーションは 1 つだけです
 permdenied: '権限が拒否されました: 現在のユーザーには「{}」権限がありません'
+pressme: ミュートを解除するには私を押してください!
 promote: 昇格されたユーザー {}
 provebutton: ボタンをクリックして管理者であることを証明してください
 refreshac: 管理キャッシュが正常に更新されました
@@ -118,6 +134,7 @@ setlang: 言語が正常に設定されました
 setlock: チャット「{}」にロック「{}」を設定する
 setlockaction: ロックアクションを「{}」に設定します
 setwelcome: グループへのようこそを {} に設定します
+solvecaptcha: 続行するにはこのキャプチャを解決してください
 specifytime: このコマンドには時間を指定する必要があります
 specifyuser: ユーザーを指定する必要があります
 startcmd: /help を送信して、使用可能なコマンドのリストを取得します
@@ -148,6 +165,7 @@ unfban: 禁止されていないユーザー {}
 unfbanperm: FBAN を解除するには、Fedadmin である必要があります
 unmuteuser: ミュートを解除したユーザー {}
 usernotfound: ユーザーが見つかりません。最近見たユーザーのみと対話できます
+userunmuted: ユーザーのミュートが解除されました!
 warn: 'Yowzers!: ユーザー {} と {}/{} の警告を警告しました'
 warnadmin: 管理者に警告するつもりはありません。なんてことだ、まったく
 warnban: それは {} の警告です。ユーザー {} が禁止されました

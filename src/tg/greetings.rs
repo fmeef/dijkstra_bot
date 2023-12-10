@@ -43,6 +43,7 @@ use super::command::Context;
 use super::markdown::get_markup_for_buttons;
 use super::notes::handle_transition;
 use super::permissions::{IsAdmin, IsGroupAdmin};
+use super::user::{GetChat, Username};
 
 pub fn auth_key(chat: i64) -> String {
     format!("cauth:{}", chat)
@@ -240,6 +241,7 @@ async fn incorrect_tries(callback: &CallbackQuery, incorrect_chat: i64) -> Resul
 }
 
 fn insert_incorrect(
+    ctx: &Context,
     res: &mut Vec<InlineKeyboardButton>,
     correct: &str,
     supported: &Vec<char>,
@@ -255,37 +257,45 @@ fn insert_incorrect(
     let s = InlineKeyboardButtonBuilder::new(s)
         .set_callback_data(Uuid::new_v4().to_string())
         .build();
-    s.on_push_multi(move |callback| async move {
-        if let Some(message) = callback.get_message() {
-            let count = 3 - incorrect_tries(&callback, unmute_chat).await?;
-            if count > 0 {
-                TG.client
-                    .build_answer_callback_query(callback.get_id_ref())
-                    .show_alert(true)
-                    .text(&format!("Incorect, tries remaining {}", count))
-                    .build()
-                    .await?;
-                Ok(false)
+    let ctx = ctx.clone();
+    s.on_push_multi(move |callback| {
+        let ctx = ctx.clone();
+        async move {
+            if let Some(message) = callback.get_message() {
+                let count = 3 - incorrect_tries(&callback, unmute_chat).await?;
+                if count > 0 {
+                    TG.client
+                        .build_answer_callback_query(callback.get_id_ref())
+                        .show_alert(true)
+                        .text(&lang_fmt!(ctx, "incorrect", count))
+                        .build()
+                        .await?;
+                    Ok(false)
+                } else {
+                    TG.client
+                        .build_answer_callback_query(callback.get_id_ref())
+                        .show_alert(true)
+                        .text(&lang_fmt!(ctx, "notries"))
+                        .build()
+                        .await?;
+                    kick(callback.get_from().get_id(), unmute_chat).await?;
+                    if let Some(chat) = unmute_chat.get_chat().await? {
+                        message
+                            .speak(lang_fmt!(ctx, "notrieskickchat", chat.name_humanreadable()))
+                            .await?;
+                    } else {
+                        message.speak(lang_fmt!(ctx, "notrieskick")).await?;
+                    }
+                    TG.client
+                        .build_delete_message(message.get_chat().get_id(), message.get_message_id())
+                        .build()
+                        .await?;
+                    reset_incorrect_tries(&callback.get_from(), unmute_chat).await?;
+                    Ok(true)
+                }
             } else {
-                TG.client
-                    .build_answer_callback_query(callback.get_id_ref())
-                    .show_alert(true)
-                    .text("No tries remaining")
-                    .build()
-                    .await?;
-                kick(callback.get_from().get_id(), unmute_chat).await?;
-                message
-                    .speak("No tries remaining, you have been kicked from the chat")
-                    .await?;
-                TG.client
-                    .build_delete_message(message.get_chat().get_id(), message.get_message_id())
-                    .build()
-                    .await?;
-                reset_incorrect_tries(&callback.get_from(), unmute_chat).await?;
                 Ok(true)
             }
-        } else {
-            Ok(true)
         }
     });
     res.push(s);
@@ -311,6 +321,7 @@ fn get_choices<'a>(
     let incorrect_chat = unmute_chat.get_id();
     for _ in 0..pos {
         insert_incorrect(
+            &ctx,
             &mut res,
             correct.as_str(),
             supported,
@@ -322,14 +333,14 @@ fn get_choices<'a>(
     let correct_button = InlineKeyboardButtonBuilder::new(correct.clone())
         .set_callback_data(Uuid::new_v4().to_string())
         .build();
-    let ctx = ctx.clone();
+    let c = ctx.clone();
     correct_button.on_push(move |callback| async move {
         if let Some(message) = callback.get_message() {
             if let Some(link) = get_invite_link(&unmute_chat).await? {
                 let mut button = InlineKeyboardBuilder::default();
 
                 button.button(
-                    InlineKeyboardButtonBuilder::new("Back to chat".to_owned())
+                    InlineKeyboardButtonBuilder::new(lang_fmt!(c, "backtochat"))
                         .set_url(link)
                         .build(),
                 );
@@ -338,7 +349,7 @@ fn get_choices<'a>(
 
                 TG.client()
                     .build_edit_message_caption()
-                    .caption("Correct choice!")
+                    .caption(&lang_fmt!(c, "correctchoice"))
                     .message_id(message.get_message_id())
                     .chat_id(message.get_chat().get_id())
                     .reply_markup(&button)
@@ -347,13 +358,13 @@ fn get_choices<'a>(
             } else {
                 TG.client()
                     .build_edit_message_caption()
-                    .caption("Correct choice!")
+                    .caption(&lang_fmt!(c, "correctchoice"))
                     .message_id(message.get_message_id())
                     .chat_id(message.get_chat().get_id())
                     .build()
                     .await?;
             }
-            ctx.authorize_user(callback.get_from().get_id(), &unmute_chat)
+            c.authorize_user(callback.get_from().get_id(), &unmute_chat)
                 .await?;
             reset_incorrect_tries(&callback.get_from(), unmute_chat.get_id()).await?;
         }
@@ -368,6 +379,7 @@ fn get_choices<'a>(
 
     for _ in (pos + 1)..times {
         insert_incorrect(
+            &ctx,
             &mut res,
             correct.as_str(),
             supported,
@@ -396,7 +408,7 @@ pub async fn send_captcha<'a>(message: &Message, unmute_chat: Chat, ctx: &Contex
             message.get_chat().get_id(),
             botapi::gen_types::FileData::Bytes(bytes),
         )
-        .caption("If you do not solve this captcha correctly you will be terminated by memetic kill agent")
+        .caption(&lang_fmt!(ctx, "captchawarning"))
         .reply_to_message_id(message.get_message_id())
         .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
             builder.build(),
@@ -415,7 +427,7 @@ async fn button_captcha<'a>(
     entities: Vec<MessageEntity>,
     buttons: Option<InlineKeyboardBuilder>,
 ) -> Result<()> {
-    let unmute_button = InlineKeyboardButtonBuilder::new("Press me to unmute".to_owned())
+    let unmute_button = InlineKeyboardButtonBuilder::new(lang_fmt!(ctx, "pressme"))
         .set_callback_data(Uuid::new_v4().to_string())
         .build();
     let bctx = ctx.clone();
@@ -424,7 +436,7 @@ async fn button_captcha<'a>(
             .await?;
         if let Some(message) = callback.get_message() {
             message
-                .speak("User unmuted!")
+                .speak(lang_fmt!(bctx, "userunmuted"))
                 .await?
                 .delete_after_time(Duration::minutes(5));
         }
@@ -479,7 +491,7 @@ async fn send_captcha_chooser(
     let url = get_captcha_url(chat, user).await?;
     let mut button = InlineKeyboardBuilder::default();
     button.button(
-        InlineKeyboardButtonBuilder::new("Captcha".to_owned())
+        InlineKeyboardButtonBuilder::new(lang_fmt!(ctx, "captcha"))
             .set_url(url)
             .build(),
     );
@@ -489,7 +501,7 @@ async fn send_captcha_chooser(
     } else {
         let nm = TG
             .client()
-            .build_send_message(chat.get_id(), "Solve this captcha to continue")
+            .build_send_message(chat.get_id(), &lang_fmt!(ctx, "solvecaptcha"))
             .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(button.build()))
             .build()
             .await?;
@@ -659,7 +671,7 @@ impl Context {
             .await?;
 
         REDIS.sq(|q| q.del(&key)).await?;
-        message.reply("disabled captcha").await?;
+        message.reply(lang_fmt!(self, "disabledcaptcha")).await?;
         Ok(())
     }
 
@@ -694,10 +706,11 @@ impl Context {
         let key = captcha_state_key(message.get_chat_ref());
         if let Ok(model) = captchastate::Entity::update(model).exec(DB.deref()).await {
             log::info!("set captcha mode {:?}", model.captcha_type);
+            let name = model.captcha_type.get_name();
             model.cache(key).await?;
-            message.reply("mode set").await?;
+            message.reply(lang_fmt!(self, "captchamode", name)).await?;
         } else {
-            message.reply("captcha is not enabled").await?;
+            message.reply(lang_fmt!(self, "captchanotenabled")).await?;
         }
         Ok(())
     }

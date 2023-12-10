@@ -188,3 +188,22 @@ taintdetected: |
   WHOOPS! Your imported data contains media from another bot. 
   Use /taint to list this media and /fixtaint to replace it.
 imported: Imported data for chat {}
+enablekick: Enabled captcha kick. Users will be removed from the group after failing to solve the captcha.
+disablekick: Disabled captcha kick.
+invalidargument: Invalid command, please use "on" or "off"
+captchanotauthorized: You are not authorized to complete this captcha.
+notrieskickchat: No more attempts remaining, you have been kicked from {}
+notrieskick: No more attempts remaining, you have been kicked from the chat.
+correctchoice: Correct choice!
+backtochat: Back to chat
+notries: No attempts remaining
+incorrect: Incorrect choice, you have {} tries remaining
+captchawarning: If you do not solve this captcha correctly you will be terminated by memetic kill agent
+pressme: Press me to unmute yourself!
+userunmuted: User unmuted!
+solvecaptcha: Solve this captcha to continue
+captcha: Captcha
+disabledcaptcha: Disabled captcha
+captchamode: Set captcha mode to {}
+captchanotenabled: Captcha is not enabled
+

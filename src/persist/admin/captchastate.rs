@@ -22,6 +22,13 @@ impl CaptchaType {
             _ => Err(BotError::speak("Invalid button type", chat)),
         }
     }
+
+    pub fn get_name(&self) -> &'static str {
+        match self {
+            Self::Button => "Button",
+            Self::Text => "Text",
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]

@@ -3,6 +3,7 @@ addfilter: Filtro agregado {}
 anonban: Los canales anónimos no pueden bloquear a los usuarios
 anonfed: Los canales anónimos no pueden crear federaciones
 approved: Usuario aprobado {}
+backtochat: Volver al chat
 baddm: Este comando no funciona en un dm
 banadmin: No voy a banear a un administrador.
 banchat: Canal anónimo prohibido {}, no podrán hablar pero siguen acechando por algún
@@ -10,17 +11,28 @@ banchat: Canal anónimo prohibido {}, no podrán hablar pero siguen acechando po
 banmyself: no me voy a prohibir
 banned: Usuario prohibido {}
 cachewait: La caché de administrador solo se puede actualizar una vez cada 10 minutos.
+captcha: Captcha
+captchamode: Establecer el modo captcha en {}
+captchanotauthorized: No estás autorizado a completar este captcha.
+captchanotenabled: Captcha no está habilitado
+captchawarning: Si no resuelves este captcha correctamente, el agente asesino memético
+  te eliminará.
 channeldenied: El canal anónimo no es administrador, permiso denegado
 clearedlock: Bloqueo borrado "{}"
 clearnotes: Se borraron todas las notas del chat {}
 cleartime: Hora de advertencia borrada para {}
 clearwarns: Advertencias borradas para el usuario {}
 commandnotfound: Comando no encontrado
+correctchoice: ¡Elección correcta!
 currentlang: Elija un idioma de la lista
 defaultgoodbye: Adiós {{mencionar}}
 defaultwelcome: Hola, {{mention}}, bienvenido a {{chatname}}
 demote: Usuario degradado {}
+disabledcaptcha: Captcha deshabilitado
+disablekick: Patada de captcha deshabilitada.
 dmhelp: ¡Contáctame por la tarde para obtener ayuda!
+enablekick: Patada de captcha habilitada. Los usuarios serán eliminados del grupo
+  si no logran resolver el captcha.
 erranonchannelfed: Los canales anónimos no pueden ser propietarios de federales. Intente
   ejecutar este comando desde su cuenta principal
 failban: 'No se pudo prohibir al usuario. No he interactuado con él en las últimas
@@ -64,7 +76,9 @@ gbanned: '¡Buen viaje!
 getrules: Obtenga las reglas del chat {{rules}}
 helpbutton: ¡Haz clic en mí para obtener ayuda!
 imported: Datos importados para chat {}
+incorrect: Elección incorrecta. Te quedan {} intentos
 invalid_help: Página de ayuda no válida {}
+invalidargument: Comando no válido, utilice "on" o "off"
 invalidlang: Idioma no válido seleccionado
 joinfed: Se unió a feed {} para chatear {}
 kickadmin: No voy a echar a un administrador.
@@ -105,9 +119,13 @@ notfedadmin: No eres administrador de fe en la federación {}. Sólo los adminis
 notfmember: Este chat no es miembro de una Fed.
 notinfed: El chat {} no está en una federación. Utilice /joinfed como administrador
   para unirse a uno
+notries: No quedan intentos
+notrieskick: No quedan más intentos, has sido expulsado del chat.
+notrieskickchat: No quedan más intentos, has sido expulsado de {}
 notsupergroup: Este grupo debe actualizarse a un supergrupo.
 onlyone: Sólo se permite una federación por usuario
 permdenied: 'Permiso denegado: al usuario actual le falta el permiso "{}"'
+pressme: ¡Presioname para activar el sonido!
 promote: Usuario prometido {}
 provebutton: Haga clic en el botón para demostrar que es administrador
 refreshac: Caché de administrador actualizada correctamente
@@ -126,6 +144,7 @@ setlang: Idioma configurado correctamente
 setlock: Establecer bloqueo "{}" para el chat "{}"
 setlockaction: Establecer la acción de bloqueo en "{}"
 setwelcome: Establecer la bienvenida del grupo a {}
+solvecaptcha: Resuelve este captcha para continuar
 specifytime: Debes especificar una hora para este comando.
 specifyuser: Necesitas especificar un usuario
 startcmd: Envíe /help para obtener una lista de comandos disponibles
@@ -160,6 +179,7 @@ unfbanperm: Necesitas ser administrador de fe para desactivar la prohibición.
 unmuteuser: Usuario no silenciado {}
 usernotfound: Usuario no encontrado. Sólo se puede interactuar con los usuarios que
   han sido vistos recientemente.
+userunmuted: ¡Usuario activado!
 warn: '¡Yowzers!: Advirtió al usuario {} con {}/{} advierte'
 warnadmin: ¡No voy a advertir a un administrador! ¿Qué diablos absoluto?
 warnban: ¡Esas son {} advertencias! Usuario {} baneado
