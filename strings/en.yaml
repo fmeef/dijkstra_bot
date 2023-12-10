@@ -167,7 +167,7 @@ warns: 'Warns for user {}:
 
   {}'
 warnsline: 'Reason: {}'
-welcome: Welcome to {}, a modular group management bot written in pythonb and asynctio
+welcome: Welcome to {}, a modular group management bot written in rust
 welcomeinvalid: Invalid argument, use on/off/yes/no
 
 taintreplace: Replace
