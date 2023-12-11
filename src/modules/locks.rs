@@ -524,6 +524,7 @@ fn is_invite<'a>(message: &'a Message) -> BoxFuture<'a, Result<bool>> {
     .boxed()
 }
 
+#[derive(Debug)]
 struct Helper;
 
 #[async_trait::async_trait]

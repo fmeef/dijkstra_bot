@@ -98,7 +98,7 @@ use sea_orm_migration::MigrationTrait;
 use crate::util::error::Result;
 
 /// metadata for a single module
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Metadata {
     pub name: String,
     pub description: String,
@@ -108,7 +108,7 @@ pub struct Metadata {
 }
 
 #[async_trait]
-pub trait ModuleHelpers {
+pub trait ModuleHelpers: std::fmt::Debug {
     async fn export(&self, chat: i64) -> Result<Option<serde_json::Value>>;
     async fn import(&self, chat: i64, value: serde_json::Value) -> Result<()>;
     fn supports_export(&self) -> Option<&'static str>;

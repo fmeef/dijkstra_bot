@@ -278,6 +278,7 @@ lazy_static! {
     static ref FILLER_REGEX: Regex = Regex::new(r#"\{([^}]+)\}"#).unwrap();
 }
 
+#[derive(Debug)]
 struct Helper;
 
 #[async_trait::async_trait]

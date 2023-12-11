@@ -15,6 +15,13 @@ pub struct OutputBoxer<F>(pub F);
 
 pub struct SingleCb<T, R>(Box<dyn for<'a> BoxedSingleCallback<'a, T, R, Fut = BotDbFuture<'a, R>>>);
 
+impl<T, R> std::fmt::Debug for SingleCb<T, R> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("its a function uwu")?;
+        Ok(())
+    }
+}
+
 pub struct MultiCb<T, R>(Box<dyn for<'a> BoxedMultiCallback<'a, T, R, Fut = BotDbFuture<'a, R>>>);
 impl<'a, T, R: 'a> SingleCb<T, R> {
     pub fn new<F>(func: F) -> Self
@@ -23,6 +30,13 @@ impl<'a, T, R: 'a> SingleCb<T, R> {
         R: 'static,
     {
         Self(Box::new(OutputBoxer(func)))
+    }
+}
+
+impl<T, R> std::fmt::Debug for MultiCb<T, R> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("its a two arg function uwu")?;
+        Ok(())
     }
 }
 

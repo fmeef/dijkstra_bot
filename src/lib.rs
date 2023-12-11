@@ -2,6 +2,7 @@ use prometheus::default_registry;
 use prometheus_hyper::Server;
 use sea_orm::ConnectionTrait;
 use statics::{CONFIG, EXEC};
+use tg::client::TgClient;
 use tokio::sync::Notify;
 use util::error::Result;
 pub mod metadata;
@@ -14,6 +15,8 @@ mod logger;
 pub mod statics;
 
 use macros::get_langs;
+
+use crate::statics::CLIENT_BACKEND;
 get_langs!();
 
 fn init_db() {
@@ -22,7 +25,7 @@ fn init_db() {
         &statics::DB.is_mock_connection()
     );
 }
-pub fn what() {
+pub fn run_bot() {
     EXEC.block_on(async move {
         let handle = prometheus_serve();
         drop(handle);
@@ -44,10 +47,11 @@ fn prometheus_serve() -> tokio::task::JoinHandle<Result<()>> {
     })
 }
 
-pub fn run() {
+pub fn run(client: TgClient) {
     let mut handle = logger::setup_log();
+    CLIENT_BACKEND.set(client).unwrap();
     init_db();
-    what();
+    run_bot();
     println!("complete");
     handle.join();
 }

@@ -19,6 +19,7 @@ use governor::state::{InMemoryState, NotKeyed};
 use governor::{Quota, RateLimiter};
 use lazy_static::lazy_static;
 use log::LevelFilter;
+use once_cell::sync::OnceCell;
 use sea_orm::entity::prelude::DatabaseConnection;
 use sea_orm::{ConnectOptions, Database};
 use serde::{Deserialize, Serialize};
@@ -26,7 +27,6 @@ use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
-use tokio::sync::OnceCell;
 
 use tokio::runtime::Runtime;
 
@@ -248,7 +248,11 @@ lazy_static! {
         RateLimiter::direct(Quota::per_second(NonZeroU32::new(30u32).unwrap()));
 }
 
+lazy_static! {
+    pub(crate) static ref CLIENT_BACKEND: OnceCell<TgClient> = OnceCell::new();
+}
+
 //tg client
 lazy_static! {
-    pub static ref TG: TgClient = TgClient::connect(CONFIG.bot_token.to_owned());
+    pub static ref TG: &'static TgClient = CLIENT_BACKEND.get().unwrap();
 }

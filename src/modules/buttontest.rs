@@ -44,6 +44,7 @@ pub async fn get_metadata() -> Result<Option<serde_json::Value>> {
     Ok(Some(v))
 }
 
+#[derive(Debug)]
 struct Helper;
 
 #[async_trait::async_trait]

@@ -521,6 +521,7 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![Box::new(Migration), Box::new(MigrationEntityInDb)]
 }
 
+#[derive(Debug)]
 struct Helper;
 
 #[async_trait::async_trait]

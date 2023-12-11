@@ -27,7 +27,7 @@ use super::{
 use crate::{
     metadata::{markdownify, Metadata},
     modules,
-    statics::{module_enabled, ME},
+    statics::ME,
     tg::{admin_helpers::IntoChatUser, markdown::MarkupBuilder},
     util::{
         callback::{MultiCallback, MultiCb, SingleCallback, SingleCb},
@@ -46,6 +46,7 @@ use std::sync::Arc;
 
 static INVALID: &str = "invalid";
 
+#[derive(Debug)]
 pub struct MetadataCollection {
     pub helps: HashMap<String, String>,
     pub modules: HashMap<String, Metadata>,
@@ -92,19 +93,16 @@ impl MetadataCollection {
         )?;
 
         let start = state.get_start()?.state_id;
-        self.modules
-            .iter()
-            .filter(|p| module_enabled(p.0))
-            .for_each(|(_, n)| {
-                let s = state.add_state(self.get_module_text(&n.name));
-                state.add_transition(start, s, n.name.to_lowercase(), n.name.to_case(Case::Title));
-                state.add_transition(s, start, "back", "Back");
-                n.sections.iter().for_each(|(sub, content)| {
-                    let sb = state.add_state(content);
-                    state.add_transition(s, sb, sub.to_lowercase(), sub.to_case(Case::Title));
-                    state.add_transition(sb, s, "back", "Back");
-                });
+        self.modules.iter().for_each(|(_, n)| {
+            let s = state.add_state(self.get_module_text(&n.name));
+            state.add_transition(start, s, n.name.to_lowercase(), n.name.to_case(Case::Title));
+            state.add_transition(s, start, "back", "Back");
+            n.sections.iter().for_each(|(sub, content)| {
+                let sb = state.add_state(content);
+                state.add_transition(s, sb, sub.to_lowercase(), sub.to_case(Case::Title));
+                state.add_transition(sb, s, "back", "Back");
             });
+        });
 
         let conversation = state.build();
         conversation.write_self().await?;
@@ -115,6 +113,7 @@ impl MetadataCollection {
     }
 }
 
+#[derive(Debug)]
 pub struct TgClient {
     pub client: Bot,
     pub modules: Arc<MetadataCollection>,
@@ -224,6 +223,29 @@ impl TgClient {
         T: Into<String>,
     {
         let metadata = modules::get_metadata();
+        let metadata = MetadataCollection {
+            helps: metadata
+                .iter()
+                .flat_map(|v| v.commands.iter())
+                .map(|(c, h)| (c.to_owned(), h.to_owned()))
+                .collect(),
+            modules: metadata.into_iter().map(|v| (v.name.clone(), v)).collect(),
+        };
+        let token = token.into();
+        Self {
+            client: Bot::new_auto_wait(token.clone(), true).unwrap(),
+            token,
+            modules: Arc::new(metadata),
+            button_events: Arc::new(DashMap::new()),
+            button_repeat: Arc::new(DashMap::new()),
+        }
+    }
+
+    /// Creates a new client from a bot api token
+    pub fn connect_mod<T>(token: T, metadata: Vec<Metadata>) -> Self
+    where
+        T: Into<String>,
+    {
         let metadata = MetadataCollection {
             helps: metadata
                 .iter()

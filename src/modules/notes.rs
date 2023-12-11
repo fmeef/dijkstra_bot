@@ -57,6 +57,7 @@ struct NotesItem {
     note_type: i64,
 }
 
+#[derive(Debug)]
 struct Helper;
 
 #[async_trait::async_trait]
