@@ -108,6 +108,28 @@ pub struct Metadata {
     pub state: Option<Arc<dyn ModuleHelpers + Send + Sync>>,
 }
 
+impl Metadata {
+    pub fn new(name: String, description: String) -> Self {
+        Self {
+            name,
+            description,
+            commands: HashMap::new(),
+            sections: HashMap::new(),
+            state: None,
+        }
+    }
+
+    pub fn add_command(mut self, command: String, help: String) -> Self {
+        self.commands.insert(command, help);
+        self
+    }
+
+    pub fn add_section(mut self, sub: String, content: String) -> Self {
+        self.sections.insert(sub, content);
+        self
+    }
+}
+
 #[async_trait]
 pub trait ModuleHelpers: std::fmt::Debug {
     async fn export(&self, chat: i64) -> Result<Option<serde_json::Value>>;
