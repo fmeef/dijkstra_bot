@@ -223,8 +223,6 @@ pub fn get_langs(_: TokenStream) -> TokenStream {
             }
 
             impl Lang {
-
-
                 pub fn get_id(&self) -> Option<usize> {
                     match self {
                         #( #mnames => Some(#ids) ),*,

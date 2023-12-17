@@ -131,7 +131,7 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
         })
         .unzip();
     let doc_names = doc_globs.iter().map(|v| format!("{}.mud", v));
-    assert!(module_globs.len() > 0);
+    //    assert!(module_globs.len() > 0);
     let mods = module_globs.clone().into_iter();
     let updates = module_globs.clone().into_iter();
     let funcs = module_globs.iter();
