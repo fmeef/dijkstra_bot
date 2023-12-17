@@ -36,10 +36,11 @@ pub fn markdownify<T: AsRef<str>>(description: T) -> String {
 
 /// Macro for registering a module. Generates a metadata getter out of a name, description, and
 /// command list
+#[macro_export]
 macro_rules! metadata {
     ($name:expr, $description:expr) => {
-        pub const METADATA: ::once_cell::sync::Lazy<crate::metadata::Metadata> =
-            ::once_cell::sync::Lazy::new(|| crate::metadata::Metadata {
+        pub const METADATA: ::once_cell::sync::Lazy<$crate::metadata::Metadata> =
+            ::once_cell::sync::Lazy::new(|| $crate::metadata::Metadata {
                 name: $name.into(),
                 description: $description.into(),
                 commands: ::std::collections::HashMap::new(),
@@ -51,11 +52,11 @@ macro_rules! metadata {
         $( , { sub = $sub:expr, content = $content:expr } )*
         $( , { command = $command:expr, help = $help:expr } )*
     ) => {
-        pub const METADATA: ::once_cell::sync::Lazy<crate::metadata::Metadata> =
+        pub const METADATA: ::once_cell::sync::Lazy<$crate::metadata::Metadata> =
             ::once_cell::sync::Lazy::new(|| {
-                let description = crate::metadata::markdownify($description);
+                let description = $crate::metadata::markdownify($description);
 
-                let mut c = crate::metadata::Metadata {
+                let mut c = $crate::metadata::Metadata {
                     name: $name.into(),
                     description,
                     commands: ::std::collections::HashMap::new(),
@@ -72,11 +73,11 @@ macro_rules! metadata {
         $( , { sub = $sub:expr, content = $content:expr } )*
         $( , { command = $command:expr, help = $help:expr } )*
     ) => {
-        pub const METADATA: ::once_cell::sync::Lazy<crate::metadata::Metadata> =
+        pub const METADATA: ::once_cell::sync::Lazy<$crate::metadata::Metadata> =
             ::once_cell::sync::Lazy::new(|| {
-                let description = crate::metadata::markdownify($description);
+                let description = $crate::metadata::markdownify($description);
 
-                let mut c = crate::metadata::Metadata {
+                let mut c = $crate::metadata::Metadata {
                     name: $name.into(),
                     description,
                     commands: ::std::collections::HashMap::new(),
@@ -91,7 +92,7 @@ macro_rules! metadata {
 }
 use async_trait::async_trait;
 use lazy_static::lazy_static;
-pub(crate) use metadata;
+pub use metadata;
 use regex::Regex;
 use sea_orm_migration::MigrationTrait;
 

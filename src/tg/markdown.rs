@@ -1232,7 +1232,7 @@ lazy_static! {
     static ref FILLER_REGEX: Regex = Regex::new(r"\{\w*\}").unwrap();
 }
 
-pub(crate) fn remove_fillings(text: &str) -> String {
+pub fn remove_fillings(text: &str) -> String {
     FILLER_REGEX.replace_all(text, "").into_owned()
 }
 
