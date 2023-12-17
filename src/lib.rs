@@ -41,6 +41,7 @@ pub mod statics;
 use macros::get_langs;
 
 use crate::statics::{ARGS, CLIENT_BACKEND, CONFIG_BACKEND};
+
 get_langs!();
 
 fn init_db() {
