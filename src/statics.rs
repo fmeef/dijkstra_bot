@@ -11,7 +11,6 @@ use crate::tg::client::TgClient;
 use botapi::gen_types::User;
 use chrono::Duration;
 use clap::Parser;
-use confy::load_path;
 use futures::executor::block_on;
 use governor::clock::QuantaClock;
 use governor::middleware::NoOpMiddleware;
@@ -31,7 +30,7 @@ use std::path::PathBuf;
 use tokio::runtime::Runtime;
 
 /// Serializable log config for webhook
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct WebhookConfig {
     /// if true, use webhook, if false, use long polling
     pub enable_webhook: bool,
@@ -44,7 +43,7 @@ pub struct WebhookConfig {
 }
 
 /// Administration and moderation options
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Admin {
     /// Users with special administrative access on the bot
     pub sudo_users: HashSet<i64>,
@@ -52,7 +51,7 @@ pub struct Admin {
 }
 
 /// Serializable log setup config
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct LogConfig {
     /// log level, one of "off", "error", "warn", "info", "debug", "trace"
     log_level: LevelFilterWrapper,
@@ -62,7 +61,7 @@ pub struct LogConfig {
 }
 
 /// Serializable config for postgres and redis
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Persistence {
     /// postgres connection string
     pub database_connection: String,
@@ -72,7 +71,7 @@ pub struct Persistence {
 }
 
 /// Main configuration file contents. Serializable to toml
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Config {
     /// telegram bot api token
     pub bot_token: String,
@@ -85,7 +84,7 @@ pub struct Config {
 }
 
 /// Configuration for loadable modules
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Modules {
     /// List of modules to disable
     pub disabled: HashSet<String>,
@@ -95,7 +94,7 @@ pub struct Modules {
 }
 
 /// Serializable timing config
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Timing {
     /// default redis key expiry
     pub cache_timeout: usize,
@@ -221,19 +220,26 @@ lazy_static! {
 //global configuration parameters
 lazy_static! {
     pub static ref ARGS: Args = Args::parse();
-    pub static ref CONFIG: Config = load_path(&ARGS.config).expect("failed to load config");
+}
+
+lazy_static! {
+    pub(crate) static ref CONFIG_BACKEND: OnceCell<Config> = OnceCell::new();
+}
+
+lazy_static! {
+    pub(crate) static ref CONFIG: &'static Config = CONFIG_BACKEND.get().unwrap();
 }
 
 //redis client
 lazy_static! {
-    pub static ref REDIS: RedisPool =
+    pub(crate) static ref REDIS: RedisPool =
         block_on(RedisPoolBuilder::new(&CONFIG.persistence.redis_connection).build())
             .expect("failed to initialize redis pool");
 }
 
 //db client
 lazy_static! {
-    pub static ref DB: DatabaseConnection = EXEC.block_on(async move {
+    pub(crate) static ref DB: DatabaseConnection = EXEC.block_on(async move {
         let db = Database::connect(ConnectOptions::new(
             CONFIG.persistence.database_connection.to_owned(),
         ))
@@ -244,7 +250,7 @@ lazy_static! {
 }
 
 lazy_static! {
-    pub static ref BAN_GOVERNER: RateLimiter<NotKeyed, InMemoryState, QuantaClock, NoOpMiddleware> =
+    pub(crate) static ref BAN_GOVERNER: RateLimiter<NotKeyed, InMemoryState, QuantaClock, NoOpMiddleware> =
         RateLimiter::direct(Quota::per_second(NonZeroU32::new(30u32).unwrap()));
 }
 
@@ -254,5 +260,5 @@ lazy_static! {
 
 //tg client
 lazy_static! {
-    pub static ref TG: &'static TgClient = CLIENT_BACKEND.get().unwrap();
+    pub(crate) static ref TG: &'static TgClient = CLIENT_BACKEND.get().unwrap();
 }

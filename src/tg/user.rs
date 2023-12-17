@@ -44,7 +44,7 @@ pub async fn get_me() -> Result<User> {
 }
 
 /// Record a user in redis for later lookup
-pub async fn record_cache_user(user: &User) -> Result<()> {
+pub(crate) async fn record_cache_user(user: &User) -> Result<()> {
     let key = get_user_cache_key(user.get_id());
     let st = RedisStr::new(user)?;
     if let Some(username) = user.get_username() {

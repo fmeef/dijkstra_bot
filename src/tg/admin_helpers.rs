@@ -2315,7 +2315,7 @@ async fn get_file_body(path: &str) -> Result<Response> {
 }
 
 /// Get a file from the boi api
-/// https://api.telegram.org/file/bot/<path>
+/// <https://api.telegram.org/file/bot/path>
 pub async fn get_file(path: &str) -> Result<Bytes> {
     let body = get_file_body(path).await?;
     let body = body.bytes().await?;
@@ -2323,7 +2323,7 @@ pub async fn get_file(path: &str) -> Result<Bytes> {
 }
 
 /// Get a file from the bot api as text
-/// https://api.telegram.org/file/bot/<path>
+/// <https://api.telegram.org/file/bot/path>
 pub async fn get_file_text(path: &str) -> Result<String> {
     let body = get_file_body(path).await?;
     let text = body.text().await?;

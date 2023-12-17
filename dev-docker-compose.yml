@@ -16,7 +16,6 @@ services:
       - build-volume:/bobot/target
       - migration-volume:/bobot/migration/target
       - macros-volume:/bobot/macros/target
-      - helpers-volume:/bobot/buildhelpers/target
       - ./:/bobot:z
     depends_on:
       - redis-dev
@@ -24,6 +23,8 @@ services:
       - db-dev
     stdin_open: true
     tty: true
+    expose:
+      - 8000:8000
   db-dev:
     image: postgres:15.1-alpine
     restart: always
@@ -60,4 +61,3 @@ volumes:
   build-volume:
   migration-volume:
   macros-volume:
-  helpers-volume:

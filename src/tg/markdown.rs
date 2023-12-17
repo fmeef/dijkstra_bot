@@ -139,7 +139,7 @@ pomelo! {
     %error crate::tg::markdown::DefaultParseErr;
     %parser pub struct Parser{};
     %type input FilterCommond;
-    %token #[derive(Debug)] pub enum Token{};
+    %token #[derive(Debug)] pub(crate) enum Token{};
     %type quote String;
     %type fw ParsedArg;
     %type fws String;
@@ -267,7 +267,7 @@ pomelo! {
 
 }
 
-pub use parser::{Parser, Token};
+use parser::{Parser, Token};
 
 use super::admin_helpers::{is_dm, ChatUser};
 use super::button::InlineKeyboardBuilder;
@@ -304,7 +304,7 @@ fn is_valid(token: char, header: bool) -> bool {
 }
 
 impl Lexer {
-    pub fn new(input: &str, header: bool) -> Self {
+    fn new(input: &str, header: bool) -> Self {
         Self {
             s: input.trim().chars().collect(),
             header,
@@ -313,7 +313,7 @@ impl Lexer {
         }
     }
 
-    pub fn next_token(&mut self) -> Vec<Token> {
+    fn next_token(&mut self) -> Vec<Token> {
         let mut output = if self.header {
             vec![Token::Start]
         } else {
@@ -487,12 +487,13 @@ pub struct MarkupBuilder {
     pub built_markup: Option<EReplyMarkup>,
 }
 
-pub fn button_deeplink_key(key: &str) -> String {
+#[inline(always)]
+pub(crate) fn button_deeplink_key(key: &str) -> String {
     format!("bdlk:{}", key)
 }
 
 #[inline(always)]
-pub fn rules_deeplink_key(key: &str) -> String {
+pub(crate) fn rules_deeplink_key(key: &str) -> String {
     format!("dlrules:{}", key)
 }
 
@@ -1006,10 +1007,12 @@ impl MarkupBuilder {
         self.text.push_str(text.as_ref());
         self
     }
+
     pub fn set_text(mut self, text: String) -> Self {
         self.text = text;
         self
     }
+
     fn manual(&mut self, entity_type: &str, start: i64, end: i64) {
         let entity = MessageEntityBuilder::new(start, end)
             .set_type(entity_type.to_owned())
@@ -1229,7 +1232,7 @@ lazy_static! {
     static ref FILLER_REGEX: Regex = Regex::new(r"\{\w*\}").unwrap();
 }
 
-pub fn remove_fillings(text: &str) -> String {
+pub(crate) fn remove_fillings(text: &str) -> String {
     FILLER_REGEX.replace_all(text, "").into_owned()
 }
 

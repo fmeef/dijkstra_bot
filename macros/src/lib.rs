@@ -1,6 +1,7 @@
 use std::{collections::HashMap, sync::RwLock};
-
+mod import;
 use convert_case::{Case, Casing};
+use import::autoimport;
 use include_dir::{include_dir, Dir};
 use lazy_static::lazy_static;
 use proc_macro::TokenStream;
@@ -145,6 +146,13 @@ pub fn inline_lang(tokens: TokenStream) -> TokenStream {
     }
     let res = quote! {};
     TokenStream::from(res)
+}
+
+#[proc_macro]
+pub fn discover_mods(tokens: TokenStream) -> TokenStream {
+    let v = parse_macro_input!(tokens as LitStr);
+    let out = autoimport(v.value());
+    TokenStream::from(out)
 }
 
 #[proc_macro]

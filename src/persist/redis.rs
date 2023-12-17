@@ -260,19 +260,19 @@ impl ToRedisArgs for RedisStr {
 
 /// Generate a random redis key using uuid v4
 #[inline(always)]
-pub fn random_key(prefix: &str) -> String {
+pub(crate) fn random_key(prefix: &str) -> String {
     let uuid = Uuid::new_v4();
     format!("r:{}:{}", prefix, uuid.to_string())
 }
 
 /// append user and group id to a key
 #[inline(always)]
-pub fn scope_key_by_user(key: &str, user: i64) -> String {
+pub(crate) fn scope_key_by_user(key: &str, user: i64) -> String {
     format!("u:{}:{}", user, key)
 }
 
 #[inline(always)]
-pub fn scope_key(key: &str, message: &Message, prefix: &str) -> Result<String> {
+pub(crate) fn scope_key(key: &str, message: &Message, prefix: &str) -> Result<String> {
     let user_id = message
         .get_from()
         .as_ref()
@@ -284,7 +284,7 @@ pub fn scope_key(key: &str, message: &Message, prefix: &str) -> Result<String> {
 }
 
 #[inline(always)]
-pub fn scope_key_by_chatuser(key: &str, message: &Message) -> Result<String> {
+pub(crate) fn scope_key_by_chatuser(key: &str, message: &Message) -> Result<String> {
     scope_key(key, message, "cu")
 }
 
@@ -293,17 +293,21 @@ pub struct RedisPoolBuilder {
     connectionstr: String,
 }
 
+/// Since redis support multiple threads in specific circumstances we use a pool for parallelism
 pub struct RedisPool {
     pool: Pool<RedisConnectionManager>,
 }
 
 impl RedisPoolBuilder {
+    /// Constructs a new redis pool from a connection string. Connections aren't attempted until
+    /// build() is called
     pub fn new<T: ToString>(connectonstr: T) -> Self {
         RedisPoolBuilder {
             connectionstr: connectonstr.to_string(),
         }
     }
 
+    /// Build the pool and attempt connection
     pub async fn build(self) -> Result<RedisPool> {
         RedisPool::new(self.connectionstr).await
     }

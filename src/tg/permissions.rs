@@ -171,6 +171,7 @@ pub struct NamedPermissionContent {
     val: bool,
 }
 
+/// List of independently grantable permissions
 #[derive(Clone, Debug)]
 pub struct NamedPermission(Vec<NamedPermissionContent>);
 
@@ -822,7 +823,7 @@ impl Context {
 }
 
 /// Fails with a printable error if the bot doesn't have full admin rights
-pub async fn self_admin_or_die(chat: &Chat) -> Result<()> {
+pub(crate) async fn self_admin_or_die(chat: &Chat) -> Result<()> {
     if !is_self_admin(chat).await? {
         let lang = get_chat_lang(chat.get_id()).await?;
         chat.fail(lang_fmt!(lang, "needtobeadmin"))

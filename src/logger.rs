@@ -13,6 +13,7 @@ use std::io;
 
 use crate::statics::CONFIG;
 
+#[derive(Debug)]
 pub struct LevelFilterWrapper(pub LevelFilter);
 
 impl Serialize for LevelFilterWrapper {
@@ -54,7 +55,7 @@ impl<'de> Deserialize<'de> for LevelFilterWrapper {
 }
 
 /// Setup logging and start logger thread
-pub fn setup_log() -> JoinHandle {
+pub(crate) fn setup_log() -> JoinHandle {
     let formater = BaseFormater::new().local(true).color(true).level(4);
 
     let filter = BaseFilter::new()

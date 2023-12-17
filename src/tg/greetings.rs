@@ -45,10 +45,11 @@ use super::notes::handle_transition;
 use super::permissions::{IsAdmin, IsGroupAdmin};
 use super::user::{GetChat, Username};
 
-pub fn auth_key(chat: i64) -> String {
+pub(crate) fn auth_key(chat: i64) -> String {
     format!("cauth:{}", chat)
 }
 
+/// Loads the cache of users that already completed the captcha from db to redis
 pub async fn update_auth_cache(chat: i64) -> Result<()> {
     let key = auth_key(chat);
     if !REDIS.sq(|q| q.exists(&key)).await? {
@@ -69,7 +70,8 @@ pub async fn update_auth_cache(chat: i64) -> Result<()> {
     Ok(())
 }
 
-pub async fn get_captcha_url(chat: &Chat, user: &User) -> Result<String> {
+/// Gets a deep link url for retrieving a captcha from the bot's dm
+pub(crate) async fn get_captcha_url(chat: &Chat, user: &User) -> Result<String> {
     let ser = (chat, user).to_redis()?;
     let r = Uuid::new_v4();
     let key = get_callback_key(&r.to_string());
@@ -81,10 +83,11 @@ pub async fn get_captcha_url(chat: &Chat, user: &User) -> Result<String> {
     Ok(bs)
 }
 
-pub fn get_callback_key(key: &str) -> String {
+pub(crate) fn get_callback_key(key: &str) -> String {
     format!("ccback:{}", key)
 }
 
+/// Returns true if the user has already completed the captcha in the given chat
 pub async fn user_is_authorized(chat: i64, user: i64) -> Result<bool> {
     update_auth_cache(chat).await?;
     let key = auth_key(chat);
@@ -95,6 +98,7 @@ fn captcha_state_key(chat: &Chat) -> String {
     format!("cstate:{}", chat.get_id())
 }
 
+/// Gets the current captcha configuration for the current update/chat, returns None if captcha is disabled
 pub async fn get_captcha_config(
     message: &ChatMemberUpdated,
 ) -> Result<Option<captchastate::Model>> {
@@ -114,7 +118,7 @@ pub async fn get_captcha_config(
     Ok(res)
 }
 
-pub async fn goodbye_members(
+pub(crate) async fn goodbye_members(
     ctx: &Context,
     model: welcomes::Model,
     entities: Vec<MessageEntity>,
@@ -138,7 +142,8 @@ pub async fn goodbye_members(
     Ok(())
 }
 
-pub async fn welcome_members(
+/// Handle sending a welcome message along with a text captcha
+pub(crate) async fn welcome_members(
     ctx: &Context,
     upd: &ChatMemberUpdated,
     model: welcomes::Model,
@@ -209,11 +214,13 @@ fn get_incorrect_counter(callback: &User, incorrect_chat: i64) -> String {
     format!("incc:{}:{}", callback.get_id(), incorrect_chat)
 }
 
+/// Clears the counter for incorrect captcha answers for a specific chat and user
 async fn reset_incorrect_tries(user: &User, chat: i64) -> Result<()> {
     let key = get_incorrect_counter(user, chat);
     REDIS.sq(|q| q.del(&key)).await
 }
 
+/// Atomically increments a redis-backed counter to count incorrect captcha tries
 async fn incorrect_tries(callback: &CallbackQuery, incorrect_chat: i64) -> Result<usize> {
     let key = get_incorrect_counter(callback.get_from_ref(), incorrect_chat);
 
@@ -240,6 +247,8 @@ async fn incorrect_tries(callback: &CallbackQuery, incorrect_chat: i64) -> Resul
     Ok(count)
 }
 
+/// Generates a series of "incorrect" captcha answers, pushing them as InlineKeyboardButton
+/// onto a Vec of buttons
 fn insert_incorrect(
     ctx: &Context,
     res: &mut Vec<InlineKeyboardButton>,
@@ -390,6 +399,7 @@ fn get_choices<'a>(
     res
 }
 
+/// Sends a "text" captcha to the specified chat
 pub async fn send_captcha<'a>(message: &Message, unmute_chat: Chat, ctx: &Context) -> Result<()> {
     let (correct, bytes, supported) = build_captcha_sync();
     let mut builder = InlineKeyboardBuilder::default();
@@ -473,7 +483,7 @@ async fn button_captcha<'a>(
 }
 
 #[inline(always)]
-pub fn get_captcha_auth_key(user: i64, chat: i64) -> String {
+pub(crate) fn get_captcha_auth_key(user: i64, chat: i64) -> String {
     format!("cak:{}:{}", user, chat)
 }
 
@@ -512,6 +522,7 @@ async fn send_captcha_chooser(
 }
 
 impl Context {
+    /// Retrieve the current chat's captcah config, None if the captcha is disabled
     pub async fn get_captcha_config(&self) -> Result<Option<captchastate::Model>> {
         if let UpdateExt::ChatMember(upd) = self.update() {
             Ok(get_captcha_config(upd).await?)
@@ -520,12 +531,11 @@ impl Context {
         }
     }
 
-    pub async fn check_members<'a>(
+    async fn check_members<'a>(
         &self,
         config: &captchastate::Model,
         welcome: Option<welcomes::Model>,
         entities: Vec<MessageEntity>,
-
         buttons: Option<InlineKeyboardBuilder>,
     ) -> Result<()> {
         if let Some(UserChanged::UserJoined(ref message)) = self.update().user_event() {
@@ -617,6 +627,7 @@ impl Context {
         Ok(())
     }
 
+    /// Send a captcha, welcome, or both to a user entering a chat
     pub async fn greeter_handle_update(&self) -> Result<()> {
         if let UpdateExt::ChatMember(ref upd) = self.update() {
             match (
@@ -639,6 +650,7 @@ impl Context {
         Ok(())
     }
 
+    /// Enables captcha authentication for the current chat
     pub async fn enable_captcha(&self) -> Result<()> {
         let message = self.message()?;
         self.check_permissions(|p| p.can_change_info).await?;
@@ -662,6 +674,7 @@ impl Context {
         Ok(())
     }
 
+    /// Disabled captcha authenticate for the current chat
     pub async fn disable_captcha(&self) -> Result<()> {
         let message = self.message()?;
         self.check_permissions(|p| p.can_change_info).await?;
@@ -675,6 +688,8 @@ impl Context {
         Ok(())
     }
 
+    /// Sets the number of seconds before a user who hasn't completed the captcha is
+    /// removed from the chat. None to disable
     pub async fn captchakick(&self, kick: Option<i64>) -> Result<()> {
         let message = self.message()?;
         self.check_permissions(|p| p.can_change_info.and(p.can_restrict_members))
@@ -693,6 +708,7 @@ impl Context {
         Ok(())
     }
 
+    /// Sets the captcha type for the current chat
     pub async fn captchamode(&self, mode: CaptchaType) -> Result<()> {
         let message = self.message()?;
         self.check_permissions(|p| p.can_change_info).await?;
@@ -715,7 +731,7 @@ impl Context {
         Ok(())
     }
 
-    pub async fn should_welcome(
+    async fn should_welcome(
         &self,
         upd: &ChatMemberUpdated,
     ) -> Result<
@@ -770,6 +786,8 @@ impl Context {
         res
     }
 
+    /// Adds a user to the list of users that have completed the captcha for the current chat.
+    /// These users will not be asked to complete the captcha again
     pub async fn authorize_user<'a>(&self, user: i64, unmute_chat: &Chat) -> Result<()> {
         let key = auth_key(unmute_chat.get_id());
         let (r, _): (i64, ()) = REDIS

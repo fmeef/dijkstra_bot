@@ -52,7 +52,7 @@ fn get_conversation_key_prefix(chat: i64, user: i64, prefix: &str) -> String {
 
 /// get the key for storing chat settings
 #[inline(always)]
-pub fn get_dialog_key(chat: i64) -> String {
+pub(crate) fn get_dialog_key(chat: i64) -> String {
     format!("dia:{}", chat)
 }
 
@@ -219,6 +219,8 @@ pub async fn update_chat(
     }
 }
 
+/// Returns true if the provided user is a member of the provided chat.
+/// This relies on an internal cache, so it may not reflect the state of telegram as a whole
 pub async fn is_chat_member(user: i64, chat: i64) -> Result<bool> {
     let key = get_member_key(user);
     let v = match REDIS.pipe(|p| p.exists(&key).sismember(&key, chat)).await {
@@ -238,6 +240,7 @@ pub async fn is_chat_member(user: i64, chat: i64) -> Result<bool> {
     Ok(v)
 }
 
+/// Returns an iterator over all the chats a user has been seen in
 pub async fn get_user_chats(user: i64) -> Result<impl Iterator<Item = i64> + Send> {
     let v = update_chat(user).await?.into_iter().filter_map(|v| {
         if let Set(id) = v.chat_id {
@@ -281,7 +284,8 @@ impl Context {
     }
 }
 
-pub async fn record_chat_member(user: i64, chat: i64) -> Result<()> {
+/// Updates the chat member cache with new chat membership data
+pub(crate) async fn record_chat_member(user: i64, chat: i64) -> Result<()> {
     let key = get_member_key(user);
     let (updated, _): (i64, bool) = REDIS
         .pipe(|q| q.sadd(&key, chat).expire(&key, CONFIG.timing.cache_timeout))
@@ -304,7 +308,8 @@ pub async fn record_chat_member(user: i64, chat: i64) -> Result<()> {
     Ok(())
 }
 
-pub async fn record_chat_member_banned(user: i64, chat: i64, banned: bool) -> Result<()> {
+/// Updates the list of known chat members with a banned status.
+pub(crate) async fn record_chat_member_banned(user: i64, chat: i64, banned: bool) -> Result<()> {
     let key = get_member_key(user);
     let (updated, _): (i64, bool) = REDIS
         .pipe(|q| q.sadd(&key, chat).expire(&key, CONFIG.timing.cache_timeout))
@@ -350,13 +355,13 @@ pub async fn reset_banned_chats(user: i64) -> Result<()> {
 /// states
 #[derive(Serialize, Deserialize)]
 pub struct ConversationState {
-    pub conversation_id: Uuid,
-    pub triggerphrase: String,
-    pub chat: i64,
-    pub user: i64,
-    pub states: HashMap<Uuid, FSMState>,
+    pub(crate) conversation_id: Uuid,
+    pub(crate) triggerphrase: String,
+    pub(crate) chat: i64,
+    pub(crate) user: i64,
+    pub(crate) states: HashMap<Uuid, FSMState>,
     start: Uuid,
-    pub transitions: BTreeMap<(Uuid, String), FSMTransition>,
+    pub(crate) transitions: BTreeMap<(Uuid, String), FSMTransition>,
     rediskey: String,
     #[serde(default, skip)]
     state_callback: Option<Box<dyn Fn(Uuid, Conversation) -> () + Send + Sync>>,
@@ -369,25 +374,25 @@ pub struct Conversation(Arc<ConversationState>);
 /// State machine state
 #[derive(Serialize, Deserialize)]
 pub struct FSMState {
-    pub state_id: Uuid,
-    pub parent: Uuid,
-    pub start_for: Option<Uuid>,
-    pub content: String,
+    pub(crate) state_id: Uuid,
+    pub(crate) parent: Uuid,
+    pub(crate) start_for: Option<Uuid>,
+    pub(crate) content: String,
 }
 
 /// State machine transition
 #[derive(Serialize, Deserialize)]
 pub struct FSMTransition {
-    pub transition_id: Uuid,
-    pub start_state: Uuid,
-    pub end_state: Uuid,
-    pub name: String,
+    pub(crate) transition_id: Uuid,
+    pub(crate) start_state: Uuid,
+    pub(crate) end_state: Uuid,
+    pub(crate) name: String,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct Dialog {
-    pub chat_id: i64,
-    pub last_activity: DateTime<chrono::Utc>,
+    pub(crate) chat_id: i64,
+    pub(crate) last_activity: DateTime<chrono::Utc>,
 }
 
 impl FSMState {
@@ -471,7 +476,7 @@ impl ConversationState {
 
     /// creates a new Conversation with a redis prefix. This helps if you want
     /// multiple copies of the same conversation each with a different state
-    pub fn new_prefix(
+    pub(crate) fn new_prefix(
         triggerphrase: String,
         reply: String,
         chat: i64,
@@ -612,7 +617,7 @@ impl Conversation {
 
     /// convert this conversation into a button menu automatically
     /// Returns markup to add to a message
-    pub fn get_current_markup(
+    pub(crate) fn get_current_markup(
         &self,
         row_limit: usize,
     ) -> BoxFuture<'static, Result<InlineKeyboardMarkup>> {

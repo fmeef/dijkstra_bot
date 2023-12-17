@@ -1,3 +1,7 @@
+//! A certain red-themed feminine bot uses a completely different method of storing formatted text
+//! than this bot. This is a shamelessly copied telegram markdown implementation to provide
+//! some level of interoperability via import/export
+
 use std::collections::{BTreeMap, HashMap};
 
 use botapi::gen_types::{
@@ -6,7 +10,10 @@ use botapi::gen_types::{
 
 use super::button::InlineKeyboardBuilder;
 
+/// Helper to convert a type info a char array, where each char maps to a utf16 codepoint
+/// This is kind of a hack
 pub trait IntoUtf16Chars {
+    /// Gets the representation of this type as utf16.
     fn into_utf16_chars(&self) -> Vec<char>;
 }
 
@@ -180,6 +187,9 @@ fn get_link_contents<'a>(chars: &'a [char]) -> Option<(&'a [char], String, usize
     }
 }
 
+/// Parser for the custom markdown implemtation for @@MissRose_bot. This is only used
+/// to maintain backwards compatiblity when importing data from bots that use
+/// <https://github.com/PaulSonOfLars/gotg_md2html>
 pub struct RoseMdParser {
     prefixes: HashMap<String, String>,
     same_line_suffix: String,
@@ -187,6 +197,8 @@ pub struct RoseMdParser {
     enable_buttons: bool,
 }
 
+/// Reverse version of RoseMdParser, this type converts MessageEntities into telegram markdown.
+/// Only used for backwards compatability with @@MissRose_bot
 pub struct RoseMdDecompiler<'a> {
     out: &'a str,
     entities: BTreeMap<i64, Vec<&'a MessageEntity>>,
@@ -195,6 +207,7 @@ pub struct RoseMdDecompiler<'a> {
 }
 
 impl<'a> RoseMdDecompiler<'a> {
+    /// Creates a new decompiler type from entities, buttons, and text
     pub fn new(
         out: &'a str,
         entities: &'a Vec<MessageEntity>,
@@ -212,6 +225,7 @@ impl<'a> RoseMdDecompiler<'a> {
         }
     }
 
+    /// Executes the decompilation, returning a markdown string
     pub fn decompile(mut self) -> String {
         let mut out = String::new();
         for (offset, ch) in self.out.into_utf16_chars().into_iter().enumerate() {
@@ -290,6 +304,8 @@ impl<'a> RoseMdDecompiler<'a> {
 }
 
 impl RoseMdParser {
+    /// Constructs a new parser from a markdown string. Setting enable_buttons causes an
+    /// InlineKeyboardBuilder to be generated as well using buttonurl:// syntax
     pub fn new(chars: &str, enable_buttons: bool) -> Self {
         let mut prefixes = HashMap::with_capacity(1);
         prefixes.insert("url".to_owned(), "buttonurl:".to_owned());
@@ -301,6 +317,7 @@ impl RoseMdParser {
         }
     }
 
+    /// Execute the parse operation, returning the parsed text, entity list, and inline keyboard
     pub fn parse(&self) -> (String, Vec<MessageEntity>, InlineKeyboardBuilder) {
         self.parse_ch(&self.chars, 0)
     }

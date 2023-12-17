@@ -435,7 +435,8 @@ locks! {
 
 }
 
-pub fn get_lock_key(chat: i64, locktype: &LockType) -> String {
+#[inline(always)]
+pub(crate) fn get_lock_key(chat: i64, locktype: &LockType) -> String {
     format!("lock:{}:{}", chat, locktype.get_name())
 }
 

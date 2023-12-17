@@ -214,7 +214,7 @@ impl Clone for Context {
 }
 
 impl StaticContext {
-    pub fn yoke(self: Arc<Self>) -> Context {
+    pub(crate) fn yoke(self: Arc<Self>) -> Context {
         let v = Yoke::attach_to_cart(self, |v| {
             (
                 v,

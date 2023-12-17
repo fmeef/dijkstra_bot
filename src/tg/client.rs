@@ -41,20 +41,18 @@ use crate::{
     util::string::get_chat_lang,
 };
 use convert_case::Case;
-use futures::{Future, StreamExt};
+use futures::{future::BoxFuture, Future, StreamExt};
 use std::sync::Arc;
 
 static INVALID: &str = "invalid";
 
+/// List of module info for populating bot help
 #[derive(Debug)]
-pub struct MetadataCollection {
-    pub helps: HashMap<String, String>,
-    pub modules: HashMap<String, Metadata>,
-}
+pub struct MetadataCollection(HashMap<String, Metadata>);
 
 impl MetadataCollection {
     fn get_module_text(&self, module: &str) -> String {
-        self.modules
+        self.0
             .get(module)
             .map(|v| {
                 let helps = v
@@ -73,7 +71,7 @@ impl MetadataCollection {
             .unwrap_or_else(|| INVALID.to_owned())
     }
 
-    pub async fn get_conversation(
+    async fn get_conversation(
         &self,
         message: &Message,
         current: Option<String>,
@@ -93,7 +91,7 @@ impl MetadataCollection {
         )?;
 
         let start = state.get_start()?.state_id;
-        self.modules.iter().for_each(|(_, n)| {
+        self.0.iter().for_each(|(_, n)| {
             let s = state.add_state(self.get_module_text(&n.name));
             state.add_transition(start, s, n.name.to_lowercase(), n.name.to_case(Case::Title));
             state.add_transition(s, start, "back", "Back");
@@ -113,6 +111,55 @@ impl MetadataCollection {
     }
 }
 
+/// wrapper around a function that is called once for every update received by the bot
+pub struct UpdateHandler(
+    Option<Arc<dyn for<'b> Fn(&'b Context) -> BoxFuture<'b, Result<()>> + Send + Sync>>,
+);
+
+impl UpdateHandler {
+    pub(crate) async fn handle_update(&self, ctx: &Context) {
+        if let Some(ref custom) = self.0 {
+            if let Err(err) = custom(ctx).await {
+                log::error!("failed to process update from customa handler");
+                err.record_stats();
+            }
+        }
+    }
+
+    /// Construct a new update handler without a contained function. This handler does nothing.
+    pub fn new() -> Self {
+        Self(None)
+    }
+
+    /// Set the update handler function
+    pub fn handler<F>(mut self, func: F) -> Self
+    where
+        F: for<'b> Fn(&'b Context) -> BoxFuture<'b, Result<()>> + Send + Sync + 'static,
+    {
+        self.0 = Some(Arc::new(func));
+        self
+    }
+
+    /// returns true if the UpdateHandler contains a function
+    pub fn has_handler(&self) -> bool {
+        self.0.is_some()
+    }
+}
+
+impl Clone for UpdateHandler {
+    fn clone(&self) -> Self {
+        Self(self.0.as_ref().map(|v| Arc::clone(v)))
+    }
+}
+
+impl std::fmt::Debug for UpdateHandler {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("its a function uwu")?;
+        Ok(())
+    }
+}
+
+/// Modular telegram client with long polling and webhook support
 #[derive(Debug)]
 pub struct TgClient {
     pub client: Bot,
@@ -120,9 +167,11 @@ pub struct TgClient {
     pub token: String,
     pub button_events: Arc<DashMap<String, SingleCb<CallbackQuery, Result<()>>>>,
     pub button_repeat: Arc<DashMap<String, MultiCb<CallbackQuery, Result<bool>>>>,
+    handler: UpdateHandler,
 }
 
-pub async fn show_help<'a>(
+/// Helper function to show the interactive help menu.
+pub(crate) async fn show_help<'a>(
     ctx: &Context,
     message: &Message,
     helps: Arc<MetadataCollection>,
@@ -191,7 +240,7 @@ pub async fn show_help<'a>(
 impl TgClient {
     /// Register a button callback to be called when the corresponding callback button sends an update
     /// This callback will only fire once and be removed afterwards
-    pub fn register_button<F, Fut>(&self, button: &InlineKeyboardButton, func: F)
+    pub(crate) fn register_button<F, Fut>(&self, button: &InlineKeyboardButton, func: F)
     where
         F: FnOnce(CallbackQuery) -> Fut + Sync + Send + 'static,
         Fut: Future<Output = Result<()>> + Send + 'static,
@@ -205,7 +254,7 @@ impl TgClient {
 
     /// Register a button callback to be called when the corresponding callback button sends an update
     /// This callback will be called any number of times until the callback returns false
-    pub fn register_button_multi<F, Fut>(&self, button: &InlineKeyboardButton, func: F)
+    pub(crate) fn register_button_multi<F, Fut>(&self, button: &InlineKeyboardButton, func: F)
     where
         F: Fn(CallbackQuery) -> Fut + Sync + Send + 'static,
         Fut: Future<Output = Result<bool>> + Send + 'static,
@@ -223,14 +272,8 @@ impl TgClient {
         T: Into<String>,
     {
         let metadata = modules::get_metadata();
-        let metadata = MetadataCollection {
-            helps: metadata
-                .iter()
-                .flat_map(|v| v.commands.iter())
-                .map(|(c, h)| (c.to_owned(), h.to_owned()))
-                .collect(),
-            modules: metadata.into_iter().map(|v| (v.name.clone(), v)).collect(),
-        };
+        let metadata =
+            MetadataCollection(metadata.into_iter().map(|v| (v.name.clone(), v)).collect());
         let token = token.into();
         Self {
             client: Bot::new_auto_wait(token.clone(), true).unwrap(),
@@ -238,22 +281,17 @@ impl TgClient {
             modules: Arc::new(metadata),
             button_events: Arc::new(DashMap::new()),
             button_repeat: Arc::new(DashMap::new()),
+            handler: UpdateHandler(None),
         }
     }
 
     /// Creates a new client from a bot api token
-    pub fn connect_mod<T>(token: T, metadata: Vec<Metadata>) -> Self
+    pub fn connect_mod<T>(token: T, metadata: Vec<Metadata>, handler: UpdateHandler) -> Self
     where
         T: Into<String>,
     {
-        let metadata = MetadataCollection {
-            helps: metadata
-                .iter()
-                .flat_map(|v| v.commands.iter())
-                .map(|(c, h)| (c.to_owned(), h.to_owned()))
-                .collect(),
-            modules: metadata.into_iter().map(|v| (v.name.clone(), v)).collect(),
-        };
+        let metadata =
+            MetadataCollection(metadata.into_iter().map(|v| (v.name.clone(), v)).collect());
         let token = token.into();
         Self {
             client: Bot::new_auto_wait(token.clone(), true).unwrap(),
@@ -261,6 +299,7 @@ impl TgClient {
             modules: Arc::new(metadata),
             button_events: Arc::new(DashMap::new()),
             button_repeat: Arc::new(DashMap::new()),
+            handler,
         }
     }
 
@@ -269,6 +308,7 @@ impl TgClient {
         let modules = Arc::clone(&self.modules);
         let callbacks = Arc::clone(&self.button_events);
         let repeats = Arc::clone(&self.button_repeat);
+        let custom_handler = self.handler.clone();
         tokio::spawn(async move {
             match update {
                 Ok(UpdateExt::CallbackQuery(callbackquery)) => {
@@ -320,7 +360,9 @@ impl TgClient {
                         err.record_stats();
                     }
 
-                    if let Err(err) = crate::modules::process_updates(update, modules).await {
+                    if let Err(err) =
+                        crate::modules::process_updates(update, modules, custom_handler).await
+                    {
                         log::error!("process updates error: {}", err);
                         err.record_stats()
                     }
@@ -407,6 +449,7 @@ impl Clone for TgClient {
             modules: Arc::clone(&self.modules),
             button_events: Arc::clone(&self.button_events),
             button_repeat: Arc::clone(&self.button_repeat),
+            handler: UpdateHandler(self.handler.0.as_ref().map(|v| Arc::clone(v))),
         }
     }
 }

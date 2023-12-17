@@ -1,5 +1,5 @@
-use dijkstra::{statics::CONFIG, tg::client::TgClient};
+use dijkstra::DijkstraOpts;
 
 pub fn main() {
-    dijkstra::run(TgClient::connect(CONFIG.bot_token.to_owned()));
+    DijkstraOpts::new().run();
 }

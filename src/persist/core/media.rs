@@ -75,6 +75,7 @@ impl std::fmt::Display for MediaType {
 }
 
 impl MediaType {
+    /// Rose bot uses different media ids than we do, provide translation for import/export
     pub fn get_rose_type(&self) -> i64 {
         match self {
             Self::Sticker => 1,
@@ -85,6 +86,7 @@ impl MediaType {
         }
     }
 
+    /// Rose bot uses different media ids than we do, provide translation for import/export
     pub fn from_rose_type(t: i64) -> Self {
         match t {
             1 => Self::Sticker,
@@ -96,6 +98,7 @@ impl MediaType {
     }
 }
 
+/// Returns a tuple containing the MediaType and caption if exists for the provided message
 pub fn get_media_type<'a>(message: &'a Message) -> Result<(Option<String>, MediaType)> {
     if let Some(photo) = message
         .get_photo()
@@ -116,6 +119,8 @@ pub fn get_media_type<'a>(message: &'a Message) -> Result<(Option<String>, Media
     }
 }
 
+/// Helper type for sending media referenced from database with optional InlineKeyboardMarkup
+// and formatted captions
 pub struct SendMediaReply<'a, F>
 where
     F: for<'b> Fn(String, &'b InlineKeyboardButton) -> BoxFuture<'b, Result<()>>

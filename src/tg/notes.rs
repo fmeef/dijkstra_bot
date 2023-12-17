@@ -1,3 +1,8 @@
+//! Because notes (key/value text or media fetchable via /get notename or #notename) are referenced outside
+//! of the notes module itself (ie. via button menus), notes are a core feature of the bot framework.
+//!
+//! this module has helper functions for storing, retrieving, and printing notes
+
 use std::{collections::BTreeMap, ops::Deref};
 
 use botapi::gen_types::{CallbackQuery, MessageEntity};
@@ -21,7 +26,7 @@ use super::{button::InlineKeyboardBuilder, command::Context, markdown::get_marku
 pub const MODULE_NAME: &str = "notes";
 
 #[inline(always)]
-pub fn get_hash_key(chat: i64) -> String {
+pub(crate) fn get_hash_key(chat: i64) -> String {
     format!("ncch:{}", chat)
 }
 

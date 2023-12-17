@@ -80,7 +80,6 @@ RUN adduser \
 RUN mkdir -p /bobot/target && chown -R bobot:bobot /bobot && \
 chown -R bobot:bobot /usr/local && mkdir -p /bobot/migration/target && \
 chown -R bobot:bobot /bobot/migration/target && mkdir -p /bobot/macros/target && \
-mkdir -p /bobot/buildhelpers/target && \
 chown -R bobot:bobot /bobot && \
 chown -R bobot:bobot /home/bobot/. && \
 chown -R bobot:bobot /opt/helix/runtime
@@ -92,6 +91,7 @@ RUN mkdir -p /home/bobot/.config/helix && ln -sf /opt/helix/runtime /home/bobot/
 VOLUME /bobot
 WORKDIR /bobot
 RUN rustup default stable
+RUN cargo install bacon
 ENV COLORTERM=truecolor
 ENV TERM xterm-256color
 COPY --chown=bobot:bobot helix.toml /home/bobot/.config/helix/config.toml

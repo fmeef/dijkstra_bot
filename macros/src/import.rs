@@ -200,9 +200,10 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
             metadata
         }
 
-        pub async fn process_updates(
+        pub(crate) async fn process_updates(
             update: ::botapi::gen_types::UpdateExt,
-            helps: ::std::sync::Arc<crate::tg::client::MetadataCollection>
+            helps: ::std::sync::Arc<crate::tg::client::MetadataCollection>,
+            handler: crate::tg::client::UpdateHandler
             ) -> crate::util::error::Result<()> {
             match crate::tg::command::StaticContext::get_context(update).await.map(|v| v.yoke()) {
                 Ok(ctx) => {
@@ -253,8 +254,10 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
                        Ok(false)
                     };
                     match help {
-                        Ok(false) => {#(
-                            if ! crate::statics::module_enabled(#module_names) {
+                        Ok(false) => {
+                            handler.handle_update(&ctx).await;
+                            #(
+                            if crate::statics::module_enabled(#module_names) {
                                 if let Err(err) = #updates::update_handler::handle_update(&ctx).await {
                                     err.record_stats();
                                     match err.get_message().await {
