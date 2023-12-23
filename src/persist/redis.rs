@@ -34,7 +34,6 @@ use ::redis::{
 use botapi::gen_types::Message;
 use serde::{de::DeserializeOwned, Serialize};
 use tokio::task::JoinHandle;
-use uuid::Uuid;
 
 // write cache redis keys
 pub const KEY_WRITE_CACHE: &str = "writecache";
@@ -258,16 +257,9 @@ impl ToRedisArgs for RedisStr {
     }
 }
 
-/// Generate a random redis key using uuid v4
-#[inline(always)]
-pub(crate) fn random_key(prefix: &str) -> String {
-    let uuid = Uuid::new_v4();
-    format!("r:{}:{}", prefix, uuid.to_string())
-}
-
 /// append user and group id to a key
 #[inline(always)]
-pub(crate) fn scope_key_by_user(key: &str, user: i64) -> String {
+pub fn scope_key_by_user(key: &str, user: i64) -> String {
     format!("u:{}:{}", user, key)
 }
 
@@ -284,7 +276,7 @@ pub(crate) fn scope_key(key: &str, message: &Message, prefix: &str) -> Result<St
 }
 
 #[inline(always)]
-pub(crate) fn scope_key_by_chatuser(key: &str, message: &Message) -> Result<String> {
+pub fn scope_key_by_chatuser(key: &str, message: &Message) -> Result<String> {
     scope_key(key, message, "cu")
 }
 

@@ -1,4 +1,4 @@
-use migration::Migrator;
+use dijkstra_migration::Migrator;
 use sea_orm_migration::prelude::*;
 
 #[tokio::main]

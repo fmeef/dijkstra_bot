@@ -227,19 +227,19 @@ lazy_static! {
 }
 
 lazy_static! {
-    pub(crate) static ref CONFIG: &'static Config = CONFIG_BACKEND.get().unwrap();
+    pub static ref CONFIG: &'static Config = CONFIG_BACKEND.get().unwrap();
 }
 
 //redis client
 lazy_static! {
-    pub(crate) static ref REDIS: RedisPool =
+    pub static ref REDIS: RedisPool =
         block_on(RedisPoolBuilder::new(&CONFIG.persistence.redis_connection).build())
             .expect("failed to initialize redis pool");
 }
 
 //db client
 lazy_static! {
-    pub(crate) static ref DB: DatabaseConnection = EXEC.block_on(async move {
+    pub static ref DB: DatabaseConnection = EXEC.block_on(async move {
         let db = Database::connect(ConnectOptions::new(
             CONFIG.persistence.database_connection.to_owned(),
         ))
@@ -250,7 +250,7 @@ lazy_static! {
 }
 
 lazy_static! {
-    pub(crate) static ref BAN_GOVERNER: RateLimiter<NotKeyed, InMemoryState, QuantaClock, NoOpMiddleware> =
+    pub static ref BAN_GOVERNER: RateLimiter<NotKeyed, InMemoryState, QuantaClock, NoOpMiddleware> =
         RateLimiter::direct(Quota::per_second(NonZeroU32::new(30u32).unwrap()));
 }
 
@@ -260,5 +260,5 @@ lazy_static! {
 
 //tg client
 lazy_static! {
-    pub(crate) static ref TG: &'static TgClient = CLIENT_BACKEND.get().unwrap();
+    pub static ref TG: &'static TgClient = CLIENT_BACKEND.get().unwrap();
 }

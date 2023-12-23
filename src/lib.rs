@@ -40,6 +40,18 @@ pub mod statics;
 
 use macros::get_langs;
 
+pub use botapi;
+pub use lazy_static;
+pub use macros;
+pub use once_cell;
+pub use redis;
+pub use sea_orm;
+pub use sea_orm_migration;
+pub use sea_query;
+pub use serde;
+pub use serde_json;
+pub use uuid;
+
 use crate::statics::{ARGS, CLIENT_BACKEND, CONFIG_BACKEND};
 
 get_langs!();

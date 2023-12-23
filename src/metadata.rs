@@ -39,8 +39,8 @@ pub fn markdownify<T: AsRef<str>>(description: T) -> String {
 #[macro_export]
 macro_rules! metadata {
     ($name:expr, $description:expr) => {
-        pub const METADATA: ::once_cell::sync::Lazy<$crate::metadata::Metadata> =
-            ::once_cell::sync::Lazy::new(|| $crate::metadata::Metadata {
+        pub const METADATA: $crate::once_cell::sync::Lazy<$crate::metadata::Metadata> =
+            $crate::once_cell::sync::Lazy::new(|| $crate::metadata::Metadata {
                 name: $name.into(),
                 description: $description.into(),
                 commands: ::std::collections::HashMap::new(),
@@ -52,8 +52,8 @@ macro_rules! metadata {
         $( , { sub = $sub:expr, content = $content:expr } )*
         $( , { command = $command:expr, help = $help:expr } )*
     ) => {
-        pub const METADATA: ::once_cell::sync::Lazy<$crate::metadata::Metadata> =
-            ::once_cell::sync::Lazy::new(|| {
+        pub const METADATA: $crate::once_cell::sync::Lazy<$crate::metadata::Metadata> =
+            $crate::once_cell::sync::Lazy::new(|| {
                 let description = $crate::metadata::markdownify($description);
 
                 let mut c = $crate::metadata::Metadata {
@@ -73,8 +73,8 @@ macro_rules! metadata {
         $( , { sub = $sub:expr, content = $content:expr } )*
         $( , { command = $command:expr, help = $help:expr } )*
     ) => {
-        pub const METADATA: ::once_cell::sync::Lazy<$crate::metadata::Metadata> =
-            ::once_cell::sync::Lazy::new(|| {
+        pub const METADATA: $crate::once_cell::sync::Lazy<$crate::metadata::Metadata> =
+            $crate::once_cell::sync::Lazy::new(|| {
                 let description = $crate::metadata::markdownify($description);
 
                 let mut c = $crate::metadata::Metadata {
