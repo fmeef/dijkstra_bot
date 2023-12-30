@@ -13,7 +13,7 @@ use crate::util::error::Result;
 pub use crate::langs::*;
 use async_trait::async_trait;
 use botapi::bot::Part;
-use botapi::gen_types::{Chat, EReplyMarkup, FileData, Message};
+use botapi::gen_types::{Chat, EReplyMarkup, FileData, Message, ReplyParametersBuilder};
 use chrono::Duration;
 use lazy_static::__Deref;
 
@@ -159,7 +159,7 @@ impl Speak for Message {
                 let message = TG
                     .client
                     .build_send_document(self.get_chat().get_id(), bytes)
-                    .reply_to_message_id(self.get_message_id())
+                    .reply_parameters(&ReplyParametersBuilder::new(self.get_message_id()).build())
                     .build()
                     .await?;
                 return Ok(Some(message));
@@ -178,7 +178,7 @@ impl Speak for Message {
                 .build_send_message(self.get_chat().get_id(), &text)
                 .entities(&entities)
                 .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(markup.build()))
-                .reply_to_message_id(self.get_message_id())
+                .reply_parameters(&ReplyParametersBuilder::new(self.get_message_id()).build())
                 .build()
                 .await?;
             Ok(Some(m))

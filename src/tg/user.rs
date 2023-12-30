@@ -8,7 +8,7 @@ use crate::persist::redis::RedisStr;
 use crate::statics::{CONFIG, REDIS, TG};
 use crate::util::error::Result;
 use async_trait::async_trait;
-use botapi::gen_types::{Chat, UpdateExt, User};
+use botapi::gen_types::{Chat, MessageOrigin, UpdateExt, User};
 use redis::AsyncCommands;
 
 use super::markdown::{Markup, MarkupType};
@@ -85,12 +85,13 @@ pub async fn record_cache_update(update: &UpdateExt) -> Result<()> {
             if let Some(user) = m.get_from() {
                 user.record_user().await?;
             }
-            if let Some(m) = m.get_forward_from() {
-                m.record_user().await?;
+            if let Some(MessageOrigin::MessageOriginUser(m)) = m.get_forward_origin_ref() {
+                m.get_sender_user().record_user().await?;
             }
         }
-        if let Some(m) = m.get_forward_from() {
-            m.record_user().await?;
+
+        if let Some(MessageOrigin::MessageOriginUser(m)) = m.get_forward_origin_ref() {
+            m.get_sender_user().record_user().await?;
         }
     }
     Ok(())
@@ -299,6 +300,10 @@ impl RecordUser for UpdateExt {
             UpdateExt::ChatJoinRequest(ref req) => Some(req.get_from()),
             UpdateExt::ChatMember(ref member) => Some(member.get_from()),
             UpdateExt::Invalid => None,
+            UpdateExt::MessageReaction(ref reaction) => reaction.get_user(),
+            UpdateExt::MessageReactionCount(_) => None,
+            UpdateExt::ChatBoost(_) => None,
+            UpdateExt::RemovedChatBoost(_) => None,
         }
     }
 

@@ -427,7 +427,7 @@ locks! {
         false
     });
     lock!("forward", "Forwarded messages", LockType::Forward, |message| {
-        message.get_forward_from().is_some()
+        message.get_forward_origin().is_some()
     });
     lock!("sticker", "Stickers", LockType::Sticker, |message| message.get_sticker().is_some());
     async_lock!("invitelink", "Invite Links", LockType::InviteLink, |message| is_invite(message));

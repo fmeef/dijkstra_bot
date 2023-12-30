@@ -6,7 +6,7 @@ use crate::tg::user::GetUser;
 use crate::util::error::{BotError, Fail};
 use crate::util::string::{should_ignore_chat, Speak};
 use crate::{metadata::metadata, util::error::Result};
-use botapi::gen_types::{MessageEntity, MessageEntityBuilder};
+use botapi::gen_types::{MessageEntity, MessageEntityBuilder, ReplyParametersBuilder};
 
 use macros::{lang_fmt, textentity_fmt, update_handler};
 
@@ -61,7 +61,9 @@ pub async fn report(ctx: &Context) -> Result<()> {
                     admins.extend_from_slice(entities.as_slice());
                     TG.client()
                         .build_send_message(chat.get_id(), text)
-                        .reply_to_message_id(ctx.message()?.get_message_id())
+                        .reply_parameters(
+                            &ReplyParametersBuilder::new(ctx.message()?.get_message_id()).build(),
+                        )
                         .entities(&admins)
                         .build()
                         .await?;

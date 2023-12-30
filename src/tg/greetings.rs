@@ -21,7 +21,8 @@ use base64::engine::general_purpose;
 use base64::Engine;
 use botapi::gen_types::{
     CallbackQuery, Chat, ChatMemberUpdated, EReplyMarkup, InlineKeyboardButton,
-    InlineKeyboardButtonBuilder, Message, MessageEntity, UpdateExt, User,
+    InlineKeyboardButtonBuilder, MaybeInaccessibleMessage, Message, MessageEntity,
+    ReplyParametersBuilder, UpdateExt, User,
 };
 use captcha::gen;
 use chrono::Duration;
@@ -270,7 +271,7 @@ fn insert_incorrect(
     s.on_push_multi(move |callback| {
         let ctx = ctx.clone();
         async move {
-            if let Some(message) = callback.get_message() {
+            if let Some(MaybeInaccessibleMessage::Message(message)) = callback.get_message_ref() {
                 let count = 3 - incorrect_tries(&callback, unmute_chat).await?;
                 if count > 0 {
                     TG.client
@@ -344,7 +345,7 @@ fn get_choices<'a>(
         .build();
     let c = ctx.clone();
     correct_button.on_push(move |callback| async move {
-        if let Some(message) = callback.get_message() {
+        if let Some(MaybeInaccessibleMessage::Message(message)) = callback.get_message_ref() {
             if let Some(link) = get_invite_link(&unmute_chat).await? {
                 let mut button = InlineKeyboardBuilder::default();
 
@@ -419,7 +420,7 @@ pub async fn send_captcha<'a>(message: &Message, unmute_chat: Chat, ctx: &Contex
             botapi::gen_types::FileData::Bytes(bytes),
         )
         .caption(&lang_fmt!(ctx, "captchawarning"))
-        .reply_to_message_id(message.get_message_id())
+        .reply_parameters(&ReplyParametersBuilder::new(message.get_message_id()).build())
         .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
             builder.build(),
         ))
@@ -444,7 +445,7 @@ async fn button_captcha<'a>(
     unmute_button.on_push(|callback| async move {
         bctx.authorize_user(callback.get_from_ref().get_id(), bctx.try_get()?.chat)
             .await?;
-        if let Some(message) = callback.get_message() {
+        if let Some(MaybeInaccessibleMessage::Message(message)) = callback.get_message_ref() {
             message
                 .speak(lang_fmt!(bctx, "userunmuted"))
                 .await?

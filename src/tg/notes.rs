@@ -5,7 +5,7 @@
 
 use std::{collections::BTreeMap, ops::Deref};
 
-use botapi::gen_types::{CallbackQuery, MessageEntity};
+use botapi::gen_types::{CallbackQuery, MaybeInaccessibleMessage, MessageEntity};
 use futures::{future::BoxFuture, FutureExt};
 use itertools::Itertools;
 use redis::AsyncCommands;
@@ -186,35 +186,36 @@ pub fn handle_transition<'a>(
         log::info!("current note: {}", note);
         if let Some((note, extra_entities, extra_buttons)) = get_note_by_name(note, chat).await? {
             let c = ctx.clone();
-            SendMediaReply::new(ctx, note.media_type)
-                .button_callback(move |note, button| {
-                    let c = c.clone();
-                    async move {
-                        log::info!("next notes: {}", note);
-                        button.on_push(move |b| async move {
-                            TG.client
-                                .build_answer_callback_query(b.get_id_ref())
-                                .build()
-                                .await?;
+            if let MaybeInaccessibleMessage::Message(message) = callback
+                .get_message_ref()
+                .ok_or_else(|| BotError::Generic("message missing".to_owned()))?
+            {
+                SendMediaReply::new(ctx, note.media_type)
+                    .button_callback(move |note, button| {
+                        let c = c.clone();
+                        async move {
+                            log::info!("next notes: {}", note);
+                            button.on_push(move |b| async move {
+                                TG.client
+                                    .build_answer_callback_query(b.get_id_ref())
+                                    .build()
+                                    .await?;
 
-                            handle_transition(&c, chat, note, b).await?;
+                                handle_transition(&c, chat, note, b).await?;
+                                Ok(())
+                            });
+
                             Ok(())
-                        });
-
-                        Ok(())
-                    }
-                    .boxed()
-                })
-                .text(note.text)
-                .media_id(note.media_id)
-                .extra_entities(extra_entities)
-                .buttons(extra_buttons)
-                .edit_media_reply_chatuser(
-                    callback
-                        .get_message_ref()
-                        .ok_or_else(|| BotError::Generic("message missing".to_owned()))?,
-                )
-                .await?;
+                        }
+                        .boxed()
+                    })
+                    .text(note.text)
+                    .media_id(note.media_id)
+                    .extra_entities(extra_entities)
+                    .buttons(extra_buttons)
+                    .edit_media_reply_chatuser(message)
+                    .await?;
+            }
         }
 
         Ok(())

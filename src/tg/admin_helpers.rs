@@ -23,7 +23,7 @@ use crate::{
 use async_trait::async_trait;
 use botapi::gen_types::{
     Chat, ChatMember, ChatMemberUpdated, ChatPermissions, ChatPermissionsBuilder, Document,
-    InlineKeyboardButtonBuilder, Message, UpdateExt, User,
+    InlineKeyboardButtonBuilder, MaybeInaccessibleMessage, Message, UpdateExt, User,
 };
 use bytes::Bytes;
 use chrono::{DateTime, Duration, Utc};
@@ -1222,7 +1222,7 @@ impl Context {
                 .build();
             let model = model.id;
             button.on_push_multi(move |cb| async move {
-                if let Some(message) = cb.get_message_ref() {
+                if let Some(MaybeInaccessibleMessage::Message(message)) = cb.get_message_ref() {
                     let chat = message.get_chat_ref();
                     if cb.get_from().is_admin(chat).await? {
                         let key = get_warns_key(user, chat.get_id());

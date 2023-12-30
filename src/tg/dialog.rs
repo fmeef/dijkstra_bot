@@ -14,7 +14,8 @@ use crate::util::error::Result;
 use ::redis::AsyncCommands;
 
 use botapi::gen_types::{
-    CallbackQuery, Chat, InlineKeyboardButtonBuilder, InlineKeyboardMarkup, Message, UpdateExt,
+    CallbackQuery, Chat, InlineKeyboardButtonBuilder, InlineKeyboardMarkup,
+    MaybeInaccessibleMessage, Message, UpdateExt,
 };
 use chrono::{DateTime, Duration, Utc};
 use futures::future::BoxFuture;
@@ -582,7 +583,7 @@ impl Conversation {
         callback: &CallbackQuery,
         row_limit: usize,
     ) -> Result<()> {
-        if let Some(message) = callback.get_message() {
+        if let Some(MaybeInaccessibleMessage::Message(message)) = callback.get_message_ref() {
             self.write_key(trans).await?;
 
             if let Some(cb) = self.0.state_callback.as_ref() {

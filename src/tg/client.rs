@@ -9,7 +9,8 @@ use botapi::{
     bot::{ApiError, Bot},
     ext::{BotUrl, LongPoller, Webhook},
     gen_types::{
-        CallbackQuery, InlineKeyboardButton, InlineKeyboardButtonBuilder, Message, UpdateExt,
+        CallbackQuery, InlineKeyboardButton, InlineKeyboardButtonBuilder, Message,
+        ReplyParametersBuilder, UpdateExt,
     },
 };
 use convert_case::Casing;
@@ -230,7 +231,7 @@ pub(crate) async fn show_help<'a>(
                 .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
                     conv.get_current_markup(3).await?,
                 ))
-                .reply_to_message_id(message.get_message_id())
+                .reply_parameters(&ReplyParametersBuilder::new(message.get_message_id()).build())
                 .build()
                 .await?;
         } else {

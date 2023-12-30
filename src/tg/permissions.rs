@@ -18,8 +18,8 @@ use crate::{
 };
 use async_trait::async_trait;
 use botapi::gen_types::{
-    Chat, ChatMember, ChatMemberAdministrator, EReplyMarkup, InlineKeyboardButtonBuilder, Message,
-    UpdateExt, User,
+    Chat, ChatMember, ChatMemberAdministrator, EReplyMarkup, InlineKeyboardButtonBuilder,
+    MaybeInaccessibleMessage, Message, UpdateExt, User,
 };
 use chrono::Duration;
 use sea_orm::IntoActiveModel;
@@ -346,7 +346,7 @@ where
         let out = out.clone();
         async move {
             let user = callback.get_from();
-            if let Some(message) = callback.get_message() {
+            if let Some(MaybeInaccessibleMessage::Message(message)) = callback.get_message_ref() {
                 let permission =
                     NamedBotPermissions::from_chatuser(&user, message.get_chat_ref()).await?;
                 if let Ok(_) = out.send(Some((permission, callback))).await {
@@ -374,7 +374,7 @@ where
                 .build_answer_callback_query(cb.get_id_ref())
                 .build()
                 .await?;
-            if let Some(message) = cb.get_message_ref() {
+            if let Some(MaybeInaccessibleMessage::Message(message)) = cb.get_message_ref() {
                 TG.client
                     .build_delete_message(message.get_chat().get_id(), message.get_message_id())
                     .build()

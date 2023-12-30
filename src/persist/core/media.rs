@@ -13,7 +13,7 @@ use crate::{
 };
 use botapi::gen_types::{
     EReplyMarkup, FileData, InlineKeyboardButton, InputFile, InputMedia, InputMediaDocument,
-    InputMediaPhoto, InputMediaVideo, Message, MessageEntity,
+    InputMediaPhoto, InputMediaVideo, Message, MessageEntity, ReplyParametersBuilder,
 };
 use futures::future::BoxFuture;
 use sea_orm::entity::prelude::*;
@@ -540,7 +540,9 @@ where
                                 .ok_or_else(|| self.context.fail_err("invalid media"))?,
                         ),
                     )
-                    .reply_to_message_id(message.get_message_id())
+                    .reply_parameters(
+                        &ReplyParametersBuilder::new(message.get_message_id()).build(),
+                    )
                     .build()
                     .await
             }
@@ -556,7 +558,9 @@ where
                     .caption(&text)
                     .caption_entities(&entities)
                     .reply_markup(&buttons)
-                    .reply_to_message_id(message.get_message_id())
+                    .reply_parameters(
+                        &ReplyParametersBuilder::new(message.get_message_id()).build(),
+                    )
                     .build()
                     .await
             }
@@ -572,7 +576,9 @@ where
                     .reply_markup(&buttons)
                     .caption_entities(&entities)
                     .caption(&text)
-                    .reply_to_message_id(message.get_message_id())
+                    .reply_parameters(
+                        &ReplyParametersBuilder::new(message.get_message_id()).build(),
+                    )
                     .build()
                     .await
             }
@@ -585,7 +591,9 @@ where
                                 .ok_or_else(|| message.fail_err("invalid media"))?,
                         ),
                     )
-                    .reply_to_message_id(message.get_message_id())
+                    .reply_parameters(
+                        &ReplyParametersBuilder::new(message.get_message_id()).build(),
+                    )
                     .caption(&text)
                     .reply_markup(&buttons)
                     .caption_entities(&entities)
@@ -595,7 +603,9 @@ where
             MediaType::Text => {
                 TG.client()
                     .build_send_message(chat, &text)
-                    .reply_to_message_id(message.get_message_id())
+                    .reply_parameters(
+                        &ReplyParametersBuilder::new(message.get_message_id()).build(),
+                    )
                     .reply_markup(&buttons)
                     .entities(&entities)
                     .build()

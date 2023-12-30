@@ -14,7 +14,8 @@ use crate::{
 };
 
 use botapi::gen_types::{
-    Chat, EReplyMarkup, InlineKeyboardButtonBuilder, InlineKeyboardMarkup, UpdateExt, User,
+    Chat, EReplyMarkup, InlineKeyboardButtonBuilder, InlineKeyboardMarkup,
+    MaybeInaccessibleMessage, UpdateExt, User,
 };
 
 use chrono::Duration;
@@ -724,7 +725,8 @@ impl Context {
                         .await?;
                     return Ok(false);
                 }
-                if let Some(message) = callback.get_message() {
+                if let Some(MaybeInaccessibleMessage::Message(message)) = callback.get_message_ref()
+                {
                     TG.client
                         .build_delete_message(chat, message.get_message_id())
                         .build()
@@ -762,7 +764,8 @@ impl Context {
                         .await?;
                     return Ok(false);
                 }
-                if let Some(message) = callback.get_message() {
+                if let Some(MaybeInaccessibleMessage::Message(message)) = callback.get_message_ref()
+                {
                     TG.client
                         .build_edit_message_text("Fpromote has been canceled")
                         .message_id(message.get_message_id())

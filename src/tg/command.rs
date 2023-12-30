@@ -15,7 +15,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use base64::{engine::general_purpose, Engine};
-use botapi::gen_types::{Chat, Message, MessageEntity, UpdateExt, User};
+use botapi::gen_types::{Chat, MaybeInaccessibleMessage, Message, MessageEntity, UpdateExt, User};
 use lazy_static::lazy_static;
 use macros::lang_fmt;
 use redis::AsyncCommands;
@@ -352,7 +352,10 @@ impl StaticContext {
         match self.update {
             UpdateExt::Message(ref m) => Some(m.get_chat_ref()),
             UpdateExt::EditedMessage(ref m) => Some(m.get_chat_ref()),
-            UpdateExt::CallbackQuery(ref m) => m.get_message_ref().map(|m| m.get_chat_ref()),
+            UpdateExt::CallbackQuery(ref m) => m.get_message_ref().map(|m| match m {
+                MaybeInaccessibleMessage::Message(m) => m.get_chat_ref(),
+                MaybeInaccessibleMessage::InaccessibleMessage(m) => m.get_chat_ref(),
+            }),
             UpdateExt::ChatMember(ref m) => Some(m.get_chat_ref()),
             _ => None,
         }
@@ -362,9 +365,13 @@ impl StaticContext {
         match self.update {
             UpdateExt::Message(ref m) => m.get_chatuser(),
             UpdateExt::EditedMessage(ref m) => m.get_chatuser(),
-            UpdateExt::CallbackQuery(ref m) => {
-                m.get_message_ref().map(|m| m.get_chatuser()).flatten()
-            }
+            UpdateExt::CallbackQuery(ref m) => m
+                .get_message_ref()
+                .map(|m| match m {
+                    MaybeInaccessibleMessage::Message(m) => m.get_chatuser(),
+                    MaybeInaccessibleMessage::InaccessibleMessage(_) => None,
+                })
+                .flatten(),
             UpdateExt::ChatMember(ref m) => Some(ChatUser {
                 chat: m.get_chat(),
                 user: m.get_from(),
@@ -379,9 +386,13 @@ impl StaticContext {
         let lang = if let Some(chat) = match update {
             UpdateExt::Message(ref m) => Some(m.get_chat_ref().get_id()),
             UpdateExt::EditedMessage(ref m) => Some(m.get_chat_ref().get_id()),
-            UpdateExt::CallbackQuery(ref m) => {
-                m.get_message_ref().map(|m| m.get_chat_ref().get_id())
-            }
+            UpdateExt::CallbackQuery(ref m) => m.get_message_ref().map(|m| {
+                match m {
+                    MaybeInaccessibleMessage::Message(m) => m.get_chat_ref(),
+                    MaybeInaccessibleMessage::InaccessibleMessage(m) => m.get_chat_ref(),
+                }
+                .get_id()
+            }),
             UpdateExt::ChatMember(ref m) => Some(m.get_chat_ref().get_id()),
             _ => None,
         } {
@@ -427,7 +438,10 @@ impl Context {
         match self.get().as_ref().map(|v| v.update) {
             Some(UpdateExt::Message(ref m)) => Some(m.get_chat_ref()),
             Some(UpdateExt::EditedMessage(ref m)) => Some(m.get_chat_ref()),
-            Some(UpdateExt::CallbackQuery(ref m)) => m.get_message_ref().map(|m| m.get_chat_ref()),
+            Some(UpdateExt::CallbackQuery(ref m)) => m.get_message_ref().map(|m| match m {
+                MaybeInaccessibleMessage::Message(m) => m.get_chat_ref(),
+                MaybeInaccessibleMessage::InaccessibleMessage(m) => m.get_chat_ref(),
+            }),
             Some(UpdateExt::ChatMember(ref m)) => Some(m.get_chat_ref()),
             _ => None,
         }
