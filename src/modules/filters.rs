@@ -793,7 +793,7 @@ async fn command_filter<'a>(c: &Context, args: &TextArgs<'a>) -> Result<()> {
                     text: ActiveValue::Set(f),
                     media_id: ActiveValue::Set(id),
                     media_type: ActiveValue::Set(media_type),
-                    entity_id: ActiveValue::Set(Some(entity_id)),
+                    entity_id: ActiveValue::Set(entity_id),
                 };
 
                 let model = filters::Entity::insert(model)

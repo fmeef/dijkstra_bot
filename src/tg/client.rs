@@ -120,8 +120,25 @@ impl UpdateHandler {
     pub(crate) async fn handle_update(&self, ctx: &Context) {
         if let Some(ref custom) = self.0 {
             if let Err(err) = custom(ctx).await {
-                log::error!("failed to process update from customa handler");
+                log::error!("failed to process update from custom handler {}", err);
                 err.record_stats();
+                match err.get_message().await {
+                    Err(err) => {
+                        log::error!("failed to send error message: {}, what the FLOOP", err);
+                        err.record_stats();
+                    }
+                    Ok(v) => {
+                        if !v {
+                            if let Some(chat) = ctx.chat() {
+                                if let Err(err) = chat.speak(err.to_string()).await {
+                                    log::error!("triple fault! {}", err);
+                                }
+                            }
+
+                            log::error!("handle_update custom error: {}", err);
+                        }
+                    }
+                }
             }
         }
     }

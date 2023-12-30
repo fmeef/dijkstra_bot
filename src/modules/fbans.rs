@@ -3,11 +3,12 @@ use std::ops::Deref;
 use crate::persist::admin::{fbans, federations};
 use crate::persist::core::users;
 use crate::statics::{DB, TG};
-use crate::tg::admin_helpers::{
-    create_federation, fban_user, fstat, get_fed, get_feds, is_fedadmin, is_fedmember, join_fed,
-    subfed, try_update_fban_cache, update_fed, FileGetter, StrOption,
-};
+use crate::tg::admin_helpers::{FileGetter, StrOption};
 use crate::tg::command::{Cmd, Context, TextArgs};
+use crate::tg::federations::{
+    create_federation, fban_user, fstat, get_fed, get_feds, is_fedadmin, is_fedmember, join_fed,
+    subfed, try_update_fban_cache, update_fed,
+};
 use crate::tg::permissions::IsGroupAdmin;
 use crate::tg::user::{GetUser, Username};
 use crate::util::error::{BotError, Fail, Result, SpeakErr};

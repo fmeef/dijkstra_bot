@@ -4,6 +4,7 @@
 //! different character, currently "!". Command arguments are parsed using regex currently
 //! but in the near future will be switched to a context-free grammar
 
+use crate::util::error::Fail;
 use crate::{
     persist::redis::RedisStr,
     statics::{CONFIG, REDIS},
@@ -16,6 +17,7 @@ use async_trait::async_trait;
 use base64::{engine::general_purpose, Engine};
 use botapi::gen_types::{Chat, Message, MessageEntity, UpdateExt, User};
 use lazy_static::lazy_static;
+use macros::lang_fmt;
 use redis::AsyncCommands;
 use regex::Regex;
 use serde::{de::DeserializeOwned, Serialize};
@@ -125,6 +127,14 @@ pub enum EntityArg<'a> {
     Url(&'a str),
 }
 
+pub trait PopSlice<'a> {
+    /// remove the first argument in an argument list as a slice
+    fn pop_slice(&'a self) -> Option<(&'a TextArg<'a>, ArgSlice<'a>)>;
+    fn pop_slice_tail(&'a self) -> Option<ArgSlice<'a>> {
+        self.pop_slice().map(|v| v.1)
+    }
+}
+
 impl<'a> TextArgs<'a> {
     /// Convert and argument list to a slice of equal size
     pub fn as_slice(&'a self) -> ArgSlice<'a> {
@@ -133,15 +143,31 @@ impl<'a> TextArgs<'a> {
             args: self.args.as_slice(),
         }
     }
+}
 
-    /// remove the first argument in an argument list as a slice
-    pub fn pop_slice(&'a self) -> Option<ArgSlice<'a>> {
+impl<'a> PopSlice<'a> for TextArgs<'a> {
+    fn pop_slice(&'a self) -> Option<(&'a TextArg<'a>, ArgSlice<'a>)> {
         if let Some(arg) = self.args.first() {
             let res = ArgSlice {
                 text: &self.text[arg.get_text().len()..],
                 args: &self.args.as_slice()[1..],
             };
-            Some(res)
+            Some((arg, res))
+        } else {
+            None
+        }
+    }
+}
+
+impl<'a> PopSlice<'a> for ArgSlice<'a> {
+    /// remove the first argument in an argument list as a slice
+    fn pop_slice(&'a self) -> Option<(&'a TextArg<'a>, ArgSlice<'a>)> {
+        if let Some(arg) = self.args.first() {
+            let res = ArgSlice {
+                text: &self.text[arg.get_text().len()..],
+                args: &self.args[1..],
+            };
+            Some((arg, res))
         } else {
             None
         }
@@ -383,6 +409,18 @@ impl Context {
         self.get()
             .as_ref()
             .ok_or_else(|| BotError::Generic("Not a chat context".to_owned()))
+    }
+
+    pub fn get_real_from<'a>(&'a self) -> Result<&'a User> {
+        let message = self.message()?;
+        if message.get_sender_chat().is_some() {
+            return self.fail(lang_fmt!(self, "anonchannelbad"));
+        }
+        if let Some(user) = message.get_from_ref() {
+            Ok(user)
+        } else {
+            self.fail(lang_fmt!(self, "nosender"))
+        }
     }
 
     pub fn chat<'a>(&'a self) -> Option<&'a Chat> {

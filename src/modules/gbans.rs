@@ -1,8 +1,8 @@
 use macros::update_handler;
 
 use crate::persist::admin::gbans;
-use crate::tg::admin_helpers::gban_user;
 use crate::tg::command::{Cmd, Context};
+use crate::tg::federations::gban_user;
 use crate::tg::permissions::IsGroupAdmin;
 use crate::tg::user::GetUser;
 use crate::util::error::Result;

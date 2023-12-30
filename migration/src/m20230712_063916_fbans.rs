@@ -42,38 +42,9 @@ impl MigrationTrait for Migration {
 
         manager
             .get_connection()
-            .query_one(Statement::from_string(
-                sea_orm::DatabaseBackend::Postgres,
-                format!(
-                    "
-            CREATE FUNCTION prevent_cycle()
-              RETURNS TRIGGER AS $$
-            DECLARE
-              rc INTEGER;
-            BEGIN
-              EXECUTE format(
-                'WITH RECURSIVE search_graph(%2$I, path, cycle) AS (' ||
-                  'SELECT t.%2$I, ARRAY[t.{fed}, t.%2$I], (t.{fed} = t.%2$I) ' ||
-                    'FROM %1$I t ' ||
-                    'WHERE t.{fed} = $1 ' ||
-                  'UNION ALL ' ||
-                  'SELECT t.%2$I, sg.path || t.%2$I, t.%2$I = ANY(sg.path) ' ||
-                    'FROM search_graph sg ' ||
-                    'JOIN %1$I t on t.{fed} = sg.%2$I ' ||
-                    'WHERE NOT sg.cycle' ||
-                  ') SELECT 1 FROM search_graph WHERE cycle LIMIT 1;',
-                TG_ARGV[0], TG_ARGV[1]) USING NEW.{fed};
-              GET DIAGNOSTICS rc = ROW_COUNT;
-              IF rc > 0 THEN
-                RAISE EXCEPTION 'Self-referential foreign key cycle detected';
-              ELSE
-                RETURN NEW;
-              END IF;
-            END
-            $$ LANGUAGE plpgsql;    
-            ",
-                    fed = federations::Column::FedId.to_string()
-                ),
+            .query_one(crate::prevent_cycle(
+                "prevent_cycle",
+                &federations::Column::FedId.to_string(),
             ))
             .await?;
 

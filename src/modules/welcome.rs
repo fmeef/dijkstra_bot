@@ -57,7 +57,7 @@ async fn get_model<'a>(
             .await;
         log::info!("welcome get with buttons {:?}", buttons.get());
         let entity_id = entity::insert(DB.deref(), &entities, buttons).await?;
-        (Some(text), Some(entity_id))
+        (Some(text), entity_id)
     } else {
         (None, None)
     };

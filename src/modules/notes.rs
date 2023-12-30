@@ -106,11 +106,8 @@ impl ModuleHelpers for Helper {
         for note in notes.notes {
             let (text, entities, buttons) =
                 RoseMdParser::new(&note.text.replace("\\n", "\n"), true).parse();
-            let entity_id = if entities.len() > 0 {
-                Some(entity::insert(DB.deref(), &entities, buttons).await?)
-            } else {
-                None
-            };
+            let entity_id = entity::insert(DB.deref(), &entities, buttons).await?;
+
             let model = notes::Model {
                 name: note.name,
                 chat,
@@ -165,7 +162,7 @@ async fn get_model<'a>(message: &'a Message, args: &'a TextArgs<'a>) -> Result<n
                     .set_text(text.to_owned());
                 let (text, entities, buttons) = md.build_murkdown().await?;
                 let entity_id = entity::insert(DB.deref(), &entities, buttons).await?;
-                (Some(text), Some(entity_id))
+                (Some(text), entity_id)
             } else {
                 (None, None)
             };
@@ -199,7 +196,7 @@ async fn get_model<'a>(message: &'a Message, args: &'a TextArgs<'a>) -> Result<n
                     .set_text(text.to_owned());
                 let (text, entities, buttons) = md.build_murkdown().await?;
                 let entity_id = entity::insert(DB.deref(), &entities, buttons).await?;
-                (Some(text), Some(entity_id))
+                (Some(text), entity_id)
             } else {
                 (None, None)
             };
