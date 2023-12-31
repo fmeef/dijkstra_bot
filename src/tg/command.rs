@@ -149,7 +149,7 @@ impl<'a> PopSlice<'a> for TextArgs<'a> {
     fn pop_slice(&'a self) -> Option<(&'a TextArg<'a>, ArgSlice<'a>)> {
         if let Some(arg) = self.args.first() {
             let res = ArgSlice {
-                text: &self.text[arg.get_text().len()..],
+                text: &self.text[arg.get_text().len()..].trim(),
                 args: &self.args.as_slice()[1..],
             };
             Some((arg, res))
@@ -164,7 +164,7 @@ impl<'a> PopSlice<'a> for ArgSlice<'a> {
     fn pop_slice(&'a self) -> Option<(&'a TextArg<'a>, ArgSlice<'a>)> {
         if let Some(arg) = self.args.first() {
             let res = ArgSlice {
-                text: &self.text[arg.get_text().len()..],
+                text: &self.text[arg.get_text().len()..].trim(),
                 args: &self.args[1..],
             };
             Some((arg, res))

@@ -338,7 +338,7 @@ async fn import_fbans(ctx: &Context) -> Result<()> {
         let user = user.get_id();
         ctx.action_message_message(|ctx, message, _| async move {
             if let Some(fed) = get_fed(user).await? {
-                let res = set_fban_list(ctx, &fed.fed_id, message).await?;
+                let res = set_fban_list(ctx, &fed.fed_id, message.message()).await?;
                 ctx.reply(format!("Successfully imported {} fbans", res))
                     .await?;
             }

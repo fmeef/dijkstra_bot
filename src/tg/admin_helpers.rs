@@ -735,6 +735,20 @@ pub async fn is_group_or_die(chat: &Chat) -> Result<()> {
     }
 }
 
+pub enum ActionMessage<'a> {
+    Me(&'a Message),
+    Reply(&'a Message),
+}
+
+impl<'a> ActionMessage<'a> {
+    pub fn message(&'a self) -> &'a Message {
+        match self {
+            Self::Me(m) => m,
+            Self::Reply(m) => m,
+        }
+    }
+}
+
 impl Context {
     /// Checks an update for user interactions and applies the current action for the user
     /// if it is pending. clearing the pending flag in the process
@@ -1042,7 +1056,7 @@ impl Context {
 
     pub async fn action_message_message<'a, F, Fut>(&'a self, action: F) -> Result<()>
     where
-        F: FnOnce(&'a Context, &'a Message, Option<ArgSlice<'a>>) -> Fut,
+        F: FnOnce(&'a Context, ActionMessage<'a>, Option<ArgSlice<'a>>) -> Fut,
         Fut: Future<Output = Result<()>>,
     {
         self.action_message_some(|ctx, _, args, message| async move {
@@ -1061,7 +1075,7 @@ impl Context {
     /// function along with the remaining args and the message itself
     pub async fn action_message_some<'a, F, Fut>(&'a self, action: F) -> Result<Option<i64>>
     where
-        F: FnOnce(&'a Context, Option<i64>, Option<ArgSlice<'a>>, &'a Message) -> Fut,
+        F: FnOnce(&'a Context, Option<i64>, Option<ArgSlice<'a>>, ActionMessage<'a>) -> Fut,
         Fut: Future<Output = Result<()>>,
     {
         let message = self.message()?;
@@ -1084,7 +1098,7 @@ impl Context {
                 self,
                 Some(user.get_id()),
                 args.map(|a| a.as_slice()),
-                message,
+                ActionMessage::Reply(message),
             )
             .await?;
             Ok(Some(user.get_id()))
@@ -1096,7 +1110,7 @@ impl Context {
                             self,
                             Some(user.get_id()),
                             args.map(|a| a.pop_slice_tail()).flatten(),
-                            self.message()?,
+                            ActionMessage::Me(self.message()?),
                         )
                         .await?;
                         Ok(Some(user.get_id()))
@@ -1109,7 +1123,7 @@ impl Context {
                         self,
                         Some(user.get_id()),
                         args.map(|a| a.pop_slice_tail()).flatten(),
-                        self.message()?,
+                        ActionMessage::Me(self.message()?),
                     )
                     .await?;
                     Ok(Some(user.get_id()))
@@ -1128,7 +1142,7 @@ impl Context {
                                 self,
                                 Some(v),
                                 args.map(|a| a.pop_slice_tail()).flatten(),
-                                self.message()?,
+                                ActionMessage::Me(self.message()?),
                             )
                             .await?;
                             Ok(Some(v))
@@ -1138,7 +1152,7 @@ impl Context {
                                 self,
                                 None,
                                 args.map(|a| a.pop_slice_tail()).flatten(),
-                                self.message()?,
+                                ActionMessage::Me(self.message()?),
                             )
                             .await?;
                             Ok(None)
@@ -1148,7 +1162,7 @@ impl Context {
                                 self,
                                 None,
                                 args.map(|a| a.pop_slice_tail()).flatten(),
-                                self.message()?,
+                                ActionMessage::Me(self.message()?),
                             )
                             .await?;
                             Ok(None)
