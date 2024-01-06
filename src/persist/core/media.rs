@@ -4,7 +4,7 @@ use crate::{
         admin_helpers::{is_dm, IntoChatUser},
         button::InlineKeyboardBuilder,
         command::{post_deep_link, Context},
-        markdown::{button_deeplink_key, retro_fillings, MarkupBuilder},
+        markdown::{button_deeplink_key, retro_fillings, EntityMessage, MarkupBuilder},
     },
     util::{
         error::{BotError, Fail, Result},
@@ -12,8 +12,8 @@ use crate::{
     },
 };
 use botapi::gen_types::{
-    EReplyMarkup, FileData, InlineKeyboardButton, InputFile, InputMedia, InputMediaDocument,
-    InputMediaPhoto, InputMediaVideo, Message, MessageEntity, ReplyParametersBuilder,
+    EReplyMarkup, FileData, InlineKeyboardButton, InputFile, InputMedia, InputMediaDocumentBuilder,
+    InputMediaPhotoBuilder, InputMediaVideoBuilder, Message, MessageEntity, ReplyParametersBuilder,
 };
 use futures::future::BoxFuture;
 use sea_orm::entity::prelude::*;
@@ -133,7 +133,7 @@ where
     text: Option<String>,
     media_id: Option<String>,
     buttons: Option<InlineKeyboardBuilder>,
-    extra_buttons: Option<Vec<InlineKeyboardButton>>,
+    override_buttons: Option<InlineKeyboardBuilder>,
     extra_entities: Option<Vec<MessageEntity>>,
     callback: Option<F>,
 }
@@ -152,7 +152,7 @@ where
             text: None,
             media_id: None,
             buttons: None,
-            extra_buttons: None,
+            override_buttons: None,
             extra_entities: None,
             callback: None,
         }
@@ -171,6 +171,22 @@ where
     pub fn text(mut self, text: Option<String>) -> Self {
         self.text = text;
         self
+    }
+
+    pub async fn entity_message_nofail(mut self, message: EntityMessage) -> Self {
+        let (text, entities, kb) = message.builder.build_murkdown_nofail().await;
+        self.extra_entities = Some(entities);
+        self.text = Some(text);
+        self.override_buttons = Some(kb);
+        self
+    }
+
+    pub async fn entity_message(mut self, message: EntityMessage) -> Result<Self> {
+        let (text, entities, kb) = message.builder.build_murkdown().await?;
+        self.extra_entities = Some(entities);
+        self.text = Some(text);
+        self.override_buttons = Some(kb);
+        Ok(self)
     }
 
     async fn note_button(&mut self) -> Result<()> {
@@ -223,8 +239,8 @@ where
         self
     }
 
-    pub fn extra_buttons(mut self, extra_buttons: Option<Vec<InlineKeyboardButton>>) -> Self {
-        self.extra_buttons = extra_buttons;
+    pub fn override_buttons(mut self, extra_buttons: Option<InlineKeyboardBuilder>) -> Self {
+        self.override_buttons = extra_buttons;
         self
     }
 
@@ -256,7 +272,7 @@ where
             }
 
             let text = text.unwrap_or_else(|| "".to_owned());
-            let (text, entities, mut buttons) = if let Some(extra) = self.extra_entities {
+            let (text, entities, buttons) = if let Some(extra) = self.extra_entities {
                 let mut buttons = self
                     .buttons
                     .unwrap_or_else(|| InlineKeyboardBuilder::default());
@@ -284,13 +300,11 @@ where
                     .await
             };
 
-            if let Some(extra_buttons) = self.extra_buttons {
-                for button in extra_buttons {
-                    buttons.button(button);
-                }
-            }
-
-            let buttons = buttons.build();
+            let buttons = if let Some(extra_buttons) = self.override_buttons {
+                extra_buttons.build()
+            } else {
+                buttons.build()
+            };
 
             let input_media = match self.media_type {
                 MediaType::Sticker => {
@@ -310,24 +324,33 @@ where
                         .await?;
                     None
                 }
-                MediaType::Photo => Some(InputMedia::InputMediaPhoto(InputMediaPhoto::new(Some(
-                    InputFile::String(
+                MediaType::Photo => Some(InputMedia::InputMediaPhoto(
+                    InputMediaPhotoBuilder::new(Some(InputFile::String(
                         self.media_id
                             .ok_or_else(|| current_message.fail_err("invalid media"))?,
-                    ),
-                )))),
-                MediaType::Document => Some(InputMedia::InputMediaDocument(
-                    InputMediaDocument::new(Some(InputFile::String(
-                        self.media_id
-                            .ok_or_else(|| current_message.fail_err("invalid media"))?,
-                    ))),
+                    )))
+                    .set_caption(text)
+                    .set_caption_entities(entities)
+                    .build(),
                 )),
-                MediaType::Video => Some(InputMedia::InputMediaVideo(InputMediaVideo::new(Some(
-                    InputFile::String(
+                MediaType::Document => Some(InputMedia::InputMediaDocument(
+                    InputMediaDocumentBuilder::new(Some(InputFile::String(
                         self.media_id
                             .ok_or_else(|| current_message.fail_err("invalid media"))?,
-                    ),
-                )))),
+                    )))
+                    .set_caption(text)
+                    .set_caption_entities(entities)
+                    .build(),
+                )),
+                MediaType::Video => Some(InputMedia::InputMediaVideo(
+                    InputMediaVideoBuilder::new(Some(InputFile::String(
+                        self.media_id
+                            .ok_or_else(|| current_message.fail_err("invalid media"))?,
+                    )))
+                    .set_caption(text)
+                    .set_caption_entities(entities)
+                    .build(),
+                )),
                 MediaType::Text => {
                     TG.client
                         .build_edit_message_text(&text)
@@ -344,20 +367,22 @@ where
             if let Some(input_media) = input_media {
                 TG.client
                     .build_edit_message_media(&input_media)
+                    .media(&input_media)
                     .message_id(current_message.get_message_id())
                     .chat_id(current_message.get_chat().get_id())
-                    .build()
-                    .await?;
-
-                TG.client
-                    .build_edit_message_caption()
-                    .message_id(current_message.get_message_id())
-                    .chat_id(current_message.get_chat().get_id())
-                    .caption(&text)
-                    .caption_entities(&entities)
                     .reply_markup(&buttons)
                     .build()
                     .await?;
+
+                // TG.client
+                //     .build_edit_message_caption()
+                //     .message_id(current_message.get_message_id())
+                //     .chat_id(current_message.get_chat().get_id())
+                //     .caption(&text)
+                //     .caption_entities(&entities)
+                //     .reply_markup(&buttons)
+                //     .build()
+                //     .await?;
             }
         }
         Ok(())
@@ -403,10 +428,8 @@ where
                     .await
             };
 
-            if let Some(extra_buttons) = self.extra_buttons {
-                for button in extra_buttons {
-                    buttons.button(button);
-                }
+            if let Some(extra_buttons) = self.override_buttons {
+                buttons = extra_buttons;
             }
 
             let buttons = EReplyMarkup::InlineKeyboardMarkup(buttons.build());
@@ -522,10 +545,8 @@ where
                 .await
         };
 
-        if let Some(extra_buttons) = self.extra_buttons {
-            for button in extra_buttons {
-                buttons.button(button);
-            }
+        if let Some(extra_buttons) = self.override_buttons {
+            buttons = extra_buttons;
         }
 
         let buttons = EReplyMarkup::InlineKeyboardMarkup(buttons.build());

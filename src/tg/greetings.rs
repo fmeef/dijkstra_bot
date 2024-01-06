@@ -149,7 +149,7 @@ pub(crate) async fn welcome_members(
     upd: &ChatMemberUpdated,
     model: welcomes::Model,
     entities: Vec<MessageEntity>,
-    extra_buttons: Option<InlineKeyboardBuilder>,
+    mut extra_buttons: Option<InlineKeyboardBuilder>,
     lang: &Lang,
     captcha: Option<&captchastate::Model>,
 ) -> Result<()> {
@@ -171,6 +171,11 @@ pub(crate) async fn welcome_members(
     };
     let c = ctx.clone();
     let chat = upd.get_chat().get_id();
+    if let Some(b) = extra_buttons.as_mut() {
+        for button in buttons {
+            b.button(button);
+        }
+    }
     SendMediaReply::new(ctx, model.media_type.unwrap_or(MediaType::Text))
         .button_callback(move |note, button| {
             let c = c.clone();
@@ -193,7 +198,6 @@ pub(crate) async fn welcome_members(
         .media_id(model.media_id)
         .extra_entities(entities)
         .buttons(extra_buttons)
-        .extra_buttons(Some(buttons))
         .send_media()
         .await?;
 
