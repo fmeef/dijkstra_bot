@@ -35,7 +35,7 @@ metadata!("Admin",
 async fn promote(context: &Context) -> Result<()> {
     context.check_permissions(|v| v.can_promote_members).await?;
     context
-        .action_message(move |ctx, user, _| async move {
+        .action_user(move |ctx, user, _| async move {
             let message = ctx.message()?;
             if let Some(chat) = ctx.chat() {
                 chat.promote(user).await?;
@@ -54,7 +54,7 @@ async fn promote(context: &Context) -> Result<()> {
 async fn demote<'a>(context: &'a Context) -> Result<()> {
     context.check_permissions(|p| p.can_promote_members).await?;
     context
-        .action_message(|ctx, user, _| async move {
+        .action_user(|ctx, user, _| async move {
             if let Some(chat) = ctx.chat() {
                 match chat.demote(user).await {
                     Err(err) => {

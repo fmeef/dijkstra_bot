@@ -173,7 +173,7 @@ pub async fn handle_update(ctx: &Context) -> Result<()> {
             "import" => {
                 ctx.check_permissions(|p| p.can_change_info.and(p.can_restrict_members))
                     .await?;
-                ctx.action_message_message(|ctx, message, _| async move {
+                ctx.action_message(|ctx, message, _| async move {
                     let message = message.message();
                     if let Some(file) = message.get_document() {
                         let text = file.get_text().await?;

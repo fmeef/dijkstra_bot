@@ -35,7 +35,7 @@ pub async fn warn(context: &Context) -> Result<()> {
         .await?;
 
     context
-        .action_message(|ctx, user, args| async move {
+        .action_user(|ctx, user, args| async move {
             if user.is_admin(ctx.message()?.get_chat_ref()).await? {
                 return ctx.fail(lang_fmt!(ctx.try_get()?.lang, "warnadmin"));
             }
@@ -64,7 +64,7 @@ pub async fn warns(context: &Context) -> Result<()> {
         let lang = v.lang;
         self_admin_or_die(&chat).await?;
         context
-            .action_message(|ctx, user, _| async move {
+            .action_user(|ctx, user, _| async move {
                 let warns = get_warns(ctx.try_get()?.chat, user).await?;
                 let list = warns
                     .into_iter()
@@ -94,7 +94,7 @@ pub async fn clear<'a>(ctx: &Context) -> Result<()> {
     ctx.is_group_or_die().await?;
     self_admin_or_die(&message.get_chat()).await?;
     ctx.check_permissions(|p| p.can_restrict_members).await?;
-    ctx.action_message(|ctx, user, _| async move {
+    ctx.action_user(|ctx, user, _| async move {
         clear_warns(ctx.message()?.get_chat_ref(), user).await?;
 
         ctx.reply_fmt(entity_fmt!(ctx, "clearwarns", user.mention().await?))

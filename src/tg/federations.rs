@@ -694,7 +694,7 @@ impl Context {
     }
 
     pub async fn fpromote(&self) -> Result<()> {
-        self.action_message(|ctx, user, _| async move {
+        self.action_user(|ctx, user, _| async move {
             let c = self.try_get()?;
             let chat = c.chat.get_id();
             let me = ctx

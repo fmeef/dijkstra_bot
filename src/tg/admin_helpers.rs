@@ -1026,9 +1026,12 @@ impl Context {
     }
 
     /// Persistantly change the permission of a user by using action_message syntax
-    pub async fn change_permissions_message(&self, permissions: ChatPermissions) -> Result<i64> {
+    pub async fn change_permissions_message(
+        &self,
+        permissions: ChatPermissions,
+    ) -> Result<Option<i64>> {
         let me = self.clone();
-        self.action_message(|ctx, user, args| async move {
+        self.action_user(|ctx, user, args| async move {
             let duration = ctx.parse_duration(&args)?;
             me.change_permissions(user, &permissions, duration).await?;
 
@@ -1037,7 +1040,7 @@ impl Context {
         .await
     }
 
-    pub async fn action_message<'a, F, Fut>(&'a self, action: F) -> Result<i64>
+    pub async fn action_user<'a, F, Fut>(&'a self, action: F) -> Result<Option<i64>>
     where
         F: FnOnce(&'a Context, i64, Option<ArgSlice<'a>>) -> Fut,
         Fut: Future<Output = Result<()>>,
@@ -1046,15 +1049,26 @@ impl Context {
             if let Some(user) = user {
                 action(ctx, user, args).await?;
             } else {
-                return self.fail(lang_fmt!(ctx.try_get()?.lang, "specifyuser"));
+                return self.fail(lang_fmt!(ctx, "specifyuser"));
             }
             Ok(())
         })
-        .await?
-        .ok_or_else(|| BotError::Generic("User not found".to_owned()))
+        .await
     }
 
-    pub async fn action_message_message<'a, F, Fut>(&'a self, action: F) -> Result<()>
+    pub async fn action_user_maybe<'a, F, Fut>(&'a self, action: F) -> Result<Option<i64>>
+    where
+        F: FnOnce(&'a Context, Option<i64>, Option<ArgSlice<'a>>) -> Fut,
+        Fut: Future<Output = Result<()>>,
+    {
+        self.action_message_some(|ctx, user, args, _| async move {
+            action(ctx, user, args).await?;
+            Ok(())
+        })
+        .await
+    }
+
+    pub async fn action_message<'a, F, Fut>(&'a self, action: F) -> Result<()>
     where
         F: FnOnce(&'a Context, ActionMessage<'a>, Option<ArgSlice<'a>>) -> Fut,
         Fut: Future<Output = Result<()>>,
@@ -1105,18 +1119,17 @@ impl Context {
         } else {
             match entities.front() {
                 Some(EntityArg::Mention(name)) => {
-                    if let Some(user) = get_user_username(name).await? {
-                        action(
-                            self,
-                            Some(user.get_id()),
-                            args.map(|a| a.pop_slice_tail()).flatten(),
-                            ActionMessage::Me(self.message()?),
-                        )
-                        .await?;
-                        Ok(Some(user.get_id()))
-                    } else {
-                        return self.fail(lang_fmt!(self.try_get()?.lang, "usernotfound"));
-                    }
+                    let user = get_user_username(name)
+                        .await?
+                        .ok_or_else(|| BotError::UserNotFound)?;
+                    action(
+                        self,
+                        Some(user.get_id()),
+                        args.map(|a| a.pop_slice_tail()).flatten(),
+                        ActionMessage::Me(self.message()?),
+                    )
+                    .await?;
+                    Ok(Some(user.get_id()))
                 }
                 Some(EntityArg::TextMention(user)) => {
                     action(

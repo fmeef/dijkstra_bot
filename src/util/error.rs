@@ -223,6 +223,8 @@ pub enum BotError {
     ReqwestError(#[from] reqwest::Error),
     #[error("Generic error {0}")]
     Generic(String),
+    #[error("User not found")]
+    UserNotFound,
 }
 
 impl<T> From<tokio::sync::mpsc::error::SendError<T>> for BotError {

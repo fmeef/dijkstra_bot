@@ -1002,9 +1002,7 @@ impl MarkupBuilder {
 
     /// Appends new unformated text
     pub fn text<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
-        self.offset += text.as_ref().encode_utf16().count() as i64;
-        //        let text = text.escape(self.enabled_header);
-        self.text.push_str(text.as_ref());
+        self.offset += self.push_text(text);
         self
     }
 
@@ -1023,10 +1021,11 @@ impl MarkupBuilder {
     /// Appends a markup value
     pub fn regular<'a, T: AsRef<str>>(&'a mut self, entity_type: Markup<T>) -> &'a mut Self {
         let text = entity_type.get_text();
-
-        let n = text.encode_utf16().count() as i64;
-        //        let text = text.escape(self.enabled_header);
-
+        let mut n = text.encode_utf16().count() as i64;
+        n -= text
+            .chars()
+            .filter(|p| is_valid(*p, self.enabled_header))
+            .count() as i64;
         self.text.push_str(&text);
         match entity_type.markup_type {
             MarkupType::Text => {}
@@ -1050,6 +1049,18 @@ impl MarkupBuilder {
         self
     }
 
+    fn push_text<T: AsRef<str>>(&mut self, text: T) -> i64 {
+        let text = text.as_ref();
+        let mut n = text.encode_utf16().count() as i64;
+
+        n -= text
+            .chars()
+            .filter(|p| is_valid(*p, self.enabled_header))
+            .count() as i64;
+        self.text.push_str(&text);
+        n
+    }
+
     /// Appends a new text link. Pass a number for advance to allow text/formatting overlap
     pub fn text_link<'a, T: AsRef<str>>(
         &'a mut self,
@@ -1058,7 +1069,7 @@ impl MarkupBuilder {
         advance: Option<i64>,
     ) -> &'a mut Self {
         let text = text.as_ref();
-        let n = text.encode_utf16().count() as i64;
+        let n = self.push_text(text);
         //        let text = text.escape(self.enabled_header);
         let entity = MessageEntityBuilder::new(self.offset, n)
             .set_type("text_link".to_owned())
@@ -1066,7 +1077,6 @@ impl MarkupBuilder {
             .build();
         self.offset += advance.unwrap_or(n);
         self.entities.push(entity);
-        self.text.push_str(&text);
         self
     }
 
@@ -1078,15 +1088,14 @@ impl MarkupBuilder {
         advance: Option<i64>,
     ) -> &'a Self {
         let text = text.as_ref();
-        let n = text.encode_utf16().count() as i64;
-        //        let text = text.escape(self.enabled_header);
+        let n = self.push_text(text);
         let entity = MessageEntityBuilder::new(self.offset, n)
             .set_type("text_mention".to_owned())
             .set_user(mention)
             .build();
         self.offset += advance.unwrap_or(n);
         self.entities.push(entity);
-        self.text.push_str(&text);
+
         self
     }
 
@@ -1098,15 +1107,13 @@ impl MarkupBuilder {
         advance: Option<i64>,
     ) -> &'a Self {
         let text = text.as_ref();
-        let n = text.encode_utf16().count() as i64;
-        //       let text = text.escape(self.enabled_header);
+        let n = self.push_text(text);
         let entity = MessageEntityBuilder::new(self.offset, n)
             .set_type("pre".to_owned())
             .set_language(language)
             .build();
         self.offset += advance.unwrap_or(n);
         self.entities.push(entity);
-        self.text.push_str(&text);
         self
     }
 
@@ -1118,15 +1125,13 @@ impl MarkupBuilder {
         advance: Option<i64>,
     ) -> &'a Self {
         let text = text.as_ref();
-        let n = text.encode_utf16().count() as i64;
-        //        let text = text.escape(self.enabled_header);
+        let n = self.push_text(text);
         let entity = MessageEntityBuilder::new(self.offset, n)
             .set_type("custom_emoji".to_owned())
             .set_custom_emoji_id(emoji_id)
             .build();
         self.offset += advance.unwrap_or(n);
         self.entities.push(entity);
-        self.text.push_str(&text);
         self
     }
 
@@ -1194,6 +1199,7 @@ impl MarkupBuilder {
     pub fn s<'a>(&'a mut self) -> &'a mut Self {
         let t = " ";
         let count = t.encode_utf16().count() as i64;
+
         self.offset += count;
         self.text.push_str(t);
         self
@@ -1403,12 +1409,12 @@ pub enum MarkupType {
     CustomEmoji(String),
 }
 
-impl<T> From<T> for Markup<T>
+impl<T> From<T> for Markup<String>
 where
     T: AsRef<str>,
 {
     fn from(value: T) -> Self {
-        MarkupType::Text.text(value)
+        MarkupType::Text.text(value.as_ref().escape(false))
     }
 }
 

@@ -51,7 +51,7 @@ async fn fban(ctx: &Context) -> Result<()> {
         return ctx.fail(lang_fmt!(ctx, "anonban"));
     }
 
-    ctx.action_message(|ctx, user, args| async move {
+    ctx.action_user(|ctx, user, args| async move {
         if let Some(user) = user.get_cached_user().await? {
             let chat = ctx.try_get()?.chat;
             if let Some(fed) = is_fedmember(chat.get_id()).await? {
@@ -171,7 +171,7 @@ pub async fn unfban(ctx: &Context) -> Result<()> {
     if ctx.message()?.get_sender_chat().is_some() {
         return ctx.fail(lang_fmt!(ctx, "anonban"));
     }
-    ctx.action_message(|ctx, user, _| async move {
+    ctx.action_user(|ctx, user, _| async move {
         if let Some(fed) = is_fedmember(ctx.try_get()?.chat.get_id()).await? {
             if is_fedadmin(user, &fed).await?
                 || ctx.check_permissions(|p| p.is_support).await.is_ok()
@@ -225,7 +225,7 @@ async fn subfed_cmd<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
 }
 
 async fn fstat_cmd(ctx: &Context) -> Result<()> {
-    ctx.action_message(|ctx, user, _| async move {
+    ctx.action_user(|ctx, user, _| async move {
         let v = fstat(user)
             .await?
             .map(|(fban, fed)| {
@@ -336,7 +336,7 @@ async fn import_fbans(ctx: &Context) -> Result<()> {
     }
     if let Some(user) = message.get_from() {
         let user = user.get_id();
-        ctx.action_message_message(|ctx, message, _| async move {
+        ctx.action_message(|ctx, message, _| async move {
             if let Some(fed) = get_fed(user).await? {
                 let res = set_fban_list(ctx, &fed.fed_id, message.message()).await?;
                 ctx.reply(format!("Successfully imported {} fbans", res))

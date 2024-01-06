@@ -19,7 +19,7 @@ metadata!("Global Bans",
 
 async fn ungban(ctx: &Context) -> Result<()> {
     ctx.check_permissions(|p| p.is_support).await?;
-    ctx.action_message(|ctx, user, _| async move {
+    ctx.action_user(|ctx, user, _| async move {
         if let Some(user) = user.get_cached_user().await? {
             ctx.ungban_user(user.get_id()).await?;
             ctx.reply("user ungbanned").await?;
@@ -34,7 +34,7 @@ async fn ungban(ctx: &Context) -> Result<()> {
 }
 async fn gban(ctx: &Context) -> Result<()> {
     ctx.check_permissions(|p| p.is_support).await?;
-    ctx.action_message(|ctx, user, args| async move {
+    ctx.action_user(|ctx, user, args| async move {
         if let Some(user) = user.get_cached_user().await? {
             let mut model = gbans::Model::new(user.get_id());
 

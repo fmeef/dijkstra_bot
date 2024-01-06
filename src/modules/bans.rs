@@ -38,7 +38,7 @@ metadata!("Bans",
 
 pub async fn unban_cmd(ctx: &Context) -> Result<()> {
     ctx.check_permissions(|p| p.can_restrict_members).await?;
-    ctx.action_message(|ctx, user, _| async move {
+    ctx.action_user(|ctx, user, _| async move {
         ctx.unban(user).await?;
         let entity = user.mention().await?;
         ctx.speak_fmt(entity_fmt!(ctx, "unbanned", entity)).await?;
@@ -51,7 +51,7 @@ pub async fn unban_cmd(ctx: &Context) -> Result<()> {
 pub async fn ban_cmd(ctx: &Context) -> Result<()> {
     ctx.check_permissions(|p| p.can_restrict_members).await?;
     let lang = ctx.try_get()?.lang;
-    ctx.action_message(|ctx, user, args| async move {
+    ctx.action_user(|ctx, user, args| async move {
         let duration = ctx.parse_duration(&args)?;
         ctx.ban(user, duration)
             .await
@@ -68,7 +68,7 @@ pub async fn ban_cmd(ctx: &Context) -> Result<()> {
 
 pub async fn kick_cmd<'a>(ctx: &Context) -> Result<()> {
     ctx.check_permissions(|p| p.can_restrict_members).await?;
-    ctx.action_message(|ctx, user, _| async move {
+    ctx.action_user(|ctx, user, _| async move {
         if let Some(chat) = ctx.chat() {
             kick(user, chat.get_id()).await?;
             let entity = user.mention().await?;
@@ -103,11 +103,15 @@ pub async fn mute_cmd<'a>(ctx: &Context) -> Result<()> {
             lang_fmt!(lang, "failmute")
         })
         .await?;
-    let mention = user.mention().await?;
+    if let Some(user) = user {
+        let mention = user.mention().await?;
 
-    ctx.message()?
-        .speak_fmt(entity_fmt!(ctx, "muteuser", mention))
-        .await?;
+        ctx.message()?
+            .speak_fmt(entity_fmt!(ctx, "muteuser", mention))
+            .await?;
+    } else {
+        ctx.speak(lang_fmt!(ctx, "usernotfound")).await?;
+    }
 
     //  message.speak(lang_fmt!(lang, "muteuser")).await?;
 
@@ -136,10 +140,14 @@ pub async fn unmute_cmd<'a>(ctx: &Context) -> Result<()> {
         .await
         .speak_err_code(message.get_chat_ref(), 400, |_| lang_fmt!(lang, "failmute"))
         .await?;
-    let mention = user.mention().await?;
-    message
-        .speak_fmt(entity_fmt!(ctx, "unmuteuser", mention))
-        .await?;
+    if let Some(user) = user {
+        let mention = user.mention().await?;
+        message
+            .speak_fmt(entity_fmt!(ctx, "unmuteuser", mention))
+            .await?;
+    } else {
+        ctx.speak(lang_fmt!(ctx, "usernotfound")).await?;
+    }
 
     Ok(())
 }

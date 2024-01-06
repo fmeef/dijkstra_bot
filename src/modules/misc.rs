@@ -16,7 +16,7 @@ metadata!("Misc",
 );
 
 async fn get_id(ctx: &Context) -> Result<()> {
-    ctx.action_message(|ctx, user, _| async move {
+    ctx.action_user(|ctx, user, _| async move {
         if let Some(chat) = ctx.chat() {
             let mut builder = EntityMessage::new(chat.get_id());
             builder.builder.code(user.to_string());
@@ -30,7 +30,7 @@ async fn get_id(ctx: &Context) -> Result<()> {
 
 pub async fn allchats(ctx: &Context) -> Result<()> {
     ctx.check_permissions(|p| p.is_support).await?;
-    ctx.action_message(|ctx, user, _| async move {
+    ctx.action_user(|ctx, user, _| async move {
         let chats = get_user_chats(user).await?.collect::<Vec<i64>>();
         let name = user.cached_name().await?;
         let mut message = format!("User {} in {} chats:\n", name, chats.len());
