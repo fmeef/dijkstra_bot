@@ -175,7 +175,10 @@ impl<'a> PopSlice<'a> for ArgSlice<'a> {
 }
 
 fn get_arg_type<'a>(message: &'a Message, entity: &'a MessageEntity) -> Option<EntityArg<'a>> {
-    if let Some(text) = message.get_text_ref() {
+    if let Some(text) = message
+        .get_text_ref()
+        .map_or(message.get_caption_ref(), |v| Some(v))
+    {
         let start = entity.get_offset() as usize;
         let end = start + entity.get_length() as usize;
         let text = &text[start..end];
@@ -273,7 +276,10 @@ impl StaticContext {
     /// Parse individual components of a /command or !command
     pub fn parse_cmd<'a>(&'a self) -> Option<(&'a str, TextArgs<'a>, Entities<'a>)> {
         if let Ok(message) = self.message() {
-            if let Some(Cow::Borrowed(cmd)) = message.get_text() {
+            if let Some(Cow::Borrowed(cmd)) = message
+                .get_text()
+                .map_or_else(|| message.get_caption(), |v| Some(v))
+            {
                 if let Some(head) = COMMOND_HEAD.find(&cmd) {
                     let entities = if let Some(Cow::Borrowed(entities)) = message.get_entities() {
                         let mut entities = entities
