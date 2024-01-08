@@ -40,7 +40,7 @@ impl Default for DefaultParseErr {
 }
 
 /// Data for filter's header
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Header {
     List(Vec<String>),
     Arg(String),
@@ -54,6 +54,7 @@ pub struct FilterCommond {
 }
 
 /// Type for representing murkdown syntax tree
+#[derive(Debug)]
 pub enum TgSpan {
     Code(String),
     Italic(Vec<TgSpan>),
@@ -69,6 +70,7 @@ pub enum TgSpan {
     NoOp,
 }
 
+#[derive(Debug)]
 pub enum ParsedArg {
     Arg(String),
     Quote(String),
@@ -479,6 +481,7 @@ pub struct MarkupBuilder {
     pub header: Option<Header>,
     pub footer: Option<String>,
     pub offset: i64,
+    pub diff: i64,
     pub text: String,
     pub filling: bool,
     pub enabled_header: bool,
@@ -533,6 +536,7 @@ impl MarkupBuilder {
             }),
             entities: Vec::new(),
             offset: 0,
+            diff: 0,
             text: String::new(),
             buttons: InlineKeyboardBuilder::default(),
             header: None,
@@ -606,64 +610,55 @@ impl MarkupBuilder {
         &'a mut self,
         span: Vec<TgSpan>,
         topplevel: bool,
-    ) -> BoxFuture<Result<(i64, i64, i64)>> {
+    ) -> BoxFuture<Result<(i64, i64)>> {
         async move {
-            let mut diff = 0;
+            if topplevel {
+                log::info!("parse_tgspan {:?}", span);
+            }
             let mut size = 0;
+
             for span in span {
+                log::info!("diff {} offset {}", self.diff, self.offset);
                 match (span, self.chatuser.as_ref()) {
                     (TgSpan::Code(code), _) => {
                         self.code(&code);
                     }
                     (TgSpan::Italic(s), _) => {
-                        let (s, e, d) = self.parse_tgspan(s, false).await?;
-                        diff += d;
+                        let (s, e) = self.parse_tgspan(s, false).await?;
                         size += e;
                         self.manual("italic", s, e);
                     }
                     (TgSpan::Bold(s), _) => {
-                        let (s, e, d) = self.parse_tgspan(s, false).await?;
-                        diff += d;
+                        self.diff += "[*".encode_utf16().count() as i64;
+                        let (s, e) = self.parse_tgspan(s, false).await?;
+                        self.diff += "]".encode_utf16().count() as i64;
                         size += e;
                         self.manual("bold", s, e);
                     }
                     (TgSpan::Strikethrough(s), _) => {
-                        let (s, e, d) = self.parse_tgspan(s, false).await?;
-                        diff += d;
+                        let (s, e) = self.parse_tgspan(s, false).await?;
                         size += e;
                         self.manual("strikethrough", s, e);
                     }
                     (TgSpan::Underline(s), _) => {
-                        let (s, e, d) = self.parse_tgspan(s, false).await?;
-                        diff += d;
+                        let (s, e) = self.parse_tgspan(s, false).await?;
                         size += e;
                         self.manual("underline", s, e);
                     }
                     (TgSpan::Spoiler(s), _) => {
-                        let (s, e, d) = self.parse_tgspan(s, false).await?;
-                        diff += d;
+                        let (s, e) = self.parse_tgspan(s, false).await?;
                         size += e;
                         self.manual("spoiler", s, e);
                     }
                     (TgSpan::Button(hint, button), _) => {
-                        diff += hint.encode_utf16().count() as i64
-                            + button.encode_utf16().count() as i64
-                            + "<>()".encode_utf16().count() as i64;
                         self.button(hint, button).await?;
                     }
                     (TgSpan::NewlineButton(hint, button), _) => {
-                        diff += hint.encode_utf16().count() as i64
-                            + button.encode_utf16().count() as i64
-                            + "<>()".encode_utf16().count() as i64;
                         self.buttons.newline();
                         self.button(hint, button).await?;
                     }
                     (TgSpan::Link(hint, link), _) => {
-                        let (s, e, d) = self.parse_tgspan(hint, false).await?;
-                        diff += d;
-
-                        diff += link.encode_utf16().count() as i64
-                            + "[]()".encode_utf16().count() as i64;
+                        let (s, e) = self.parse_tgspan(hint, false).await?;
                         size += e;
                         let entity = MessageEntityBuilder::new(s, e)
                             .set_type("text_link".to_owned())
@@ -673,7 +668,7 @@ impl MarkupBuilder {
                     }
                     (TgSpan::Raw(s), _) => {
                         size += s.encode_utf16().count() as i64;
-                        diff += s.encode_utf16().count() as i64;
+
                         self.text(s);
                     }
                     (TgSpan::Filling(filling), Some(ref chatuser)) if self.filling => {
@@ -719,9 +714,7 @@ impl MarkupBuilder {
                             }
                             s => {
                                 let s = format!("{{{}}}", s);
-                                diff += s.encode_utf16().count() as i64;
                                 size += s.encode_utf16().count() as i64;
-
                                 self.text(s);
                             }
                         }
@@ -729,27 +722,31 @@ impl MarkupBuilder {
                     (TgSpan::Filling(filling), _) => {
                         let s = format!("{{{}}}", filling);
                         size += s.encode_utf16().count() as i64;
-                        diff += s.encode_utf16().count() as i64;
                         self.text(s);
                     }
                     (TgSpan::NoOp, _) => (),
                 };
+                self.patch_entities(size);
             }
-            let offset = self.offset - size;
 
-            if let Some(existing_entities) = self.existing_entities.as_mut() {
-                if topplevel {
-                    for entity in existing_entities.iter_mut() {
-                        if entity.get_offset() >= offset {
-                            log::info!("patching entity {} {} {}", self.offset, size, diff);
-                            entity.set_offset(entity.get_offset() - (diff - size));
-                        }
-                    }
-                }
-            }
-            Ok((offset, size, diff))
+            let offset = self.offset - size;
+            Ok((offset, size))
         }
         .boxed()
+    }
+
+    fn patch_entities(&mut self, size: i64) {
+        if let Some(existing_entities) = self.existing_entities.as_mut() {
+            if self.diff != 0 {
+                for entity in existing_entities.iter_mut() {
+                    if entity.get_offset() >= self.offset {
+                        log::info!("patching entity {} {} {}", self.offset, size, self.diff);
+                        entity.set_offset(entity.get_offset() - self.diff);
+                    }
+                }
+                self.diff = 0;
+            }
+        }
     }
 
     fn parse_listitem(&mut self, list_item: ListItem) {
@@ -1019,13 +1016,41 @@ impl MarkupBuilder {
     }
 
     /// Appends a markup value
+    pub fn regular_fmt<'a, T: AsRef<str>>(&'a mut self, entity_type: Markup<T>) -> &'a mut Self {
+        let text = entity_type.get_text();
+        let n = text.encode_utf16().count() as i64;
+        // let v = text.chars().filter(|p| *p == '\\').count() as i64;
+
+        self.text.push_str(&text);
+        match entity_type.markup_type {
+            MarkupType::Text => {}
+            _ => {
+                let entity = MessageEntityBuilder::new(self.offset, n)
+                    .set_type(entity_type.get_type().to_owned());
+                let entity = match entity_type.markup_type {
+                    MarkupType::TextLink(link) => entity.set_url(link),
+                    MarkupType::TextMention(mention) => entity.set_user(mention),
+                    MarkupType::Pre(pre) => entity.set_language(pre),
+                    MarkupType::CustomEmoji(emoji) => entity.set_custom_emoji_id(emoji),
+                    _ => entity,
+                };
+
+                let entity = entity.build();
+                self.existing_entities
+                    .get_or_insert_with(|| Vec::new())
+                    .push(entity);
+            }
+        }
+
+        self.offset += entity_type.advance.unwrap_or(n);
+        self
+    }
+
+    /// Appends a markup value
     pub fn regular<'a, T: AsRef<str>>(&'a mut self, entity_type: Markup<T>) -> &'a mut Self {
         let text = entity_type.get_text();
-        let mut n = text.encode_utf16().count() as i64;
-        n -= text
-            .chars()
-            .filter(|p| is_valid(*p, self.enabled_header))
-            .count() as i64;
+        let n = text.encode_utf16().count() as i64;
+
         self.text.push_str(&text);
         match entity_type.markup_type {
             MarkupType::Text => {}
@@ -1051,12 +1076,7 @@ impl MarkupBuilder {
 
     fn push_text<T: AsRef<str>>(&mut self, text: T) -> i64 {
         let text = text.as_ref();
-        let mut n = text.encode_utf16().count() as i64;
-
-        n -= text
-            .chars()
-            .filter(|p| is_valid(*p, self.enabled_header))
-            .count() as i64;
+        let n = text.encode_utf16().count() as i64;
         self.text.push_str(&text);
         n
     }

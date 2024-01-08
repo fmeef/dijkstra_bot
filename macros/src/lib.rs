@@ -363,11 +363,11 @@ fn get_entity_match(ctx: &Expr, key: LitStr, args: Punctuated<Expr, Comma>) -> i
             if let Some(format) = locale.langs.get(u.as_str()).unwrap().strings.get(&key.value()) {
                 let format = format.split("{}").collect::<Vec<&str>>();
                 quote! {
-                    #c ::langs::Lang::#v => builder.builder #(.text(#format).regular(#idents.into()))*.text(#last).build()
+                    #c ::langs::Lang::#v => builder.builder #(.text(#format).regular_fmt(#idents.into()))*.text(#last).build()
                 }
             } else {
                 quote! {
-                    #c ::langs::Lang::#v => builder.builder #(.text(#format).regular(#idents.into()))*.text(#last).build()
+                    #c ::langs::Lang::#v => builder.builder #(.text(#format).regular_fmt(#idents.into()))*.text(#last).build()
                 }
             }
         });
