@@ -11,7 +11,8 @@ use async_trait::async_trait;
 use botapi::bot::{ApiError, Response};
 use botapi::gen_types::{Chat, Message};
 use chrono::OutOfRangeError;
-use sea_orm::{DbErr, TransactionError};
+use sea_orm::{DbErr, RuntimeErr, TransactionError};
+use sqlx::error::DatabaseError;
 use thiserror::Error;
 use tokio::task::JoinError;
 
@@ -42,6 +43,13 @@ pub trait SpeakErr<T: Send> {
         U: Fail + Send + Sync,
         F: for<'b> FnOnce(&'b Response) -> String + Send;
 
+    /// Maps the database error code to BotError::Speak using a custom function only if the
+    /// db error code matches
+    async fn speak_db_code<F, U>(self, ctx: &U, code: &str, func: F) -> Result<T>
+    where
+        U: Fail + Send + Sync,
+        F: for<'b> FnOnce(&'b dyn DatabaseError) -> String + Send;
+
     async fn silent(self) -> Result<T>;
 
     fn log(self) -> Option<T>;
@@ -54,7 +62,7 @@ impl<T: Send, E: Into<BotError> + Send> SpeakErr<T> for std::result::Result<T, E
             Ok(v) => Some(v),
             Err(err) => {
                 let err = err.into();
-                log::error!("error {}", err);
+                log::warn!("error {}", err);
                 err.record_stats();
                 None
             }
@@ -115,6 +123,24 @@ impl<T: Send, E: Into<BotError> + Send> SpeakErr<T> for std::result::Result<T, E
             if let Some(resp) = err.get_response() {
                 if !resp.ok && resp.error_code == Some(code) {
                     let message = func(resp);
+                    return ctx.fail(message);
+                }
+            }
+        }
+        self
+    }
+
+    async fn speak_db_code<F, U>(self, ctx: &U, code: &str, func: F) -> Result<T>
+    where
+        U: Fail + Send + Sync,
+        F: for<'b> FnOnce(&'b dyn DatabaseError) -> String + Send,
+    {
+        let self = self.map_err(|e| e.into());
+        if let Err(BotError::DbError(DbErr::Exec(RuntimeErr::SqlxError(ref err)))) = self {
+            if let Some(err) = err.as_database_error() {
+                log::warn!("db error: {:?}", err);
+                if err.code().map(|v| v.as_ref() == code).unwrap_or(false) {
+                    let message = func(err);
                     return ctx.fail(message);
                 }
             }
@@ -221,10 +247,12 @@ pub enum BotError {
     SerdeJsonErr(#[from] serde_json::Error),
     #[error("Http error {0}")]
     ReqwestError(#[from] reqwest::Error),
-    #[error("Generic error {0}")]
+    #[error("{0}")]
     Generic(String),
     #[error("User not found")]
     UserNotFound,
+    #[error("Query error {0}")]
+    QueryError(#[from] sea_query::error::Error),
 }
 
 impl<T> From<tokio::sync::mpsc::error::SendError<T>> for BotError {
@@ -271,7 +299,7 @@ impl BotError {
     pub fn record_stats(&self) {
         if let Self::ApiError(ref error) = self {
             if let Some(error) = error.get_response() {
-                log::error!(
+                log::warn!(
                     "telegram error code {} {}",
                     error
                         .error_code

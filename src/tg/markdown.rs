@@ -606,47 +606,43 @@ impl MarkupBuilder {
         Ok(())
     }
 
-    fn parse_tgspan<'a>(
-        &'a mut self,
-        span: Vec<TgSpan>,
-        topplevel: bool,
-    ) -> BoxFuture<Result<(i64, i64)>> {
+    fn parse_tgspan<'a>(&'a mut self, span: Vec<TgSpan>) -> BoxFuture<Result<(i64, i64)>> {
         async move {
-            if topplevel {
-                log::info!("parse_tgspan {:?}", span);
-            }
+            // if topplevel {
+            //     log::info!("parse_tgspan {:?}", span);
+            // }
             let mut size = 0;
 
             for span in span {
-                log::info!("diff {} offset {}", self.diff, self.offset);
+                //a               log::info!("diff {} offset {}", self.diff, self.offset);
                 match (span, self.chatuser.as_ref()) {
                     (TgSpan::Code(code), _) => {
                         self.code(&code);
                     }
                     (TgSpan::Italic(s), _) => {
-                        let (s, e) = self.parse_tgspan(s, false).await?;
+                        let (s, e) = self.parse_tgspan(s).await?;
                         size += e;
                         self.manual("italic", s, e);
                     }
                     (TgSpan::Bold(s), _) => {
                         self.diff += "[*".encode_utf16().count() as i64;
-                        let (s, e) = self.parse_tgspan(s, false).await?;
+                        let (s, e) = self.parse_tgspan(s).await?;
                         self.diff += "]".encode_utf16().count() as i64;
                         size += e;
                         self.manual("bold", s, e);
                     }
                     (TgSpan::Strikethrough(s), _) => {
-                        let (s, e) = self.parse_tgspan(s, false).await?;
+                        let (s, e) = self.parse_tgspan(s).await?;
                         size += e;
                         self.manual("strikethrough", s, e);
                     }
                     (TgSpan::Underline(s), _) => {
-                        let (s, e) = self.parse_tgspan(s, false).await?;
+                        let (s, e) = self.parse_tgspan(s).await?;
                         size += e;
                         self.manual("underline", s, e);
                     }
                     (TgSpan::Spoiler(s), _) => {
-                        let (s, e) = self.parse_tgspan(s, false).await?;
+                        let (s, e) = self.parse_tgspan(s).await?;
                         size += e;
                         self.manual("spoiler", s, e);
                     }
@@ -658,7 +654,7 @@ impl MarkupBuilder {
                         self.button(hint, button).await?;
                     }
                     (TgSpan::Link(hint, link), _) => {
-                        let (s, e) = self.parse_tgspan(hint, false).await?;
+                        let (s, e) = self.parse_tgspan(hint).await?;
                         size += e;
                         let entity = MessageEntityBuilder::new(s, e)
                             .set_type("text_link".to_owned())
@@ -851,7 +847,7 @@ impl MarkupBuilder {
     ) -> Result<Self> {
         let mut s = Self::new(existing);
         s.chatuser = chatuser.map(|v| v.into());
-        s.parse_tgspan(tgspan, true).await?;
+        s.parse_tgspan(tgspan).await?;
         Ok(s)
     }
 
@@ -874,7 +870,7 @@ impl MarkupBuilder {
             parser.parse(token)?;
         }
         let res = parser.end_of_input()?;
-        self.parse_tgspan(res.body, true).await?;
+        self.parse_tgspan(res.body).await?;
         if let Some(ref existing) = self.existing_entities {
             self.entities.extend_from_slice(&existing.as_slice());
         }
@@ -912,7 +908,7 @@ impl MarkupBuilder {
         let res = parser.end_of_input()?;
         self.offset = 0;
         self.text.clear();
-        self.parse_tgspan(res.body, true).await?;
+        self.parse_tgspan(res.body).await?;
 
         if self.enabled_header {
             self.header = res.header;
@@ -934,7 +930,7 @@ impl MarkupBuilder {
         let res = parser.end_of_input()?;
         self.offset = 0;
         self.text.clear();
-        self.parse_tgspan(res.body, true).await?;
+        self.parse_tgspan(res.body).await?;
 
         if self.enabled_header {
             self.header = res.header;

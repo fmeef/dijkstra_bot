@@ -642,7 +642,7 @@ impl Conversation {
                                     .edit_button_transition(trans, content, &callback, row_limit)
                                     .await
                                 {
-                                    log::error!("failed to transition: {}", err);
+                                    log::warn!("failed to transition: {}", err);
                                 }
                                 Ok(())
                             });

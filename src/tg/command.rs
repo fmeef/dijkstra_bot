@@ -26,6 +26,7 @@ use std::{borrow::Cow, collections::VecDeque};
 use uuid::Uuid;
 use yoke::{Yoke, Yokeable};
 
+use super::admin_helpers::is_dm;
 use super::{
     admin_helpers::{ChatUser, IntoChatUser, UpdateHelpers},
     button::get_url,
@@ -84,7 +85,7 @@ pub type Args<'a> = Vec<TextArg<'a>>;
 
 /// Contains references to both the unparsed text of a command (not including the /command)
 /// and the same text parsed into and argument list for convienience
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TextArgs<'a> {
     pub text: &'a str,
     pub args: Args<'a>,
@@ -92,6 +93,7 @@ pub struct TextArgs<'a> {
 
 /// A ranged slice of an argument list. Useful for recursively deconstructing commands
 /// or implementing subcommands
+#[derive(Debug)]
 pub struct ArgSlice<'a> {
     pub text: &'a str,
     pub args: &'a [TextArg<'a>],
@@ -99,10 +101,19 @@ pub struct ArgSlice<'a> {
 
 /// A single argument, could be either raw text separated by whitespace or a quoted
 /// text block
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum TextArg<'a> {
     Arg(&'a str),
     Quote(&'a str),
+}
+
+impl<'a> TextArg<'a> {
+    fn r(&self) -> TextArg<'a> {
+        match self {
+            TextArg::Arg(a) => TextArg::Arg(a),
+            TextArg::Quote(q) => TextArg::Quote(q),
+        }
+    }
 }
 
 impl<'a> TextArg<'a> {
@@ -127,11 +138,15 @@ pub enum EntityArg<'a> {
     Url(&'a str),
 }
 
-pub trait PopSlice<'a> {
+pub trait PopSlice<'a, 'b> {
     /// remove the first argument in an argument list as a slice
-    fn pop_slice(&'a self) -> Option<(&'a TextArg<'a>, ArgSlice<'a>)>;
-    fn pop_slice_tail(&'a self) -> Option<ArgSlice<'a>> {
-        self.pop_slice().map(|v| v.1)
+    fn pop_slice(&'a self) -> Option<(TextArg<'b>, ArgSlice<'b>)>;
+    fn pop_slice_tail(&'a self) -> Option<ArgSlice<'b>> {
+        if let Some((_, slice)) = self.pop_slice() {
+            Some(slice)
+        } else {
+            None
+        }
     }
 }
 
@@ -145,29 +160,32 @@ impl<'a> TextArgs<'a> {
     }
 }
 
-impl<'a> PopSlice<'a> for TextArgs<'a> {
-    fn pop_slice(&'a self) -> Option<(&'a TextArg<'a>, ArgSlice<'a>)> {
+impl<'a, 'b> PopSlice<'b, 'a> for TextArgs<'a>
+where
+    'b: 'a,
+{
+    fn pop_slice(&'b self) -> Option<(TextArg<'a>, ArgSlice<'a>)> {
         if let Some(arg) = self.args.first() {
             let res = ArgSlice {
                 text: &self.text[arg.get_text().len()..].trim(),
                 args: &self.args.as_slice()[1..],
             };
-            Some((arg, res))
+            Some((arg.r(), res))
         } else {
             None
         }
     }
 }
 
-impl<'a> PopSlice<'a> for ArgSlice<'a> {
+impl<'a, 'b> PopSlice<'b, 'a> for ArgSlice<'a> {
     /// remove the first argument in an argument list as a slice
-    fn pop_slice(&'a self) -> Option<(&'a TextArg<'a>, ArgSlice<'a>)> {
+    fn pop_slice(&'b self) -> Option<(TextArg<'a>, ArgSlice<'a>)> {
         if let Some(arg) = self.args.first() {
             let res = ArgSlice {
                 text: &self.text[arg.get_text().len()..].trim(),
                 args: &self.args[1..],
             };
-            Some((arg, res))
+            Some((arg.r(), res))
         } else {
             None
         }
@@ -280,6 +298,7 @@ impl StaticContext {
                 .get_text()
                 .map_or_else(|| message.get_caption(), |v| Some(v))
             {
+                log::info!("cmd {}", cmd);
                 if let Some(head) = COMMOND_HEAD.find(&cmd) {
                     let entities = if let Some(Cow::Borrowed(entities)) = message.get_entities() {
                         let mut entities = entities
@@ -411,6 +430,21 @@ impl StaticContext {
 }
 
 impl Context {
+    pub fn is_supergroup_or_die(&self) -> Result<()> {
+        if let Some(chat) = self.chat() {
+            match chat.get_tg_type().as_ref() {
+                "private" => self.fail(lang_fmt!(self, "baddm")),
+                "group" => self.fail(lang_fmt!(self, "notsupergroup")),
+                _ => Ok(()),
+            }
+        } else {
+            self.fail(lang_fmt!(self, "notsupergroup"))
+        }
+    }
+
+    pub fn is_dm(&self) -> bool {
+        self.chat().map(|c| is_dm(c)).unwrap_or(false)
+    }
     pub fn update<'a>(&'a self) -> &'a UpdateExt {
         &self.0.get().0.update
     }
@@ -564,12 +598,14 @@ where
 {
     if let Some(&Cmd { ref args, .. }) = ctx.cmd() {
         if let Some(u) = args.args.first().map(|a| a.get_text()) {
-            let base = general_purpose::URL_SAFE_NO_PAD.decode(u)?;
-            let base = Uuid::from_slice(base.as_slice())?;
-            let key = key_func(&base.to_string());
-            let base: Option<RedisStr> = REDIS.sq(|q| q.get(&key)).await?;
-            if let Some(base) = base {
-                return Ok(Some(base.get()?));
+            if let Ok(base) = general_purpose::URL_SAFE_NO_PAD.decode(u) {
+                if let Ok(base) = Uuid::from_slice(base.as_slice()) {
+                    let key = key_func(&base.to_string());
+                    let base: Option<RedisStr> = REDIS.sq(|q| q.get_del(&key)).await?;
+                    if let Some(base) = base {
+                        return Ok(Some(base.get()?));
+                    }
+                }
             }
         }
     }

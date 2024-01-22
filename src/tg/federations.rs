@@ -260,7 +260,7 @@ pub async fn create_federation(ctx: &Context, federation: federations::Model) ->
     {
         Err(err) => match err {
             sea_orm::DbErr::Query(err) => {
-                log::error!("create fed err {}", err);
+                log::warn!("create fed err {}", err);
                 return ctx.fail(lang_fmt!(ctx, "onlyone"));
             }
             err => return Err(err.into()),
@@ -824,7 +824,7 @@ impl Context {
             if message.get_sender_chat().is_none() {
                 if let Some(user) = message.get_from() {
                     if let Err(err) = self.single_gban(user.get_id()).await {
-                        log::error!("Failed to gban {}: {}", user.name_humanreadable(), err);
+                        log::warn!("Failed to gban {}: {}", user.name_humanreadable(), err);
                         err.record_stats();
                     }
                 }

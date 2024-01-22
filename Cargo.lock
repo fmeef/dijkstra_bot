@@ -794,6 +794,7 @@ dependencies = [
  "seq-macro",
  "serde",
  "serde_json",
+ "sqlx",
  "strum",
  "thiserror",
  "time",

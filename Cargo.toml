@@ -63,6 +63,7 @@ rustls-webpki = "0.101.7"
 reqwest = "0.11.22"
 bytes = { version = "1.5.0", features = ["serde"] }
 lz4_flex = "0.11.1"
+sqlx = "0.7.3"
 
 [build-dependencies]
 anyhow = "1.0.75"

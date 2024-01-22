@@ -208,19 +208,19 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
             match crate::tg::command::StaticContext::get_context(update).await.map(|v| v.yoke()) {
                 Ok(ctx) => {
                     if let Err(err) = ctx.record_chat_member().await {
-                        log::error!("failed to record chat member {}", err);
+                        log::warn!("failed to record chat member {}", err);
                         err.record_stats();
                     }
 
                     ctx.handle_gbans().await;
 
                     if let Err(err) = ctx.greeter_handle_update().await {
-                        log::error!("Failed to greet user {}", err);
+                        log::warn!("Failed to greet user {}", err);
                         err.record_stats();
                     }
 
                     if let Err(err) = ctx.handle_pending_action_update().await {
-                        log::error!("failed to handle pending action: {}", err);
+                        log::warn!("failed to handle pending action: {}", err);
                         err.record_stats();
                     }
 
@@ -262,29 +262,29 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
                                     err.record_stats();
                                     match err.get_message().await {
                                         Err(err) => {
-                                            log::error!("failed to send error message: {}, what the FLOOP", err);
+                                            log::warn!("failed to send error message: {}, what the FLOOP", err);
                                             err.record_stats();
                                         }
                                         Ok(v) => if ! v {
                                             if let Some(chat) = ctx.chat() {
                                                 if let Err(err) = chat.speak(err.to_string()).await {
-                                                    log::error!("triple fault! {}", err);
+                                                    log::warn!("triple fault! {}", err);
                                                 }
                                             }
 
-                                            log::error!("handle_update {} error: {}", #updates::METADATA.name, err);
+                                            log::warn!("handle_update {} error: {}", #updates::METADATA.name, err);
                                         }
                                     }
                                 }
                             }
                         )*}
                        Ok(true) => (),
-                      Err(err)  => log::error!("failed help {}", err)
+                      Err(err)  => log::warn!("failed help {}", err)
                     }
 
                 }
                 Err(err) => {
-                    log::error!("error when getting context {}", err);
+                    log::warn!("error when getting context {}", err);
                     err.record_stats()
                 },
             }

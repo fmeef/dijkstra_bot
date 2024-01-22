@@ -75,7 +75,7 @@ async fn get_lang_conversation(message: &Message, current: &Lang) -> Result<Conv
         if uuid != start {
             tokio::spawn(async move {
                 if let Err(err) = handle_terminal_state(uuid, conv, id).await {
-                    log::error!("terminal state error {}", err);
+                    log::warn!("terminal state error {}", err);
                     err.record_stats();
                 }
             });

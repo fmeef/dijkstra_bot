@@ -1073,12 +1073,25 @@ impl Context {
         F: FnOnce(&'a Context, ActionMessage<'a>, Option<ArgSlice<'a>>) -> Fut,
         Fut: Future<Output = Result<()>>,
     {
-        self.action_message_some(|ctx, _, args, message| async move {
-            action(ctx, message, args).await?;
-            Ok(())
-        })
-        .await?;
+        let message = self.message()?;
+        let args = self.try_get()?.command.as_ref().map(|a| &a.args);
+        log::info!("action_message {:?}", args);
 
+        if let Some(message) = message.get_reply_to_message_ref() {
+            action(
+                self,
+                ActionMessage::Reply(message),
+                args.map(|a| a.as_slice()),
+            )
+            .await?;
+        } else {
+            action(
+                self,
+                ActionMessage::Me(self.message()?),
+                args.map(|a| a.as_slice()),
+            )
+            .await?;
+        };
         Ok(())
     }
 
@@ -1094,6 +1107,7 @@ impl Context {
     {
         let message = self.message()?;
         let args = self.try_get()?.command.as_ref().map(|a| &a.args);
+        log::info!("action_message {:?}", args);
         let entities = self
             .try_get()?
             .command

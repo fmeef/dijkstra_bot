@@ -121,22 +121,22 @@ impl UpdateHandler {
     pub(crate) async fn handle_update(&self, ctx: &Context) {
         if let Some(ref custom) = self.0 {
             if let Err(err) = custom(ctx).await {
-                log::error!("failed to process update from custom handler {}", err);
+                log::warn!("failed to process update from custom handler {:?}", err);
                 err.record_stats();
                 match err.get_message().await {
                     Err(err) => {
-                        log::error!("failed to send error message: {}, what the FLOOP", err);
+                        log::warn!("failed to send error message: {}, what the FLOOP", err);
                         err.record_stats();
                     }
                     Ok(v) => {
                         if !v {
                             if let Some(chat) = ctx.chat() {
                                 if let Err(err) = chat.speak(err.to_string()).await {
-                                    log::error!("triple fault! {}", err);
+                                    log::warn!("triple fault! {}", err);
                                 }
                             }
 
-                            log::error!("handle_update custom error: {}", err);
+                            log::warn!("handle_update custom error: {}", err);
                         }
                     }
                 }
@@ -334,7 +334,7 @@ impl TgClient {
                         let data: String = data.into_owned();
                         if let Some(cb) = callbacks.remove(&data) {
                             if let Err(err) = cb.1.cb(callbackquery.clone()).await {
-                                log::error!("button handler err {}", err);
+                                log::warn!("button handler err {}", err);
                                 err.record_stats();
                             }
                         }
@@ -342,7 +342,7 @@ impl TgClient {
                         let remove = if let Some(cb) = repeats.get(&data) {
                             match cb.cb(callbackquery).await {
                                 Err(err) => {
-                                    log::error!("failed multi handler {}", err);
+                                    log::warn!("failed multi handler {}", err);
                                     err.record_stats();
                                     true
                                 }
@@ -364,29 +364,29 @@ impl TgClient {
                 }
                 Ok(update) => {
                     if let Err(err) = update_self_admin(&update).await {
-                        log::error!("failed to update admin change: {}", err);
+                        log::warn!("failed to update admin change: {}", err);
                         err.record_stats();
                     }
 
                     if let Err(err) = update.record_user().await {
-                        log::error!("failed to record_user: {}", err);
+                        log::warn!("failed to record_user: {}", err);
                         err.record_stats();
                     }
 
                     if let Err(err) = dialog_from_update(&update).await {
-                        log::error!("failed to update dialog from update");
+                        log::warn!("failed to update dialog from update");
                         err.record_stats();
                     }
 
                     if let Err(err) =
                         crate::modules::process_updates(update, modules, custom_handler).await
                     {
-                        log::error!("process updates error: {}", err);
+                        log::warn!("process updates error: {}", err);
                         err.record_stats()
                     }
                 }
                 Err(err) => {
-                    log::error!("failed to process update: {}", err);
+                    log::warn!("failed to process update: {}", err);
                 }
             }
         });
