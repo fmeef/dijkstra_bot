@@ -333,10 +333,12 @@ impl Lexer {
         } else {
             Vec::new()
         };
-        let mut iter = self.s.iter().enumerate();
-        while let Some((idx, char)) = iter.next() {
+        let mut idx = 0;
+        while let Some(char) = self.s.get(idx) {
+            // log::info!("parsing {} {}", idx, char);
             if self.code.is_some() {
-                if *char == ']' {
+                if *char == ']' && idx > 0 && self.s.get(idx - 1) != Some(&'\\') {
+                    // log::info!("COMMIT! {:?}", self.s.get(idx - 1));
                     let s: String = self.rawbuf.drain(..).collect();
                     match self.code.take().unwrap() {
                         MonoMode::Code(lang) => output.push(Token::LangCode((lang, s))),
@@ -345,6 +347,7 @@ impl Lexer {
                 } else {
                     self.rawbuf.push(*char);
                 }
+                idx += 1;
                 continue;
             } else if self.escape {
                 self.escape = false;
@@ -367,16 +370,19 @@ impl Lexer {
                         output.push(Token::Str(s));
                     }
                 }
+                idx += 1;
                 continue;
             }
             match char {
                 '\\' => {
                     self.escape = true;
+                    idx += 1;
                     continue;
                 }
                 '_' => {
                     if let Some('_') = self.s.get(idx + 1) {
                         output.push(Token::DoubleUnderscore);
+                        idx += 1;
                         continue;
                     } else if idx > 0 && self.s.get(idx - 1).map(|v| *v != '_').unwrap_or(true) {
                         output.push(Token::Underscore);
@@ -385,33 +391,53 @@ impl Lexer {
                 '|' => {
                     if let Some('|') = self.s.get(idx + 1) {
                         output.push(Token::DoubleBar);
+                        idx += 1;
                         continue;
                     }
                 }
                 '~' => output.push(Token::Tilde),
                 '*' => output.push(Token::Star),
                 '[' => {
-                    if let Some('`') = self.s.get(idx + 1) {
+                    if let (Some('`'), Some(false)) = (
+                        self.s.get(idx + 1),
+                        if idx > 0 {
+                            self.s.get(idx - 1).map(|v| *v == '\\')
+                        } else {
+                            Some(false)
+                        },
+                    ) {
                         if let Some((tick, _)) = self
                             .s
                             .get(idx + 2..)
-                            .map(|v| v.iter().find_position(|v| **v == '`'))
+                            .map(|thing| thing.iter().find_position(|p| **p == '`'))
                             .flatten()
                         {
-                            self.code = self
-                                .s
-                                .get(idx + 2..tick + 2)
-                                .map(|v| MonoMode::Code(v.into_iter().collect()));
+                            // if tick > 0 {
+                            //     log::info!("escape2 {:?} ", self.s.get(tick + idx + 1));
+                            // }
+                            if tick > 0 && self.s.get(tick + idx + 1) != Some(&'\\') {
+                                self.code = self
+                                    .s
+                                    .get(idx + 2..tick + idx + 2)
+                                    .map(|v| MonoMode::Code(v.into_iter().collect()));
 
-                            if tick + 3 < self.s.len() {
-                                iter = self.s[tick + 3..].iter().enumerate();
+                                if tick + 3 < self.s.len() {
+                                    idx += tick + 2;
+                                }
+                            } else {
+                                self.code = Some(MonoMode::Mono);
+                                idx += 1;
                             }
                             // log::info!("found tick {} {} {:?}", tick, char, self.code);
                         } else {
                             self.code = Some(MonoMode::Mono);
-                            iter.next();
+                            idx += 1;
                         }
-                        iter.take_while_ref(|v| v.1.is_whitespace()).for_each(drop);
+
+                        while let Some(true) = self.s.get(idx + 1).map(|v| v.is_whitespace()) {
+                            idx += 1;
+                        }
+                    //                        iter.take_while_ref(|v| v.1.is_whitespace()).for_each(drop);
                     } else {
                         output.push(Token::LSBracket)
                     }
@@ -450,6 +476,7 @@ impl Lexer {
                     }
                 }
             };
+            idx += 1;
         }
         output.push(Token::Eof);
 
@@ -826,7 +853,7 @@ impl MarkupBuilder {
     }
 
     fn parse_span(&mut self, span: Span) -> i64 {
-        log::info!("parse_span {:?}", span);
+        // log::info!("parse_span {:?}", span);
         match span {
             Span::Break => {
                 let s = "\n";
@@ -1330,7 +1357,7 @@ pub async fn retro_fillings<'a>(
         res.push_str(regular);
         pos += regular.encode_utf16().count() as i64;
         prev = mat.end();
-        log::info!("matching {}: {}", filling, pos);
+        // log::info!("matching {}: {}", filling, pos);
         let (text, entity) = match filling {
             "username" => {
                 let user = chatuser.user.as_ref().to_owned();
