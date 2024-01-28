@@ -1,7 +1,7 @@
 //! Admin permissions management interface. Allows for both admin/notadmin permissions and
 //! more granular permissions based on telegram's own system
 
-use std::{borrow::Cow, collections::HashMap};
+use std::{borrow::Cow, collections::HashMap, ops::Deref};
 
 use crate::{
     langs::Lang,
@@ -9,7 +9,7 @@ use crate::{
         core::dialogs,
         redis::{RedisStr, ToRedisStr},
     },
-    statics::{CONFIG, REDIS, TG},
+    statics::{CONFIG, DB, REDIS, TG},
     util::string::get_chat_lang,
     util::{
         error::{BotError, Fail, Result},
@@ -613,7 +613,7 @@ pub async fn update_self_admin(update: &UpdateExt) -> Result<()> {
     match update {
         UpdateExt::MyChatMember(member) => {
             let dialog = dialogs::Model::from_chat(member.get_chat_ref()).await?;
-            upsert_dialog(dialog.into_active_model()).await?;
+            upsert_dialog(DB.deref(), dialog.into_active_model()).await?;
             let key = get_chat_admin_cache_key(member.get_chat().get_id());
             member.get_chat().refresh_cached_admins().await?;
             match member.get_new_chat_member_ref() {

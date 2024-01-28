@@ -12,8 +12,9 @@ use crate::{
     },
 };
 use botapi::gen_types::{
-    EReplyMarkup, FileData, InlineKeyboardButton, InputFile, InputMedia, InputMediaDocumentBuilder,
-    InputMediaPhotoBuilder, InputMediaVideoBuilder, Message, MessageEntity, ReplyParametersBuilder,
+    EReplyMarkup, FileData, InlineKeyboardButton, InputFile, InputMedia, InputMediaAudioBuilder,
+    InputMediaDocumentBuilder, InputMediaPhotoBuilder, InputMediaVideoBuilder, Message,
+    MessageEntity, ReplyParametersBuilder,
 };
 use futures::future::BoxFuture;
 use sea_orm::entity::prelude::*;
@@ -60,6 +61,8 @@ pub enum MediaType {
     Text,
     #[sea_orm(num_value = 5)]
     Video,
+    #[sea_orm(num_value = 6)]
+    Audio,
 }
 
 impl std::fmt::Display for MediaType {
@@ -70,6 +73,7 @@ impl std::fmt::Display for MediaType {
             Self::Document => f.write_str("document"),
             Self::Text => f.write_str("text"),
             Self::Video => f.write_str("video"),
+            Self::Audio => f.write_str("audio"),
         }
     }
 }
@@ -83,6 +87,7 @@ impl MediaType {
             Self::Document => 8,
             Self::Video => 3,
             Self::Text => 0,
+            Self::Audio => 6,
         }
     }
 
@@ -112,6 +117,8 @@ pub fn get_media_type<'a>(message: &'a Message) -> Result<(Option<String>, Media
         Ok((Some(document), MediaType::Document))
     } else if let Some(video) = message.get_video().map(|v| v.get_file_id().into_owned()) {
         Ok((Some(video), MediaType::Video))
+    } else if let Some(audio) = message.get_audio().map(|v| v.get_file_id().into_owned()) {
+        Ok((Some(audio), MediaType::Audio))
     } else if let Some(_) = message.get_text() {
         Ok((None, MediaType::Text))
     } else {
@@ -362,6 +369,15 @@ where
                         .await?;
                     None
                 }
+                MediaType::Audio => Some(InputMedia::InputMediaAudio(
+                    InputMediaAudioBuilder::new(Some(InputFile::String(
+                        self.media_id
+                            .ok_or_else(|| current_message.fail_err("invalid media"))?,
+                    )))
+                    .set_caption(text)
+                    .set_caption_entities(entities)
+                    .build(),
+                )),
             };
 
             if let Some(input_media) = input_media {
@@ -480,6 +496,21 @@ where
                 MediaType::Video => {
                     TG.client()
                         .build_send_video(
+                            chat,
+                            FileData::String(
+                                self.media_id
+                                    .ok_or_else(|| self.context.fail_err("invalid media"))?,
+                            ),
+                        )
+                        .caption(&text)
+                        .reply_markup(&buttons)
+                        .caption_entities(&entities)
+                        .build()
+                        .await
+                }
+                MediaType::Audio => {
+                    TG.client
+                        .build_send_audio(
                             chat,
                             FileData::String(
                                 self.media_id
@@ -614,6 +645,22 @@ where
                     )
                     .reply_parameters(
                         &ReplyParametersBuilder::new(message.get_message_id()).build(),
+                    )
+                    .caption(&text)
+                    .reply_markup(&buttons)
+                    .caption_entities(&entities)
+                    .build()
+                    .await
+            }
+
+            MediaType::Audio => {
+                TG.client
+                    .build_send_audio(
+                        chat,
+                        FileData::String(
+                            self.media_id
+                                .ok_or_else(|| self.context.fail_err("invalid media"))?,
+                        ),
                     )
                     .caption(&text)
                     .reply_markup(&buttons)

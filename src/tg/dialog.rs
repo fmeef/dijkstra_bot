@@ -25,7 +25,7 @@ use lazy_static::__Deref;
 
 use sea_orm::sea_query::OnConflict;
 use sea_orm::ActiveValue::{NotSet, Set};
-use sea_orm::{ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter};
+use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, IntoActiveModel, QueryFilter};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::str::FromStr;
@@ -84,7 +84,10 @@ pub async fn get_dialog(chat: &Chat) -> Result<Option<dialogs::Model>> {
 }
 
 /// Update or insert a chat settings value
-pub async fn upsert_dialog(model: dialogs::ActiveModel) -> Result<()> {
+pub async fn upsert_dialog<T>(db: &T, model: dialogs::ActiveModel) -> Result<()>
+where
+    T: ConnectionTrait,
+{
     if let Set(key) = model.chat_id {
         let key = get_dialog_key(key);
         REDIS.sq(|q| q.del(&key)).await?;
@@ -111,7 +114,7 @@ pub async fn upsert_dialog(model: dialogs::ActiveModel) -> Result<()> {
                 ])
                 .to_owned(),
         )
-        .exec(DB.deref())
+        .exec(db)
         .await?;
     Ok(())
 }

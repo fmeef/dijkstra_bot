@@ -523,7 +523,7 @@ pub async fn join_fed(chat: &Chat, fed: &Uuid) -> Result<()> {
     let key = get_fed_chat_key(chat.get_id());
     let mut model = dialogs::Model::from_chat(chat).await?;
     model.federation = Set(Some(*fed));
-    upsert_dialog(model).await?;
+    upsert_dialog(DB.deref(), model).await?;
 
     REDIS.sq(|p| p.del(&key)).await?;
     // try_update_fed_cache(chat.get_id()).await?;

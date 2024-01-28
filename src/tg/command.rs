@@ -4,6 +4,7 @@
 //! different character, currently "!". Command arguments are parsed using regex currently
 //! but in the near future will be switched to a context-free grammar
 
+use crate::statics::{AT_HANDLE, USERNAME};
 use crate::util::error::Fail;
 use crate::{
     persist::redis::RedisStr,
@@ -35,8 +36,9 @@ use super::{
 };
 
 lazy_static! {
-    static ref COMMOND: Regex = Regex::new(r#"^(!|/)\w+(@\w)?\s+.*"#).unwrap();
-    static ref COMMOND_HEAD: Regex = Regex::new(r#"^(!|/)\w+(@\w+)?"#).unwrap();
+    static ref COMMOND: Regex = Regex::new(&format!(r#"^(!|/)\w+(@{})?\s+.*"#, *USERNAME)).unwrap();
+    static ref COMMOND_HEAD: Regex =
+        Regex::new(&format!(r#"^(!|/)\w+(@{}|\s|$)"#, *USERNAME)).unwrap();
     static ref TOKENS: Regex = Regex::new(r#"([^\s"!/]+|"|^!|^/)"#).unwrap();
     static ref ARGS: Regex = Regex::new(r#"(".*"|[^"\s]+)"#).unwrap();
     static ref QUOTE: Regex = Regex::new(r#"".*""#).unwrap();
@@ -217,7 +219,11 @@ fn get_arg_type<'a>(message: &'a Message, entity: &'a MessageEntity) -> Option<E
 pub fn single_arg<'a>(s: &'a str) -> Option<(TextArg<'a>, usize, usize)> {
     ARGS.find(s).map(|v| {
         if QUOTE.is_match(v.as_str()) {
-            (TextArg::Quote(v.as_str()), v.start(), v.end())
+            (
+                TextArg::Quote(&v.as_str()[1..v.end() - 1]),
+                v.start(),
+                v.end(),
+            )
         } else {
             (TextArg::Arg(v.as_str()), v.start(), v.end())
         }
@@ -325,14 +331,16 @@ impl StaticContext {
                         .find_iter(tail)
                         .map(|v| {
                             if QUOTE.is_match(v.as_str()) {
-                                TextArg::Quote(v.as_str())
+                                TextArg::Quote(&v.as_str()[1..v.end() - 1])
                             } else {
                                 TextArg::Arg(v.as_str())
                             }
                         })
                         .collect();
                     Some((
-                        &head.as_str()[1..head.end()],
+                        &head.as_str()[1..head.end()]
+                            .trim_end()
+                            .trim_end_matches(&*AT_HANDLE),
                         TextArgs {
                             text: &tail,
                             args: raw_args,
@@ -601,7 +609,7 @@ where
             if let Ok(base) = general_purpose::URL_SAFE_NO_PAD.decode(u) {
                 if let Ok(base) = Uuid::from_slice(base.as_slice()) {
                     let key = key_func(&base.to_string());
-                    let base: Option<RedisStr> = REDIS.sq(|q| q.get_del(&key)).await?;
+                    let base: Option<RedisStr> = REDIS.sq(|q| q.get(&key)).await?;
                     if let Some(base) = base {
                         return Ok(Some(base.get()?));
                     }

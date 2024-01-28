@@ -56,6 +56,7 @@ pub struct FilterCommond {
 /// Type for representing murkdown syntax tree
 #[derive(Debug)]
 pub enum TgSpan {
+    Pre((String, String)),
     Code(String),
     Italic(Vec<TgSpan>),
     Bold(Vec<TgSpan>),
@@ -145,6 +146,7 @@ pomelo! {
     %type quote String;
     %type fw ParsedArg;
     %type fws String;
+    %type LangCode (String, String);
     %type multi Vec<ParsedArg>;
     %type list Vec<ParsedArg>;
     %type Str String;
@@ -164,6 +166,7 @@ pomelo! {
     %type wstr String;
     %type blocklist String;
     %type blockstr String;
+    %type Mono String;
 
     input    ::= header(A) Eof {
         FilterCommond {
@@ -218,7 +221,8 @@ pomelo! {
     words    ::= word(C) { vec![C] }
     word      ::= Str(S) { super::TgSpan::Raw(S) }
     word      ::= LCurly wstr(W) RCurly { super::TgSpan::Filling(W) }
-    word      ::= LSBracket Tick wstr(W) RSBracket { super::TgSpan::Code(W) }
+    word      ::= LangCode((L, W)) { super::TgSpan::Pre((L, W)) }
+    word      ::= Mono(C) { super::TgSpan::Code(C) }
     word      ::= LSBracket Star main(S) RSBracket { super::TgSpan::Bold(S) }
     word      ::= LSBracket main(H) RSBracket LParen Str(L) RParen { super::TgSpan::Link(H, L) }
     word      ::= LSBracket Tilde main(R) RSBracket { super::TgSpan::Strikethrough(R) }
@@ -229,7 +233,7 @@ pomelo! {
     word      ::= LTBracket LTBracket wstr(W) RTBracket RTBracket LParen wstr(L) RParen { super::TgSpan::NewlineButton(W, L) }
 
     wstr      ::= Str(S) { S }
-    wstr      ::= Str(S) Whitespace(W) wstr(mut L){ L.push_str(&S); L.push_str(&W); L}
+    wstr      ::= Str(mut S) Whitespace(W) wstr(L){ S.push_str(&W); S.push_str(&L); S}
     wstr      ::= Str(mut S) Whitespace(W) { S.push_str(&W); S}
 
 
@@ -276,11 +280,18 @@ use super::button::InlineKeyboardBuilder;
 use super::command::post_deep_link;
 use super::user::Username;
 
+#[derive(Debug)]
+enum MonoMode {
+    Code(String),
+    Mono,
+}
+
 /// Lexer to get murkdown tokens
 pub struct Lexer {
     s: Vec<char>,
     header: bool,
     escape: bool,
+    code: Option<MonoMode>,
     rawbuf: String,
 }
 
@@ -311,6 +322,7 @@ impl Lexer {
             s: input.trim().chars().collect(),
             header,
             escape: false,
+            code: None,
             rawbuf: String::new(),
         }
     }
@@ -321,17 +333,25 @@ impl Lexer {
         } else {
             Vec::new()
         };
-        for (idx, char) in self.s.iter().enumerate() {
-            //     log::info!("parsing {}", char);
-
-            if self.escape {
+        let mut iter = self.s.iter().enumerate();
+        while let Some((idx, char)) = iter.next() {
+            if self.code.is_some() {
+                if *char == ']' {
+                    let s: String = self.rawbuf.drain(..).collect();
+                    match self.code.take().unwrap() {
+                        MonoMode::Code(lang) => output.push(Token::LangCode((lang, s))),
+                        MonoMode::Mono => output.push(Token::Mono(s)),
+                    }
+                } else {
+                    self.rawbuf.push(*char);
+                }
+                continue;
+            } else if self.escape {
                 self.escape = false;
                 self.rawbuf.push(*char);
                 if let Some(c) = self.s.get(idx + 1) {
                     if is_valid(*c, self.header) || (char.is_whitespace() != c.is_whitespace()) {
-                        let s = self.rawbuf.clone();
-                        self.rawbuf.clear();
-
+                        let s: String = self.rawbuf.drain(..).collect();
                         if char.is_whitespace() && s.len() > 0 && s.trim().len() == 0 {
                             output.push(Token::Whitespace(s));
                         } else {
@@ -369,9 +389,33 @@ impl Lexer {
                     }
                 }
                 '~' => output.push(Token::Tilde),
-                '`' => output.push(Token::Tick),
                 '*' => output.push(Token::Star),
-                '[' => output.push(Token::LSBracket),
+                '[' => {
+                    if let Some('`') = self.s.get(idx + 1) {
+                        if let Some((tick, _)) = self
+                            .s
+                            .get(idx + 2..)
+                            .map(|v| v.iter().find_position(|v| **v == '`'))
+                            .flatten()
+                        {
+                            self.code = self
+                                .s
+                                .get(idx + 2..tick + 2)
+                                .map(|v| MonoMode::Code(v.into_iter().collect()));
+
+                            if tick + 3 < self.s.len() {
+                                iter = self.s[tick + 3..].iter().enumerate();
+                            }
+                            // log::info!("found tick {} {} {:?}", tick, char, self.code);
+                        } else {
+                            self.code = Some(MonoMode::Mono);
+                            iter.next();
+                        }
+                        iter.take_while_ref(|v| v.1.is_whitespace()).for_each(drop);
+                    } else {
+                        output.push(Token::LSBracket)
+                    }
+                }
                 ']' => output.push(Token::RSBracket),
                 '(' => output.push(Token::LParen),
                 ')' => output.push(Token::RParen),
@@ -618,6 +662,10 @@ impl MarkupBuilder {
                 match (span, self.chatuser.as_ref()) {
                     (TgSpan::Code(code), _) => {
                         self.code(&code);
+                    }
+
+                    (TgSpan::Pre((lang, code)), _) => {
+                        self.pre(&code, lang, None);
                     }
                     (TgSpan::Italic(s), _) => {
                         let (s, e) = self.parse_tgspan(s).await?;

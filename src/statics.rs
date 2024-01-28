@@ -205,6 +205,8 @@ pub struct Args {
 
 lazy_static! {
     pub static ref ME: OnceCell<User> = OnceCell::new();
+    pub static ref USERNAME: &'static str = ME.get().unwrap().get_username_ref().unwrap();
+    pub static ref AT_HANDLE: String = format!("@{}", *USERNAME);
 }
 
 lazy_static! {
