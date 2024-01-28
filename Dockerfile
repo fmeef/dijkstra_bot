@@ -28,19 +28,22 @@ FROM base AS builder
 COPY ./ .
 ENV CC=gcc
 ENV CXX=g++
-RUN cargo install --path . && cargo install  --path ./migration/
+RUN cargo install --target-dir ./target --path . && cargo install --target-dir ./target  --path ./migration/
 
-FROM scratch AS prod
+FROM alpine:3.17 AS prod
 
 COPY --from=builder /etc/passwd /etc/passwd
 COPY --from=builder /etc/group /etc/group
 WORKDIR /bobot
 COPY --from=builder /etc/ssl /etc/ssl
 COPY --from=builder /usr/local/cargo/bin/dijkstra ./
+COPY --from=builder /usr/local/cargo/bin/dijkstra_migration ./
 USER bobot:bobot
 VOLUME /config
-ENTRYPOINT [ "/bobot/dijkstra", "--config", "/config/config.toml"]
-
+CMD [ "sh", "-c", "\
+    /bobot/dijkstra_migration -u postgresql://$POSTGRES_USER:$(cat $POSTGRES_PASSWORD_FILE)@$POSTGRES_HOST/$POSTGRES_DB up && \
+    /bobot/dijkstra --config /config/config.toml \
+"]
 
 FROM alpine:3.17 AS migrate
 
