@@ -195,7 +195,7 @@ impl Default for Config {
 }
 
 // Mildly competent moduler telegram bot
-#[derive(Parser)]
+#[derive(Parser, Default, Debug)]
 #[clap(author, version, long_about = None)]
 pub struct Args {
     // Path to config file
@@ -221,7 +221,7 @@ lazy_static! {
 
 //global configuration parameters
 lazy_static! {
-    pub static ref ARGS: Args = Args::parse();
+    pub static ref ARGS: OnceCell<Args> = OnceCell::new();
 }
 
 lazy_static! {

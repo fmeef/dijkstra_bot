@@ -7,6 +7,7 @@
 //! Dijkstra is under heavy development and the API is not considered stable yet. Check back later for a future
 //! stable release.
 
+use clap::Parser;
 use confy::load_path;
 use metadata::Metadata;
 use prometheus::default_registry;
@@ -52,7 +53,7 @@ pub use serde;
 pub use serde_json;
 pub use uuid;
 
-use crate::statics::{ARGS, CLIENT_BACKEND, CONFIG_BACKEND};
+use crate::statics::{Args, ARGS, CLIENT_BACKEND, CONFIG_BACKEND};
 
 get_langs!();
 
@@ -123,10 +124,11 @@ impl DijkstraOpts {
 
     /// Initialize and run the bot
     pub fn run(self) {
+        ARGS.set(Args::parse()).unwrap();
         let config = if let Some(config) = self.config {
             config
         } else {
-            load_path(&ARGS.config).expect("failed to load config")
+            load_path(&ARGS.get().unwrap().config).expect("failed to load config")
         };
         CONFIG_BACKEND.set(config).unwrap();
 

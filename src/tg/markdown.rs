@@ -501,19 +501,13 @@ where
 {
     fn escape(&self, header: bool) -> String {
         let s = self.as_ref();
-        s.split_inclusive(|c| is_valid(c, header) && c != '}' && c != '{')
-            .flat_map(|v| {
-                let end = &v[v.len() - 1..v.len()];
-                if end
-                    .chars()
-                    .all(|v| is_valid(v, header) && v != '}' && v != '{')
-                {
-                    let tail = &v[..v.len() - 1];
-                    vec![tail, "\\", end]
+        s.chars()
+            .flat_map(|c| {
+                if is_valid(c, header) && c != '}' && c != '{' {
+                    vec!['\\', c]
                 } else {
-                    vec![v]
+                    vec![c]
                 }
-                .into_iter()
             })
             .collect()
     }
@@ -1748,6 +1742,12 @@ mod test {
             }
         }
         assert_eq!(counter, 5);
+    }
+
+    #[test]
+    fn escape_multipoint() {
+        let s = "help me 😄";
+        assert_eq!(s, s.escape(false));
     }
 
     #[test]

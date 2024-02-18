@@ -5,20 +5,20 @@
 //! Also provides helper functions for either logging errors to prometheus or
 //! sending formatted errors to the user via telegram
 
+use std::time::SystemTimeError;
+
 use crate::tg::command::Context;
-use crate::tg::markdown::MarkupBuilder;
-use crate::{statics::TG, tg::markdown::DefaultParseErr};
+use crate::tg::markdown::DefaultParseErr;
 use async_trait::async_trait;
 use botapi::bot::{ApiError, Response};
-use botapi::gen_types::{Chat, EReplyMarkup, FileData, Message};
+use botapi::gen_types::{Chat, Message};
 use chrono::OutOfRangeError;
-use reqwest::multipart::Part;
 use sea_orm::{DbErr, RuntimeErr, TransactionError};
 use sqlx::error::DatabaseError;
 use thiserror::Error;
 use tokio::task::JoinError;
 
-use super::string::should_ignore_chat;
+use super::string::Speak;
 
 /// Type alias for universal result type
 pub type Result<T> = std::result::Result<T, BotError>;
@@ -256,6 +256,8 @@ pub enum BotError {
     UserNotFound,
     #[error("Query error {0}")]
     QueryError(#[from] sea_query::error::Error),
+    #[error("System time error: {0}")]
+    SystemTimeError(#[from] SystemTimeError),
 }
 
 impl<T> From<tokio::sync::mpsc::error::SendError<T>> for BotError {
@@ -343,31 +345,8 @@ impl BotError {
     /// send message via telegram for this error, returning true if a message was sent
     pub async fn get_message(&self) -> Result<bool> {
         if let Self::Speak { say, chat, .. } = self {
-            if !should_ignore_chat(*chat).await? {
-                if say.len() > 4096 {
-                    let bytes = FileData::Part(Part::text(say.to_owned()).file_name("message.txt"));
-                    TG.client.build_send_document(*chat, bytes).build().await?;
-                    return Ok(true);
-                }
-
-                let (text, entities, markup) = MarkupBuilder::new(None)
-                    .set_text(say.to_owned())
-                    .filling(true)
-                    .header(false)
-                    .build_murkdown_nofail()
-                    .await;
-
-                TG.client()
-                    .build_send_message(*chat, &text)
-                    .entities(&entities)
-                    .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(markup.build()))
-                    .build()
-                    .await?;
-
-                Ok(true)
-            } else {
-                Ok(true)
-            }
+            chat.speak(say).await?;
+            Ok(true)
         } else {
             Ok(false)
         }

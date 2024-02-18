@@ -16,13 +16,16 @@ use crate::{
 };
 use async_trait::async_trait;
 use base64::{engine::general_purpose, Engine};
-use botapi::gen_types::{Chat, MaybeInaccessibleMessage, Message, MessageEntity, UpdateExt, User};
+use botapi::gen_types::{
+    Chat, MaybeInaccessibleMessage, Message, MessageBuilder, MessageEntity, UpdateExt, User,
+};
 use lazy_static::lazy_static;
 use macros::lang_fmt;
 use redis::AsyncCommands;
 use regex::Regex;
 use serde::{de::DeserializeOwned, Serialize};
 use std::sync::Arc;
+use std::time::SystemTime;
 use std::{borrow::Cow, collections::VecDeque};
 use uuid::Uuid;
 use yoke::{Yoke, Yokeable};
@@ -87,7 +90,7 @@ pub type Args<'a> = Vec<TextArg<'a>>;
 
 /// Contains references to both the unparsed text of a command (not including the /command)
 /// and the same text parsed into and argument list for convienience
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct TextArgs<'a> {
     pub text: &'a str,
     pub args: Args<'a>,
@@ -95,7 +98,7 @@ pub struct TextArgs<'a> {
 
 /// A ranged slice of an argument list. Useful for recursively deconstructing commands
 /// or implementing subcommands
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub struct ArgSlice<'a> {
     pub text: &'a str,
     pub args: &'a [TextArg<'a>],
@@ -103,7 +106,7 @@ pub struct ArgSlice<'a> {
 
 /// A single argument, could be either raw text separated by whitespace or a quoted
 /// text block
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum TextArg<'a> {
     Arg(&'a str),
     Quote(&'a str),
@@ -129,7 +132,7 @@ impl<'a> TextArg<'a> {
 }
 
 /// Helper for wrapping supported MessageEntities in arguments without cloning or owning
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum EntityArg<'a> {
     Command(&'a str),
     Quote(&'a str),
@@ -168,8 +171,12 @@ where
 {
     fn pop_slice(&'b self) -> Option<(TextArg<'a>, ArgSlice<'a>)> {
         if let Some(arg) = self.args.first() {
+            let text = match arg {
+                TextArg::Arg(arg) => self.text[arg.len()..].trim(),
+                TextArg::Quote(arg) => self.text[arg.len() + 2..].trim(),
+            };
             let res = ArgSlice {
-                text: &self.text[arg.get_text().len()..].trim(),
+                text,
                 args: &self.args.as_slice()[1..],
             };
             Some((arg.r(), res))
@@ -220,7 +227,7 @@ pub fn single_arg<'a>(s: &'a str) -> Option<(TextArg<'a>, usize, usize)> {
     ARGS.find(s).map(|v| {
         if QUOTE.is_match(v.as_str()) {
             (
-                TextArg::Quote(&v.as_str()[1..v.end() - 1]),
+                TextArg::Quote(&v.as_str().trim_matches(&['\"'])),
                 v.start(),
                 v.end(),
             )
@@ -330,8 +337,9 @@ impl StaticContext {
                     let raw_args = ARGS
                         .find_iter(tail)
                         .map(|v| {
-                            if QUOTE.is_match(v.as_str()) {
-                                TextArg::Quote(&v.as_str()[1..v.end() - 1])
+                            if let Some(m) = QUOTE.find(v.as_str()) {
+                                println!("quote found {}", &m.as_str().trim_matches(&['\"']));
+                                TextArg::Quote(&m.as_str().trim_matches(&['\"']))
                             } else {
                                 TextArg::Arg(v.as_str())
                             }
@@ -618,4 +626,116 @@ where
         }
     }
     Ok(None)
+}
+
+#[allow(dead_code)]
+mod test {
+    use botapi::gen_types::UserBuilder;
+
+    use crate::statics::{Args, Config, ARGS, CONFIG_BACKEND, ME};
+
+    use super::*;
+
+    fn default_message(text: String) -> Result<Message> {
+        let chat = Chat::default();
+        let message =
+            MessageBuilder::new(1000, SystemTime::now().elapsed()?.as_secs() as i64, chat)
+                .set_text(text)
+                .build();
+
+        Ok(message)
+    }
+
+    fn default_context(text: String) -> Result<Context> {
+        let message = default_message(text)?;
+        ARGS.set(Args::default()).ok();
+        CONFIG_BACKEND.set(Config::default()).ok();
+        ME.set(
+            UserBuilder::new(0, true, "test".to_owned())
+                .set_username("testbot".to_owned())
+                .build(),
+        )
+        .ok();
+        let ctx = StaticContext {
+            update: UpdateExt::Message(message),
+            lang: Lang::En,
+        };
+        let ctx = Arc::new(ctx);
+        Ok(ctx.yoke())
+    }
+
+    #[tokio::test]
+    async fn pop_slice() {
+        let ctx = default_context("/This command rocks".to_owned()).unwrap();
+
+        let (cmd, textargs, _) = ctx.parse_cmd().unwrap();
+        assert_eq!(cmd, "This");
+
+        let (arg, args) = textargs.pop_slice().unwrap();
+        assert_eq!(arg.get_text(), "command");
+        assert_eq!(args.text, "rocks");
+    }
+
+    #[tokio::test]
+    async fn pop_slice_emoji() {
+        let ctx = default_context("/This 🧋com🧋mand🧋 🧋ro🧋cks🧋".to_owned()).unwrap();
+
+        let (cmd, textargs, _) = ctx.parse_cmd().unwrap();
+        assert_eq!(cmd, "This");
+
+        let (arg, args) = textargs.pop_slice().unwrap();
+        assert_eq!(arg.get_text(), "🧋com🧋mand🧋");
+        assert_eq!(args.text, "🧋ro🧋cks🧋");
+    }
+
+    #[tokio::test]
+    async fn pop_slice_quote() {
+        let ctx = default_context("/This \"command rocks\"".to_owned()).unwrap();
+
+        let (cmd, textargs, _) = ctx.parse_cmd().unwrap();
+        assert_eq!(cmd, "This");
+
+        let (arg, _) = textargs.pop_slice().unwrap();
+        if let TextArg::Quote(quote) = arg {
+            assert_eq!(arg.get_text(), "command rocks");
+            assert_eq!(quote, "command rocks");
+        } else {
+            panic!("not a quote");
+        }
+    }
+
+    #[tokio::test]
+    async fn pop_slice_emoji_quote() {
+        let ctx = default_context("/This \"🧋com🧋mand🧋 🧋ro🧋cks🧋\"".to_owned()).unwrap();
+
+        let (cmd, textargs, _) = ctx.parse_cmd().unwrap();
+        assert_eq!(cmd, "This");
+
+        println!("{:?}", textargs);
+        let (arg, _) = textargs.pop_slice().unwrap();
+        if let TextArg::Quote(quote) = arg {
+            assert_eq!(arg.get_text(), "🧋com🧋mand🧋 🧋ro🧋cks🧋");
+
+            assert_eq!(quote, "🧋com🧋mand🧋 🧋ro🧋cks🧋");
+        } else {
+            panic!("not a quote");
+        }
+    }
+    #[tokio::test]
+    async fn command_emoji() {
+        let ctx = default_context("/😍🧋".to_owned()).unwrap();
+
+        let cmd = ctx.parse_cmd();
+        assert_eq!(cmd, None);
+
+        let ctx = default_context("/fm😍🧋".to_owned()).unwrap();
+
+        let cmd = ctx.parse_cmd();
+        assert_eq!(cmd, None);
+
+        let ctx = default_context("/😍🧋fm".to_owned()).unwrap();
+
+        let cmd = ctx.parse_cmd();
+        assert_eq!(cmd, None);
+    }
 }
