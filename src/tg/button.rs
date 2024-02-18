@@ -53,7 +53,7 @@ impl InlineKeyboardBuilder {
     ) -> &mut Self {
         let len = self.0.len() as i32;
         if let Some(v) = self.0.last_mut() {
-            log::info!("adding button end {}", button.get_text());
+            // log::info!("adding button end {}", button.get_text());
             if v.len() < MAX_BUTTONS {
                 v.push(button::Model::from_button_orphan(
                     v.len() as i32,
@@ -63,11 +63,11 @@ impl InlineKeyboardBuilder {
                 ));
                 self
             } else {
-                log::info!("adding button newline {}", button.get_text());
+                // log::info!("adding button newline {}", button.get_text());
                 self.newline().button_raw(button, raw_text)
             }
         } else {
-            log::info!("button fell off end");
+            log::warn!("button fell off end");
             self
         }
     }

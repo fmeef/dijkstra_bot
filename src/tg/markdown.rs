@@ -409,13 +409,16 @@ impl Lexer {
                         if let Some((tick, _)) = self
                             .s
                             .get(idx + 2..)
-                            .map(|thing| thing.iter().find_position(|p| **p == '`'))
+                            .map(|thing| thing.iter().find_position(|p| **p == '`' || **p == ']'))
                             .flatten()
                         {
                             // if tick > 0 {
                             //     log::info!("escape2 {:?} ", self.s.get(tick + idx + 1));
                             // }
-                            if tick > 0 && self.s.get(tick + idx + 1) != Some(&'\\') {
+                            if tick > 0
+                                && self.s.get(tick + idx + 1) != Some(&'\\')
+                                && self.s.get(tick + idx + 2) != Some(&']')
+                            {
                                 self.code = self
                                     .s
                                     .get(idx + 2..tick + idx + 2)
