@@ -6,15 +6,19 @@
 //! sending formatted errors to the user via telegram
 
 use crate::tg::command::Context;
+use crate::tg::markdown::MarkupBuilder;
 use crate::{statics::TG, tg::markdown::DefaultParseErr};
 use async_trait::async_trait;
 use botapi::bot::{ApiError, Response};
-use botapi::gen_types::{Chat, Message};
+use botapi::gen_types::{Chat, EReplyMarkup, FileData, Message};
 use chrono::OutOfRangeError;
+use reqwest::multipart::Part;
 use sea_orm::{DbErr, RuntimeErr, TransactionError};
 use sqlx::error::DatabaseError;
 use thiserror::Error;
 use tokio::task::JoinError;
+
+use super::string::should_ignore_chat;
 
 /// Type alias for universal result type
 pub type Result<T> = std::result::Result<T, BotError>;
@@ -83,7 +87,6 @@ impl<T: Send, E: Into<BotError> + Send> SpeakErr<T> for std::result::Result<T, E
                         let err = func(message);
                         ctx.fail(err)
                     }
-                    BotError::Speak { .. } => Err(err),
                     err => {
                         let message = err.to_string();
                         let err = func(&message);
@@ -340,8 +343,31 @@ impl BotError {
     /// send message via telegram for this error, returning true if a message was sent
     pub async fn get_message(&self) -> Result<bool> {
         if let Self::Speak { say, chat, .. } = self {
-            TG.client().build_send_message(*chat, &say).build().await?;
-            Ok(true)
+            if !should_ignore_chat(*chat).await? {
+                if say.len() > 4096 {
+                    let bytes = FileData::Part(Part::text(say.to_owned()).file_name("message.txt"));
+                    TG.client.build_send_document(*chat, bytes).build().await?;
+                    return Ok(true);
+                }
+
+                let (text, entities, markup) = MarkupBuilder::new(None)
+                    .set_text(say.to_owned())
+                    .filling(true)
+                    .header(false)
+                    .build_murkdown_nofail()
+                    .await;
+
+                TG.client()
+                    .build_send_message(*chat, &text)
+                    .entities(&entities)
+                    .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(markup.build()))
+                    .build()
+                    .await?;
+
+                Ok(true)
+            } else {
+                Ok(true)
+            }
         } else {
             Ok(false)
         }
