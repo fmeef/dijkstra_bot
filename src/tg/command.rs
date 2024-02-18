@@ -338,7 +338,6 @@ impl StaticContext {
                         .find_iter(tail)
                         .map(|v| {
                             if let Some(m) = QUOTE.find(v.as_str()) {
-                                println!("quote found {}", &m.as_str().trim_matches(&['\"']));
                                 TextArg::Quote(&m.as_str().trim_matches(&['\"']))
                             } else {
                                 TextArg::Arg(v.as_str())
