@@ -61,7 +61,7 @@ pub fn get_dialog_key(chat: i64) -> String {
 /// TODO: Remove this later once all existing chats are updated?
 pub async fn dialog_from_update(update: &UpdateExt) -> Result<()> {
     if let UpdateExt::Message(message) = update {
-        let chat = message.get_chat_ref();
+        let chat = message.get_chat();
         dialog_or_default(chat).await?;
     }
     Ok(())
@@ -586,7 +586,7 @@ impl Conversation {
         callback: &CallbackQuery,
         row_limit: usize,
     ) -> Result<()> {
-        if let Some(MaybeInaccessibleMessage::Message(message)) = callback.get_message_ref() {
+        if let Some(MaybeInaccessibleMessage::Message(message)) = callback.get_message() {
             self.write_key(trans).await?;
 
             if let Some(cb) = self.0.state_callback.as_ref() {

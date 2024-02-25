@@ -235,7 +235,7 @@ impl<'a> RoseMdDecompiler<'a> {
                     //     entity.get_tg_type_ref(),
                     //     entity.get_offset()
                     // );
-                    match entity.get_tg_type_ref() {
+                    match entity.get_tg_type() {
                         "spoiler" => out.push_str("||"),
                         "italic" => out.push('_'),
                         "underline" => out.push_str("__"),
@@ -259,7 +259,7 @@ impl<'a> RoseMdDecompiler<'a> {
 
             if let Some(v) = self.current.remove(&((offset + 1) as i64)) {
                 for entity in v.into_iter().rev() {
-                    match entity.get_tg_type_ref() {
+                    match entity.get_tg_type() {
                         "spoiler" => out.push_str("||"),
                         "italic" => out.push('_'),
                         "underline" => out.push_str("__"),
@@ -268,12 +268,12 @@ impl<'a> RoseMdDecompiler<'a> {
                         "code" => out.push('`'),
                         "pre" => out.push_str("```"),
                         "text_link" => {
-                            if let Some(url) = entity.get_url_ref() {
+                            if let Some(url) = entity.get_url() {
                                 out.push_str(&format!("]({})", url));
                             }
                         }
                         "text_mention" => {
-                            if let Some(user) = entity.get_user_ref() {
+                            if let Some(user) = entity.get_user() {
                                 out.push_str(&format!("](tg://user?id={})", user.get_id()));
                             }
                         }
@@ -290,7 +290,7 @@ impl<'a> RoseMdDecompiler<'a> {
                 } else {
                     ""
                 };
-                let url = button.get_url_ref().unwrap_or(button.get_text_ref());
+                let url = button.get_url().unwrap_or(button.get_text());
                 out.push_str(&format!(
                     "[{}](buttonurl://{}{})",
                     button.get_text(),
@@ -565,7 +565,7 @@ mod test {
 
         assert_eq!(text, "bold");
         assert_eq!(entities.len(), 1);
-        assert_eq!(entities[0].get_tg_type_ref(), "bold");
+        assert_eq!(entities[0].get_tg_type(), "bold");
     }
 
     #[test]
@@ -576,7 +576,7 @@ mod test {
 
         assert_eq!(text, "thing");
         assert_eq!(entities.len(), 1);
-        assert_eq!(entities[0].get_tg_type_ref(), "text_link");
+        assert_eq!(entities[0].get_tg_type(), "text_link");
     }
 
     #[test]
@@ -620,7 +620,7 @@ mod test {
         assert_eq!(text.trim(), "thing");
         assert_eq!(buttons.get().len(), 1);
         let b = buttons.build();
-        let b = b.get_inline_keyboard_ref();
+        let b = b.get_inline_keyboard();
         let decompiler = RoseMdDecompiler::new(&text, &entities, &b);
         let out = decompiler.decompile();
 
@@ -636,7 +636,7 @@ mod test {
 
         assert_eq!(text, "thing");
         assert_eq!(entities.len(), 1);
-        assert_eq!(entities[0].get_tg_type_ref(), "text_link");
+        assert_eq!(entities[0].get_tg_type(), "text_link");
 
         let v = Vec::new();
         let decompiler = RoseMdDecompiler::new(&text, &entities, &v);
@@ -653,7 +653,7 @@ mod test {
 
         assert_eq!(text, "bold strike boldspoiler");
         assert_eq!(entities.len(), 4);
-        assert_eq!(entities[0].get_tg_type_ref(), "bold");
+        assert_eq!(entities[0].get_tg_type(), "bold");
     }
 
     #[test]
@@ -664,10 +664,10 @@ mod test {
 
         assert_eq!(text, "bold");
         assert_eq!(entities.len(), 1);
-        assert_eq!(entities[0].get_tg_type_ref(), "bold");
+        assert_eq!(entities[0].get_tg_type(), "bold");
 
         let b = buttons.build();
-        let b = b.get_inline_keyboard_ref();
+        let b = b.get_inline_keyboard();
         let decompiler = RoseMdDecompiler::new(&text, &entities, &b);
         let out = decompiler.decompile();
 
@@ -691,10 +691,10 @@ mod test {
         println!("got entities {:?}", entities);
         assert_eq!(text, "bold strike boldspoiler");
         assert_eq!(entities.len(), 4);
-        assert_eq!(entities[0].get_tg_type_ref(), "bold");
+        assert_eq!(entities[0].get_tg_type(), "bold");
 
         let b = buttons.build();
-        let b = b.get_inline_keyboard_ref();
+        let b = b.get_inline_keyboard();
         let decompiler = RoseMdDecompiler::new(&text, &entities, &b);
         let out = decompiler.decompile();
 

@@ -24,7 +24,7 @@ async fn cmd_approve<'a>(ctx: &Context) -> Result<()> {
     ctx.check_permissions(|p| p.can_restrict_members).await?;
     ctx.action_user(|ctx, user, _| async move {
         if let Some(user) = user.get_cached_user().await? {
-            approve(ctx.message()?.get_chat_ref(), &user).await?;
+            approve(ctx.message()?.get_chat(), &user).await?;
             let name = user.name_humanreadable();
             ctx.speak_fmt(entity_fmt!(
                 ctx,
@@ -42,7 +42,7 @@ async fn cmd_approve<'a>(ctx: &Context) -> Result<()> {
 async fn cmd_unapprove(ctx: &Context) -> Result<()> {
     ctx.check_permissions(|p| p.can_restrict_members).await?;
     ctx.action_user(|ctx, user, _| async move {
-        unapprove(ctx.message()?.get_chat_ref(), user).await?;
+        unapprove(ctx.message()?.get_chat(), user).await?;
         let name = user.mention().await?;
         ctx.speak_fmt(entity_fmt!(ctx, "unapproved", name)).await?;
 

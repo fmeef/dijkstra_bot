@@ -28,7 +28,7 @@ pub async fn report(ctx: &Context) -> Result<()> {
         if ctx
             .message()?
             .get_from()
-            .is_admin(ctx.message()?.get_chat_ref())
+            .is_admin(ctx.message()?.get_chat())
             .await?
         {
             return Err(BotError::Generic("Admins can't warn".into()));
@@ -50,7 +50,7 @@ pub async fn report(ctx: &Context) -> Result<()> {
                         .map(|a| {
                             MessageEntityBuilder::new(0, 0)
                                 .set_type("text_mention".to_owned())
-                                .set_user(a.get_user().into_owned())
+                                .set_user(a.get_user().to_owned())
                                 .build()
                         })
                         .collect::<Vec<MessageEntity>>();
@@ -86,7 +86,7 @@ async fn handle_command(ctx: &Context) -> Result<()> {
         }?;
     }
 
-    if let Ok(Some(message)) = ctx.message().map(|m| m.get_text_ref()) {
+    if let Ok(Some(message)) = ctx.message().map(|m| m.get_text()) {
         if let Some(message) = message.trim_start().split_whitespace().next() {
             match message {
                 "@admin" => report(ctx).await,

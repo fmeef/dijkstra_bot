@@ -56,10 +56,10 @@ impl Model {
         Model {
             pos_x,
             pos_y,
-            button_text: button.get_text().into_owned(),
-            button_url: button.get_url().map(|v| v.into_owned()),
+            button_text: button.get_text().to_owned(),
+            button_url: button.get_url().map(|v| v.to_owned()),
             owner_id: Some(owner_id),
-            callback_data: button.get_callback_data().map(|v| v.into_owned()),
+            callback_data: button.get_callback_data().map(|v| v.to_owned()),
             raw_text,
         }
     }
@@ -73,10 +73,10 @@ impl Model {
         Model {
             pos_x,
             pos_y,
-            button_text: button.get_text().into_owned(),
-            button_url: button.get_url().map(|v| v.into_owned()),
+            button_text: button.get_text().to_owned(),
+            button_url: button.get_url().map(|v| v.to_owned()),
             owner_id: None,
-            callback_data: button.get_callback_data().map(|v| v.into_owned()),
+            callback_data: button.get_callback_data().map(|v| v.to_owned()),
             raw_text,
         }
     }

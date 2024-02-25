@@ -20,7 +20,7 @@ impl Model {
         Model {
             federation,
             fban_id: Uuid::new_v4(),
-            user_name: user.get_username().map(|v| v.into_owned()),
+            user_name: user.get_username().map(|v| v.to_owned()),
             user: user.get_id(),
             reason: None,
         }

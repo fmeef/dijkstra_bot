@@ -29,7 +29,7 @@ pub fn get_url<T: AsRef<str>>(param: T) -> Result<String> {
     let me = ME.get().unwrap();
     let url = format!(
         "https://t.me/{}?start={}",
-        me.get_username_ref()
+        me.get_username()
             .ok_or_else(|| BotError::Generic("help I don't have a username".to_owned()))?,
         param.as_ref()
     );

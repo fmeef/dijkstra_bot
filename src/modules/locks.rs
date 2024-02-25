@@ -375,9 +375,9 @@ macro_rules! locks {
 
 locks! {
     lock!("code", "Pre formatted code", LockType::Code, |message| {
-        if let Some(entities) = message.get_entities_ref() {
+        if let Some(entities) = message.get_entities() {
             for entity in entities {
-                match entity.get_tg_type_ref() {
+                match entity.get_tg_type() {
                     "pre" => return true,
                     "code" => return true,
                     _ => (),
@@ -395,9 +395,9 @@ locks! {
         }
     });
     lock!("url", "http/https urls, as defined by telegram", LockType::Link, |message| {
-        if let Some(entities) = message.get_entities_ref() {
+        if let Some(entities) = message.get_entities() {
             for entity in entities {
-                match entity.get_tg_type_ref() {
+                match entity.get_tg_type() {
                     "url" => return true,
                     "text_link" => return true,
                     _ => (),
@@ -416,9 +416,9 @@ locks! {
         message.get_sender_chat().is_some()
     });
     lock!("command", "Bot commands", LockType::Command, |message| {
-        if let Some(entities) = message.get_entities_ref() {
+        if let Some(entities) = message.get_entities() {
             for entity in entities {
-                match entity.get_tg_type_ref() {
+                match entity.get_tg_type() {
                     "bot_command" => return true,
                     _ => (),
                 }
@@ -448,14 +448,14 @@ fn is_tg_link<T: AsRef<str>>(url: T) -> bool {
     let url = url.as_ref();
     let url = url.strip_prefix("http://").unwrap_or(&url);
     let url = url.strip_prefix("https://").unwrap_or(url);
-    return url.starts_with("t.me") || url.starts_with("tg://");
+    url.starts_with("t.me") || url.starts_with("tg://")
 }
 
 fn is_out_of_chat_user<'a>(message: &'a Message) -> BoxFuture<'a, Result<bool>> {
     async move {
-        if let Some(entities) = message.get_entities_ref() {
+        if let Some(entities) = message.get_entities() {
             for entity in entities {
-                match entity.get_tg_type_ref() {
+                match entity.get_tg_type() {
                     "text_mention" => {
                         if let Some(user) = entity.get_user() {
                             return Ok(
@@ -497,9 +497,9 @@ fn is_out_of_chat_user<'a>(message: &'a Message) -> BoxFuture<'a, Result<bool>> 
 
 fn is_invite<'a>(message: &'a Message) -> BoxFuture<'a, Result<bool>> {
     async move {
-        if let Some(entities) = message.get_entities_ref() {
+        if let Some(entities) = message.get_entities() {
             for entity in entities {
-                match entity.get_tg_type_ref() {
+                match entity.get_tg_type() {
                     "text_link" => {
                         if let Some(url) = entity.get_url() {
                             return Ok(is_tg_link(url));
@@ -508,7 +508,7 @@ fn is_invite<'a>(message: &'a Message) -> BoxFuture<'a, Result<bool>> {
                     "mention" => {
                         if let Some(user) = message.get_text() {
                             //TODO: cache this manybe?
-                            return Ok(TG.client.get_chat(user.into_owned()).await.is_ok());
+                            return Ok(TG.client.get_chat(user.to_owned()).await.is_ok());
                         }
                     }
                     "url" => {
@@ -574,7 +574,7 @@ async fn clear_lock(message: &Message, locktype: LockType) -> Result<()> {
 }
 
 async fn set_lock(message: &Message, locktype: LockType, user: &User) -> Result<()> {
-    user.admin_or_die(message.get_chat_ref()).await?;
+    user.admin_or_die(message.get_chat()).await?;
     let key = get_lock_key(message.get_chat().get_id(), &locktype);
     let model = locks::ActiveModel {
         chat: Set(message.get_chat().get_id()),
@@ -745,7 +745,7 @@ async fn lock_action<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
         let action = ActionType::from_str_err(arg.get_text(), || {
             BotError::speak("Invalid action", chat_id)
         })?;
-        set_default_action(message.get_chat_ref(), action).await?;
+        set_default_action(message.get_chat(), action).await?;
         message.reply(lang_fmt!(lang, "setdefaultaction")).await?;
     } else {
         message.reply(lang_fmt!(lang, "noactionarg")).await?;
@@ -832,11 +832,7 @@ where
             let newaction = if let Some(action) = newaction.lock_action {
                 Some(action)
             } else {
-                Some(
-                    get_default_settings(message.get_chat_ref())
-                        .await?
-                        .lock_action,
-                )
+                Some(get_default_settings(message.get_chat()).await?.lock_action)
             };
 
             if newaction > *action {
@@ -866,11 +862,7 @@ where
                 let newaction = if let Some(action) = newaction.lock_action {
                     Some(action)
                 } else {
-                    Some(
-                        get_default_settings(message.get_chat_ref())
-                            .await?
-                            .lock_action,
-                    )
+                    Some(get_default_settings(message.get_chat()).await?.lock_action)
                 };
 
                 if newaction > *action {
@@ -894,15 +886,15 @@ async fn handle_user_event(update: &UpdateExt, ctx: &Context) -> Result<()> {
     if let (Some(action), locks) = action_from_update(update).await? {
         match update {
             UpdateExt::Message(ref message) => {
-                if let Some(user) = message.get_from_ref() {
-                    if is_approved(message.get_chat_ref(), user).await? {
+                if let Some(user) = message.get_from() {
+                    if is_approved(message.get_chat(), user).await? {
                         return Ok(());
                     }
                 }
-                if message.get_from().is_admin(message.get_chat_ref()).await? {
+                if message.get_from().is_admin(message.get_chat()).await? {
                     return Ok(());
                 }
-                let default = get_default_settings(message.get_chat_ref()).await?;
+                let default = get_default_settings(message.get_chat()).await?;
                 let lang = ctx.try_get()?.lang;
                 let reasons = locks
                     .into_iter()

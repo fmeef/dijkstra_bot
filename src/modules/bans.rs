@@ -55,7 +55,7 @@ pub async fn ban_cmd(ctx: &Context) -> Result<()> {
         let duration = ctx.parse_duration(&args)?;
         ctx.ban(user, duration)
             .await
-            .speak_err_code(ctx.message()?.get_chat_ref(), 400, |_| {
+            .speak_err_code(ctx.message()?.get_chat(), 400, |_| {
                 lang_fmt!(lang, "failban")
             })
             .await?;
@@ -99,7 +99,7 @@ pub async fn mute_cmd<'a>(ctx: &Context) -> Result<()> {
     let user = ctx
         .change_permissions_message(permissions)
         .await
-        .speak_err_code(ctx.message()?.get_chat_ref(), 400, |_| {
+        .speak_err_code(ctx.message()?.get_chat(), 400, |_| {
             lang_fmt!(lang, "failmute")
         })
         .await?;
@@ -138,7 +138,7 @@ pub async fn unmute_cmd<'a>(ctx: &Context) -> Result<()> {
     let user = ctx
         .change_permissions_message(permissions)
         .await
-        .speak_err_code(message.get_chat_ref(), 400, |_| lang_fmt!(lang, "failmute"))
+        .speak_err_code(message.get_chat(), 400, |_| lang_fmt!(lang, "failmute"))
         .await?;
     if let Some(user) = user {
         let mention = user.mention().await?;

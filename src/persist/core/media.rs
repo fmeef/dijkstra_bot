@@ -26,20 +26,20 @@ pub trait GetMediaId {
 
 impl GetMediaId for Message {
     fn get_media_id<'a>(&'a self) -> Option<(&'a str, MediaType)> {
-        if let Some(image) = self.get_photo_ref().map(|p| p.first()).flatten() {
-            return Some((image.get_file_id_ref(), MediaType::Photo));
+        if let Some(image) = self.get_photo().map(|p| p.first()).flatten() {
+            return Some((image.get_file_id(), MediaType::Photo));
         }
 
-        if let Some(document) = self.get_document_ref() {
-            return Some((document.get_file_id_ref(), MediaType::Document));
+        if let Some(document) = self.get_document() {
+            return Some((document.get_file_id(), MediaType::Document));
         }
 
-        if let Some(sticker) = self.get_sticker_ref() {
-            return Some((sticker.get_file_id_ref(), MediaType::Sticker));
+        if let Some(sticker) = self.get_sticker() {
+            return Some((sticker.get_file_id(), MediaType::Sticker));
         }
 
-        if let Some(video) = self.get_video_ref() {
-            return Some((video.get_file_id_ref(), MediaType::Video));
+        if let Some(video) = self.get_video() {
+            return Some((video.get_file_id(), MediaType::Video));
         }
 
         None
@@ -110,14 +110,14 @@ pub fn get_media_type<'a>(message: &'a Message) -> Result<(Option<String>, Media
         .map(|p| p.first().map(|v| v.to_owned()))
         .flatten()
     {
-        Ok((Some(photo.get_file_id().into_owned()), MediaType::Photo))
-    } else if let Some(sticker) = message.get_sticker().map(|s| s.get_file_id().into_owned()) {
+        Ok((Some(photo.get_file_id().to_owned()), MediaType::Photo))
+    } else if let Some(sticker) = message.get_sticker().map(|s| s.get_file_id().to_owned()) {
         Ok((Some(sticker), MediaType::Sticker))
-    } else if let Some(document) = message.get_document().map(|d| d.get_file_id().into_owned()) {
+    } else if let Some(document) = message.get_document().map(|d| d.get_file_id().to_owned()) {
         Ok((Some(document), MediaType::Document))
-    } else if let Some(video) = message.get_video().map(|v| v.get_file_id().into_owned()) {
+    } else if let Some(video) = message.get_video().map(|v| v.get_file_id().to_owned()) {
         Ok((Some(video), MediaType::Video))
-    } else if let Some(audio) = message.get_audio().map(|v| v.get_file_id().into_owned()) {
+    } else if let Some(audio) = message.get_audio().map(|v| v.get_file_id().to_owned()) {
         Ok((Some(audio), MediaType::Audio))
     } else if let Some(_) = message.get_text() {
         Ok((None, MediaType::Text))

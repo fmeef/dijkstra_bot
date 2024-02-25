@@ -197,7 +197,7 @@ pub(crate) async fn show_help<'a>(
 ) -> Result<bool> {
     if !should_ignore_chat(message.get_chat().get_id()).await? {
         let lang = get_chat_lang(message.get_chat().get_id()).await?;
-        if is_dm(message.get_chat_ref()) {
+        if is_dm(message.get_chat()) {
             let me = ME.get().unwrap();
             let param = args.map(|v| v.to_lowercase());
             log::info!("custom help {:?}", param);
@@ -266,7 +266,7 @@ impl TgClient {
         if let Some(data) = button.get_callback_data() {
             //            log::info!("registering button callback with data {}", data);
             self.button_events
-                .insert(data.into_owned(), SingleCb::new(func));
+                .insert(data.to_owned(), SingleCb::new(func));
         }
     }
 
@@ -280,7 +280,7 @@ impl TgClient {
         if let Some(data) = button.get_callback_data() {
             //            log::info!("registering button callback with data {}", data);
             self.button_repeat
-                .insert(data.into_owned(), MultiCb::new(func));
+                .insert(data.to_owned(), MultiCb::new(func));
         }
     }
 
@@ -331,7 +331,7 @@ impl TgClient {
             match update {
                 Ok(UpdateExt::CallbackQuery(callbackquery)) => {
                     if let Some(data) = callbackquery.get_data() {
-                        let data: String = data.into_owned();
+                        let data: String = data.to_owned();
                         if let Some(cb) = callbacks.remove(&data) {
                             if let Err(err) = cb.1.cb(callbackquery.clone()).await {
                                 log::warn!("button handler err {}", err);

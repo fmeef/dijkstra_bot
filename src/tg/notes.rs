@@ -187,7 +187,7 @@ pub fn handle_transition<'a>(
         if let Some((note, extra_entities, extra_buttons)) = get_note_by_name(note, chat).await? {
             let c = ctx.clone();
             if let MaybeInaccessibleMessage::Message(message) = callback
-                .get_message_ref()
+                .get_message()
                 .ok_or_else(|| BotError::Generic("message missing".to_owned()))?
             {
                 SendMediaReply::new(ctx, note.media_type)
@@ -197,7 +197,7 @@ pub fn handle_transition<'a>(
                             log::info!("next notes: {}", note);
                             button.on_push(move |b| async move {
                                 TG.client
-                                    .build_answer_callback_query(b.get_id_ref())
+                                    .build_answer_callback_query(b.get_id())
                                     .build()
                                     .await?;
 

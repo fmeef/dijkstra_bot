@@ -119,7 +119,7 @@ async fn handle_markdown(message: &Message) -> Result<bool> {
 
 async fn handle_decompile(message: &Message) -> Result<bool> {
     if let Some(message) = message.get_reply_to_message() {
-        if let (Some(text), Some(entities)) = (message.get_text(), message.get_entities_ref()) {
+        if let (Some(text), Some(entities)) = (message.get_text(), message.get_entities()) {
             let buttons = vec![];
             let md = RoseMdDecompiler::new(&text, entities, &buttons);
             let msg = md.decompile();

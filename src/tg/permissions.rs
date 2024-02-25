@@ -1,7 +1,7 @@
 //! Admin permissions management interface. Allows for both admin/notadmin permissions and
 //! more granular permissions based on telegram's own system
 
-use std::{borrow::Cow, collections::HashMap, ops::Deref};
+use std::{collections::HashMap, ops::Deref};
 
 use crate::{
     langs::Lang,
@@ -346,9 +346,9 @@ where
         let out = out.clone();
         async move {
             let user = callback.get_from();
-            if let Some(MaybeInaccessibleMessage::Message(message)) = callback.get_message_ref() {
+            if let Some(MaybeInaccessibleMessage::Message(message)) = callback.get_message() {
                 let permission =
-                    NamedBotPermissions::from_chatuser(&user, message.get_chat_ref()).await?;
+                    NamedBotPermissions::from_chatuser(&user, message.get_chat()).await?;
                 if let Ok(_) = out.send(Some((permission, callback))).await {
                     Ok(false)
                 } else {
@@ -371,10 +371,10 @@ where
         let p = func(perm);
         if p.is_granted() || sudo {
             TG.client
-                .build_answer_callback_query(cb.get_id_ref())
+                .build_answer_callback_query(cb.get_id())
                 .build()
                 .await?;
-            if let Some(MaybeInaccessibleMessage::Message(message)) = cb.get_message_ref() {
+            if let Some(MaybeInaccessibleMessage::Message(message)) = cb.get_message() {
                 TG.client
                     .build_delete_message(message.get_chat().get_id(), message.get_message_id())
                     .build()
@@ -383,7 +383,7 @@ where
             return Ok(());
         } else {
             TG.client
-                .build_answer_callback_query(cb.get_id_ref())
+                .build_answer_callback_query(cb.get_id())
                 .text(&lang_fmt!(lang, "channeldenied"))
                 .show_alert(true)
                 .build()
@@ -436,15 +436,15 @@ where
 impl IsGroupAdmin for Message {
     async fn is_group_admin(&self) -> Result<bool> {
         if let Some(user) = self.get_from() {
-            user.is_admin(self.get_chat_ref()).await
+            user.is_admin(self.get_chat()).await
         } else {
             Ok(false)
         }
     }
 
     async fn legacy_check_permissions(&self) -> Result<()> {
-        is_group_or_die(self.get_chat_ref()).await?;
-        self_admin_or_die(self.get_chat_ref()).await?;
+        is_group_or_die(self.get_chat()).await?;
+        self_admin_or_die(self.get_chat()).await?;
 
         if self.is_group_admin().await? {
             Ok(())
@@ -462,7 +462,7 @@ impl IsGroupAdmin for Message {
             .get_from()
             .ok_or_else(|| BotError::Generic("user not found".to_owned()))?;
 
-        let chat = self.get_chat_ref();
+        let chat = self.get_chat();
         let res = NamedBotPermissions::from_chatuser(&user, chat).await?;
         Ok(res.into())
     }
@@ -471,12 +471,12 @@ impl IsGroupAdmin for Message {
     where
         F: Fn(NamedBotPermissions) -> NamedPermission + Send,
     {
-        let chat = self.get_chat_ref();
+        let chat = self.get_chat();
         is_group_or_die(&chat).await?;
         let user = self
             .get_from()
             .ok_or_else(|| BotError::Generic("user not found".to_owned()))?;
-        if let Some(chat) = self.get_sender_chat_ref() {
+        if let Some(chat) = self.get_sender_chat() {
             handle_perm_check(self, func, &user, chat, true).await
         } else {
             handle_perm_check(self, func, &user, chat, false).await
@@ -514,7 +514,7 @@ impl IsAdmin for User {
 }
 
 #[async_trait]
-impl<'a> IsAdmin for Option<Cow<'a, User>> {
+impl<'a> IsAdmin for Option<&'a User> {
     async fn is_admin(&self, chat: &Chat) -> Result<bool> {
         if let Some(user) = self {
             Ok(chat.is_user_admin(user.get_id()).await?.is_some())
@@ -532,7 +532,7 @@ impl<'a> IsAdmin for Option<Cow<'a, User>> {
                 let msg = lang_fmt!(
                     lang,
                     "lackingadminrights",
-                    user.get_username_ref()
+                    user.get_username()
                         .unwrap_or(user.get_id().to_string().as_str())
                 );
                 chat.fail(msg)
@@ -577,7 +577,7 @@ impl IsAdmin for i64 {
                 lang_fmt!(
                     lang,
                     "lackingadminrights",
-                    user.get_username_ref().unwrap_or(self.to_string().as_str())
+                    user.get_username().unwrap_or(self.to_string().as_str())
                 )
             } else {
                 lang_fmt!(lang, "lackingadminrights", self)
@@ -612,26 +612,34 @@ impl IsAdmin for i64 {
 pub async fn update_self_admin(update: &UpdateExt) -> Result<()> {
     match update {
         UpdateExt::MyChatMember(member) => {
-            let dialog = dialogs::Model::from_chat(member.get_chat_ref()).await?;
+            let dialog = dialogs::Model::from_chat(member.get_chat()).await?;
             upsert_dialog(DB.deref(), dialog.into_active_model()).await?;
             let key = get_chat_admin_cache_key(member.get_chat().get_id());
             member.get_chat().refresh_cached_admins().await?;
-            match member.get_new_chat_member_ref() {
+            match member.get_new_chat_member() {
                 ChatMember::ChatMemberAdministrator(admin) => {
                     log::info!("bot updated to admin");
                     let user_id = admin.get_user().get_id();
-                    let admin = member.get_new_chat_member_ref().to_redis()?;
+                    let admin = member.get_new_chat_member().to_redis()?;
                     REDIS.sq(|q| q.hset(&key, user_id, admin)).await?;
                 }
                 ChatMember::ChatMemberOwner(owner) => {
                     log::info!("Im soemhow the owner. What?");
                     let user_id = owner.get_user().get_id();
-                    let admin = member.get_new_chat_member_ref().to_redis()?;
+                    let admin = member.get_new_chat_member().to_redis()?;
                     REDIS.sq(|q| q.hset(&key, user_id, admin)).await?;
                 }
                 mamber => {
                     log::info!("Im not admin anymore ;(");
-                    let user_id = mamber.get_user().get_id();
+                    let user_id = match mamber {
+                        ChatMember::ChatMemberMember(m) => m.get_user(),
+                        ChatMember::ChatMemberAdministrator(m) => m.get_user(),
+                        ChatMember::ChatMemberLeft(m) => m.get_user(),
+                        ChatMember::ChatMemberBanned(m) => m.get_user(),
+                        ChatMember::ChatMemberOwner(m) => m.get_user(),
+                        ChatMember::ChatMemberRestricted(m) => m.get_user(),
+                    }
+                    .get_id();
                     REDIS.sq(|q| q.hdel(&key, user_id)).await?;
                 }
             }
@@ -639,20 +647,29 @@ pub async fn update_self_admin(update: &UpdateExt) -> Result<()> {
         UpdateExt::ChatMember(member) => {
             let key = get_chat_admin_cache_key(member.get_chat().get_id());
             member.get_chat().refresh_cached_admins().await?;
-            match member.get_new_chat_member_ref() {
+            match member.get_new_chat_member() {
                 ChatMember::ChatMemberAdministrator(admin) => {
                     let user_id = admin.get_user().get_id();
-                    let admin = member.get_new_chat_member_ref().to_redis()?;
+                    let admin = member.get_new_chat_member().to_redis()?;
                     REDIS.sq(|q| q.hset(&key, user_id, admin)).await?;
                 }
 
                 ChatMember::ChatMemberOwner(admin) => {
                     let user_id = admin.get_user().get_id();
-                    let admin = member.get_new_chat_member_ref().to_redis()?;
+                    let admin = member.get_new_chat_member().to_redis()?;
                     REDIS.sq(|q| q.hset(&key, user_id, admin)).await?;
                 }
                 member => {
-                    let user_id = member.get_user().get_id();
+                    let user_id = match member {
+                        ChatMember::ChatMemberMember(m) => m.get_user(),
+                        ChatMember::ChatMemberAdministrator(m) => m.get_user(),
+                        ChatMember::ChatMemberLeft(m) => m.get_user(),
+                        ChatMember::ChatMemberBanned(m) => m.get_user(),
+                        ChatMember::ChatMemberOwner(m) => m.get_user(),
+                        ChatMember::ChatMemberRestricted(m) => m.get_user(),
+                    }
+                    .get_id();
+
                     REDIS.sq(|q| q.hdel(&key, user_id)).await?;
                 }
             }

@@ -103,7 +103,7 @@ fn captcha_state_key(chat: &Chat) -> String {
 pub async fn get_captcha_config(
     message: &ChatMemberUpdated,
 ) -> Result<Option<captchastate::Model>> {
-    let key = captcha_state_key(message.get_chat_ref());
+    let key = captcha_state_key(message.get_chat());
     let chat = message.get_chat().get_id();
     let res = default_cache_query(
         |_, _| async move {
@@ -160,7 +160,7 @@ pub(crate) async fn welcome_members(
     };
 
     let buttons = if let Some(_) = captcha {
-        let url = get_captcha_url(upd.get_chat_ref(), upd.get_from_ref()).await?;
+        let url = get_captcha_url(&upd.chat, &upd.from).await?;
 
         let button = InlineKeyboardButtonBuilder::new("Captcha".to_owned())
             .set_url(url)
@@ -182,7 +182,7 @@ pub(crate) async fn welcome_members(
             async move {
                 button.on_push(move |b| async move {
                     TG.client
-                        .build_answer_callback_query(b.get_id_ref())
+                        .build_answer_callback_query(b.get_id())
                         .build()
                         .await?;
 
@@ -227,7 +227,7 @@ async fn reset_incorrect_tries(user: &User, chat: i64) -> Result<()> {
 
 /// Atomically increments a redis-backed counter to count incorrect captcha tries
 async fn incorrect_tries(callback: &CallbackQuery, incorrect_chat: i64) -> Result<usize> {
-    let key = get_incorrect_counter(callback.get_from_ref(), incorrect_chat);
+    let key = get_incorrect_counter(callback.get_from(), incorrect_chat);
 
     let count: usize = REDIS
         .query(|mut q| async move {
@@ -275,11 +275,11 @@ fn insert_incorrect(
     s.on_push_multi(move |callback| {
         let ctx = ctx.clone();
         async move {
-            if let Some(MaybeInaccessibleMessage::Message(message)) = callback.get_message_ref() {
+            if let Some(MaybeInaccessibleMessage::Message(message)) = callback.get_message() {
                 let count = 3 - incorrect_tries(&callback, unmute_chat).await?;
                 if count > 0 {
                     TG.client
-                        .build_answer_callback_query(callback.get_id_ref())
+                        .build_answer_callback_query(callback.get_id())
                         .show_alert(true)
                         .text(&lang_fmt!(ctx, "incorrect", count))
                         .build()
@@ -287,7 +287,7 @@ fn insert_incorrect(
                     Ok(false)
                 } else {
                     TG.client
-                        .build_answer_callback_query(callback.get_id_ref())
+                        .build_answer_callback_query(callback.get_id())
                         .show_alert(true)
                         .text(&lang_fmt!(ctx, "notries"))
                         .build()
@@ -318,7 +318,7 @@ fn insert_incorrect(
 async fn get_invite_link<'a>(chat: &'a Chat) -> Result<Option<String>> {
     let unmute_chat = TG.client().build_get_chat(chat.get_id()).build().await?;
 
-    Ok(unmute_chat.get_invite_link().map(|v| v.into_owned()))
+    Ok(unmute_chat.get_invite_link().map(|v| v.to_owned()))
 }
 
 fn get_choices<'a>(
@@ -349,7 +349,7 @@ fn get_choices<'a>(
         .build();
     let c = ctx.clone();
     correct_button.on_push(move |callback| async move {
-        if let Some(MaybeInaccessibleMessage::Message(message)) = callback.get_message_ref() {
+        if let Some(MaybeInaccessibleMessage::Message(message)) = callback.get_message() {
             if let Some(link) = get_invite_link(&unmute_chat).await? {
                 let mut button = InlineKeyboardBuilder::default();
 
@@ -447,9 +447,9 @@ async fn button_captcha<'a>(
         .build();
     let bctx = ctx.clone();
     unmute_button.on_push(|callback| async move {
-        bctx.authorize_user(callback.get_from_ref().get_id(), bctx.try_get()?.chat)
+        bctx.authorize_user(callback.get_from().get_id(), bctx.try_get()?.chat)
             .await?;
-        if let Some(MaybeInaccessibleMessage::Message(message)) = callback.get_message_ref() {
+        if let Some(MaybeInaccessibleMessage::Message(message)) = callback.get_message() {
             message
                 .speak(lang_fmt!(bctx, "userunmuted"))
                 .await?
@@ -501,8 +501,8 @@ async fn send_captcha_chooser(
     buttons: Option<InlineKeyboardBuilder>,
     lang: &Lang,
 ) -> Result<()> {
-    let user = upd.get_from_ref();
-    let chat = upd.get_chat_ref();
+    let user = upd.get_from();
+    let chat = upd.get_chat();
     let url = get_captcha_url(chat, user).await?;
     let mut button = InlineKeyboardBuilder::default();
     button.button(
@@ -546,7 +546,7 @@ impl Context {
         if let Some(UserChanged::UserJoined(ref message)) = self.update().user_event() {
             let me = ME.get().unwrap();
             let user = message.get_from();
-            if user.get_id() == me.get_id() || user.is_admin(message.get_chat_ref()).await? {
+            if user.get_id() == me.get_id() || user.is_admin(message.get_chat()).await? {
                 return Ok(());
             }
             let chat = message.get_chat();
@@ -673,7 +673,7 @@ impl Context {
             )
             .exec_with_returning(DB.deref())
             .await?;
-        let key = captcha_state_key(message.get_chat_ref());
+        let key = captcha_state_key(message.get_chat());
         model.cache(key).await?;
         message.reply("enabled captcha!").await?;
         Ok(())
@@ -683,7 +683,7 @@ impl Context {
     pub async fn disable_captcha(&self) -> Result<()> {
         let message = self.message()?;
         self.check_permissions(|p| p.can_change_info).await?;
-        let key = captcha_state_key(message.get_chat_ref());
+        let key = captcha_state_key(message.get_chat());
         captchastate::Entity::delete_by_id(message.get_chat().get_id())
             .exec(DB.deref())
             .await?;
@@ -706,7 +706,7 @@ impl Context {
             captcha_text: NotSet,
         };
 
-        let key = captcha_state_key(message.get_chat_ref());
+        let key = captcha_state_key(message.get_chat());
         if let Ok(model) = captchastate::Entity::update(model).exec(DB.deref()).await {
             model.cache(key).await?;
         }
@@ -724,7 +724,7 @@ impl Context {
             captcha_text: NotSet,
         };
 
-        let key = captcha_state_key(message.get_chat_ref());
+        let key = captcha_state_key(message.get_chat());
         if let Ok(model) = captchastate::Entity::update(model).exec(DB.deref()).await {
             log::info!("set captcha mode {:?}", model.captcha_type);
             let name = model.captcha_type.get_name();

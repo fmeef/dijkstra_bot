@@ -24,9 +24,9 @@ use macros::lang_fmt;
 use redis::AsyncCommands;
 use regex::Regex;
 use serde::{de::DeserializeOwned, Serialize};
+use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::SystemTime;
-use std::{borrow::Cow, collections::VecDeque};
 use uuid::Uuid;
 use yoke::{Yoke, Yokeable};
 
@@ -58,8 +58,8 @@ fn get_input_type<'a>(
     name: &'a str,
     end: usize,
 ) -> InputType<'a> {
-    if let Some(reply) = message.get_reply_to_message_ref() {
-        InputType::Reply(name, reply.get_text_ref(), reply)
+    if let Some(reply) = message.get_reply_to_message() {
+        InputType::Reply(name, reply.get_text(), &reply)
     } else {
         let tail = &textargs.text[end..];
         InputType::Command(name, Some(tail), message)
@@ -77,7 +77,7 @@ pub fn get_content<'a>(
         Some((TextArg::Quote(name), _, end)) => Ok(get_input_type(message, textargs, name, end)),
         _ => Err(BotError::speak(
             "Invalid argument, need to specify name",
-            message.get_chat().get_id(),
+            message.chat.id,
         )),
     }
 }
@@ -203,18 +203,18 @@ impl<'a, 'b> PopSlice<'b, 'a> for ArgSlice<'a> {
 
 fn get_arg_type<'a>(message: &'a Message, entity: &'a MessageEntity) -> Option<EntityArg<'a>> {
     if let Some(text) = message
-        .get_text_ref()
-        .map_or(message.get_caption_ref(), |v| Some(v))
+        .get_text()
+        .map_or(message.get_caption(), |v| Some(v))
     {
         let start = entity.get_offset() as usize;
         let end = start + entity.get_length() as usize;
         let text = &text[start..end];
-        match entity.get_tg_type_ref() {
+        match entity.get_tg_type() {
             "hashtag" => Some(EntityArg::Hashtag(text)),
             "mention" => Some(EntityArg::Mention(&text[1..])), //do not include @ in mention
             "url" => Some(EntityArg::Url(text)),
-            "text_mention" => entity.get_user_ref().map(|u| EntityArg::TextMention(&u)),
-            "text_link" => entity.get_url_ref().map(|u| EntityArg::TextLink(&u)),
+            "text_mention" => entity.get_user().map(|u| EntityArg::TextMention(&u)),
+            "text_link" => entity.get_url().map(|u| EntityArg::TextLink(&u)),
             _ => None,
         }
     } else {
@@ -307,13 +307,13 @@ impl StaticContext {
     /// Parse individual components of a /command or !command
     pub fn parse_cmd<'a>(&'a self) -> Option<(&'a str, TextArgs<'a>, Entities<'a>)> {
         if let Ok(message) = self.message() {
-            if let Some(Cow::Borrowed(cmd)) = message
+            if let Some(cmd) = message
                 .get_text()
                 .map_or_else(|| message.get_caption(), |v| Some(v))
             {
                 log::info!("cmd {}", cmd);
                 if let Some(head) = COMMOND_HEAD.find(&cmd) {
-                    let entities = if let Some(Cow::Borrowed(entities)) = message.get_entities() {
+                    let entities = if let Some(entities) = message.get_entities() {
                         let mut entities = entities
                             .iter()
                             .filter(|p| match p.get_tg_type().as_ref() {
@@ -390,13 +390,13 @@ impl StaticContext {
 
     pub fn chat<'a>(&'a self) -> Option<&'a Chat> {
         match self.update {
-            UpdateExt::Message(ref m) => Some(m.get_chat_ref()),
-            UpdateExt::EditedMessage(ref m) => Some(m.get_chat_ref()),
-            UpdateExt::CallbackQuery(ref m) => m.get_message_ref().map(|m| match m {
-                MaybeInaccessibleMessage::Message(m) => m.get_chat_ref(),
-                MaybeInaccessibleMessage::InaccessibleMessage(m) => m.get_chat_ref(),
+            UpdateExt::Message(ref m) => Some(m.get_chat()),
+            UpdateExt::EditedMessage(ref m) => Some(m.get_chat()),
+            UpdateExt::CallbackQuery(ref m) => m.get_message().map(|m| match m {
+                MaybeInaccessibleMessage::Message(m) => m.get_chat(),
+                MaybeInaccessibleMessage::InaccessibleMessage(m) => m.get_chat(),
             }),
-            UpdateExt::ChatMember(ref m) => Some(m.get_chat_ref()),
+            UpdateExt::ChatMember(ref m) => Some(m.get_chat()),
             _ => None,
         }
     }
@@ -406,7 +406,7 @@ impl StaticContext {
             UpdateExt::Message(ref m) => m.get_chatuser(),
             UpdateExt::EditedMessage(ref m) => m.get_chatuser(),
             UpdateExt::CallbackQuery(ref m) => m
-                .get_message_ref()
+                .get_message()
                 .map(|m| match m {
                     MaybeInaccessibleMessage::Message(m) => m.get_chatuser(),
                     MaybeInaccessibleMessage::InaccessibleMessage(_) => None,
@@ -424,16 +424,16 @@ impl StaticContext {
     /// Currently only Message updates return Some
     pub async fn get_context(update: UpdateExt) -> Result<Arc<Self>> {
         let lang = if let Some(chat) = match update {
-            UpdateExt::Message(ref m) => Some(m.get_chat_ref().get_id()),
-            UpdateExt::EditedMessage(ref m) => Some(m.get_chat_ref().get_id()),
-            UpdateExt::CallbackQuery(ref m) => m.get_message_ref().map(|m| {
+            UpdateExt::Message(ref m) => Some(m.chat.id),
+            UpdateExt::EditedMessage(ref m) => Some(m.chat.id),
+            UpdateExt::CallbackQuery(ref m) => m.get_message().map(|m| {
                 match m {
-                    MaybeInaccessibleMessage::Message(m) => m.get_chat_ref(),
-                    MaybeInaccessibleMessage::InaccessibleMessage(m) => m.get_chat_ref(),
+                    MaybeInaccessibleMessage::Message(m) => m.get_chat(),
+                    MaybeInaccessibleMessage::InaccessibleMessage(m) => m.get_chat(),
                 }
-                .get_id()
+                .id
             }),
-            UpdateExt::ChatMember(ref m) => Some(m.get_chat_ref().get_id()),
+            UpdateExt::ChatMember(ref m) => Some(m.chat.id),
             _ => None,
         } {
             get_chat_lang(chat).await?
@@ -482,7 +482,7 @@ impl Context {
         if message.get_sender_chat().is_some() {
             return self.fail(lang_fmt!(self, "anonchannelbad"));
         }
-        if let Some(user) = message.get_from_ref() {
+        if let Some(ref user) = message.from {
             Ok(user)
         } else {
             self.fail(lang_fmt!(self, "nosender"))
@@ -491,13 +491,13 @@ impl Context {
 
     pub fn chat<'a>(&'a self) -> Option<&'a Chat> {
         match self.get().as_ref().map(|v| v.update) {
-            Some(UpdateExt::Message(ref m)) => Some(m.get_chat_ref()),
-            Some(UpdateExt::EditedMessage(ref m)) => Some(m.get_chat_ref()),
-            Some(UpdateExt::CallbackQuery(ref m)) => m.get_message_ref().map(|m| match m {
-                MaybeInaccessibleMessage::Message(m) => m.get_chat_ref(),
-                MaybeInaccessibleMessage::InaccessibleMessage(m) => m.get_chat_ref(),
+            Some(UpdateExt::Message(ref m)) => Some(m.get_chat()),
+            Some(UpdateExt::EditedMessage(ref m)) => Some(m.get_chat()),
+            Some(UpdateExt::CallbackQuery(ref m)) => m.get_message().map(|m| match m {
+                MaybeInaccessibleMessage::Message(m) => m.get_chat(),
+                MaybeInaccessibleMessage::InaccessibleMessage(m) => m.get_chat(),
             }),
-            Some(UpdateExt::ChatMember(ref m)) => Some(m.get_chat_ref()),
+            Some(UpdateExt::ChatMember(ref m)) => Some(m.get_chat()),
             _ => None,
         }
     }

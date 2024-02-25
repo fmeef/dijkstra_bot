@@ -288,7 +288,7 @@ impl Context {
             let id = media_id.clone();
             let taintmessage = lang_fmt!(self, "taintforward", media_type);
             replace.on_push(move |c| async move {
-                if let Some(MaybeInaccessibleMessage::Message(message)) = c.get_message_ref() {
+                if let Some(MaybeInaccessibleMessage::Message(message)) = c.get_message() {
                     TG.client
                         .build_edit_message_text(&taintmessage)
                         .message_id(message.get_message_id())
@@ -318,7 +318,7 @@ impl Context {
             });
 
             delete.on_push(|c| async move {
-                if let Some(MaybeInaccessibleMessage::Message(message)) = c.get_message_ref() {
+                if let Some(MaybeInaccessibleMessage::Message(message)) = c.get_message() {
                     TG.client
                         .build_delete_message(message.get_chat().get_id(), message.get_message_id())
                         .build()

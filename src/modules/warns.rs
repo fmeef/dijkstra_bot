@@ -36,7 +36,7 @@ pub async fn warn(context: &Context) -> Result<()> {
 
     context
         .action_user(|ctx, user, args| async move {
-            if user.is_admin(ctx.message()?.get_chat_ref()).await? {
+            if user.is_admin(ctx.message()?.get_chat()).await? {
                 return ctx.fail(lang_fmt!(ctx.try_get()?.lang, "warnadmin"));
             }
 
@@ -95,7 +95,7 @@ pub async fn clear<'a>(ctx: &Context) -> Result<()> {
     self_admin_or_die(&message.get_chat()).await?;
     ctx.check_permissions(|p| p.can_restrict_members).await?;
     ctx.action_user(|ctx, user, _| async move {
-        clear_warns(ctx.message()?.get_chat_ref(), user).await?;
+        clear_warns(ctx.message()?.get_chat(), user).await?;
 
         ctx.reply_fmt(entity_fmt!(ctx, "clearwarns", user.mention().await?))
             .await?;
@@ -111,11 +111,11 @@ async fn set_time<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
     let message = ctx.message()?;
     let chat = ctx.try_get()?.chat.name_humanreadable();
     if let Ok(Some(time)) = ctx.parse_duration(&Some(args.as_slice())) {
-        set_warn_time(message.get_chat_ref(), Some(time.num_seconds())).await?;
+        set_warn_time(message.get_chat(), Some(time.num_seconds())).await?;
         let time = format_duration(time.to_std()?);
         message.reply(format!("Set warn time to {}", time)).await?;
     } else if args.text.trim() == "clear" {
-        set_warn_time(message.get_chat_ref(), None).await?;
+        set_warn_time(message.get_chat(), None).await?;
         message
             .reply(lang_fmt!(ctx.lang(), "cleartime", chat))
             .await?;
@@ -129,7 +129,7 @@ async fn cmd_warn_mode<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
     ctx.check_permissions(|p| p.can_restrict_members).await?;
     let message = ctx.message()?;
     let chat = ctx.try_get()?.chat.name_humanreadable();
-    set_warn_mode(message.get_chat_ref(), args.text).await?;
+    set_warn_mode(message.get_chat(), args.text).await?;
     message
         .reply(lang_fmt!(ctx.lang(), "warnmode", args.text, chat))
         .await?;
@@ -143,7 +143,7 @@ async fn cmd_warn_limit<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
     match i32::from_str_radix(args.text.trim(), 10) {
         Ok(num) => {
             if num > 0 {
-                set_warn_limit(message.get_chat_ref(), num).await?;
+                set_warn_limit(message.get_chat(), num).await?;
                 message
                     .reply(lang_fmt!(ctx.lang(), "warnlimit", num, chat))
                     .await?;

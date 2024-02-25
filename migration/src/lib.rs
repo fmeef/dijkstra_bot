@@ -19,6 +19,7 @@ mod m20230910_204018_entity_in_db;
 mod m20231029_015614_notes;
 mod m20231029_032907_notes_entity;
 mod m20231117_045213_taint;
+mod m20240220_230802_no_cycle;
 
 pub struct Migrator;
 
@@ -84,6 +85,7 @@ impl MigratorTrait for Migrator {
         core_migrations.append(&mut vec![
             Box::new(m20231029_015614_notes::Migration),
             Box::new(m20231029_032907_notes_entity::Migration),
+            Box::new(m20240220_230802_no_cycle::Migration),
         ]);
         core_migrations
     }

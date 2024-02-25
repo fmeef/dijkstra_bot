@@ -38,11 +38,11 @@ async fn get_model<'a>(
     args: &'a TextArgs<'a>,
     goodbye: bool,
 ) -> Result<welcomes::ActiveModel> {
-    let (message, text, extra) = if let Some(message) = message.get_reply_to_message_ref() {
+    let (message, text, extra) = if let Some(message) = message.get_reply_to_message() {
         (
             message,
-            message.get_text_ref(),
-            message.get_entities().map(|v| v.into_owned()),
+            message.get_text(),
+            message.get_entities().map(|v| v.to_owned()),
         )
     } else {
         (message, Some(args.text), None)

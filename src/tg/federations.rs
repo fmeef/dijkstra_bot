@@ -119,7 +119,7 @@ pub async fn get_fbans_for_user_with_chats(user: i64) -> Result<Vec<FbanWithChat
                         ])
                         .from(federations::Entity)
                         .union(
-                            UnionType::All,
+                            UnionType::Distinct,
                             Query::select()
                                 .columns([
                                     federations::Column::FedId.as_column_ref(),
@@ -216,16 +216,16 @@ pub async fn is_user_fbanned(user: i64, chat: i64) -> Result<Option<fbans::Model
             if l == 1 {
                 log::info!("fban for user {} is emptyset", user);
                 return Ok(None);
-            } else if !exists {
+            }
+            if !exists {
                 try_update_fban_cache(user).await.unwrap();
             } else if let Some(v) = v {
                 let key = get_fban_key(&v.get::<Uuid>()?);
                 let fb: Option<RedisStr> = REDIS.sq(|q| q.get(&key)).await?;
                 if let Some(fb) = fb {
                     return Ok(fb.get()?);
-                } else {
-                    log::info!("fban cache empty?");
                 }
+                log::info!("fban cache empty?");
             } else {
                 return Ok(None);
             }
@@ -335,9 +335,8 @@ pub async fn get_fed(user: i64) -> Result<Option<federations::Model>> {
         let v: Option<RedisStr> = REDIS.sq(|q| q.get(&key)).await?;
         if let Some(v) = v {
             return Ok(v.get()?);
-        } else {
-            try_update_fban_cache(user).await?;
         }
+        try_update_fban_cache(user).await?;
     }
     Ok(None)
 }
@@ -559,6 +558,43 @@ pub async fn try_update_fed_cache(chat: i64) -> Result<()> {
     Ok(())
 }
 
+type FbanCache = HashMap<Uuid, (HashSet<(i64, Uuid)>, Option<Uuid>)>;
+
+// fn recursive_fban_cache<'a>(
+//     p: &'a mut Pipeline,
+//     fban_cache: &'a mut FbanCache,
+//     seen: &'a mut HashSet<&'a Uuid>,
+// ) -> BoxFuture<'a, Result<()>> {
+//     async move {
+//         log::info!("updating subscribed {:?}", subscribed);
+
+//         while let Some(s) = sub {
+//             if seen.len() == fban_cache.len() {
+//                 log::info!("traversed!");
+//                 break;
+//             }
+//             if seen.contains(&s) {
+//                 log::warn!("somehow found a subscription cycle for fed {}: {}", fed, s);
+//                 sub = prev;
+//                 continue;
+//             }
+//             seen.insert(&s);
+//             if let Some((fbans, subscribed)) = fban_cache.get(&s) {
+//                 for (user, fban) in fbans {
+//                     p.hset(&key, user, fban.to_redis()?);
+//                 }
+//                 prev = sub;
+//                 sub = subscribed.as_ref();
+//             } else {
+//                 sub = None;
+//             }
+//         }
+
+//         Ok(())
+//     }
+//     .boxed()
+// }
+
 pub async fn try_update_fban_cache(user: i64) -> Result<()> {
     let fbans = get_fbans_for_user_with_chats(user).await?;
 
@@ -568,7 +604,7 @@ pub async fn try_update_fban_cache(user: i64) -> Result<()> {
             p.atomic();
 
             let mut members = HashMap::<i64, Uuid>::with_capacity(fbans.len());
-            let mut fban_cache = HashMap::<Uuid, (HashSet<(i64, Uuid)>, Option<Uuid>)>::new();
+            let mut fban_cache = FbanCache::new();
 
             let mut s = HashSet::<i64>::new();
             for FbanWithChat {
@@ -643,16 +679,21 @@ pub async fn try_update_fban_cache(user: i64) -> Result<()> {
             }
 
             for (fed, (fbans, subscribed)) in fban_cache.iter() {
+                log::info!("updating subscribed {:?}", subscribed);
                 let key = get_fban_set_key(&fed);
                 p.hset(&key, true, true);
                 for (user, fban) in fbans {
                     p.hset(&key, user, fban.to_redis()?);
                 }
-                let mut sub = subscribed;
+                let mut sub = subscribed.as_ref();
                 let mut seen = HashSet::<&Uuid>::new();
                 while let Some(s) = sub {
+                    if seen.len() == fban_cache.len() {
+                        log::info!("traversed!");
+                        break;
+                    }
                     if seen.contains(&s) {
-                        log::warn!("somehow found a subscription cycle for fed {}", fed);
+                        log::warn!("somehow found a subscription cycle for fed {}: {}", fed, s);
                         break;
                     }
                     seen.insert(&s);
@@ -660,10 +701,9 @@ pub async fn try_update_fban_cache(user: i64) -> Result<()> {
                         for (user, fban) in fbans {
                             p.hset(&key, user, fban.to_redis()?);
                         }
-
-                        sub = subscribed;
+                        sub = subscribed.as_ref();
                     } else {
-                        sub = &None;
+                        sub = None;
                     }
                 }
             }
@@ -725,8 +765,7 @@ impl Context {
                         .await?;
                     return Ok(false);
                 }
-                if let Some(MaybeInaccessibleMessage::Message(message)) = callback.get_message_ref()
-                {
+                if let Some(MaybeInaccessibleMessage::Message(message)) = callback.get_message() {
                     TG.client
                         .build_delete_message(chat, message.get_message_id())
                         .build()
@@ -764,8 +803,7 @@ impl Context {
                         .await?;
                     return Ok(false);
                 }
-                if let Some(MaybeInaccessibleMessage::Message(message)) = callback.get_message_ref()
-                {
+                if let Some(MaybeInaccessibleMessage::Message(message)) = callback.get_message() {
                     TG.client
                         .build_edit_message_text("Fpromote has been canceled")
                         .message_id(message.get_message_id())

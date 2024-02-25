@@ -31,11 +31,11 @@ metadata!("Rules",
 
 fn rules_model(ctx: &Context) -> Result<rules::Model> {
     let message = ctx.message()?;
-    let (text, media_id, media_type) = if let Some(message) = message.get_reply_to_message_ref() {
+    let (text, media_id, media_type) = if let Some(message) = message.get_reply_to_message() {
         let (media_id, media_type) = get_media_type(message)?;
 
         (
-            message.get_text().map(|t| t.into_owned()),
+            message.get_text().map(|t| t.to_owned()),
             media_id,
             media_type,
         )
@@ -64,7 +64,7 @@ fn get_rules_key(chat: i64) -> String {
 async fn save_rule<'a>(ctx: &Context) -> Result<()> {
     ctx.check_permissions(|p| p.can_change_info).await?;
     let message = ctx.message()?;
-    let key = get_rules_key(message.get_chat_ref().get_id());
+    let key = get_rules_key(message.get_chat().get_id());
     let model = rules_model(ctx)?;
     rules::Entity::insert(model.cache(&key).await?)
         .on_conflict(

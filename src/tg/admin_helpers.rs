@@ -4,7 +4,7 @@
 //! this module depends on the `static` module for access to the database, redis,
 //! and telegram client.
 
-use std::{borrow::Cow, collections::VecDeque};
+use std::collections::VecDeque;
 
 use crate::{
     persist::{
@@ -56,15 +56,15 @@ lazy_static! {
 /// Helper type for a named pair of chat and  user api types. Used to refer to a
 /// chat member
 pub struct ChatUser<'a> {
-    pub chat: Cow<'a, Chat>,
-    pub user: Cow<'a, User>,
+    pub chat: &'a Chat,
+    pub user: &'a User,
 }
 
 /// Trait for getting a ChatUser from either a type containing both chat and user
 /// or a chat (with provided extra user)
 pub trait IntoChatUser {
     fn get_chatuser<'a>(&'a self) -> Option<ChatUser<'a>>;
-    fn get_chatuser_user<'a>(&'a self, user: Cow<'a, User>) -> ChatUser<'a>;
+    fn get_chatuser_user<'a>(&'a self, user: &'a User) -> ChatUser<'a>;
 }
 
 /// Telegram's method for parsing a user's left or joined status from an Update
@@ -78,8 +78,8 @@ impl<'a> UserChanged<'a> {
     /// Get a chat from a UserChanged enum since all varients contain a Chat
     pub fn get_chat(&'a self) -> &'a Chat {
         match self {
-            UserChanged::UserJoined(m) => m.get_chat_ref(),
-            UserChanged::UserLeft(m) => m.get_chat_ref(),
+            UserChanged::UserJoined(m) => m.get_chat(),
+            UserChanged::UserLeft(m) => m.get_chat(),
         }
     }
 }
@@ -106,14 +106,14 @@ impl UpdateHelpers for UpdateExt {
             //     member.get_old_chat_member_ref(),
             //     member.get_new_chat_member_ref()
             // );
-            let old_left = match member.get_old_chat_member_ref() {
+            let old_left = match member.get_old_chat_member() {
                 ChatMember::ChatMemberLeft(_) => true,
                 ChatMember::ChatMemberBanned(_) => true,
                 ChatMember::ChatMemberRestricted(res) => !res.get_is_member(),
                 _ => false,
             };
 
-            let new_left = match member.get_new_chat_member_ref() {
+            let new_left = match member.get_new_chat_member() {
                 ChatMember::ChatMemberLeft(_) => true,
                 ChatMember::ChatMemberBanned(_) => true,
                 ChatMember::ChatMemberRestricted(res) => !res.get_is_member(),
@@ -171,13 +171,13 @@ impl DeleteAfterTime for Option<Message> {
 
 impl IntoChatUser for Message {
     fn get_chatuser<'a>(&'a self) -> Option<ChatUser<'a>> {
-        self.get_from_ref().map(|f| ChatUser {
-            user: Cow::Borrowed(f),
+        self.get_from().map(|f| ChatUser {
+            user: f,
             chat: self.get_chat(),
         })
     }
 
-    fn get_chatuser_user<'a>(&'a self, user: Cow<'a, User>) -> ChatUser<'a> {
+    fn get_chatuser_user<'a>(&'a self, user: &'a User) -> ChatUser<'a> {
         ChatUser {
             user,
             chat: self.get_chat(),
@@ -266,7 +266,7 @@ pub async fn set_warn_time(chat: &Chat, time: Option<i64>) -> Result<()> {
     let model = dialogs::ActiveModel {
         chat_id: Set(chat_id),
         language: NotSet,
-        chat_type: Set(chat.get_tg_type().into_owned()),
+        chat_type: Set(chat.get_tg_type().to_owned()),
         warn_limit: NotSet,
         action_type: NotSet,
         warn_time: Set(time),
@@ -303,7 +303,7 @@ pub async fn set_warn_limit(chat: &Chat, limit: i32) -> Result<()> {
     let model = dialogs::ActiveModel {
         chat_id: Set(chat_id),
         language: NotSet,
-        chat_type: Set(chat.get_tg_type().into_owned()),
+        chat_type: Set(chat.get_tg_type().to_owned()),
         warn_limit: Set(limit),
         action_type: NotSet,
         warn_time: NotSet,
@@ -347,7 +347,7 @@ pub async fn set_warn_mode(chat: &Chat, mode: &str) -> Result<()> {
     let model = dialogs::ActiveModel {
         chat_id: Set(chat_id),
         language: NotSet,
-        chat_type: Set(chat.get_tg_type().into_owned()),
+        chat_type: Set(chat.get_tg_type().to_owned()),
         warn_limit: NotSet,
         action_type: Set(mode),
         warn_time: NotSet,
@@ -519,9 +519,9 @@ fn get_approval_key(chat: &Chat, user: i64) -> String {
 pub async fn insert_user(user: &User) -> Result<users::Model> {
     let testmodel = users::Entity::insert(users::ActiveModel {
         user_id: Set(user.get_id()),
-        username: Set(user.get_username().map(|v| v.into_owned())),
-        first_name: Set(user.get_first_name().into_owned()),
-        last_name: Set(user.get_last_name().map(|v| v.into_owned())),
+        username: Set(user.get_username().map(|v| v.to_owned())),
+        first_name: Set(user.get_first_name().to_owned()),
+        last_name: Set(user.get_last_name().map(|v| v.to_owned())),
         is_bot: Set(user.get_is_bot()),
     })
     .on_conflict(
@@ -756,7 +756,7 @@ impl Context {
         match self.update() {
             UpdateExt::Message(ref message) => {
                 if !is_dm(&message.get_chat()) {
-                    if let Some(user) = message.get_from_ref() {
+                    if let Some(user) = message.get_from() {
                         self.handle_pending_action(user).await?;
                     }
                 }
@@ -924,20 +924,19 @@ impl Context {
             chat.name_humanreadable()
         );
         let old = TG.client.get_chat(chat.get_id()).await?;
-        let old = old.get_permissions().unwrap_or_else(|| {
-            Cow::Owned(
-                ChatPermissionsBuilder::new()
-                    .set_can_send_messages(false)
-                    .set_can_send_audios(false)
-                    .set_can_send_documents(false)
-                    .set_can_send_photos(false)
-                    .set_can_send_videos(false)
-                    .set_can_send_video_notes(false)
-                    .set_can_send_polls(false)
-                    .set_can_send_voice_notes(false)
-                    .set_can_send_other_messages(false)
-                    .build(),
-            )
+        let old = old.permissions.unwrap_or_else(|| {
+            ChatPermissionsBuilder::new()
+                .set_can_send_messages(false)
+                .set_can_send_audios(false)
+                .set_can_send_documents(false)
+                .set_can_send_photos(false)
+                .set_can_send_videos(false)
+                .set_can_send_video_notes(false)
+                .set_can_send_polls(false)
+                .set_can_send_voice_notes(false)
+                .set_can_send_other_messages(false)
+                .build()
+                .into()
         });
         let mut new = ChatPermissionsBuilder::new();
         let permissions = ChatPermissionsBuilder::new()
@@ -1077,7 +1076,7 @@ impl Context {
         let args = self.try_get()?.command.as_ref().map(|a| &a.args);
         log::info!("action_message {:?}", args);
 
-        if let Some(message) = message.get_reply_to_message_ref() {
+        if let Some(message) = message.get_reply_to_message() {
             action(
                 self,
                 ActionMessage::Reply(message),
@@ -1117,10 +1116,10 @@ impl Context {
 
         if let (Some(user), Some(message)) = (
             message
-                .get_reply_to_message_ref()
+                .get_reply_to_message()
                 .map(|v| v.get_from())
                 .flatten(),
-            message.get_reply_to_message_ref(),
+            message.get_reply_to_message(),
         ) {
             action(
                 self,
@@ -1209,7 +1208,7 @@ impl Context {
         duration: Option<Duration>,
     ) -> Result<(i32, i32)> {
         let message = self.message()?;
-        let dialog = dialog_or_default(message.get_chat_ref()).await?;
+        let dialog = dialog_or_default(message.get_chat()).await?;
         let lang = get_chat_lang(message.get_chat().get_id()).await?;
         let time = dialog.warn_time.map(|t| Duration::seconds(t));
         let (count, model) = warn_user(
@@ -1250,11 +1249,12 @@ impl Context {
             };
             text.builder.filling = true;
             text.builder = text.builder.chatuser(Some(
-                &message.get_chatuser_user(Cow::Owned(
-                    user.get_cached_user()
+                &message.get_chatuser_user(
+                    &user
+                        .get_cached_user()
                         .await?
                         .ok_or_else(|| self.fail_err(lang_fmt!(lang, "failwarn")))?,
-                )),
+                ),
             ));
             let button_text = lang_fmt!(lang, "removewarn");
 
@@ -1263,8 +1263,8 @@ impl Context {
                 .build();
             let model = model.id;
             button.on_push_multi(move |cb| async move {
-                if let Some(MaybeInaccessibleMessage::Message(message)) = cb.get_message_ref() {
-                    let chat = message.get_chat_ref();
+                if let Some(MaybeInaccessibleMessage::Message(message)) = cb.get_message() {
+                    let chat = message.get_chat();
                     if cb.get_from().is_admin(chat).await? {
                         let key = get_warns_key(user, chat.get_id());
                         if let Some(res) = warns::Entity::find_by_id(model).one(DB.deref()).await? {
@@ -1285,14 +1285,14 @@ impl Context {
                             .build()
                             .await?;
                         TG.client
-                            .build_answer_callback_query(cb.get_id_ref())
+                            .build_answer_callback_query(cb.get_id())
                             .build()
                             .await?;
 
                         Ok(true)
                     } else {
                         TG.client
-                            .build_answer_callback_query(cb.get_id_ref())
+                            .build_answer_callback_query(cb.get_id())
                             .show_alert(true)
                             .text("User is not admin")
                             .build()
@@ -1355,7 +1355,7 @@ impl Context {
 
         if user == me.get_id() {
             return self.fail(lang_fmt!(lang, "banmyself"));
-        } else if user.is_admin(message.get_chat_ref()).await? {
+        } else if user.is_admin(message.get_chat()).await? {
             let banadmin = lang_fmt!(lang, "banadmin");
             return self.fail(banadmin);
         } else {
@@ -1496,11 +1496,7 @@ pub trait FileGetter {
 #[async_trait]
 impl FileGetter for Document {
     async fn get_bytes(&self) -> Result<Bytes> {
-        let file = TG
-            .client
-            .build_get_file(self.get_file_id_ref())
-            .build()
-            .await?;
+        let file = TG.client.build_get_file(self.get_file_id()).build().await?;
         let path = file
             .get_file_path()
             .ok_or_else(|| BotError::Generic("Document file path missing".to_owned()))?;
@@ -1509,11 +1505,7 @@ impl FileGetter for Document {
     }
 
     async fn get_text(&self) -> Result<String> {
-        let file = TG
-            .client
-            .build_get_file(self.get_file_id_ref())
-            .build()
-            .await?;
+        let file = TG.client.build_get_file(self.get_file_id()).build().await?;
         let path = file
             .get_file_path()
             .ok_or_else(|| BotError::Generic("Docuemnt file path missing".to_owned()))?;

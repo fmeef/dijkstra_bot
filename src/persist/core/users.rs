@@ -39,9 +39,9 @@ impl Model {
     pub fn from_user(value: &User) -> Self {
         Self {
             user_id: value.get_id(),
-            first_name: value.get_first_name().into_owned(),
-            last_name: value.get_last_name().map(|v| v.into_owned()),
-            username: value.get_username().map(|v| v.into_owned()),
+            first_name: value.get_first_name().to_owned(),
+            last_name: value.get_last_name().map(|v| v.to_owned()),
+            username: value.get_username().map(|v| v.to_owned()),
             is_bot: value.get_is_bot(),
         }
     }

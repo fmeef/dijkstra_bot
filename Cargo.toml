@@ -12,7 +12,7 @@ lazy_static = "1.4.0"
 log = "0.4.20"
 redis = { version = "0.23.3", features = ["acl", "aio", "r2d2", "geospatial", "script", "tokio-comp", "cluster"] }
 rmp-serde = "1.1.2"
-sea-orm = { version = "0.12.12", features = ["runtime-tokio-rustls", "sqlx-postgres", "macros", "default", "debug-print"] }
+sea-orm = { version = "0.12.12", features = ["runtime-tokio-rustls", "sqlx-postgres", "macros", "default", "debug-print", "mock", "tests-cfg"] }
 sea-query = { version = "0.30.7", features = ["uuid", "bigdecimal", "with-bigdecimal", "with-chrono", "with-json", "backend-postgres", "sea-query-derive", "derive", "with-uuid", "thread-safe", "postgres-types", "with-time"] }
 serde = { version = "1.0.196", features = ["derive"] }
 thiserror = "1.0.56"

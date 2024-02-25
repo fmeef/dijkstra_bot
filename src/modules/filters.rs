@@ -764,8 +764,8 @@ async fn command_filter<'a>(c: &Context, args: &TextArgs<'a>) -> Result<()> {
                     .iter()
                     .map(|v| v.to_lowercase())
                     .collect::<Vec<String>>();
-                let (f, message) = if let Some(message) = message.get_reply_to_message_ref() {
-                    (message.get_text().map(|v| v.into_owned()), message)
+                let (f, message) = if let Some(message) = message.get_reply_to_message() {
+                    (message.get_text().map(|v| v.to_owned()), message)
                 } else {
                     (Some(body), message)
                 };

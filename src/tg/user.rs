@@ -2,8 +2,6 @@
 //! This is intended to reduce the number of telegram requests, user information
 //! stored in persistent database, and to allow reverse lookup of @ handles
 
-use std::borrow::Cow;
-
 use crate::persist::redis::RedisStr;
 use crate::statics::{CONFIG, REDIS, TG};
 use crate::util::error::Result;
@@ -85,12 +83,12 @@ pub async fn record_cache_update(update: &UpdateExt) -> Result<()> {
             if let Some(user) = m.get_from() {
                 user.record_user().await?;
             }
-            if let Some(MessageOrigin::MessageOriginUser(m)) = m.get_forward_origin_ref() {
+            if let Some(MessageOrigin::MessageOriginUser(m)) = m.get_forward_origin() {
                 m.get_sender_user().record_user().await?;
             }
         }
 
-        if let Some(MessageOrigin::MessageOriginUser(m)) = m.get_forward_origin_ref() {
+        if let Some(MessageOrigin::MessageOriginUser(m)) = m.get_forward_origin() {
             m.get_sender_user().record_user().await?;
         }
     }
@@ -167,7 +165,7 @@ pub trait GetChat {
 #[async_trait]
 pub trait RecordUser {
     /// helper to get the user from the value (not from cache)
-    fn get_user<'a>(&'a self) -> Option<Cow<'a, User>>;
+    fn get_user<'a>(&'a self) -> Option<&'a User>;
 
     /// record this user to redis. Does nothing if full information is not present
     async fn record_user(&self) -> Result<()>;
@@ -194,9 +192,9 @@ impl Username for User {
 
 impl Username for Chat {
     fn name_humanreadable<'a>(&'a self) -> String {
-        self.get_title().map(|v| v.into_owned()).unwrap_or_else(|| {
+        self.get_title().map(|v| v.to_owned()).unwrap_or_else(|| {
             self.get_username()
-                .map(|v| v.into_owned())
+                .map(|v| v.to_owned())
                 .unwrap_or_else(|| self.get_id().to_string())
         })
     }
@@ -206,9 +204,9 @@ impl From<&User> for crate::persist::core::users::Model {
     fn from(user: &User) -> Self {
         Self {
             user_id: user.get_id(),
-            first_name: user.get_first_name().into_owned(),
-            last_name: user.get_last_name().map(|v| v.into_owned()),
-            username: user.get_username().map(|v| v.into_owned()),
+            first_name: user.get_first_name().to_owned(),
+            last_name: user.get_last_name().map(|v| v.to_owned()),
+            username: user.get_username().map(|v| v.to_owned()),
             is_bot: user.get_is_bot(),
         }
     }
@@ -272,8 +270,8 @@ impl GetChat for i64 {
 
 #[async_trait]
 impl RecordUser for User {
-    fn get_user<'a>(&'a self) -> Option<Cow<'a, User>> {
-        Some(Cow::Borrowed(self))
+    fn get_user<'a>(&'a self) -> Option<&'a User> {
+        Some(self)
     }
 
     async fn record_user(&self) -> Result<()> {
@@ -283,7 +281,7 @@ impl RecordUser for User {
 
 #[async_trait]
 impl RecordUser for UpdateExt {
-    fn get_user<'a>(&'a self) -> Option<Cow<'a, User>> {
+    fn get_user<'a>(&'a self) -> Option<&'a User> {
         match self {
             UpdateExt::Message(ref message) => message.get_from(),
             UpdateExt::EditedMessage(ref message) => message.get_from(),

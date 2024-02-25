@@ -667,8 +667,8 @@ async fn command_blocklist<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()>
         (ActionType::Delete, None)
     };
 
-    let (f, message) = if let Some(message) = message.get_reply_to_message_ref() {
-        (message.get_text().map(|v| v.into_owned()), message)
+    let (f, message) = if let Some(message) = message.get_reply_to_message() {
+        (message.get_text().map(|v| v.to_owned()), message)
     } else {
         (Some(body), message)
     };
@@ -700,7 +700,7 @@ async fn delete(message: &Message) -> Result<()> {
 }
 
 async fn warn(ctx: &Context, user: &User, reason: Option<String>) -> Result<()> {
-    let dialog = dialog_or_default(ctx.message()?.get_chat_ref()).await?;
+    let dialog = dialog_or_default(ctx.message()?.get_chat()).await?;
 
     let time = dialog.warn_time.map(|t| Duration::seconds(t));
     ctx.warn_with_action(
@@ -715,13 +715,13 @@ async fn warn(ctx: &Context, user: &User, reason: Option<String>) -> Result<()> 
 async fn handle_trigger(ctx: &Context) -> Result<()> {
     if let Ok(message) = ctx.message() {
         if let Some(user) = message.get_from() {
-            if message.get_from().is_admin(message.get_chat_ref()).await?
-                || is_dm(message.get_chat_ref())
-                || is_approved(message.get_chat_ref(), &user).await?
+            if message.get_from().is_admin(message.get_chat()).await?
+                || is_dm(message.get_chat())
+                || is_approved(message.get_chat(), &user).await?
             {
                 log::info!(
                     "skipping trigger {}",
-                    message.get_from().is_admin(message.get_chat_ref()).await?
+                    message.get_from().is_admin(message.get_chat()).await?
                 );
                 return Ok(());
             }

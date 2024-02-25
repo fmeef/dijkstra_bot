@@ -78,10 +78,9 @@ impl ModuleHelpers for Helper {
                 } else {
                     ""
                 };
-                let text =
-                    RoseMdDecompiler::new(text, &entities, buttons.get_inline_keyboard_ref())
-                        .decompile()
-                        .replace("\n", "\\n");
+                let text = RoseMdDecompiler::new(text, &entities, buttons.get_inline_keyboard())
+                    .decompile()
+                    .replace("\n", "\\n");
                 NotesItem {
                     data_id: model.media_id.unwrap_or_else(|| String::new()),
                     name: note,
@@ -151,9 +150,9 @@ async fn get_model<'a>(message: &'a Message, args: &'a TextArgs<'a>) -> Result<n
             let (media_id, media_type) = get_media_type(message)?;
             let text = text
                 .map(|t| Some(t))
-                .unwrap_or_else(|| message.get_caption_ref());
+                .unwrap_or_else(|| message.get_caption());
             let (text, entity_id) = if let Some(text) = text {
-                let extra = message.get_entities().map(|v| v.into_owned());
+                let extra = message.get_entities().map(|v| v.to_owned());
 
                 let md = MarkupBuilder::new(extra)
                     .chatuser(chatuser.as_ref())
@@ -182,12 +181,12 @@ async fn get_model<'a>(message: &'a Message, args: &'a TextArgs<'a>) -> Result<n
             let chatuser = message.get_chatuser();
             let content = content
                 .map(|t| Some(t))
-                .unwrap_or_else(|| message.get_caption_ref());
+                .unwrap_or_else(|| message.get_caption());
 
             let (text, entity_id) = if let Some(text) = content {
                 log::info!("content {}", text);
 
-                let extra = message.get_entities().map(|v| v.into_owned());
+                let extra = message.get_entities().map(|v| v.to_owned());
 
                 let md = MarkupBuilder::new(extra)
                     .chatuser(chatuser.as_ref())
@@ -273,7 +272,7 @@ async fn print_note(
             async move {
                 button.on_push(move |b| async move {
                     TG.client
-                        .build_answer_callback_query(b.get_id_ref())
+                        .build_answer_callback_query(b.get_id())
                         .build()
                         .await?;
                     handle_transition(&c, note_chat, note, b).await?;
@@ -442,7 +441,7 @@ pub async fn handle_update<'a>(cmd: &Context) -> Result<()> {
             .boxed()
         })
         .await?;
-        if let Some(text) = message.get_text_ref() {
+        if let Some(text) = message.get_text() {
             if text.starts_with("#") && text.len() > 1 {
                 let tail = &text[1..];
                 print(cmd, tail.to_owned()).await?;

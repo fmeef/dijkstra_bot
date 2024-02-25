@@ -82,15 +82,15 @@ impl Model {
         if let Some(user) = messageentity.get_user() {
             insert_user(&user).await?;
         }
-        let tg_type = DbMarkupType::from_tg_type(messageentity.get_tg_type_ref())?;
+        let tg_type = DbMarkupType::from_tg_type(messageentity.get_tg_type())?;
         Ok(Self {
             tg_type,
             offset: messageentity.get_offset(),
             length: messageentity.get_length(),
-            url: messageentity.get_url().map(|v| v.into_owned()),
+            url: messageentity.get_url().map(|v| v.to_owned()),
             user: messageentity.get_user().map(|v| v.get_id()),
-            language: messageentity.get_language().map(|v| v.into_owned()),
-            emoji_id: messageentity.get_custom_emoji_id().map(|v| v.into_owned()),
+            language: messageentity.get_language().map(|v| v.to_owned()),
+            emoji_id: messageentity.get_custom_emoji_id().map(|v| v.to_owned()),
             owner_id,
         })
     }

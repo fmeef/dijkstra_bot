@@ -526,8 +526,8 @@ where
     fn from(value: T) -> Self {
         let value = value.as_ref();
         Self {
-            user: value.user.to_owned().into_owned(),
-            chat: value.chat.to_owned().into_owned(),
+            user: value.user.to_owned(),
+            chat: value.chat.to_owned(),
         }
     }
 }
@@ -535,8 +535,8 @@ where
 impl<'a> From<&'a ChatUser<'a>> for OwnedChatUser {
     fn from(value: &'a ChatUser<'a>) -> Self {
         Self {
-            user: value.user.to_owned().into_owned(),
-            chat: value.chat.to_owned().into_owned(),
+            user: value.user.to_owned(),
+            chat: value.chat.to_owned(),
         }
     }
 }
@@ -748,7 +748,7 @@ impl MarkupBuilder {
                                 self.text_mention(name, user, None);
                             }
                             "first" => {
-                                let first = chatuser.user.get_first_name().into_owned();
+                                let first = chatuser.user.get_first_name().to_owned();
                                 size += first.encode_utf16().count() as i64;
                                 self.text(first);
                             }
@@ -756,14 +756,14 @@ impl MarkupBuilder {
                                 let last = chatuser
                                     .user
                                     .get_last_name()
-                                    .map(|v| v.into_owned())
+                                    .map(|v| v.to_owned())
                                     .unwrap_or_else(|| "".to_owned());
                                 size += last.encode_utf16().count() as i64;
                                 self.text(last);
                             }
                             "mention" => {
                                 let user = chatuser.user.clone();
-                                let first = user.get_first_name().into_owned();
+                                let first = user.get_first_name().to_owned();
                                 size += first.encode_utf16().count() as i64;
                                 self.text_mention(first, user, None);
                             }
@@ -1357,7 +1357,7 @@ pub async fn retro_fillings<'a>(
         // log::info!("matching {}: {}", filling, pos);
         let (text, entity) = match filling {
             "username" => {
-                let user = chatuser.user.as_ref().to_owned();
+                let user = chatuser.user.to_owned();
                 let name = user.name_humanreadable();
                 let start = pos;
                 let len = name.encode_utf16().count() as i64;
@@ -1372,20 +1372,20 @@ pub async fn retro_fillings<'a>(
                 )
             }
             "first" => {
-                let first = chatuser.user.get_first_name().into_owned();
+                let first = chatuser.user.get_first_name().to_owned();
                 (first, None)
             }
             "last" => {
                 let last = chatuser
                     .user
                     .get_last_name()
-                    .map(|v| v.into_owned())
+                    .map(|v| v.to_owned())
                     .unwrap_or_else(|| "".to_owned());
                 (last, None)
             }
             "mention" => {
-                let user = chatuser.user.as_ref().to_owned();
-                let first = user.get_first_name().into_owned();
+                let user = chatuser.user.to_owned();
+                let first = user.get_first_name().to_owned();
                 let start = pos;
                 let len = first.encode_utf16().count() as i64;
                 (
@@ -1616,14 +1616,13 @@ impl EntityMessage {
         } else {
             let (text, entities, buttons) = self.builder.build_murkdown_nofail_ref().await;
             log::info!("call {} {}", text, self.reply_markup.is_some());
-
             let call = TG
                 .client
                 .build_send_message(self.chat, text)
                 .entities(entities);
             if let Some(ref reply_markup) = self.reply_markup {
                 call.reply_markup(reply_markup)
-            } else if let Some(buttons) = buttons {
+            } else if let Some(buttons) = buttons.map(|v| &*v) {
                 call.reply_markup(buttons)
             } else {
                 call
@@ -1798,12 +1797,10 @@ mod test {
             .await
             .unwrap();
         let chatuser = ChatUser {
-            chat: Cow::Owned(
-                ChatBuilder::new(0)
-                    .set_title("goth group".to_owned())
-                    .build(),
-            ),
-            user: Cow::Owned(UserBuilder::new(1, false, dumpling.to_owned()).build()),
+            chat: &ChatBuilder::new(0)
+                .set_title("goth group".to_owned())
+                .build(),
+            user: &UserBuilder::new(1, false, dumpling.to_owned()).build(),
         };
 
         println!("text: {}", test);
