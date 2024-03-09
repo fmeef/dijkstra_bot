@@ -64,6 +64,7 @@ reqwest = "0.11.23"
 bytes = { version = "1.5.0", features = ["serde"] }
 lz4_flex = "0.11.2"
 sqlx = "0.7.3"
+redis-test = { version = "0.3.0", features = ["bytes"] }
 
 [build-dependencies]
 anyhow = "1.0.79"

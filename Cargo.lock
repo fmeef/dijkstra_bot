@@ -276,7 +276,7 @@ checksum = "cd456361ba8e4e7f5fe58e1697ce078a149c85ebce13bf9c6b483d3f566fc9c3"
 dependencies = [
  "async-trait",
  "bb8",
- "redis",
+ "redis 0.23.3",
 ]
 
 [[package]]
@@ -777,7 +777,8 @@ dependencies = [
  "prometheus",
  "prometheus-hyper",
  "rand",
- "redis",
+ "redis 0.23.3",
+ "redis-test",
  "regex",
  "reqwest",
  "rmp-serde",
@@ -2350,6 +2351,31 @@ dependencies = [
  "tokio",
  "tokio-util",
  "url",
+]
+
+[[package]]
+name = "redis"
+version = "0.24.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c580d9cbbe1d1b479e8d67cf9daf6a62c957e6846048408b80b43ac3f6af84cd"
+dependencies = [
+ "combine",
+ "itoa",
+ "percent-encoding",
+ "ryu",
+ "sha1_smol",
+ "socket2 0.4.10",
+ "url",
+]
+
+[[package]]
+name = "redis-test"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "136fc13778b9fb91b5dfad24875088d411190a9a136d6815680e1a19b06dbec9"
+dependencies = [
+ "bytes",
+ "redis 0.24.0",
 ]
 
 [[package]]

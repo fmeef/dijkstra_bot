@@ -153,6 +153,7 @@ pub(crate) async fn welcome_members(
     lang: &Lang,
     captcha: Option<&captchastate::Model>,
 ) -> Result<()> {
+    log::info!("welcome {:?}", captcha);
     let text = if let Some(text) = model.text {
         text
     } else {
@@ -171,11 +172,12 @@ pub(crate) async fn welcome_members(
     };
     let c = ctx.clone();
     let chat = upd.get_chat().get_id();
-    if let Some(b) = extra_buttons.as_mut() {
-        for button in buttons {
-            b.button(button);
-        }
+    let b = extra_buttons.get_or_insert_with(|| InlineKeyboardBuilder::default());
+
+    for button in buttons {
+        b.button(button);
     }
+
     SendMediaReply::new(ctx, model.media_type.unwrap_or(MediaType::Text))
         .button_callback(move |note, button| {
             let c = c.clone();
