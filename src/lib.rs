@@ -6,17 +6,7 @@
 //!
 //! Dijkstra is under heavy development and the API is not considered stable yet. Check back later for a future
 //! stable release.
-
-use clap::Parser;
-use confy::load_path;
 use metadata::Metadata;
-use prometheus::default_registry;
-use prometheus_hyper::Server;
-use sea_orm::ConnectionTrait;
-use statics::{Config, CONFIG, EXEC};
-use tg::client::{TgClient, UpdateHandler};
-use tokio::sync::Notify;
-use util::error::Result;
 
 /// Utilities for keeping track of the module list and generating the help menu.
 pub mod metadata;
@@ -34,7 +24,7 @@ pub mod tg;
 pub mod util;
 
 /// Internal logger framework, external code should just use log crate
-mod logger;
+pub(crate) mod logger;
 
 /// Static values for bot api, database, redis, and config
 pub mod statics;
@@ -51,39 +41,13 @@ pub use sea_orm_migration;
 pub use sea_query;
 pub use serde;
 pub use serde_json;
+use statics::Config;
+use tg::client::UpdateHandler;
 pub use uuid;
-
-use crate::statics::{Args, ARGS, CLIENT_BACKEND, CONFIG_BACKEND};
+#[cfg(not(test))]
+pub mod init;
 
 get_langs!();
-
-fn init_db() {
-    println!(
-        "db initialized, mock: {}",
-        &statics::DB.is_mock_connection()
-    );
-}
-fn run_bot() {
-    EXEC.block_on(async move {
-        let handle = prometheus_serve();
-        let me = statics::TG.client.get_me().await.unwrap();
-        statics::ME.set(me).unwrap();
-        statics::TG.run().await.unwrap();
-        handle.await.unwrap().unwrap();
-    });
-}
-
-fn prometheus_serve() -> tokio::task::JoinHandle<Result<()>> {
-    tokio::spawn(async move {
-        Server::run(
-            default_registry(),
-            CONFIG.logging.prometheus_hook.clone(),
-            Notify::new().notified(),
-        )
-        .await?;
-        Ok(())
-    })
-}
 
 /// Configuration options for starting a bot instance.
 pub struct DijkstraOpts {
@@ -120,29 +84,5 @@ impl DijkstraOpts {
     pub fn update_handler(mut self, update_handler: UpdateHandler) -> Self {
         self.handler = update_handler;
         self
-    }
-
-    /// Initialize and run the bot
-    pub fn run(self) {
-        ARGS.set(Args::parse()).unwrap();
-        let config = if let Some(config) = self.config {
-            config
-        } else {
-            load_path(&ARGS.get().unwrap().config).expect("failed to load config")
-        };
-        CONFIG_BACKEND.set(config).unwrap();
-
-        let mut handle = logger::setup_log();
-
-        let client = if let Some(metadata) = self.modules {
-            TgClient::connect_mod(&CONFIG.bot_token, metadata, self.handler)
-        } else {
-            TgClient::connect(&CONFIG.bot_token)
-        };
-        CLIENT_BACKEND.set(client).unwrap();
-        init_db();
-        run_bot();
-        println!("complete");
-        handle.join();
     }
 }

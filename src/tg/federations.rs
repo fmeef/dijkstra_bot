@@ -20,7 +20,6 @@ use botapi::gen_types::{
 
 use chrono::Duration;
 
-use lazy_static::__Deref;
 use macros::{entity_fmt, lang_fmt};
 use redis::AsyncCommands;
 
@@ -91,7 +90,7 @@ pub async fn get_fban_for_chatmember(user: i64, chat: i64) -> Result<Option<fban
         .filter(fbans::Column::User.eq(user))
         .column_as(dialogs::Column::ChatId, "chat")
         .into_model::<fbans::Model>()
-        .one(DB.deref())
+        .one(*DB)
         .await?;
 
     Ok(result)
@@ -180,7 +179,7 @@ pub async fn get_fbans_for_user_with_chats(user: i64) -> Result<Vec<FbanWithChat
     //     .column_as(dialogs::Column::ChatId, "chat")
     //     .find_also_related(federations::Entity)
     //     .into_model::<FbanWithChat, federations::Model>()
-    //     .all(DB.deref())
+    //     .all(*DB)
     //     .await?;
     let backend = DB.get_database_backend();
     let (query, params) = query.build_any(&*backend.get_query_builder());
@@ -188,7 +187,7 @@ pub async fn get_fbans_for_user_with_chats(user: i64) -> Result<Vec<FbanWithChat
     let result = federations::Entity::find()
         .from_raw_sql(Statement::from_sql_and_values(backend, query, params))
         .into_model()
-        .all(DB.deref())
+        .all(*DB)
         .await?;
     Ok(result)
 }
@@ -199,7 +198,7 @@ pub async fn get_fbans_for_user(user: i64) -> Result<Vec<fbans::Model>> {
         .inner_join(dialogs::Entity)
         .filter(fbans::Column::User.eq(user))
         .into_model::<fbans::Model>()
-        .all(DB.deref())
+        .all(*DB)
         .await?;
 
     Ok(result)
@@ -247,7 +246,7 @@ pub async fn get_feds(user: i64) -> Result<Vec<federations::Model>> {
                 .eq(user)
                 .or(fedadmin::Column::User.eq(user)),
         )
-        .all(DB.deref())
+        .all(*DB)
         .await?;
     Ok(feds)
 }
@@ -255,7 +254,7 @@ pub async fn get_feds(user: i64) -> Result<Vec<federations::Model>> {
 pub async fn create_federation(ctx: &Context, federation: federations::Model) -> Result<()> {
     let key = get_fed_key(federation.owner);
     match federations::Entity::insert(federation.into_active_model())
-        .exec_with_returning(DB.deref())
+        .exec_with_returning(*DB)
         .await
     {
         Err(err) => match err {
@@ -284,7 +283,7 @@ pub async fn subfed(fed: &Uuid, sub: &Uuid) -> Result<federations::Model> {
         owner: NotSet,
         fed_name: NotSet,
     })
-    .exec(DB.deref())
+    .exec(*DB)
     .await?;
 
     let key = get_fed_key(model.owner);
@@ -303,7 +302,7 @@ pub async fn update_fed(owner: i64, newname: String) -> Result<federations::Mode
             fed_name: Set(newname),
         })
         .filter(federations::Column::Owner.eq(owner))
-        .exec_with_returning(DB.deref())
+        .exec_with_returning(*DB)
         .await?;
 
     REDIS.sq(|q| q.del(&key)).await?;
@@ -322,7 +321,7 @@ pub async fn fban_user(fban: fbans::Model, user: &User) -> Result<()> {
                 .update_columns([fbans::Column::Reason, fbans::Column::UserName])
                 .to_owned(),
         )
-        .exec_with_returning(DB.deref())
+        .exec_with_returning(*DB)
         .await?;
     model.cache(&key).await?;
     REDIS.sq(|q| q.del(&setkey)).await?; //TODO: less drastic
@@ -376,7 +375,7 @@ pub async fn gban_user(fban: gbans::Model, metadata: User) -> Result<()> {
                 .update_column(gbans::Column::Reason)
                 .to_owned(),
         )
-        .exec_with_returning(DB.deref())
+        .exec_with_returning(*DB)
         .await?;
     model.join_single(&key, Some(user)).await?;
     Ok(())
@@ -390,7 +389,7 @@ async fn get_fbanned_chats(fed: &Uuid, user: i64) -> Result<impl Iterator<Item =
                 .eq(*fed)
                 .and(fbans::Column::User.eq(user)),
         )
-        .all(DB.deref())
+        .all(*DB)
         .await?;
     Ok(c.into_iter().map(|c| c.chat_id))
 }
@@ -412,7 +411,7 @@ pub async fn fstat(user: i64) -> Result<impl Iterator<Item = (fbans::Model, fede
     let res = fbans::Entity::find()
         .filter(fbans::Column::User.eq(user))
         .find_also_related(federations::Entity)
-        .all(DB.deref())
+        .all(*DB)
         .await?;
     Ok(res.into_iter().filter_map(|(v, s)| s.map(|u| (v, u))))
 }
@@ -436,11 +435,11 @@ pub async fn is_user_gbanned(user: i64) -> Result<Option<(gbans::Model, users::M
         |_, _| async move {
             let o = gbans::Entity::find_by_id(user)
                 .find_also_related(users::Entity)
-                .one(DB.deref())
+                .one(*DB)
                 .await?;
             Ok(o)
         },
-        Duration::seconds(CONFIG.timing.cache_timeout as i64),
+        Duration::try_seconds(CONFIG.timing.cache_timeout).unwrap(),
     )
     .query(&key, &())
     .await?;
@@ -479,7 +478,7 @@ pub async fn fpromote(fed: Uuid, user: i64) -> Result<()> {
             .update_columns([fedadmin::Column::User, fedadmin::Column::Federation])
             .to_owned(),
     )
-    .exec(DB.deref())
+    .exec(*DB)
     .await?;
     REDIS.sq(|q| q.del(&key)).await?;
     Ok(())
@@ -488,7 +487,7 @@ pub async fn fpromote(fed: Uuid, user: i64) -> Result<()> {
 pub async fn refresh_fedadmin_cache(fed: &Uuid) -> Result<()> {
     let admins = fedadmin::Entity::find()
         .filter(fedadmin::Column::Federation.eq(*fed))
-        .all(DB.deref())
+        .all(*DB)
         .await?;
     let key = get_fedadmin_key(fed);
     REDIS
@@ -522,7 +521,7 @@ pub async fn join_fed(chat: &Chat, fed: &Uuid) -> Result<()> {
     let key = get_fed_chat_key(chat.get_id());
     let mut model = dialogs::Model::from_chat(chat).await?;
     model.federation = Set(Some(*fed));
-    upsert_dialog(DB.deref(), model).await?;
+    upsert_dialog(*DB, model).await?;
 
     REDIS.sq(|p| p.del(&key)).await?;
     // try_update_fed_cache(chat.get_id()).await?;
@@ -533,7 +532,7 @@ pub async fn try_update_fed_cache(chat: i64) -> Result<()> {
     let feds = dialogs::Entity::find()
         .filter(dialogs::Column::ChatId.eq(chat))
         .find_also_related(federations::Entity)
-        .all(DB.deref())
+        .all(*DB)
         .await?;
     log::info!("try_update_fed_cache {}", feds.len());
 
@@ -722,7 +721,7 @@ impl Context {
         let key = get_fban_set_key(&fed);
         if let Some(fban) = is_user_fbanned(user, chat.get_id()).await? {
             iter_unfban_user(user, &fban.federation).await?;
-            fban.delete(DB.deref()).await?;
+            fban.delete(*DB).await?;
             REDIS.sq(|q| q.del(&key)).await?;
             self.speak_fmt(entity_fmt!(self, "unfban", user.mention().await?))
                 .await?;
@@ -846,7 +845,7 @@ impl Context {
     pub async fn ungban_user(&self, user: i64) -> Result<()> {
         let key = get_gban_key(user);
 
-        let delete = gbans::Entity::delete_by_id(user).exec(DB.deref()).await?;
+        let delete = gbans::Entity::delete_by_id(user).exec(*DB).await?;
         if delete.rows_affected > 0 {
             REDIS.sq(|q| q.del(&key)).await?;
             tokio::spawn(async move { iter_unban_user(user).await.log() });

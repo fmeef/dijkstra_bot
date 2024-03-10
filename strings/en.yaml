@@ -208,3 +208,4 @@ captchamode: Set captcha mode to {}
 captchanotenabled: Captcha is not enabled
 anonchannelbad: Anonymous channels are not allowed to use this functionality.
 nosender: This message does not have a sender
+dateoutofrange: The time {} is out of range

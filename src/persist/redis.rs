@@ -17,6 +17,7 @@ use crate::{
     },
 };
 use chrono::Duration;
+use redis_test::MockRedisConnection;
 use sea_orm::{ActiveModelTrait, IntoActiveModel};
 
 use std::{marker::PhantomData, ops::DerefMut};
@@ -86,10 +87,7 @@ where
 {
     let valstr = RedisStr::new(&val)?;
     REDIS
-        .pipe(|p| {
-            p.set(key, valstr)
-                .expire(key, expire.num_seconds() as usize)
-        })
+        .pipe(|p| p.set(key, valstr).expire(key, expire.num_seconds()))
         .await?;
     Ok(val)
 }
@@ -286,8 +284,13 @@ pub struct RedisPoolBuilder {
 }
 
 /// Since redis support multiple threads in specific circumstances we use a pool for parallelism
-pub struct RedisPool {
-    pool: Pool<RedisConnectionManager>,
+#[derive(Debug)]
+pub struct RedisPool<T, A>
+where
+    T: bb8::ManageConnection<Connection = A>,
+    A: redis::aio::ConnectionLike + Send,
+{
+    pool: Pool<T>,
 }
 
 impl RedisPoolBuilder {
@@ -300,14 +303,57 @@ impl RedisPoolBuilder {
     }
 
     /// Build the pool and attempt connection
-    pub async fn build(self) -> Result<RedisPool> {
-        RedisPool::new(self.connectionstr).await
+    pub async fn build(self) -> Result<RedisPool<RedisConnectionManager, redis::aio::Connection>> {
+        RedisPool::<RedisConnectionManager, redis::aio::Connection>::new(self.connectionstr).await
     }
 }
 
-impl RedisPool {
+pub struct MockPool(MockRedisConnection);
+
+impl std::fmt::Debug for MockPool {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Its just mock pool")?;
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl bb8::ManageConnection for MockPool {
+    type Connection = MockRedisConnection;
+    type Error = RedisError;
+
+    async fn connect(&self) -> std::result::Result<Self::Connection, Self::Error> {
+        Ok(self.0.clone())
+    }
+
+    async fn is_valid(&self, _: &mut Self::Connection) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn has_broken(&self, _: &mut Self::Connection) -> bool {
+        false
+    }
+}
+
+impl RedisPool<MockPool, MockRedisConnection> {
+    pub async fn new_mock(
+        c: MockRedisConnection,
+    ) -> Result<RedisPool<MockPool, redis_test::MockRedisConnection>> {
+        let pool = MockPool(c);
+        let pool = Pool::builder().max_size(1).build(pool).await?;
+        Ok(RedisPool { pool })
+    }
+}
+
+impl<C, A> RedisPool<C, A>
+where
+    C: bb8::ManageConnection<Connection = A, Error = RedisError>,
+    A: redis::aio::ConnectionLike + Send,
+{
     /// create a new redis pool from a connection string and immediately connect to it
-    pub async fn new<T: AsRef<str>>(connectionstr: T) -> Result<Self> {
+    pub async fn new<T: AsRef<str>>(
+        connectionstr: T,
+    ) -> Result<RedisPool<RedisConnectionManager, redis::aio::Connection>> {
         let client = RedisConnectionManager::new(connectionstr.as_ref())?;
         //TODO: don't use a hardcoded size here
         let pool = Pool::builder().max_size(15).build(client).await?;
@@ -378,10 +424,7 @@ impl RedisPool {
     /// Run a single redis query
     pub async fn sq<'a, T, R>(&'a self, func: T) -> Result<R>
     where
-        T: for<'b> FnOnce(
-                &'b mut PooledConnection<'a, RedisConnectionManager>,
-            ) -> RedisFuture<'b, R>
-            + Send,
+        T: for<'b> FnOnce(&'b mut PooledConnection<'a, C>) -> RedisFuture<'b, R> + Send,
         R: FromRedisValue + Send + 'a,
     {
         Ok(func(&mut self.pool.get().await?).await?)
@@ -391,7 +434,7 @@ impl RedisPool {
     /// closure
     pub async fn query<'a, T, R, Fut>(&'a self, func: T) -> Result<R>
     where
-        T: FnOnce(PooledConnection<'a, RedisConnectionManager>) -> Fut + Send,
+        T: FnOnce(PooledConnection<'a, C>) -> Fut + Send,
         Fut: Future<Output = Result<R>> + Send,
         R: Send,
     {
@@ -402,7 +445,7 @@ impl RedisPool {
     /// closure. The closure is run via a separate tokio task
     pub async fn query_spawn<T, R, Fut>(&self, func: T) -> JoinHandle<Result<R>>
     where
-        T: for<'b> FnOnce(PooledConnection<'b, RedisConnectionManager>) -> Fut + Send + 'static,
+        T: for<'b> FnOnce(PooledConnection<'b, C>) -> Fut + Send + 'static,
         Fut: Future<Output = Result<R>> + Send,
         R: Send + 'static,
     {
@@ -416,7 +459,7 @@ impl RedisPool {
 
     /// Gets a single connection from the connection pool.
     /// NOTE: this connection will not be returned to the pool until it is dropped
-    pub async fn conn<'a>(&'a self) -> Result<PooledConnection<'a, RedisConnectionManager>> {
+    pub async fn conn<'a>(&'a self) -> Result<PooledConnection<'a, C>> {
         let res = self.pool.get().await?;
         Ok(res)
     }
@@ -486,14 +529,17 @@ where
         let st = RedisStr::new(&self)?;
         let r = key.as_ref();
         REDIS
-            .pipe(|q| q.set(r, st).expire(r, expire.num_seconds() as usize))
+            .pipe(|q| q.set(r, st).expire(r, expire.num_seconds()))
             .await?;
         Ok(self.into_active_model())
     }
 
     async fn cache<K: AsRef<str> + Send>(self, key: K) -> Result<V> {
-        self.cache_duration(key, Duration::seconds(CONFIG.timing.cache_timeout as i64))
-            .await
+        self.cache_duration(
+            key,
+            Duration::try_seconds(CONFIG.timing.cache_timeout).unwrap(),
+        )
+        .await
     }
 
     async fn join_duration<K, J, A>(
@@ -512,7 +558,7 @@ where
         let r = key.as_ref();
 
         REDIS
-            .pipe(|q| q.set(r, st).expire(r, expire.num_seconds() as usize))
+            .pipe(|q| q.set(r, st).expire(r, expire.num_seconds()))
             .await?;
         let o =
             v.1.into_iter()
@@ -530,7 +576,7 @@ where
         self.join_duration(
             key,
             join,
-            Duration::seconds(CONFIG.timing.cache_timeout as i64),
+            Duration::try_seconds(CONFIG.timing.cache_timeout).unwrap(),
         )
         .await
     }
@@ -551,7 +597,7 @@ where
         let r = key.as_ref();
 
         REDIS
-            .pipe(|q| q.set(r, st).expire(r, expire.num_seconds() as usize))
+            .pipe(|q| q.set(r, st).expire(r, expire.num_seconds()))
             .await?;
         let o = v.1.map(|v| v.into_active_model());
         Ok((v.0.into_active_model(), o))
@@ -566,13 +612,27 @@ where
         self.join_single_duration(
             key,
             join,
-            Duration::seconds(CONFIG.timing.cache_timeout as i64),
+            Duration::try_seconds(CONFIG.timing.cache_timeout).unwrap(),
         )
         .await
     }
 }
 
-impl Clone for RedisPool {
+#[cfg(test)]
+pub async fn mock(c: MockRedisConnection) {
+    use crate::statics::REDIS_BACKEND;
+
+    REDIS_BACKEND
+        .try_insert(RedisPool::new_mock(c).await.unwrap())
+        .map_err(|_| BotError::generic("redis already initilized"))
+        .unwrap();
+}
+
+impl<T, A> Clone for RedisPool<T, A>
+where
+    T: bb8::ManageConnection<Connection = A>,
+    A: redis::aio::ConnectionLike + Send,
+{
     fn clone(&self) -> Self {
         RedisPool {
             pool: self.pool.clone(),

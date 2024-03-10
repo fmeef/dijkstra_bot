@@ -9,16 +9,16 @@ name = "dijkstra_migration"
 path = "src/lib.rs"
 
 [dependencies]
-time = "0.3.30"
-sea-schema = { version = "0.14.1", default-features = false, features = [ "debug-print"] }
-sea-orm-migration = "0.12.6"
-sea-query = { version = "0.30.4", features = ["uuid", "bigdecimal", "with-bigdecimal", "with-chrono", "with-json", "backend-postgres", "sea-query-derive", "backend-postgres", "derive", "with-uuid", "thread-safe"] }
+time = "0.3.34"
+sea-schema = { version = "0.14.2", default-features = false, features = [ "debug-print"] }
+sea-orm-migration = "0.12.14"
+sea-query = { version = "0.30.7", features = ["uuid", "bigdecimal", "with-bigdecimal", "with-chrono", "with-json", "backend-postgres", "sea-query-derive", "backend-postgres", "derive", "with-uuid", "thread-safe"] }
 dijkstra = { path = "../" }
 botapi = { path = "../botapi-rs" }
 tggen = { path = "../botapi-rs/generate" }
-async-trait = "0.1.74"
-openssl = { version = "0.10.61", features=["vendored"]}
-tokio = { version = "1.35.0", features = ["net", "socket2", "io-util", "tokio-macros"] }
+async-trait = "0.1.77"
+openssl = { version = "0.10.64", features=["vendored"]}
+tokio = { version = "1.36.0", features = ["net", "socket2", "io-util", "tokio-macros"] }
 rustls-webpki = "0.101.7"
-chrono = "0.4.31"
+chrono = "0.4.35"
 

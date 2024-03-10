@@ -2,26 +2,22 @@
 //! All message sending should be done through this api for both localization/translation
 //! and ratelimiting to work
 
-use std::ops::DerefMut;
-
+pub use crate::langs::*;
+use crate::persist::core::dialogs;
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisStr};
 use crate::statics::{CONFIG, DB, REDIS, TG};
 use crate::tg::admin_helpers::IntoChatUser;
 use crate::tg::markdown::{EntityMessage, MarkupBuilder};
 use crate::util::error::Result;
-
-pub use crate::langs::*;
 use async_trait::async_trait;
 use botapi::bot::Part;
 use botapi::gen_types::{Chat, EReplyMarkup, FileData, Message, ReplyParametersBuilder};
 use chrono::Duration;
-use lazy_static::__Deref;
-
-use crate::persist::core::dialogs;
 use redis::Script;
 use sea_orm::sea_query::OnConflict;
 use sea_orm::ActiveValue::Set;
 use sea_orm::{EntityTrait, IntoActiveModel};
+use std::ops::DerefMut;
 
 /// Returns false if ratelimiting is triggered. This function should be called before
 /// every attempt to send a messsage in a chat, as calling it determines ratelimiting
@@ -61,7 +57,7 @@ pub async fn should_ignore_chat(chat: i64) -> Result<bool> {
 pub async fn ignore_chat(chat: i64, time: &Duration) -> Result<()> {
     let key = format!("ign:{}", chat);
     REDIS
-        .pipe(|q| q.set(&key, true).expire(&key, time.num_seconds() as usize))
+        .pipe(|q| q.set(&key, true).expire(&key, time.num_seconds()))
         .await?;
     Ok(())
 }
@@ -301,13 +297,13 @@ pub async fn get_chat_lang(chat: i64) -> Result<Lang> {
         |_, _| async move {
             Ok(Some(
                 dialogs::Entity::find_by_id(chat)
-                    .one(DB.deref())
+                    .one(*DB)
                     .await?
                     .map(|v| v.language)
                     .unwrap_or_else(|| Lang::En),
             ))
         },
-        Duration::hours(12),
+        Duration::try_hours(12).unwrap(),
     )
     .query(&key, &())
     .await?;
@@ -323,7 +319,7 @@ pub async fn set_chat_lang(chat: &Chat, lang: Lang) -> Result<()> {
     REDIS
         .pipe(|p| {
             p.set(&key, r)
-                .expire(&key, Duration::hours(12).num_seconds() as usize)
+                .expire(&key, Duration::try_hours(12).unwrap().num_seconds())
         })
         .await?;
     dialogs::Entity::insert(c.into_active_model())
@@ -332,7 +328,7 @@ pub async fn set_chat_lang(chat: &Chat, lang: Lang) -> Result<()> {
                 .update_column(dialogs::Column::Language)
                 .to_owned(),
         )
-        .exec(DB.deref())
+        .exec(*DB)
         .await?;
 
     Ok(())

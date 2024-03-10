@@ -181,7 +181,7 @@ pub enum Relation {
 //         .order_by_asc(button::Column::PosX)
 //         .order_by_asc(button::Column::PosY)
 //         .into_model::<FiltersWithEntities>()
-//         .all(DB.deref())
+//         .all(*DB)
 //         .await?;
 
 //     let res = res.into_iter().map(|v| v.get()).fold(

@@ -1,7 +1,7 @@
 //! Admin permissions management interface. Allows for both admin/notadmin permissions and
 //! more granular permissions based on telegram's own system
 
-use std::{collections::HashMap, ops::Deref};
+use std::collections::HashMap;
 
 use crate::{
     langs::Lang,
@@ -337,7 +337,7 @@ where
     let timer_out = out.clone();
 
     tokio::spawn(async move {
-        sleep(Duration::minutes(1).to_std()?).await;
+        sleep(Duration::try_minutes(1).unwrap().to_std()?).await;
         timer_out.send(None).await?;
         Ok::<(), BotError>(())
     });
@@ -381,14 +381,13 @@ where
                     .await?;
             }
             return Ok(());
-        } else {
-            TG.client
-                .build_answer_callback_query(cb.get_id())
-                .text(&lang_fmt!(lang, "channeldenied"))
-                .show_alert(true)
-                .build()
-                .await?;
         }
+        TG.client
+            .build_answer_callback_query(cb.get_id())
+            .text(&lang_fmt!(lang, "channeldenied"))
+            .show_alert(true)
+            .build()
+            .await?;
     }
     rx.close();
     sp.fail("Anonymous channel denied permission")
@@ -613,7 +612,7 @@ pub async fn update_self_admin(update: &UpdateExt) -> Result<()> {
     match update {
         UpdateExt::MyChatMember(member) => {
             let dialog = dialogs::Model::from_chat(member.get_chat()).await?;
-            upsert_dialog(DB.deref(), dialog.into_active_model()).await?;
+            upsert_dialog(*DB, dialog.into_active_model()).await?;
             let key = get_chat_admin_cache_key(member.get_chat().get_id());
             member.get_chat().refresh_cached_admins().await?;
             match member.get_new_chat_member() {
@@ -792,7 +791,7 @@ impl GetCachedAdmins for Chat {
                         Ok::<(), BotError>(())
                     })?;
 
-                    Ok(q.expire(&key, Duration::hours(48).num_seconds() as usize))
+                    Ok(q.expire(&key, Duration::try_hours(48).unwrap().num_seconds()))
                 })
                 .await?;
             Ok((res, true))
@@ -808,7 +807,7 @@ impl Context {
             REDIS
                 .pipe(|q| {
                     q.set(&lock, true)
-                        .expire(&lock, Duration::minutes(10).num_seconds() as usize)
+                        .expire(&lock, Duration::try_minutes(10).unwrap().num_seconds())
                 })
                 .await?;
             let key = get_chat_admin_cache_key(chat);
@@ -828,7 +827,7 @@ impl Context {
                         Ok::<(), BotError>(())
                     })?;
 
-                    q.expire(&key, Duration::minutes(10).num_seconds() as usize);
+                    q.expire(&key, Duration::try_minutes(10).unwrap().num_seconds());
                     Ok(q)
                 })
                 .await?;

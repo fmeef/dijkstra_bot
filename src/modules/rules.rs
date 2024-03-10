@@ -9,11 +9,8 @@ use crate::tg::markdown::rules_deeplink_key;
 use crate::tg::permissions::IsGroupAdmin;
 use crate::util::error::Result;
 use crate::util::string::{Lang, Speak};
-
 use chrono::Duration;
 use futures::FutureExt;
-use lazy_static::__Deref;
-
 use macros::{lang_fmt, update_handler};
 use sea_orm::EntityTrait;
 use sea_query::OnConflict;
@@ -77,7 +74,7 @@ async fn save_rule<'a>(ctx: &Context) -> Result<()> {
                 ])
                 .to_owned(),
         )
-        .exec(DB.deref())
+        .exec(*DB)
         .await?;
 
     ctx.reply(lang_fmt!(ctx.try_get()?.lang, "saverules"))
@@ -107,10 +104,10 @@ async fn get_rule(chat_id: i64) -> Result<Option<rules::Model>> {
     let key = get_rules_key(chat_id);
     let rules = default_cache_query(
         |_, _| async move {
-            let r = rules::Entity::find_by_id(chat_id).one(DB.deref()).await?;
+            let r = rules::Entity::find_by_id(chat_id).one(*DB).await?;
             Ok(r)
         },
-        Duration::seconds(CONFIG.timing.cache_timeout as i64),
+        Duration::try_seconds(CONFIG.timing.cache_timeout).unwrap(),
     )
     .query(&key, &())
     .await?;

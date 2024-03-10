@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use crate::persist::admin::{fbans, federations};
 use crate::persist::core::users;
 use crate::statics::{DB, TG};
@@ -260,7 +258,7 @@ async fn get_fban_list(fed: &Uuid) -> Result<Vec<FbanExportItem>> {
     let res = fbans::Entity::find()
         .filter(crate::persist::admin::fbans::Column::Federation.eq(*fed))
         .find_also_related(users::Entity)
-        .all(DB.deref())
+        .all(*DB)
         .await?;
     Ok(res
         .into_iter()
@@ -308,7 +306,7 @@ async fn set_fban_list(ctx: &Context, fed: &Uuid, message: &Message) -> Result<u
                     .do_nothing()
                     .to_owned(),
             )
-            .exec_without_returning(DB.deref())
+            .exec_without_returning(*DB)
             .await?;
 
         let res = fbans::Entity::insert_many(fbs)
@@ -317,7 +315,7 @@ async fn set_fban_list(ctx: &Context, fed: &Uuid, message: &Message) -> Result<u
                     .update_columns([fbans::Column::UserName, fbans::Column::Reason])
                     .to_owned(),
             )
-            .exec_without_returning(DB.deref())
+            .exec_without_returning(*DB)
             .await?;
         for id in ids {
             try_update_fban_cache(id).await?;

@@ -40,7 +40,7 @@ services:
       timeout: 3s
       retries: 10
   redis-dev:
-    image: redis:7.0.7-alpine
+    image: redis:7.2.4-alpine
     restart: always
     volumes: 
       - dev-bobot-redis:/data  

@@ -244,10 +244,7 @@ pub mod entities {
 
     pub mod filters {
 
-        use std::{
-            collections::{HashMap, HashSet},
-            ops::Deref,
-        };
+        use std::collections::{HashMap, HashSet};
 
         use super::triggers;
         use crate::{
@@ -484,7 +481,7 @@ pub mod entities {
                 .order_by_asc(button::Column::PosX)
                 .order_by_asc(button::Column::PosY)
                 .into_model::<FiltersWithEntities>()
-                .all(DB.deref())
+                .all(*DB)
                 .await?;
 
             let res = res.into_iter().map(|v| v.get()).fold(
@@ -557,56 +554,55 @@ async fn delete_trigger(ctx: &Context, trigger: &str) -> Result<()> {
     let hash_key = get_filter_hash_key(message);
     let trigger = trigger.to_lowercase();
     let ctx = ctx.clone();
-    DB.deref()
-        .transaction::<_, (), BotError>(|tx| {
-            async move {
-                let trigger = &trigger;
-                let message = ctx.message()?;
-                REDIS
-                    .query(|mut q| async move {
-                        let id: Option<i64> = q.hdel(&hash_key, trigger).await?;
-                        if let Some(id) = id {
-                            let key = get_filter_key(message, id);
-                            q.del(&key).await?;
-                        }
-                        Ok(())
-                    })
-                    .await?;
-                let filters = triggers::Entity::find()
-                    .find_with_related(filters::Entity)
-                    .filter(
-                        filters::Column::Chat
-                            .eq(message.get_chat().get_id())
-                            .and(triggers::Column::Trigger.eq(trigger.as_str())),
-                    )
-                    .all(tx)
-                    .await?;
+    DB.transaction::<_, (), BotError>(|tx| {
+        async move {
+            let trigger = &trigger;
+            let message = ctx.message()?;
+            REDIS
+                .query(|mut q| async move {
+                    let id: Option<i64> = q.hdel(&hash_key, trigger).await?;
+                    if let Some(id) = id {
+                        let key = get_filter_key(message, id);
+                        q.del(&key).await?;
+                    }
+                    Ok(())
+                })
+                .await?;
+            let filters = triggers::Entity::find()
+                .find_with_related(filters::Entity)
+                .filter(
+                    filters::Column::Chat
+                        .eq(message.get_chat().get_id())
+                        .and(triggers::Column::Trigger.eq(trigger.as_str())),
+                )
+                .all(tx)
+                .await?;
 
-                for (f, filters) in filters {
-                    let children = filters.iter().filter_map(|f| f.entity_id);
-                    let filters = filters.iter().map(|v| v.id);
-                    filters::Entity::delete_many()
-                        .filter(filters::Column::Id.is_in(filters))
-                        .exec(tx)
-                        .await?;
-                    entity::Entity::delete_many()
-                        .filter(entity::Column::Id.is_in(children))
-                        .exec(tx)
-                        .await?;
-                    triggers::Entity::delete_many()
-                        .filter(
-                            triggers::Column::Trigger
-                                .eq(f.trigger)
-                                .and(triggers::Column::FilterId.eq(f.filter_id)),
-                        )
-                        .exec(tx)
-                        .await?;
-                }
-                Ok(())
+            for (f, filters) in filters {
+                let children = filters.iter().filter_map(|f| f.entity_id);
+                let filters = filters.iter().map(|v| v.id);
+                filters::Entity::delete_many()
+                    .filter(filters::Column::Id.is_in(filters))
+                    .exec(tx)
+                    .await?;
+                entity::Entity::delete_many()
+                    .filter(entity::Column::Id.is_in(children))
+                    .exec(tx)
+                    .await?;
+                triggers::Entity::delete_many()
+                    .filter(
+                        triggers::Column::Trigger
+                            .eq(f.trigger)
+                            .and(triggers::Column::FilterId.eq(f.filter_id)),
+                    )
+                    .exec(tx)
+                    .await?;
             }
-            .boxed()
-        })
-        .await?;
+            Ok(())
+        }
+        .boxed()
+    })
+    .await?;
     message.speak("Filter stopped").await?;
     Ok(())
 }
@@ -910,7 +906,7 @@ async fn stopall(ctx: &Context) -> Result<()> {
     let message = ctx.message()?;
     filters::Entity::delete_many()
         .filter(filters::Column::Chat.eq(message.get_chat().get_id()))
-        .exec(DB.deref())
+        .exec(*DB)
         .await?;
 
     let key = get_filter_hash_key(message);

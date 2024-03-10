@@ -4,15 +4,16 @@
 //!
 //! Also provides helper functions for either logging errors to prometheus or
 //! sending formatted errors to the user via telegram
-
 use std::time::SystemTimeError;
 
 use crate::tg::command::Context;
 use crate::tg::markdown::DefaultParseErr;
 use async_trait::async_trait;
+use bb8::RunError;
 use botapi::bot::{ApiError, Response};
 use botapi::gen_types::{Chat, Message};
 use chrono::OutOfRangeError;
+use redis::RedisError;
 use sea_orm::{DbErr, RuntimeErr, TransactionError};
 use sqlx::error::DatabaseError;
 use thiserror::Error;
@@ -217,7 +218,7 @@ pub enum BotError {
     #[error("internal redis error: {0}")]
     RedisErr(#[from] redis::RedisError),
     #[error("redis pool error: {0}")]
-    RedisPoolErr(#[from] bb8::RunError<redis::RedisError>),
+    RedisPoolErr(#[from] RunError<RedisError>),
     #[error("serialization error: {0}")]
     SerializationErr(#[from] rmp_serde::encode::Error),
     #[error("deserialization error {0}")]
@@ -266,6 +267,12 @@ impl<T> From<tokio::sync::mpsc::error::SendError<T>> for BotError {
     }
 }
 
+// impl<T> From<RunError<T>> for BotError {
+//     fn from(value: RunError<T>) -> Self {
+//         Self::RedisPoolErr("Redis pool error".to_owned())
+//     }
+// }
+
 impl From<TransactionError<BotError>> for BotError {
     fn from(value: TransactionError<BotError>) -> Self {
         BotError::Generic(value.to_string())
@@ -276,6 +283,11 @@ impl BotError {
     /// constructor for conversation state machine error
     pub fn conversation_err<T: Into<String>>(text: T) -> Self {
         Self::ConversationError(text.into())
+    }
+
+    /// Generic and silent error
+    pub fn generic<T: ToString>(text: T) -> Self {
+        Self::Generic(text.to_string())
     }
 
     /// constructor for "speak" error that is always converted into telegram message

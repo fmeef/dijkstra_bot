@@ -8,7 +8,6 @@ use crate::util::error::{BotError, Result};
 use crate::util::string::Lang;
 use crate::{metadata::metadata, util::string::Speak};
 use botapi::gen_types::Message;
-use lazy_static::__Deref;
 use macros::{lang_fmt, update_handler};
 use redis::AsyncCommands;
 use sea_orm::entity::ActiveValue::{NotSet, Set};
@@ -56,7 +55,7 @@ async fn get_model<'a>(
             .build_murkdown_nofail()
             .await;
         log::info!("welcome get with buttons {:?}", buttons.get());
-        let entity_id = entity::insert(DB.deref(), &entities, buttons).await?;
+        let entity_id = entity::insert(*DB, &entities, buttons).await?;
         (Some(text), entity_id)
     } else {
         (None, None)
@@ -125,7 +124,7 @@ async fn enable_welcome<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang)
                 .update_column(welcomes::Column::Enabled)
                 .to_owned(),
         )
-        .exec_with_returning(DB.deref())
+        .exec_with_returning(*DB)
         .await?;
     REDIS.sq(|q| q.del(&key)).await?;
     message.reply("Enabled welcome").await?;
@@ -149,7 +148,7 @@ async fn set_goodbye<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang) ->
                 ])
                 .to_owned(),
         )
-        .exec_with_returning(DB.deref())
+        .exec_with_returning(*DB)
         .await?;
     let text = if let Some(text) = model.text.as_ref() {
         lang_fmt!(lang, "setgoodbye", text)
@@ -180,7 +179,7 @@ async fn set_welcome<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang) ->
                 ])
                 .to_owned(),
         )
-        .exec_with_returning(DB.deref())
+        .exec_with_returning(*DB)
         .await?;
 
     let text = if let Some(text) = model.text.as_ref() {
@@ -218,9 +217,7 @@ async fn reset_welcome(message: &Message, lang: &Lang) -> Result<()> {
     let chat = message.get_chat().get_id();
     let key = format!("welcome:{}", chat);
 
-    welcomes::Entity::delete_by_id(chat)
-        .exec(DB.deref())
-        .await?;
+    welcomes::Entity::delete_by_id(chat).exec(*DB).await?;
     REDIS.sq(|q| q.del(&key)).await?;
     message.speak(lang_fmt!(lang, "resetwelcome")).await?;
     Ok(())

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, ops::Deref};
+use std::collections::HashMap;
 
 use botapi::gen_types::{
     EReplyMarkup, InlineKeyboardButtonBuilder, MaybeInaccessibleMessage, UpdateExt,
@@ -68,10 +68,10 @@ pub async fn is_tainted(media_id: &str, scope: &str, chat: i64) -> Result<bool> 
                             .and(taint::Column::Chat.eq(chat)),
                     ),
                 )
-                .one(DB.deref())
+                .one(*DB)
                 .await?)
         },
-        Duration::seconds(CONFIG.timing.cache_timeout as i64),
+        Duration::try_seconds(CONFIG.timing.cache_timeout).unwrap(),
     )
     .query(&key, &())
     .await?;
@@ -91,7 +91,7 @@ pub async fn set_taint(model: taint::Model) -> Result<()> {
             .do_nothing()
             .to_owned(),
         )
-        .exec_without_returning(DB.deref())
+        .exec_without_returning(*DB)
         .await?;
     if res > 0 {
         REDIS.sq(|q| q.del(&key)).await?;
@@ -142,7 +142,7 @@ pub async fn set_taint_vec(media_id: Vec<taint::Model>) -> Result<()> {
 pub async fn remove_taint(taint: &str) -> Result<()> {
     taint::Entity::delete_many()
         .filter(taint::Column::MediaId.eq(taint))
-        .exec(DB.deref())
+        .exec(*DB)
         .await?;
 
     let key = get_taint_key(&taint);
@@ -154,7 +154,7 @@ pub async fn remove_taint(taint: &str) -> Result<()> {
 pub async fn remove_taint_vec(taints: Vec<String>) -> Result<()> {
     taint::Entity::delete_many()
         .filter(taint::Column::MediaId.is_in(&taints))
-        .exec(DB.deref())
+        .exec(*DB)
         .await?;
 
     REDIS
@@ -231,7 +231,7 @@ impl Context {
 
     pub async fn update_taint_id(&self, id: Uuid) -> Result<()> {
         let model = taint::Entity::find_by_id(id)
-            .one(DB.deref())
+            .one(*DB)
             .await?
             .ok_or_else(|| {
                 BotError::Generic("The missing media id specified does not exist".to_owned())
@@ -251,7 +251,7 @@ impl Context {
             REDIS
                 .pipe(|q| {
                     q.set(&key, c)
-                        .expire(&key, Duration::minutes(45).num_seconds() as usize)
+                        .expire(&key, Duration::try_minutes(45).unwrap().num_seconds())
                 })
                 .await?;
             self.reply(lang_fmt!(self, "taintforward", ctx.media_type))
@@ -309,7 +309,7 @@ impl Context {
                     REDIS
                         .pipe(|q| {
                             q.set(&key, ctx)
-                                .expire(&key, Duration::minutes(45).num_seconds() as usize)
+                                .expire(&key, Duration::try_minutes(45).unwrap().num_seconds())
                         })
                         .await?;
                 }

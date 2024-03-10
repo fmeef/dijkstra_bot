@@ -1,4 +1,4 @@
-use std::ops::{Deref, DerefMut};
+use std::ops::DerefMut;
 
 use crate::persist::admin::captchastate::CaptchaType;
 use crate::persist::core::media::SendMediaReply;
@@ -56,7 +56,7 @@ pub async fn update_auth_cache(chat: i64) -> Result<()> {
     if !REDIS.sq(|q| q.exists(&key)).await? {
         let rows = authorized::Entity::find()
             .filter(authorized::Column::Chat.eq(chat))
-            .all(DB.deref())
+            .all(*DB)
             .await?;
 
         REDIS
@@ -107,12 +107,10 @@ pub async fn get_captcha_config(
     let chat = message.get_chat().get_id();
     let res = default_cache_query(
         |_, _| async move {
-            let res = captchastate::Entity::find_by_id(chat)
-                .one(DB.deref())
-                .await?;
+            let res = captchastate::Entity::find_by_id(chat).one(*DB).await?;
             Ok(res)
         },
-        Duration::seconds(CONFIG.timing.cache_timeout as i64),
+        Duration::try_seconds(CONFIG.timing.cache_timeout).unwrap(),
     )
     .query(&key, &())
     .await?;
@@ -244,7 +242,7 @@ async fn incorrect_tries(callback: &CallbackQuery, incorrect_chat: i64) -> Resul
                 "#,
             )
             .key(&key)
-            .arg(Duration::minutes(5).num_seconds())
+            .arg(Duration::try_minutes(5).unwrap().num_seconds())
             .invoke_async(q.deref_mut())
             .await?;
             Ok(count)
@@ -455,7 +453,7 @@ async fn button_captcha<'a>(
             message
                 .speak(lang_fmt!(bctx, "userunmuted"))
                 .await?
-                .delete_after_time(Duration::minutes(5));
+                .delete_after_time(Duration::try_minutes(5).unwrap());
         }
 
         Ok(())
@@ -483,7 +481,7 @@ async fn button_captcha<'a>(
             .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(button.build()))
             .build()
             .await?;
-        m.delete_after_time(Duration::minutes(5));
+        m.delete_after_time(Duration::try_minutes(5).unwrap());
     }
 
     Ok(())
@@ -522,7 +520,7 @@ async fn send_captcha_chooser(
             .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(button.build()))
             .build()
             .await?;
-        nm.delete_after_time(Duration::minutes(5));
+        nm.delete_after_time(Duration::try_minutes(5).unwrap());
     }
 
     Ok(())
@@ -558,14 +556,16 @@ impl Context {
                 REDIS
                     .pipe(|q| {
                         q.set(&key, true)
-                            .expire(&key, Duration::minutes(10).num_seconds() as usize)
+                            .expire(&key, Duration::try_minutes(10).unwrap().num_seconds())
                     })
                     .await?;
                 if let Some(kicktime) = config.kick_time {
                     let chatid = chat.get_id();
                     let userid = user.get_id();
                     tokio::spawn(async move {
-                        sleep(Duration::seconds(kicktime).to_std()?).await;
+                        let kicktime = Duration::try_seconds(kicktime)
+                            .unwrap_or_else(|| Duration::try_minutes(5).unwrap());
+                        sleep(kicktime.to_std()?).await;
 
                         if !user_is_authorized(chatid, userid).await? {
                             kick(userid, chatid).await?;
@@ -673,7 +673,7 @@ impl Context {
                     .update_column(captchastate::Column::Chat)
                     .to_owned(),
             )
-            .exec_with_returning(DB.deref())
+            .exec_with_returning(*DB)
             .await?;
         let key = captcha_state_key(message.get_chat());
         model.cache(key).await?;
@@ -687,7 +687,7 @@ impl Context {
         self.check_permissions(|p| p.can_change_info).await?;
         let key = captcha_state_key(message.get_chat());
         captchastate::Entity::delete_by_id(message.get_chat().get_id())
-            .exec(DB.deref())
+            .exec(*DB)
             .await?;
 
         REDIS.sq(|q| q.del(&key)).await?;
@@ -709,7 +709,7 @@ impl Context {
         };
 
         let key = captcha_state_key(message.get_chat());
-        if let Ok(model) = captchastate::Entity::update(model).exec(DB.deref()).await {
+        if let Ok(model) = captchastate::Entity::update(model).exec(*DB).await {
             model.cache(key).await?;
         }
         Ok(())
@@ -727,7 +727,7 @@ impl Context {
         };
 
         let key = captcha_state_key(message.get_chat());
-        if let Ok(model) = captchastate::Entity::update(model).exec(DB.deref()).await {
+        if let Ok(model) = captchastate::Entity::update(model).exec(*DB).await {
             log::info!("set captcha mode {:?}", model.captcha_type);
             let name = model.captcha_type.get_name();
             model.cache(key).await?;
@@ -809,7 +809,7 @@ impl Context {
             self.unmute(user, unmute_chat).await?;
             authorized::Entity::insert(model.into_active_model())
                 .on_conflict(OnConflict::new().do_nothing().to_owned())
-                .exec(DB.deref())
+                .exec(*DB)
                 .await?;
         }
 

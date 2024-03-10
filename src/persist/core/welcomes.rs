@@ -1,7 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    ops::Deref,
-};
+use std::collections::{HashMap, HashSet};
 
 use crate::{persist::core::media::*, statics::DB};
 use sea_orm::{entity::prelude::*, FromQueryResult, QueryOrder, QuerySelect};
@@ -426,7 +423,7 @@ where
         .order_by_asc(button::Column::PosX)
         .order_by_asc(button::Column::PosY)
         .into_model::<WelcomesWithEntities>()
-        .all(DB.deref())
+        .all(*DB)
         .await?;
 
     let res = res.into_iter().map(|v| v.get()).fold(

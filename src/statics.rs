@@ -5,13 +5,15 @@
 //! or Arc::clone() calls
 
 use crate::logger::LevelFilterWrapper;
-use crate::persist::redis::{RedisPool, RedisPoolBuilder};
+#[cfg(test)]
+use crate::persist::redis::MockPool;
+use crate::persist::redis::RedisPool;
 use crate::tg::client::TgClient;
-
+#[cfg(not(test))]
+use bb8_redis::RedisConnectionManager;
 use botapi::gen_types::User;
 use chrono::Duration;
 use clap::Parser;
-use futures::executor::block_on;
 use governor::clock::QuantaClock;
 use governor::middleware::NoOpMiddleware;
 use governor::state::{InMemoryState, NotKeyed};
@@ -20,7 +22,7 @@ use lazy_static::lazy_static;
 use log::LevelFilter;
 use once_cell::sync::OnceCell;
 use sea_orm::entity::prelude::DatabaseConnection;
-use sea_orm::{ConnectOptions, Database};
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::net::SocketAddr;
@@ -97,16 +99,16 @@ pub struct Modules {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Timing {
     /// default redis key expiry
-    pub cache_timeout: usize,
+    pub cache_timeout: i64,
 
     /// number of messages to trigger antiflood
     pub antifloodwait_count: usize,
 
     /// time before antiflood counter resets
-    pub antifloodwait_time: usize,
+    pub antifloodwait_time: i64,
 
     /// how long to ignore chat when triggering antiflood
-    pub ignore_chat_time: usize,
+    pub ignore_chat_time: i64,
 }
 
 pub fn module_enabled(module: &str) -> bool {
@@ -144,10 +146,10 @@ impl Default for Admin {
 impl Default for Timing {
     fn default() -> Self {
         Self {
-            cache_timeout: Duration::hours(48).num_seconds() as usize,
+            cache_timeout: Duration::try_hours(48).unwrap().num_seconds(),
             antifloodwait_count: 80,
             antifloodwait_time: 150,
-            ignore_chat_time: Duration::minutes(10).num_seconds() as usize,
+            ignore_chat_time: Duration::try_minutes(10).unwrap().num_seconds(),
         }
     }
 }
@@ -233,22 +235,38 @@ lazy_static! {
 }
 
 //redis client
+#[cfg(not(test))]
 lazy_static! {
-    pub static ref REDIS: RedisPool =
-        block_on(RedisPoolBuilder::new(&CONFIG.persistence.redis_connection).build())
-            .expect("failed to initialize redis pool");
+    pub static ref REDIS_BACKEND: OnceCell<RedisPool<RedisConnectionManager, redis::aio::Connection>> =
+        OnceCell::new();
+}
+
+#[cfg(not(test))]
+lazy_static! {
+    pub static ref REDIS: &'static RedisPool<RedisConnectionManager, redis::aio::Connection> =
+        REDIS_BACKEND.get().unwrap();
+}
+
+//redis client
+#[cfg(test)]
+lazy_static! {
+    pub static ref REDIS_BACKEND: OnceCell<RedisPool<MockPool, redis_test::MockRedisConnection>> =
+        OnceCell::new();
+}
+
+#[cfg(test)]
+lazy_static! {
+    pub static ref REDIS: &'static RedisPool<MockPool, redis_test::MockRedisConnection> =
+        REDIS_BACKEND.get().unwrap();
+}
+
+lazy_static! {
+    pub(crate) static ref DB_BACKEND: OnceCell<DatabaseConnection> = OnceCell::new();
 }
 
 //db client
 lazy_static! {
-    pub static ref DB: DatabaseConnection = EXEC.block_on(async move {
-        let db = Database::connect(ConnectOptions::new(
-            CONFIG.persistence.database_connection.to_owned(),
-        ))
-        .await
-        .expect("failed to initialize database");
-        db
-    });
+    pub static ref DB: &'static DatabaseConnection = DB_BACKEND.get().unwrap();
 }
 
 lazy_static! {

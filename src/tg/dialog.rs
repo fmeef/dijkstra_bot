@@ -21,7 +21,6 @@ use chrono::{DateTime, Duration, Utc};
 use futures::future::BoxFuture;
 
 use futures::FutureExt;
-use lazy_static::__Deref;
 
 use sea_orm::sea_query::OnConflict;
 use sea_orm::ActiveValue::{NotSet, Set};
@@ -73,10 +72,10 @@ pub async fn get_dialog(chat: &Chat) -> Result<Option<dialogs::Model>> {
     let key = get_dialog_key(chat.get_id());
     let res = default_cache_query(
         |_, _| async move {
-            let res = dialogs::Entity::find_by_id(chat_id).one(DB.deref()).await?;
+            let res = dialogs::Entity::find_by_id(chat_id).one(*DB).await?;
             Ok(res)
         },
-        Duration::seconds(CONFIG.timing.cache_timeout as i64),
+        Duration::try_seconds(CONFIG.timing.cache_timeout).unwrap(),
     )
     .query(&key, &())
     .await?;
@@ -147,12 +146,12 @@ pub async fn dialog_or_default(chat: &Chat) -> Result<dialogs::Model> {
                     ])
                     .to_owned(),
             )
-            .exec_with_returning(DB.deref())
+            .exec_with_returning(*DB)
             .await?;
         REDIS
             .try_pipe(|q| {
                 Ok(q.set(&key, d.to_redis()?)
-                    .expire(&key, CONFIG.timing.cache_timeout as usize))
+                    .expire(&key, CONFIG.timing.cache_timeout))
             })
             .await?;
         d
@@ -194,7 +193,7 @@ pub async fn update_chat(
     if !REDIS.sq(|q| q.exists(&key)).await? {
         let members = chat_members::Entity::find()
             .filter(chat_members::Column::UserId.eq(user))
-            .all(DB.deref())
+            .all(*DB)
             .await?;
 
         if members.len() > 0 {
@@ -306,7 +305,7 @@ pub async fn record_chat_member(user: i64, chat: i64) -> Result<()> {
                 .update_columns([chat_members::Column::ChatId, chat_members::Column::UserId])
                 .to_owned(),
         )
-        .exec(DB.deref())
+        .exec(*DB)
         .await?;
     }
     Ok(())
@@ -334,7 +333,7 @@ pub async fn record_chat_member_banned(user: i64, chat: i64, banned: bool) -> Re
                 ])
                 .to_owned(),
         )
-        .exec(DB.deref())
+        .exec(*DB)
         .await?;
     }
     Ok(())
@@ -350,7 +349,7 @@ pub async fn reset_banned_chats(user: i64) -> Result<()> {
             chat_id: NotSet,
             banned_by_me: Set(false),
         })
-        .exec(DB.deref())
+        .exec(*DB)
         .await?;
     Ok(())
 }

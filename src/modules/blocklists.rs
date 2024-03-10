@@ -39,7 +39,7 @@ use entities::{blocklists, triggers};
 use futures::FutureExt;
 use humantime::format_duration;
 use itertools::Itertools;
-use lazy_static::__Deref;
+
 use lazy_static::lazy_static;
 use macros::entity_fmt;
 use macros::update_handler;
@@ -106,7 +106,7 @@ pub mod entities {
                         .col(
                             ColumnDef::new(blocklists::Column::Duration)
                                 .big_integer()
-                                .default(Duration::minutes(3).num_seconds()),
+                                .default(Duration::try_minutes(3).unwrap().num_seconds()),
                         )
                         .col(ColumnDef::new(blocklists::Column::Reason).text())
                         .index(
@@ -287,7 +287,7 @@ impl ModuleHelpers for Helper {
         let res = blocklists::Entity::find()
             .filter(blocklists::Column::Chat.eq(chat))
             .find_with_related(triggers::Entity)
-            .all(DB.deref())
+            .all(*DB)
             .await?;
 
         let items: Vec<BlocklistFilter> = res
@@ -455,7 +455,7 @@ async fn delete_trigger(message: &Message, trigger: &str) -> Result<()> {
                     .eq(id)
                     .and(triggers::Column::Trigger.eq(trigger.as_str())),
             )
-            .exec(DB.deref())
+            .exec(*DB)
             .await?;
     } else {
         let filters = triggers::Entity::find()
@@ -465,7 +465,7 @@ async fn delete_trigger(message: &Message, trigger: &str) -> Result<()> {
                     .eq(message.get_chat().get_id())
                     .and(triggers::Column::Trigger.eq(trigger.as_str())),
             )
-            .all(DB.deref())
+            .all(*DB)
             .await?;
 
         for (f, _) in filters {
@@ -475,7 +475,7 @@ async fn delete_trigger(message: &Message, trigger: &str) -> Result<()> {
                         .eq(f.trigger)
                         .and(triggers::Column::BlocklistId.eq(f.blocklist_id)),
                 )
-                .exec(DB.deref())
+                .exec(*DB)
                 .await?;
         }
     }
@@ -488,11 +488,11 @@ async fn get_blocklist(message: &Message, id: i64) -> Result<Option<blocklists::
         |_, _| async move {
             let res = blocklists::Entity::find()
                 .filter(blocklists::Column::Id.eq(id))
-                .one(DB.deref())
+                .one(*DB)
                 .await?;
             Ok(res)
         },
-        Duration::seconds(CONFIG.timing.cache_timeout as i64),
+        Duration::try_seconds(CONFIG.timing.cache_timeout).unwrap(),
     )
     .query(&get_blocklist_key(message, id), &())
     .await
@@ -530,7 +530,7 @@ async fn update_cache_from_db(message: &Message) -> Result<()> {
         let res = blocklists::Entity::find()
             .filter(blocklists::Column::Chat.eq(message.get_chat().get_id()))
             .find_with_related(triggers::Entity)
-            .all(DB.deref())
+            .all(*DB)
             .await?;
         REDIS
             .try_pipe(|p| {
@@ -577,7 +577,7 @@ async fn insert_blocklist(
             .update_column(blocklists::Column::Duration)
             .to_owned(),
         )
-        .exec_with_returning(DB.deref())
+        .exec_with_returning(*DB)
         .await?;
     let triggers = triggers
         .iter()
@@ -600,7 +600,7 @@ async fn insert_blocklist(
             .update_columns([triggers::Column::Trigger, triggers::Column::BlocklistId])
             .to_owned(),
     )
-    .exec(DB.deref())
+    .exec(*DB)
     .await?;
     let hash_key = get_blocklist_hash_key(message.get_chat().get_id());
     let id = model.id.clone();
@@ -702,7 +702,7 @@ async fn delete(message: &Message) -> Result<()> {
 async fn warn(ctx: &Context, user: &User, reason: Option<String>) -> Result<()> {
     let dialog = dialog_or_default(ctx.message()?.get_chat()).await?;
 
-    let time = dialog.warn_time.map(|t| Duration::seconds(t));
+    let time = dialog.warn_time.map(|t| Duration::try_seconds(t)).flatten();
     ctx.warn_with_action(
         user.get_id(),
         reason.clone().as_ref().map(|v| v.as_str()),
@@ -728,7 +728,7 @@ async fn handle_trigger(ctx: &Context) -> Result<()> {
 
             if let Some(text) = message.get_text() {
                 if let Some(res) = search_cache(message, &text).await? {
-                    let duration = res.duration.map(|v| Duration::seconds(v));
+                    let duration = res.duration.map(|v| Duration::try_seconds(v)).flatten();
                     let duration_str = if let Some(duration) = duration {
                         format!(" for {}", format_duration(duration.to_std()?))
                     } else {
@@ -797,7 +797,7 @@ async fn list_triggers(message: &Message) -> Result<()> {
 async fn delete_all(chat: i64) -> Result<()> {
     blocklists::Entity::delete_many()
         .filter(blocklists::Column::Chat.eq(chat))
-        .exec(DB.deref())
+        .exec(*DB)
         .await?;
 
     let key = get_blocklist_hash_key(chat);

@@ -3,14 +3,17 @@
 //! currently using nonblock_logger, we need to implement Serialize and Deserialize for log
 //! types to allow configuring logs via the configuration file
 
-use nonblock_logger::{
-    log::LevelFilter, BaseConsumer, BaseFilter, BaseFormater, JoinHandle, NonblockLogger,
-};
+use nonblock_logger::log::LevelFilter;
 
 use serde::{Deserialize, Serialize};
 
+#[cfg(not(test))]
+use nonblock_logger::{BaseConsumer, BaseFilter, BaseFormater, JoinHandle, NonblockLogger};
+
+#[cfg(not(test))]
 use std::io;
 
+#[cfg(not(test))]
 use crate::statics::CONFIG;
 
 #[derive(Debug)]
@@ -55,6 +58,7 @@ impl<'de> Deserialize<'de> for LevelFilterWrapper {
 }
 
 /// Setup logging and start logger thread
+#[cfg(not(test))]
 pub(crate) fn setup_log() -> JoinHandle {
     let formater = BaseFormater::new().local(true).color(true).level(4);
 

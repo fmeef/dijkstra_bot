@@ -1,12 +1,10 @@
-use std::collections::HashMap;
-use std::ops::Deref;
-
 use botapi::gen_types::{EReplyMarkup, FileData};
 use convert_case::{Case, Casing};
 use itertools::Itertools;
 use macros::{lang_fmt, update_handler};
 use reqwest::multipart::Part;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::metadata::metadata;
@@ -46,13 +44,13 @@ async fn get_taint<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
                     .and(taint::Column::Scope.like(filter)),
             )
             .order_by_asc(taint::Column::Scope)
-            .all(DB.deref())
+            .all(*DB)
             .await?
     } else {
         taint::Entity::find()
             .filter(taint::Column::Chat.eq(message.get_chat().get_id()))
             .order_by_asc(taint::Column::Scope)
-            .all(DB.deref())
+            .all(*DB)
             .await?
     };
 
@@ -91,7 +89,7 @@ async fn get_taint_menu(ctx: &Context) -> Result<()> {
         .filter(taint::Column::Chat.eq(message.get_chat().get_id()))
         // .group_by(taint::Column::Scope)
         .order_by_asc(taint::Column::Scope)
-        .all(DB.deref())
+        .all(*DB)
         .await?;
 
     let m: HashMap<&str, Vec<&taint::Model>> =
@@ -180,7 +178,7 @@ pub async fn handle_update(ctx: &Context) -> Result<()> {
                         all_import(message.get_chat().get_id(), &text).await?;
                         let taint = taint::Entity::find()
                             .filter(taint::Column::Chat.eq(message.get_chat().get_id()))
-                            .count(DB.deref())
+                            .count(*DB)
                             .await?;
 
                         if taint == 0 {

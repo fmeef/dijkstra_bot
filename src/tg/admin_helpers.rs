@@ -29,7 +29,7 @@ use bytes::Bytes;
 use chrono::{DateTime, Duration, Utc};
 use futures::Future;
 
-use lazy_static::{__Deref, lazy_static};
+use lazy_static::lazy_static;
 use macros::{entity_fmt, lang_fmt};
 use redis::AsyncCommands;
 use reqwest::Response;
@@ -245,14 +245,15 @@ pub fn parse_duration_str(arg: &str, chat: i64) -> Result<Option<Duration>> {
         Ok(res) => res,
     };
     let res = match tail {
-        "m" => Duration::minutes(head),
-        "h" => Duration::hours(head),
-        "d" => Duration::days(head),
+        "m" => Duration::try_minutes(head),
+        "h" => Duration::try_hours(head),
+        "d" => Duration::try_days(head),
         _ => return Err(BotError::speak("Invalid time spec", chat)),
-    };
+    }
+    .ok_or_else(|| BotError::speak("time out of range", chat))?;
 
     let res = if res.num_seconds() < 30 {
-        Duration::seconds(30)
+        Duration::try_seconds(30).unwrap()
     } else {
         res
     };
@@ -289,7 +290,7 @@ pub async fn set_warn_time(chat: &Chat, time: Option<i64>) -> Result<()> {
                 .update_column(dialogs::Column::WarnTime)
                 .to_owned(),
         )
-        .exec_with_returning(DB.deref())
+        .exec_with_returning(*DB)
         .await?;
 
     model.cache(key).await?;
@@ -326,7 +327,7 @@ pub async fn set_warn_limit(chat: &Chat, limit: i32) -> Result<()> {
                 .update_column(dialogs::Column::WarnLimit)
                 .to_owned(),
         )
-        .exec_with_returning(DB.deref())
+        .exec_with_returning(*DB)
         .await?;
 
     model.cache(key).await?;
@@ -370,7 +371,7 @@ pub async fn set_warn_mode(chat: &Chat, mode: &str) -> Result<()> {
                 .update_column(dialogs::Column::ActionType)
                 .to_owned(),
         )
-        .exec_with_returning(DB.deref())
+        .exec_with_returning(*DB)
         .await?;
 
     model.cache(key).await?;
@@ -385,12 +386,10 @@ pub async fn get_action(chat: &Chat, user: &User) -> Result<Option<actions::Mode
     let key = get_action_key(user, chat);
     let res = default_cache_query(
         move |_, _| async move {
-            let res = actions::Entity::find_by_id((user, chat))
-                .one(DB.deref())
-                .await?;
+            let res = actions::Entity::find_by_id((user, chat)).one(*DB).await?;
             Ok(res)
         },
-        Duration::hours(1),
+        Duration::try_hours(1).unwrap(),
     )
     .query(&key, &())
     .await?;
@@ -415,7 +414,7 @@ pub async fn get_warns(chat: &Chat, user_id: i64) -> Result<Vec<warns::Model>> {
                         .eq(user_id)
                         .and(warns::Column::ChatId.eq(chat_id)),
                 )
-                .all(DB.deref())
+                .all(*DB)
                 .await?;
             Ok(count)
         },
@@ -437,7 +436,7 @@ pub async fn get_warns(chat: &Chat, user_id: i64) -> Result<Vec<warns::Model>> {
                         let ins = RedisStr::new(&v)?;
                         q.sadd(key, ins);
                     }
-                    Ok(q.expire(key, CONFIG.timing.cache_timeout as usize))
+                    Ok(q.expire(key, CONFIG.timing.cache_timeout))
                 })
                 .await?;
             Ok(warns)
@@ -452,7 +451,7 @@ pub async fn get_warns(chat: &Chat, user_id: i64) -> Result<Vec<warns::Model>> {
                 log::info!("warn expired!");
                 let args = RedisStr::new(&warn)?;
                 REDIS.sq(|q| q.srem(&key, &args)).await?;
-                warn.delete(DB.deref()).await?;
+                warn.delete(*DB).await?;
             } else {
                 res.push(warn);
             }
@@ -479,7 +478,7 @@ pub async fn get_warns_count(message: &Message, user: i64) -> Result<i32> {
                             .eq(user)
                             .and(warns::Column::ChatId.eq(chat_id)),
                     )
-                    .count(DB.deref())
+                    .count(*DB)
                     .await?;
                 Ok(count)
             },
@@ -506,7 +505,7 @@ pub async fn clear_warns(chat: &Chat, user: i64) -> Result<()> {
                 .eq(chat.get_id())
                 .and(warns::Column::UserId.eq(user)),
         )
-        .exec(DB.deref())
+        .exec(*DB)
         .await?;
     Ok(())
 }
@@ -533,7 +532,7 @@ pub async fn insert_user(user: &User) -> Result<users::Model> {
             ])
             .to_owned(),
     )
-    .exec_with_returning(DB.deref())
+    .exec_with_returning(*DB)
     .await?;
 
     Ok(testmodel)
@@ -556,7 +555,7 @@ pub async fn approve(chat: &Chat, user: &User) -> Result<()> {
             .update_columns([approvals::Column::Chat, approvals::Column::User])
             .to_owned(),
     )
-    .exec(DB.deref())
+    .exec(*DB)
     .await?;
 
     Ok(())
@@ -568,7 +567,7 @@ pub async fn unapprove(chat: &Chat, user: i64) -> Result<()> {
         chat: Set(chat.get_id()),
         user: Set(user),
     })
-    .exec(DB.deref())
+    .exec(*DB)
     .await?;
 
     let key = get_approval_key(chat, user);
@@ -587,13 +586,13 @@ pub async fn is_approved(chat: &Chat, user: &User) -> Result<bool> {
         |_, _| async move {
             let res = approvals::Entity::find_by_id((chat_id, user_id))
                 .find_with_related(users::Entity)
-                .all(DB.deref())
+                .all(*DB)
                 .await?
                 .pop();
 
             Ok(res.map(|(res, _)| res))
         },
-        Duration::seconds(CONFIG.timing.cache_timeout as i64),
+        Duration::try_seconds(CONFIG.timing.cache_timeout).unwrap(),
     )
     .query(&key, &())
     .await?
@@ -609,7 +608,7 @@ pub async fn get_approvals(chat: &Chat) -> Result<Vec<(i64, String)>> {
     let res = approvals::Entity::find()
         .filter(approvals::Column::Chat.eq(chat_id))
         .find_with_related(users::Entity)
-        .all(DB.deref())
+        .all(*DB)
         .await?;
 
     Ok(res
@@ -779,14 +778,15 @@ impl Context {
                     Ok(res) => res,
                 };
                 let res = match tail {
-                    "m" => Duration::minutes(head),
-                    "h" => Duration::hours(head),
-                    "d" => Duration::days(head),
+                    "m" => Duration::try_minutes(head),
+                    "h" => Duration::try_hours(head),
+                    "d" => Duration::try_days(head),
                     _ => return self.fail("Invalid time spec"),
-                };
+                }
+                .ok_or_else(|| self.fail_err(lang_fmt!(self, "dateoutofrange", head)))?;
 
                 let res = if res.num_seconds() < 30 {
-                    Duration::seconds(30)
+                    Duration::try_seconds(30).unwrap()
                 } else {
                     res
                 };
@@ -876,7 +876,7 @@ impl Context {
                     }
 
                     self.unmute(user.get_id(), chat).await?;
-                    action.delete(DB.deref()).await?;
+                    action.delete(*DB).await?;
                     return Ok(());
                 }
             }
@@ -1210,7 +1210,8 @@ impl Context {
         let message = self.message()?;
         let dialog = dialog_or_default(message.get_chat()).await?;
         let lang = get_chat_lang(message.get_chat().get_id()).await?;
-        let time = dialog.warn_time.map(|t| Duration::seconds(t));
+        let time: Option<chrono::TimeDelta> =
+            dialog.warn_time.map(|t| Duration::try_seconds(t)).flatten();
         let (count, model) = warn_user(
             message,
             user,
@@ -1267,9 +1268,9 @@ impl Context {
                     let chat = message.get_chat();
                     if cb.get_from().is_admin(chat).await? {
                         let key = get_warns_key(user, chat.get_id());
-                        if let Some(res) = warns::Entity::find_by_id(model).one(DB.deref()).await? {
+                        if let Some(res) = warns::Entity::find_by_id(model).one(*DB).await? {
                             let st = RedisStr::new(&res)?;
-                            res.delete(DB.deref()).await?;
+                            res.delete(*DB).await?;
                             REDIS.sq(|q| q.srem(&key, st)).await?;
                         }
                         TG.client
@@ -1355,28 +1356,30 @@ impl Context {
 
         if user == me.get_id() {
             return self.fail(lang_fmt!(lang, "banmyself"));
-        } else if user.is_admin(message.get_chat()).await? {
+        }
+        if user.is_admin(message.get_chat()).await? {
             let banadmin = lang_fmt!(lang, "banadmin");
             return self.fail(banadmin);
-        } else {
-            if let Some(duration) = duration.map(|v| Utc::now().checked_add_signed(v)).flatten() {
-                TG.client()
-                    .build_ban_chat_member(message.get_chat().get_id(), user)
-                    .until_date(duration.timestamp())
-                    .build()
-                    .await?;
-            } else {
-                TG.client()
-                    .build_ban_chat_member(message.get_chat().get_id(), user)
-                    .build()
-                    .await?;
-            }
+        }
 
-            let mention = user.mention().await?;
-            message
-                .speak_fmt(entity_fmt!(self, "banned", mention))
+        if let Some(duration) = duration.map(|v| Utc::now().checked_add_signed(v)).flatten() {
+            TG.client()
+                .build_ban_chat_member(message.get_chat().get_id(), user)
+                .until_date(duration.timestamp())
+                .build()
+                .await?;
+        } else {
+            TG.client()
+                .build_ban_chat_member(message.get_chat().get_id(), user)
+                .build()
                 .await?;
         }
+
+        let mention = user.mention().await?;
+        message
+            .speak_fmt(entity_fmt!(self, "banned", mention))
+            .await?;
+
         Ok(())
     }
 }
@@ -1405,7 +1408,7 @@ pub async fn warn_user(
         return Ok((count as i32, None));
     }
     let model = warns::Entity::insert(model)
-        .exec_with_returning(DB.deref())
+        .exec_with_returning(*DB)
         .await?;
     let m = RedisStr::new(&model)?;
     let key = get_warns_key(user, chat_id);
@@ -1459,7 +1462,7 @@ pub async fn update_actions_ban(
                 ])
                 .to_owned(),
         )
-        .exec_with_returning(DB.deref())
+        .exec_with_returning(*DB)
         .await?;
 
     res.cache(key).await?;
@@ -1564,7 +1567,7 @@ pub async fn update_actions_pending(chat: &Chat, user: &User, pending: bool) -> 
                 .update_columns([actions::Column::Pending])
                 .to_owned(),
         )
-        .exec_with_returning(DB.deref())
+        .exec_with_returning(*DB)
         .await?;
 
     res.cache(key).await?;
@@ -1649,7 +1652,7 @@ pub async fn update_actions_permissions(
                 ])
                 .to_owned(),
         )
-        .exec_with_returning(DB.deref())
+        .exec_with_returning(*DB)
         .await?;
 
     res.cache(key).await?;
@@ -1679,7 +1682,7 @@ pub async fn update_actions(actions: actions::Model) -> Result<()> {
                 ])
                 .to_owned(),
         )
-        .exec(DB.deref())
+        .exec(*DB)
         .await?;
     Ok(())
 }

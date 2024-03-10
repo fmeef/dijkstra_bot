@@ -21,7 +21,6 @@ use crate::util::string::Speak;
 use ::sea_orm_migration::prelude::*;
 use botapi::gen_types::{Message, MessageEntity};
 use futures::FutureExt;
-use lazy_static::__Deref;
 use macros::{lang_fmt, update_handler};
 use redis::AsyncCommands;
 use sea_orm::ActiveValue::{NotSet, Set};
@@ -105,7 +104,7 @@ impl ModuleHelpers for Helper {
         for note in notes.notes {
             let (text, entities, buttons) =
                 RoseMdParser::new(&note.text.replace("\\n", "\n"), true).parse();
-            let entity_id = entity::insert(DB.deref(), &entities, buttons).await?;
+            let entity_id = entity::insert(*DB, &entities, buttons).await?;
 
             let model = notes::Model {
                 name: note.name,
@@ -127,7 +126,7 @@ impl ModuleHelpers for Helper {
         let taint = res.iter().filter_map(|v| v.get_taint(Some(v.name.clone())));
         set_taint_vec(taint.collect()).await?;
         let res = res.into_iter().map(|v| v.into_active_model());
-        notes::Entity::insert_many(res).exec(DB.deref()).await?;
+        notes::Entity::insert_many(res).exec(*DB).await?;
 
         refresh_notes(chat).await?;
         Ok(())
@@ -160,7 +159,7 @@ async fn get_model<'a>(message: &'a Message, args: &'a TextArgs<'a>) -> Result<n
                     .header(false)
                     .set_text(text.to_owned());
                 let (text, entities, buttons) = md.build_murkdown().await?;
-                let entity_id = entity::insert(DB.deref(), &entities, buttons).await?;
+                let entity_id = entity::insert(*DB, &entities, buttons).await?;
                 (Some(text), entity_id)
             } else {
                 (None, None)
@@ -194,7 +193,7 @@ async fn get_model<'a>(message: &'a Message, args: &'a TextArgs<'a>) -> Result<n
                     .header(false)
                     .set_text(text.to_owned());
                 let (text, entities, buttons) = md.build_murkdown().await?;
-                let entity_id = entity::insert(DB.deref(), &entities, buttons).await?;
+                let entity_id = entity::insert(*DB, &entities, buttons).await?;
                 (Some(text), entity_id)
             } else {
                 (None, None)
@@ -342,9 +341,7 @@ async fn get<'a>(ctx: &Context) -> Result<()> {
 async fn delete_by_id(name: String, chat: i64) -> Result<()> {
     let hash_key = get_hash_key(chat);
     REDIS.sq(|q| q.hdel(&hash_key, &name)).await?;
-    notes::Entity::delete_by_id((name, chat))
-        .exec(DB.deref())
-        .await?;
+    notes::Entity::delete_by_id((name, chat)).exec(*DB).await?;
     Ok(())
 }
 
@@ -395,7 +392,7 @@ async fn save<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
                 ])
                 .to_owned(),
         )
-        .exec(DB.deref())
+        .exec(*DB)
         .await?;
 
     message
@@ -427,7 +424,7 @@ pub async fn handle_update<'a>(cmd: &Context) -> Result<()> {
                         protect: NotSet,
                         entity_id: NotSet,
                     })
-                    .exec_with_returning(DB.deref())
+                    .exec_with_returning(*DB)
                     .await?;
 
                 let key = get_hash_key(taint.chat);

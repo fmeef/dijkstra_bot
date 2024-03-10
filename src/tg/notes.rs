@@ -3,13 +3,13 @@
 //!
 //! this module has helper functions for storing, retrieving, and printing notes
 
-use std::{collections::BTreeMap, ops::Deref};
+use std::collections::BTreeMap;
 
 use botapi::gen_types::{CallbackQuery, MaybeInaccessibleMessage, MessageEntity};
 use futures::{future::BoxFuture, FutureExt};
 use itertools::Itertools;
 use redis::AsyncCommands;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QuerySelect};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QuerySelect, TransactionTrait};
 
 use crate::{
     persist::{
@@ -93,23 +93,30 @@ pub async fn refresh_notes(
 
 pub async fn clear_notes(chat: i64) -> Result<()> {
     let key = get_hash_key(chat);
-    let ids: Vec<Option<i64>> = notes::Entity::find()
-        .select_only()
-        .filter(notes::Column::Chat.eq(chat))
-        .columns([notes::Column::EntityId])
-        .into_tuple()
-        .all(DB.deref())
-        .await?;
-    notes::Entity::delete_many()
-        .filter(notes::Column::Chat.eq(chat))
-        .exec(DB.deref())
-        .await?;
+    DB.transaction::<_, (), BotError>(|tx| {
+        async move {
+            let ids: Vec<Option<i64>> = notes::Entity::find()
+                .select_only()
+                .filter(notes::Column::Chat.eq(chat))
+                .columns([notes::Column::EntityId])
+                .into_tuple()
+                .all(tx)
+                .await?;
+            notes::Entity::delete_many()
+                .filter(notes::Column::Chat.eq(chat))
+                .exec(tx)
+                .await?;
 
-    entity::Entity::delete_many()
-        .filter(entity::Column::Id.is_in(ids))
-        .exec(DB.deref())
-        .await?;
-    REDIS.sq(|q| q.del(key)).await?;
+            entity::Entity::delete_many()
+                .filter(entity::Column::Id.is_in(ids))
+                .exec(tx)
+                .await?;
+            REDIS.sq(|q| q.del(key)).await?;
+            Ok(())
+        }
+        .boxed()
+    })
+    .await?;
     Ok(())
 }
 

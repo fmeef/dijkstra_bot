@@ -24,7 +24,6 @@ use crate::util::error::Result;
 use botapi::gen_types::{
     InlineQuery, InlineQueryResult, InlineQueryResultCachedSticker, Message, UpdateExt,
 };
-use lazy_static::__Deref;
 use log::info;
 use r::{scope_key_by_chatuser, RedisStr};
 // redis keys
@@ -296,7 +295,7 @@ async fn handle_inline(query: &InlineQuery) -> Result<()> {
         .filter(entities::stickers::Column::OwnerId.eq(id))
         .filter(entities::tags::Column::Tag.like(&key))
         .limit(10)
-        .all(DB.deref())
+        .all(*DB)
         .await?;
     let stickers = stickers
         .into_iter()
@@ -370,7 +369,7 @@ async fn delete_sticker<'a>(message: &'a Message, args: &Vec<TextArg<'a>>) -> Re
         let uuid = Uuid::from_str(uuid)?;
         entities::stickers::Entity::delete_many()
             .filter(entities::stickers::Column::Uuid.eq(uuid))
-            .exec(DB.deref())
+            .exec(*DB)
             .await?;
 
         message.reply("Successfully deleted sticker").await?;
@@ -385,7 +384,7 @@ async fn list_stickers(message: &Message) -> Result<()> {
     if let Some(sender) = message.get_from() {
         let stickers = entities::stickers::Entity::find()
             .filter(entities::stickers::Column::OwnerId.eq(sender.get_id()))
-            .all(DB.deref())
+            .all(*DB)
             .await?;
         let stickers = stickers
             .into_iter()
@@ -468,12 +467,10 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
                 chosen_name: Set(Some(stickername)),
             };
 
-            sticker.insert(DB.deref()).await?;
+            sticker.insert(*DB).await?;
 
             info!("inserting tags {}", tags.len());
-            entities::tags::Entity::insert_many(tags)
-                .exec(DB.deref())
-                .await?;
+            entities::tags::Entity::insert_many(tags).exec(*DB).await?;
 
             message.reply(text).await?;
             Ok(())

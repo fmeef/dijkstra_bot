@@ -17,7 +17,6 @@ use chrono::Duration;
 use entities::locks::LockType;
 use futures::future::BoxFuture;
 use futures::FutureExt;
-use lazy_static::__Deref;
 use macros::{lang_fmt, update_handler};
 use redis::AsyncCommands;
 use sea_orm::prelude::*;
@@ -552,12 +551,10 @@ async fn get_lock(message: &Message, locktype: LockType) -> Result<Option<locks:
     let key = get_lock_key(chat, &locktype);
     default_cache_query(
         |_, _| async move {
-            let res = locks::Entity::find_by_id((chat, locktype))
-                .one(DB.deref())
-                .await?;
+            let res = locks::Entity::find_by_id((chat, locktype)).one(*DB).await?;
             Ok(res)
         },
-        Duration::seconds(CONFIG.timing.cache_timeout as i64),
+        Duration::try_seconds(CONFIG.timing.cache_timeout).unwrap(),
     )
     .query(&key, &())
     .await
@@ -567,7 +564,7 @@ async fn clear_lock(message: &Message, locktype: LockType) -> Result<()> {
     let chat = message.get_chat().get_id();
     let key = get_lock_key(chat, &locktype);
     locks::Entity::delete_by_id((chat, locktype))
-        .exec(DB.deref())
+        .exec(*DB)
         .await?;
     REDIS.sq(|q| q.del(&key)).await?;
     Ok(())
@@ -588,7 +585,7 @@ async fn set_lock(message: &Message, locktype: LockType, user: &User) -> Result<
                 .update_column(locks::Column::LockAction)
                 .to_owned(),
         )
-        .exec_with_returning(DB.deref())
+        .exec_with_returning(*DB)
         .await?;
     res.cache(key).await?;
     Ok(())
@@ -611,11 +608,11 @@ async fn get_default_settings(chat: &Chat) -> Result<default_locks::Model> {
                             .update_column(default_locks::Column::Chat)
                             .to_owned(),
                     )
-                    .exec_with_returning(DB.deref())
+                    .exec_with_returning(*DB)
                     .await?;
             Ok(Some(model))
         },
-        Duration::seconds(CONFIG.timing.cache_timeout as i64),
+        Duration::try_seconds(CONFIG.timing.cache_timeout).unwrap(),
     )
     .query(&key, &())
     .await
@@ -635,7 +632,7 @@ async fn set_default_action(chat: &Chat, lock_action: ActionType) -> Result<()> 
                 .update_column(default_locks::Column::LockAction)
                 .to_owned(),
         )
-        .exec(DB.deref())
+        .exec(*DB)
         .await?;
     Ok(())
 }
@@ -658,7 +655,7 @@ async fn set_lock_action(
                 .update_column(locks::Column::LockAction)
                 .to_owned(),
         )
-        .exec(DB.deref())
+        .exec(*DB)
         .await?;
     Ok(())
 }
@@ -719,7 +716,7 @@ async fn handle_list(message: &Message) -> Result<()> {
     let chat = message.get_chat().get_id();
     let locks = locks::Entity::find()
         .filter(locks::Column::Chat.eq(chat))
-        .all(DB.deref())
+        .all(*DB)
         .await?;
 
     if locks.len() > 0 {
@@ -765,11 +762,11 @@ async fn is_approved(chat: &Chat, user: &User) -> Result<bool> {
     let res = default_cache_query(
         |_, _| async move {
             let res = approvals::Entity::find_by_id((chat_id, user_id))
-                .one(DB.deref())
+                .one(*DB)
                 .await?;
             Ok(res)
         },
-        Duration::seconds(CONFIG.timing.cache_timeout as i64),
+        Duration::try_seconds(CONFIG.timing.cache_timeout).unwrap(),
     )
     .query(&key, &())
     .await?
@@ -905,8 +902,11 @@ async fn handle_user_event(update: &UpdateExt, ctx: &Context) -> Result<()> {
                 match action {
                     ActionType::Delete => {}
                     ActionType::Ban => {
-                        ban_message(&message, default.duration.map(|v| Duration::seconds(v)))
-                            .await?;
+                        ban_message(
+                            &message,
+                            default.duration.map(|v| Duration::try_seconds(v)).flatten(),
+                        )
+                        .await?;
                         message.speak(lang_fmt!(lang, "lockban", reasons)).await?;
                     }
                     ActionType::Warn => {
@@ -922,7 +922,7 @@ async fn handle_user_event(update: &UpdateExt, ctx: &Context) -> Result<()> {
                             ctx.warn_with_action(
                                 user.get_id(),
                                 Some(&reasons),
-                                default.duration.map(|v| Duration::seconds(v)),
+                                default.duration.map(|v| Duration::try_seconds(v)).flatten(),
                             )
                             .await?;
                         }
