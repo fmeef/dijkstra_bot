@@ -66,10 +66,10 @@ RUN rustup default stable && rustup component add rustfmt && \
  cargo install sea-orm-cli cargo-edit
 RUN git clone https://github.com/rust-lang/rust-analyzer.git /opt/rust-analyzer && \
     cd /opt/rust-analyzer && \
-   rustup override set nightly && \
+   rustup override set stable && \
    cargo xtask install --server && cargo clean
 RUN git clone https://github.com/helix-editor/helix /opt/helix && \
-    cd /opt/helix &&  rustup override set nightly && \
+    cd /opt/helix &&  rustup override set stable && \
      cargo install --locked --path helix-term && cargo clean
 
 RUN adduser \

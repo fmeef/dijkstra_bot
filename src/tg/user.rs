@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use botapi::gen_types::{Chat, MessageOrigin, UpdateExt, User};
 use redis::AsyncCommands;
 
-use super::markdown::{Markup, MarkupType};
+use super::markdown::{Escape, Markup, MarkupType};
 
 fn get_user_cache_key(user: i64) -> String {
     format!("usrc:{}", user)
@@ -185,7 +185,7 @@ pub trait GetUser {
 impl Username for User {
     fn name_humanreadable<'a>(&'a self) -> String {
         self.get_username()
-            .map(|v| format!("@{}", v))
+            .map(|v| format!("@{}", v.escape(false)))
             .unwrap_or_else(|| self.get_id().to_string())
     }
 }
@@ -194,7 +194,7 @@ impl Username for Chat {
     fn name_humanreadable<'a>(&'a self) -> String {
         self.get_title().map(|v| v.to_owned()).unwrap_or_else(|| {
             self.get_username()
-                .map(|v| v.to_owned())
+                .map(|v| v.escape(false))
                 .unwrap_or_else(|| self.get_id().to_string())
         })
     }
@@ -229,7 +229,7 @@ impl GetUser for i64 {
         let res = if let Some(user) = self.get_cached_user().await? {
             user.name_humanreadable()
         } else {
-            self.to_string()
+            self.to_string().escape(false)
         };
         Ok(res)
     }
@@ -239,7 +239,7 @@ impl GetUser for i64 {
             let name = user.name_humanreadable();
             MarkupType::TextMention(user).text(name)
         } else {
-            MarkupType::Text.text(self.to_string())
+            MarkupType::Text.text(self.to_string().escape(false))
         };
         Ok(res)
     }
