@@ -78,6 +78,7 @@ pub fn get_content<'a>(
         _ => Err(BotError::speak(
             "Invalid argument, need to specify name",
             message.chat.id,
+            Some(message.message_id),
         )),
     }
 }
@@ -720,7 +721,7 @@ mod test {
             panic!("not a quote");
         }
     }
-    #[tokio::test]
+
     async fn command_emoji() {
         let ctx = default_context("/😍🧋".to_owned()).unwrap();
 

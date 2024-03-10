@@ -54,9 +54,13 @@ pub struct Model {
 pub enum Relation {}
 
 impl ActionType {
-    pub fn from_str<T: AsRef<str>>(s: T, chat: i64) -> crate::util::error::Result<Self> {
+    pub fn from_str<T: AsRef<str>>(
+        s: T,
+        chat: i64,
+        reply: i64,
+    ) -> crate::util::error::Result<Self> {
         Self::from_str_err(s.as_ref(), || {
-            BotError::speak(format!("Invalid action {}", s.as_ref()), chat)
+            BotError::speak(format!("Invalid action {}", s.as_ref()), chat, Some(reply))
         })
     }
     pub fn get_name(&self) -> &str {

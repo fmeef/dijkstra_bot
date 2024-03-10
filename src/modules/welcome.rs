@@ -103,6 +103,7 @@ async fn enable_welcome<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang)
         _ => Err(BotError::speak(
             lang_fmt!(lang, "welcomeinvalid"),
             message.get_chat().get_id(),
+            Some(message.message_id),
         )),
     }?;
     let model = welcomes::ActiveModel {

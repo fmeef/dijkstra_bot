@@ -350,11 +350,11 @@ macro_rules! locks {
             cmd: &Option<&'a Cmd<'a>>,
             chat: i64,
         ) -> (Option<LockType>, Option<ActionType>) {
-            if let Some(&Cmd { ref args, .. }) = cmd {
+            if let Some(&Cmd { ref args, message, .. }) = cmd {
                 let action = args
                     .args
                     .get(1)
-                    .map(|v| ActionType::from_str(v.get_text(), chat).ok())
+                    .map(|v| ActionType::from_str(v.get_text(), chat, message.message_id).ok())
                     .flatten();
                 let arg = match args.args.first() {
                     $(
@@ -476,9 +476,8 @@ fn is_out_of_chat_user<'a>(message: &'a Message) -> BoxFuture<'a, Result<bool>> 
                             } else {
                                 Ok(true)
                             };
-                        } else {
-                            return Ok(false);
                         }
+                        return Ok(false);
                     }
                     "url" => {
                         if let Some(url) = message.get_text() {
@@ -740,7 +739,7 @@ async fn lock_action<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
     let lang = get_chat_lang(chat_id).await?;
     if let Some(arg) = args.args.first() {
         let action = ActionType::from_str_err(arg.get_text(), || {
-            BotError::speak("Invalid action", chat_id)
+            BotError::speak("Invalid action", chat_id, Some(message.message_id))
         })?;
         set_default_action(message.get_chat(), action).await?;
         message.reply(lang_fmt!(lang, "setdefaultaction")).await?;

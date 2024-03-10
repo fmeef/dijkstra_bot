@@ -27,11 +27,16 @@ inline_lang! {
     { "en" => r#"testfmef: "thingy""# }
 }
 
-async fn handle_terminal_state(current: Uuid, conv: Conversation, chat: i64) -> Result<()> {
+async fn handle_terminal_state(
+    current: Uuid,
+    conv: Conversation,
+    chat: i64,
+    reply: i64,
+) -> Result<()> {
     let chat = chat
         .get_chat()
         .await?
-        .ok_or_else(|| BotError::speak("Chat not found", chat))?;
+        .ok_or_else(|| BotError::speak("Chat not found", chat, Some(reply)))?;
     if let Some(state) = conv.get_state(&current) {
         let lang = Lang::from_code(&state.content);
 
@@ -57,7 +62,11 @@ async fn get_lang_conversation(message: &Message, current: &Lang) -> Result<Conv
         lang_fmt!(current, "currentlang"),
         message.get_chat().get_id(),
         message.get_from().map(|u| u.get_id()).ok_or_else(|| {
-            BotError::speak("user is not a user... what", message.get_chat().get_id())
+            BotError::speak(
+                "user is not a user... what",
+                message.get_chat().get_id(),
+                Some(message.message_id),
+            )
         })?,
         "button",
     )?;
@@ -70,11 +79,12 @@ async fn get_lang_conversation(message: &Message, current: &Lang) -> Result<Conv
     });
     message.get_chat().record_chat().await?;
     let id = message.get_chat().get_id();
+    let message_id = message.message_id;
     state.state_callback(move |uuid, conv| {
         log::info!("conversation state {}", uuid);
         if uuid != start {
             tokio::spawn(async move {
-                if let Err(err) = handle_terminal_state(uuid, conv, id).await {
+                if let Err(err) = handle_terminal_state(uuid, conv, id, message_id).await {
                     log::warn!("terminal state error {}", err);
                     err.record_stats();
                 }

@@ -175,8 +175,8 @@ impl Fail for Context {
     }
 
     fn fail_err<T: AsRef<str>>(&self, message: T) -> BotError {
-        match self.try_get() {
-            Ok(get) => BotError::speak(message.as_ref(), get.chat.get_id()),
+        match self.message() {
+            Ok(get) => BotError::speak(message.as_ref(), get.chat.get_id(), Some(get.message_id)),
             Err(err) => err,
         }
     }
@@ -188,7 +188,11 @@ impl Fail for Message {
     }
 
     fn fail_err<T: AsRef<str>>(&self, message: T) -> BotError {
-        BotError::speak(message.as_ref(), self.get_chat().get_id())
+        BotError::speak(
+            message.as_ref(),
+            self.get_chat().get_id(),
+            Some(self.message_id),
+        )
     }
 }
 
@@ -198,7 +202,7 @@ impl Fail for Chat {
     }
 
     fn fail_err<T: AsRef<str>>(&self, message: T) -> BotError {
-        BotError::speak(message.as_ref(), self.get_id())
+        BotError::speak(message.as_ref(), self.get_id(), None)
     }
 }
 
@@ -209,6 +213,7 @@ pub enum BotError {
     Speak {
         say: String,
         chat: i64,
+        message: Option<i64>,
         err: Option<Box<BotError>>,
     },
     #[error("Telegram API error: {0}")]
@@ -291,16 +296,17 @@ impl BotError {
     }
 
     /// constructor for "speak" error that is always converted into telegram message
-    pub fn speak<T: Into<String>>(text: T, chat: i64) -> Self {
+    pub fn speak<T: Into<String>>(text: T, chat: i64, message: Option<i64>) -> Self {
         Self::Speak {
             say: text.into(),
             chat,
             err: None,
+            message,
         }
     }
 
     /// construct a speak error with custom error type
-    pub fn speak_err<T, E>(text: T, chat: i64, err: E) -> Self
+    pub fn speak_err<T, E>(text: T, chat: i64, message: Option<i64>, err: E) -> Self
     where
         T: Into<String>,
         E: Into<BotError>,
@@ -308,6 +314,7 @@ impl BotError {
         Self::Speak {
             say: text.into(),
             chat,
+            message,
             err: Some(Box::new(err.into())),
         }
     }

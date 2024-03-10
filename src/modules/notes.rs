@@ -331,6 +331,7 @@ async fn get<'a>(ctx: &Context) -> Result<()> {
             Err(BotError::speak(
                 "missing note name, try again weenie",
                 message.get_chat().get_id(),
+                Some(message.message_id),
             ))
         }
     } else {

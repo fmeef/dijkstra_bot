@@ -639,20 +639,26 @@ async fn command_blocklist<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()>
             Some("tmute") => (
                 ActionType::Mute,
                 args.next()
-                    .map(|d| parse_duration_str(d, message.get_chat().get_id()).ok())
+                    .map(|d| {
+                        parse_duration_str(d, message.get_chat().get_id(), message.message_id).ok()
+                    })
                     .flatten(),
             ),
 
             Some("tban") => (
                 ActionType::Ban,
                 args.next()
-                    .map(|d| parse_duration_str(d, message.get_chat().get_id()).ok())
+                    .map(|d| {
+                        parse_duration_str(d, message.get_chat().get_id(), message.message_id).ok()
+                    })
                     .flatten(),
             ),
             Some("twarn") => (
                 ActionType::Warn,
                 args.next()
-                    .map(|d| parse_duration_str(d, message.get_chat().get_id()).ok())
+                    .map(|d| {
+                        parse_duration_str(d, message.get_chat().get_id(), message.message_id).ok()
+                    })
                     .flatten(),
             ),
             None => (ActionType::Delete, None),
@@ -660,6 +666,7 @@ async fn command_blocklist<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()>
                 return Err(BotError::speak(
                     "Invalid action",
                     message.get_chat().get_id(),
+                    Some(message.message_id),
                 ));
             }
         }

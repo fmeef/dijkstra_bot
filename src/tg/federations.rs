@@ -204,7 +204,7 @@ pub async fn get_fbans_for_user(user: i64) -> Result<Vec<fbans::Model>> {
     Ok(result)
 }
 
-pub async fn is_user_fbanned(user: i64, chat: i64) -> Result<Option<fbans::Model>> {
+pub async fn is_user_fbanned(user: i64, chat: i64, reply: i64) -> Result<Option<fbans::Model>> {
     if let Some(fed) = is_fedmember(chat).await? {
         log::info!("chat is member of fed {}", fed);
         let key = get_fban_set_key(&fed);
@@ -232,6 +232,7 @@ pub async fn is_user_fbanned(user: i64, chat: i64) -> Result<Option<fbans::Model
         Err(BotError::speak(
             "retries exceeded for updating fban cache",
             chat,
+            Some(reply),
         ))
     } else {
         Ok(None)
@@ -719,7 +720,8 @@ impl Context {
         let v = self.try_get()?;
         let chat = v.chat;
         let key = get_fban_set_key(&fed);
-        if let Some(fban) = is_user_fbanned(user, chat.get_id()).await? {
+        if let Some(fban) = is_user_fbanned(user, chat.get_id(), self.message()?.message_id).await?
+        {
             iter_unfban_user(user, &fban.federation).await?;
             fban.delete(*DB).await?;
             REDIS.sq(|q| q.del(&key)).await?;
@@ -886,7 +888,7 @@ impl Context {
             .await?;
         }
 
-        if let Some(model) = is_user_fbanned(user, chat).await? {
+        if let Some(model) = is_user_fbanned(user, chat, self.message()?.message_id).await? {
             TG.client
                 .build_ban_chat_member(chat, model.user)
                 .build()

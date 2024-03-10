@@ -15,11 +15,11 @@ pub enum CaptchaType {
 }
 
 impl CaptchaType {
-    pub fn from_str(text: &str, chat: i64) -> crate::util::error::Result<Self> {
+    pub fn from_str(text: &str, chat: i64, reply: i64) -> crate::util::error::Result<Self> {
         match text {
             "button" => Ok(CaptchaType::Button),
             "text" => Ok(CaptchaType::Text),
-            _ => Err(BotError::speak("Invalid button type", chat)),
+            _ => Err(BotError::speak("Invalid button type", chat, Some(reply))),
         }
     }
 

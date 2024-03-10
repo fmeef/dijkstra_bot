@@ -212,9 +212,13 @@ async fn subfed_cmd<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
     let chat = ctx.try_get()?.chat.get_id();
     if let Some(user) = ctx.message()?.get_from() {
         let sub = Uuid::parse_str(args.text)?;
-        let fed = get_fed(user.get_id())
-            .await?
-            .ok_or_else(|| BotError::speak("You currently do not have a fed", chat))?;
+        let fed = get_fed(user.get_id()).await?.ok_or_else(|| {
+            BotError::speak(
+                "You currently do not have a fed",
+                chat,
+                Some(message.message_id),
+            )
+        })?;
         subfed(&fed.fed_id, &sub).await?;
         ctx.reply(lang_fmt!(ctx, "subscribefed", fed.fed_id, sub))
             .await?;

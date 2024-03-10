@@ -74,6 +74,7 @@ async fn handle_command<'a>(ctx: &Context) -> Result<()> {
                 let t = CaptchaType::from_str(
                     args.args.first().map(|a| a.get_text()).unwrap_or(""),
                     message.get_chat().get_id(),
+                    message.message_id,
                 )?;
                 ctx.captchamode(t).await?;
             }

@@ -236,21 +236,21 @@ pub async fn kick_message(message: &Message) -> Result<()> {
 }
 
 /// Parse a std::chrono::Duration from a human readable string (5m, 4d, etc)
-pub fn parse_duration_str(arg: &str, chat: i64) -> Result<Option<Duration>> {
+pub fn parse_duration_str(arg: &str, chat: i64, reply: i64) -> Result<Option<Duration>> {
     let head = &arg[0..arg.len() - 1];
     let tail = &arg[arg.len() - 1..];
     log::info!("head {} tail {}", head, tail);
     let head = match str::parse::<i64>(head) {
-        Err(_) => return Err(BotError::speak("Enter a number", chat)),
+        Err(_) => return Err(BotError::speak("Enter a number", chat, Some(reply))),
         Ok(res) => res,
     };
     let res = match tail {
         "m" => Duration::try_minutes(head),
         "h" => Duration::try_hours(head),
         "d" => Duration::try_days(head),
-        _ => return Err(BotError::speak("Invalid time spec", chat)),
+        _ => return Err(BotError::speak("Invalid time spec", chat, Some(reply))),
     }
-    .ok_or_else(|| BotError::speak("time out of range", chat))?;
+    .ok_or_else(|| BotError::speak("time out of range", chat, Some(reply)))?;
 
     let res = if res.num_seconds() < 30 {
         Duration::try_seconds(30).unwrap()
