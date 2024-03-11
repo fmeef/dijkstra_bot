@@ -203,7 +203,7 @@ impl Context {
                             let taint: UpdateTaint = media_id.get()?;
                             if scope == taint.scope {
                                 if taint.media_type != new_media_type {
-                                    self.speak(lang_fmt!(
+                                    self.reply(lang_fmt!(
                                         self,
                                         "wrongmediatype",
                                         new_media_type,

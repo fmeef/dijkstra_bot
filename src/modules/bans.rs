@@ -41,7 +41,7 @@ pub async fn unban_cmd(ctx: &Context) -> Result<()> {
     ctx.action_user(|ctx, user, _| async move {
         ctx.unban(user).await?;
         let entity = user.mention().await?;
-        ctx.speak_fmt(entity_fmt!(ctx, "unbanned", entity)).await?;
+        ctx.reply_fmt(entity_fmt!(ctx, "unbanned", entity)).await?;
         Ok(())
     })
     .await?;
@@ -73,7 +73,7 @@ pub async fn kick_cmd<'a>(ctx: &Context) -> Result<()> {
             kick(user, chat.get_id()).await?;
             let entity = user.mention().await?;
             ctx.message()?
-                .speak_fmt(entity_fmt!(ctx, "kicked", entity))
+                .reply_fmt(entity_fmt!(ctx, "kicked", entity))
                 .await?;
         }
         Ok(())
@@ -107,13 +107,13 @@ pub async fn mute_cmd<'a>(ctx: &Context) -> Result<()> {
         let mention = user.mention().await?;
 
         ctx.message()?
-            .speak_fmt(entity_fmt!(ctx, "muteuser", mention))
+            .reply_fmt(entity_fmt!(ctx, "muteuser", mention))
             .await?;
     } else {
-        ctx.speak(lang_fmt!(ctx, "usernotfound")).await?;
+        ctx.reply(lang_fmt!(ctx, "usernotfound")).await?;
     }
 
-    //  message.speak(lang_fmt!(lang, "muteuser")).await?;
+    //  message.reply(lang_fmt!(lang, "muteuser")).await?;
 
     Ok(())
 }
@@ -143,10 +143,10 @@ pub async fn unmute_cmd<'a>(ctx: &Context) -> Result<()> {
     if let Some(user) = user {
         let mention = user.mention().await?;
         message
-            .speak_fmt(entity_fmt!(ctx, "unmuteuser", mention))
+            .reply_fmt(entity_fmt!(ctx, "unmuteuser", mention))
             .await?;
     } else {
-        ctx.speak(lang_fmt!(ctx, "usernotfound")).await?;
+        ctx.reply(lang_fmt!(ctx, "usernotfound")).await?;
     }
 
     Ok(())
@@ -158,7 +158,7 @@ async fn kickme(ctx: &Context) -> Result<()> {
     let v = ctx.try_get()?;
     self_admin_or_die(&message.get_chat()).await?;
     if message.get_from().is_admin(&message.get_chat()).await? {
-        message.speak(lang_fmt!(v.lang, "kickadmin")).await?;
+        message.reply(lang_fmt!(v.lang, "kickadmin")).await?;
     } else {
         if let Some(from) = message.get_from() {
             TG.client()
@@ -169,7 +169,7 @@ async fn kickme(ctx: &Context) -> Result<()> {
                 .build_unban_chat_member(message.get_chat().get_id(), from.get_id())
                 .build()
                 .await?;
-            message.speak(lang_fmt!(v.lang, "kickme")).await?;
+            message.reply(lang_fmt!(v.lang, "kickme")).await?;
         }
     }
 

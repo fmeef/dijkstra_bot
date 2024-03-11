@@ -41,7 +41,7 @@ async fn promote(context: &Context) -> Result<()> {
                 chat.promote(user).await?;
                 let mention = user.mention().await?;
                 message
-                    .speak_fmt(entity_fmt!(ctx, "promote", mention))
+                    .reply_fmt(entity_fmt!(ctx, "promote", mention))
                     .await?;
             }
             Ok(())
@@ -63,7 +63,7 @@ async fn demote<'a>(context: &'a Context) -> Result<()> {
                     }
                     Ok(_) => {
                         let mention = user.mention().await?;
-                        ctx.speak_fmt(entity_fmt!(ctx, "demote", mention)).await?;
+                        ctx.reply_fmt(entity_fmt!(ctx, "demote", mention)).await?;
                     }
                 }
             }
@@ -92,7 +92,7 @@ async fn listadmins(ctx: &Context) -> Result<()> {
         })
         .await?;
 
-    message.speak_fmt(body).await?;
+    message.reply_fmt(body).await?;
     Ok(())
 }
 
@@ -101,7 +101,7 @@ async fn admincache(ctx: &Context) -> Result<()> {
     let message = ctx.message()?;
     let lang = get_chat_lang(message.get_chat().get_id()).await?;
     ctx.force_refresh_cached_admins().await?;
-    message.speak(lang_fmt!(lang, "refreshac")).await?;
+    message.reply(lang_fmt!(lang, "refreshac")).await?;
 
     Ok(())
 }

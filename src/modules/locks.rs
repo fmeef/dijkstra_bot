@@ -784,7 +784,7 @@ async fn cmd_available(ctx: &Context) -> Result<()> {
         )
         .collect::<Vec<String>>()
         .join("\n");
-    ctx.message()?.speak(available).await?;
+    ctx.message()?.reply(available).await?;
     Ok(())
 }
 
@@ -906,7 +906,7 @@ async fn handle_user_event(update: &UpdateExt, ctx: &Context) -> Result<()> {
                             default.duration.map(|v| Duration::try_seconds(v)).flatten(),
                         )
                         .await?;
-                        message.speak(lang_fmt!(lang, "lockban", reasons)).await?;
+                        message.reply(lang_fmt!(lang, "lockban", reasons)).await?;
                     }
                     ActionType::Warn => {
                         if let Some(chat) = message.get_sender_chat() {

@@ -351,7 +351,7 @@ async fn delete<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
     let model = get_model(message, args).await?;
     let name = model.name.clone();
     delete_by_id(model.name, message.get_chat().get_id()).await?;
-    message.speak(format!("Deleted note {}", name)).await?;
+    message.reply(format!("Deleted note {}", name)).await?;
     Ok(())
 }
 
@@ -397,7 +397,7 @@ async fn save<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
         .await?;
 
     message
-        .speak(lang_fmt!(ctx, "savednote", name, chat))
+        .reply(lang_fmt!(ctx, "savednote", name, chat))
         .await?;
     Ok(())
 }

@@ -603,7 +603,7 @@ async fn delete_trigger(ctx: &Context, trigger: &str) -> Result<()> {
         .boxed()
     })
     .await?;
-    message.speak("Filter stopped").await?;
+    message.reply("Filter stopped").await?;
     Ok(())
 }
 
@@ -862,7 +862,7 @@ async fn command_filter<'a>(c: &Context, args: &TextArgs<'a>) -> Result<()> {
     let text = MarkupType::Code.text(&filters_fmt);
     c.message()?
         .get_chat()
-        .speak_fmt(entity_fmt!(c, "addfilter", text))
+        .reply_fmt(entity_fmt!(c, "addfilter", text))
         .await?;
     Ok(())
 }

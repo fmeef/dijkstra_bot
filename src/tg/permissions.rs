@@ -365,7 +365,7 @@ where
         .reply_markup(EReplyMarkup::InlineKeyboardMarkup(kb.build()));
 
     m.builder.text(lang_fmt!(lang, "provebutton"));
-    sp.speak_fmt(m).await?;
+    sp.reply_fmt(m).await?;
     while let Some(Some((perm, cb))) = rx.recv().await {
         let sudo = perm.is_sudo.is_granted();
         let p = func(perm);

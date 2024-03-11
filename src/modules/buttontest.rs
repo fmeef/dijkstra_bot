@@ -94,7 +94,7 @@ impl ModuleHelpers for Helper {
 //                 }
 
 //                 Err(err) => {
-//                     message.speak(lang_fmt!(Lang::En, "test", err)).await?;
+//                     message.reply(lang_fmt!(Lang::En, "test", err)).await?;
 //                 }
 //             }
 //         }

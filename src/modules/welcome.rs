@@ -158,7 +158,7 @@ async fn set_goodbye<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang) ->
     };
     REDIS.sq(|q| q.del(&key)).await?;
 
-    message.speak(text).await?;
+    message.reply(text).await?;
     Ok(())
 }
 
@@ -189,7 +189,7 @@ async fn set_welcome<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang) ->
         lang_fmt!(lang, "setwelcome", "*media*")
     };
     REDIS.sq(|q| q.del(&key)).await?;
-    message.speak(text).await?;
+    message.reply(text).await?;
     Ok(())
 }
 
@@ -220,7 +220,7 @@ async fn reset_welcome(message: &Message, lang: &Lang) -> Result<()> {
 
     welcomes::Entity::delete_by_id(chat).exec(*DB).await?;
     REDIS.sq(|q| q.del(&key)).await?;
-    message.speak(lang_fmt!(lang, "resetwelcome")).await?;
+    message.reply(lang_fmt!(lang, "resetwelcome")).await?;
     Ok(())
 }
 

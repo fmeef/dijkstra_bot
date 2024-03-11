@@ -131,7 +131,7 @@ impl UpdateHandler {
                     Ok(v) => {
                         if !v {
                             if let Some(chat) = ctx.chat() {
-                                if let Err(err) = chat.speak(err.to_string()).await {
+                                if let Err(err) = chat.reply(err.to_string()).await {
                                     log::warn!("triple fault! {}", err);
                                 }
                             }
@@ -205,7 +205,7 @@ pub(crate) async fn show_help<'a>(
                 Ok(v) => v,
                 Err(_) => {
                     message
-                        .speak(lang_fmt!(lang, "invalid_help", args.unwrap_or("default")))
+                        .reply(lang_fmt!(lang, "invalid_help", args.unwrap_or("default")))
                         .await?;
                     return Ok(false);
                 }
@@ -247,6 +247,7 @@ pub(crate) async fn show_help<'a>(
                 .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
                     button.build(),
                 ))
+                .reply_parameters(&ReplyParametersBuilder::new(message.get_message_id()).build())
                 .build()
                 .await?;
         }

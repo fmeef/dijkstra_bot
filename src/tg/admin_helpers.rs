@@ -397,7 +397,7 @@ pub async fn get_action(chat: &Chat, user: &User) -> Result<Option<actions::Mode
 }
 
 pub async fn warn_shame(message: &Message, _user: i64, _count: i32) -> Result<()> {
-    message.speak("shaming not implemented").await?;
+    message.reply("shaming not implemented").await?;
 
     Ok(())
 }
@@ -889,7 +889,7 @@ impl Context {
                         .await?;
 
                     let mention = MarkupType::TextMention(user.to_owned()).text(&name);
-                    chat.speak_fmt(entity_fmt!(self, "banned", mention)).await?;
+                    chat.reply_fmt(entity_fmt!(self, "banned", mention)).await?;
                 } else {
                     let permissions = ChatPermissionsBuilder::new()
                         .set_can_send_messages(action.can_send_messages)
@@ -1345,10 +1345,10 @@ impl Context {
             if let Some(user) = user.get_cached_user().await? {
                 let mention = MarkupType::TextMention(user).text(&name);
                 message
-                    .speak_fmt(entity_fmt!(self, "banchat", mention))
+                    .reply_fmt(entity_fmt!(self, "banchat", mention))
                     .await?;
             } else {
-                message.speak(lang_fmt!(lang, "banchat", name)).await?;
+                message.reply(lang_fmt!(lang, "banchat", name)).await?;
             }
         }
 
@@ -1377,7 +1377,7 @@ impl Context {
 
         let mention = user.mention().await?;
         message
-            .speak_fmt(entity_fmt!(self, "banned", mention))
+            .reply_fmt(entity_fmt!(self, "banned", mention))
             .await?;
 
         Ok(())

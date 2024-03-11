@@ -479,7 +479,7 @@ async fn delete_trigger(message: &Message, trigger: &str) -> Result<()> {
                 .await?;
         }
     }
-    message.speak("Blocklist stopped").await?;
+    message.reply("Blocklist stopped").await?;
     Ok(())
 }
 
@@ -692,7 +692,7 @@ async fn command_blocklist<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()>
 
     message
         .get_chat()
-        .speak_fmt(entity_fmt!(ctx, "addblocklist", text))
+        .reply_fmt(entity_fmt!(ctx, "addblocklist", text))
         .await?;
 
     Ok(())

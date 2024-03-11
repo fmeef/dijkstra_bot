@@ -725,10 +725,10 @@ impl Context {
             iter_unfban_user(user, &fban.federation).await?;
             fban.delete(*DB).await?;
             REDIS.sq(|q| q.del(&key)).await?;
-            self.speak_fmt(entity_fmt!(self, "unfban", user.mention().await?))
+            self.reply_fmt(entity_fmt!(self, "unfban", user.mention().await?))
                 .await?;
         } else {
-            self.speak_fmt(entity_fmt!(self, "notfbanned", user.mention().await?))
+            self.reply_fmt(entity_fmt!(self, "notfbanned", user.mention().await?))
                 .await?;
         }
         Ok(())
@@ -832,7 +832,7 @@ impl Context {
             if let Some(user) = user.get_cached_user().await? {
                 let name = user.name_humanreadable();
                 let mention = MarkupType::TextMention(user).text(&name);
-                self.speak_fmt(
+                self.reply_fmt(
                     entity_fmt!(ctx, "fpromote", mention)
                         .reply_markup(EReplyMarkup::InlineKeyboardMarkup(builder.build())),
                 )
@@ -881,7 +881,7 @@ impl Context {
                 .build()
                 .await?;
             record_chat_member_banned(user.user_id, chat, true).await?;
-            self.speak(format!(
+            self.reply(format!(
                 "User gbanned for {}!",
                 gban.reason.unwrap_or_else(|| "piracy".to_owned())
             ))
@@ -894,7 +894,7 @@ impl Context {
                 .build()
                 .await?;
             record_chat_member_banned(user, chat, true).await?;
-            self.speak(format!(
+            self.reply(format!(
                 "User fbanned for {}!",
                 model.reason.unwrap_or_else(|| "piracy".to_owned())
             ))

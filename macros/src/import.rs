@@ -267,7 +267,7 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
                                         }
                                         Ok(v) => if ! v {
                                             if let Some(chat) = ctx.chat() {
-                                                if let Err(err) = chat.speak(err.to_string()).await {
+                                                if let Err(err) = chat.reply(err.to_string()).await {
                                                     log::warn!("triple fault! {}", err);
                                                 }
                                             }

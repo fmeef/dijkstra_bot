@@ -26,7 +26,7 @@ async fn cmd_approve<'a>(ctx: &Context) -> Result<()> {
         if let Some(user) = user.get_cached_user().await? {
             approve(ctx.message()?.get_chat(), &user).await?;
             let name = user.name_humanreadable();
-            ctx.speak_fmt(entity_fmt!(
+            ctx.reply_fmt(entity_fmt!(
                 ctx,
                 "approved",
                 MarkupType::TextMention(user.clone()).text(&name)
@@ -44,7 +44,7 @@ async fn cmd_unapprove(ctx: &Context) -> Result<()> {
     ctx.action_user(|ctx, user, _| async move {
         unapprove(ctx.message()?.get_chat(), user).await?;
         let name = user.mention().await?;
-        ctx.speak_fmt(entity_fmt!(ctx, "unapproved", name)).await?;
+        ctx.reply_fmt(entity_fmt!(ctx, "unapproved", name)).await?;
 
         Ok(())
     })

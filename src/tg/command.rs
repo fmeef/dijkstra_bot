@@ -583,6 +583,13 @@ impl Speak for Context {
     {
         self.message()?.reply(message).await
     }
+
+    async fn force_reply<T>(&self, message: T, reply: i64) -> Result<Option<Message>>
+    where
+        T: AsRef<str> + Send + Sync,
+    {
+        self.message()?.force_reply(message, reply).await
+    }
 }
 
 impl UpdateHelpers for Context {

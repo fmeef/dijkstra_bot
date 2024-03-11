@@ -152,7 +152,7 @@ async fn cmd_warn_limit<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
             }
         }
         Err(_) => {
-            message.speak(lang_fmt!(ctx.lang(), "nan")).await?;
+            message.reply(lang_fmt!(ctx.lang(), "nan")).await?;
         }
     }
     Ok(())

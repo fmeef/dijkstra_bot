@@ -43,11 +43,11 @@ async fn handle_terminal_state(
         log::info!("set chat lang to {:?}", state.content);
         match lang {
             Lang::Invalid => {
-                chat.speak(lang_fmt!(lang, "invalidlang")).await?;
+                chat.reply(lang_fmt!(lang, "invalidlang")).await?;
             }
             l => {
                 set_chat_lang(&chat, l).await?;
-                chat.speak(lang_fmt!(l, "setlang")).await?;
+                chat.reply(lang_fmt!(l, "setlang")).await?;
             }
         }
     } else {

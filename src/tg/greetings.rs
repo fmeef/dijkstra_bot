@@ -7,7 +7,7 @@ use crate::persist::redis::{
 };
 use crate::statics::{ME, TG};
 use crate::util::error::BotError;
-use crate::util::string::Speak;
+use crate::util::string::{should_ignore_chat, Speak};
 use crate::{
     langs::Lang,
     persist::{
@@ -295,10 +295,10 @@ fn insert_incorrect(
                     kick(callback.get_from().get_id(), unmute_chat).await?;
                     if let Some(chat) = unmute_chat.get_chat().await? {
                         message
-                            .speak(lang_fmt!(ctx, "notrieskickchat", chat.name_humanreadable()))
+                            .reply(lang_fmt!(ctx, "notrieskickchat", chat.name_humanreadable()))
                             .await?;
                     } else {
-                        message.speak(lang_fmt!(ctx, "notrieskick")).await?;
+                        message.reply(lang_fmt!(ctx, "notrieskick")).await?;
                     }
                     TG.client
                         .build_delete_message(message.get_chat().get_id(), message.get_message_id())
@@ -451,7 +451,7 @@ async fn button_captcha<'a>(
             .await?;
         if let Some(MaybeInaccessibleMessage::Message(message)) = callback.get_message() {
             message
-                .speak(lang_fmt!(bctx, "userunmuted"))
+                .reply(lang_fmt!(bctx, "userunmuted"))
                 .await?
                 .delete_after_time(Duration::try_minutes(5).unwrap());
         }
@@ -471,7 +471,7 @@ async fn button_captcha<'a>(
             Some(captcha),
         )
         .await?;
-    } else {
+    } else if !should_ignore_chat(upd.get_chat().get_id()).await? {
         let m = TG
             .client()
             .build_send_message(
@@ -541,7 +541,9 @@ impl Context {
         config: &captchastate::Model,
         welcome: Option<welcomes::Model>,
         entities: Vec<MessageEntity>,
+        goodbye: Vec<MessageEntity>,
         buttons: Option<InlineKeyboardBuilder>,
+        gb_buttons: Option<InlineKeyboardBuilder>,
     ) -> Result<()> {
         if let Some(UserChanged::UserJoined(ref message)) = self.update().user_event() {
             let me = ME.get().unwrap();
@@ -590,7 +592,13 @@ impl Context {
                         button_captcha(self, message, config, welcome, entities, buttons).await?
                     }
                 }
+            } else if let Some(welcome) = welcome {
+                self.handle_welcome(welcome, entities, goodbye, buttons, gb_buttons, None)
+                    .await?;
             }
+        } else if let Some(welcome) = welcome {
+            self.handle_welcome(welcome, entities, goodbye, buttons, gb_buttons, None)
+                .await?;
         }
 
         Ok(())
@@ -637,6 +645,7 @@ impl Context {
     /// Send a captcha, welcome, or both to a user entering a chat
     pub async fn greeter_handle_update(&self) -> Result<()> {
         if let UpdateExt::ChatMember(ref upd) = self.update() {
+            log::info!("chat_member update");
             match (
                 self.should_welcome(upd).await?,
                 self.get_captcha_config().await?,
@@ -645,10 +654,20 @@ impl Context {
                     self.handle_welcome(welcome, entities, goodbyes, buttons, gb_buttons, None)
                         .await
                 }
-                (None, Some(captcha)) => self.check_members(&captcha, None, vec![], None).await,
-                (Some((welcome, entities, _, buttons, _)), Some(captcha)) => {
-                    self.check_members(&captcha, Some(welcome), entities, buttons)
+                (None, Some(captcha)) => {
+                    self.check_members(&captcha, None, vec![], vec![], None, None)
                         .await
+                }
+                (Some((welcome, entities, gb_entities, buttons, gb_buttons)), Some(captcha)) => {
+                    self.check_members(
+                        &captcha,
+                        Some(welcome),
+                        entities,
+                        gb_entities,
+                        buttons,
+                        gb_buttons,
+                    )
+                    .await
                 }
                 (None, None) => Ok(()),
             }?;
@@ -790,6 +809,8 @@ impl Context {
             }
             Ok(res)
         };
+
+        log::info!("should_welcome {:?}", res);
         res
     }
 

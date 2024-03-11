@@ -83,6 +83,11 @@ pub trait Speak {
     async fn reply<T>(&self, message: T) -> Result<Option<Message>>
     where
         T: AsRef<str> + Send + Sync;
+
+    /// Replies with a text message to the chat associated with this type. Murkdown is parsed if valid
+    async fn force_reply<T>(&self, message: T, reply: i64) -> Result<Option<Message>>
+    where
+        T: AsRef<str> + Send + Sync;
 }
 
 #[async_trait]
@@ -143,6 +148,41 @@ impl Speak for i64 {
     {
         self.speak(message).await
     }
+
+    async fn force_reply<T>(&self, message: T, reply: i64) -> Result<Option<Message>>
+    where
+        T: AsRef<str> + Send + Sync,
+    {
+        if !should_ignore_chat(*self).await? {
+            if message.as_ref().len() > 4096 {
+                let bytes = FileData::Part(
+                    Part::text(message.as_ref().to_owned()).file_name("message.txt"),
+                );
+                let message = TG.client.build_send_document(*self, bytes).build().await?;
+                return Ok(Some(message));
+            }
+
+            let (text, entities, markup) = MarkupBuilder::new(None)
+                .set_text(message.as_ref().to_owned())
+                .filling(true)
+                .header(false)
+                .build_murkdown_nofail()
+                .await;
+
+            let m = TG
+                .client()
+                .build_send_message(*self, &text)
+                .entities(&entities)
+                .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(markup.build()))
+                .reply_parameters(&ReplyParametersBuilder::new(reply).build())
+                .build()
+                .await?;
+
+            Ok(Some(m))
+        } else {
+            Ok(None)
+        }
+    }
 }
 
 #[async_trait]
@@ -196,7 +236,14 @@ impl Speak for Message {
 
     async fn reply_fmt(&self, mut message: EntityMessage) -> Result<Option<Message>> {
         if !should_ignore_chat(self.get_chat().get_id()).await? {
-            Ok(Some(message.call().await.build().await?))
+            Ok(Some(
+                message
+                    .call()
+                    .await
+                    .reply_parameters(&ReplyParametersBuilder::new(self.message_id).build())
+                    .build()
+                    .await?,
+            ))
         } else {
             Ok(None)
         }
@@ -235,6 +282,47 @@ impl Speak for Message {
                 .entities(&entities)
                 .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(markup.build()))
                 .reply_parameters(&ReplyParametersBuilder::new(self.get_message_id()).build())
+                .build()
+                .await?;
+            Ok(Some(m))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn force_reply<T>(&self, message: T, reply: i64) -> Result<Option<Message>>
+    where
+        T: AsRef<str> + Send + Sync,
+    {
+        if !should_ignore_chat(self.get_chat().get_id()).await? {
+            if message.as_ref().len() > 4096 {
+                let bytes = FileData::Part(
+                    Part::text(message.as_ref().to_owned()).file_name("message.txt"),
+                );
+
+                let message = TG
+                    .client
+                    .build_send_document(self.get_chat().get_id(), bytes)
+                    .reply_parameters(&ReplyParametersBuilder::new(self.get_message_id()).build())
+                    .build()
+                    .await?;
+                return Ok(Some(message));
+            }
+
+            let (text, entities, markup) = MarkupBuilder::new(None)
+                .set_text(message.as_ref().to_owned())
+                .filling(true)
+                .header(false)
+                .chatuser(self.get_chatuser().as_ref())
+                .build_murkdown_nofail()
+                .await;
+
+            let m = TG
+                .client()
+                .build_send_message(self.get_chat().get_id(), &text)
+                .entities(&entities)
+                .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(markup.build()))
+                .reply_parameters(&ReplyParametersBuilder::new(reply).build())
                 .build()
                 .await?;
             Ok(Some(m))
@@ -283,6 +371,22 @@ impl Speak for Chat {
         T: AsRef<str> + Send + Sync,
     {
         self.speak(message).await
+    }
+    async fn force_reply<T>(&self, message: T, reply: i64) -> Result<Option<Message>>
+    where
+        T: AsRef<str> + Send + Sync,
+    {
+        if !should_ignore_chat(self.get_id()).await? {
+            let m = TG
+                .client()
+                .build_send_message(self.get_id(), message.as_ref())
+                .reply_parameters(&ReplyParametersBuilder::new(reply).build())
+                .build()
+                .await?;
+            Ok(Some(m))
+        } else {
+            Ok(None)
+        }
     }
 }
 

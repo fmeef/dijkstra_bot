@@ -363,8 +363,15 @@ impl BotError {
 
     /// send message via telegram for this error, returning true if a message was sent
     pub async fn get_message(&self) -> Result<bool> {
-        if let Self::Speak { say, chat, .. } = self {
-            chat.speak(say).await?;
+        if let Self::Speak {
+            say, chat, message, ..
+        } = self
+        {
+            if let Some(message) = message {
+                chat.force_reply(say, *message).await?;
+            } else {
+                chat.speak(say).await?;
+            }
             Ok(true)
         } else {
             Ok(false)
