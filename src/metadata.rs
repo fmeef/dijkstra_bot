@@ -26,12 +26,12 @@ pub fn markdownify<T: AsRef<str>>(description: T) -> String {
     for line in v {
         description.push_str(line);
         if prev.trim_end().len() == prev.len() {
-            description.push_str(" ");
+            description.push(' ');
         }
         prev = line;
     }
     //let description = WHITESPACE.replace_all(&description, " ");
-    description.replace(r#"\n"#, "\n").into()
+    description.replace(r#"\n"#, "\n")
 }
 
 /// Macro for registering a module. Generates a metadata getter out of a name, description, and
@@ -39,7 +39,7 @@ pub fn markdownify<T: AsRef<str>>(description: T) -> String {
 #[macro_export]
 macro_rules! metadata {
     ($name:expr, $description:expr) => {
-        pub const METADATA: $crate::once_cell::sync::Lazy<$crate::metadata::Metadata> =
+        pub static METADATA: $crate::once_cell::sync::Lazy<$crate::metadata::Metadata> =
             $crate::once_cell::sync::Lazy::new(|| $crate::metadata::Metadata {
                 name: $name.into(),
                 description: $description.into(),
@@ -52,7 +52,8 @@ macro_rules! metadata {
         $( , { sub = $sub:expr, content = $content:expr } )*
         $( , { command = $command:expr, help = $help:expr } )*
     ) => {
-        pub const METADATA: $crate::once_cell::sync::Lazy<$crate::metadata::Metadata> =
+        #[allow(unused_mut)]
+        pub static METADATA: $crate::once_cell::sync::Lazy<$crate::metadata::Metadata> =
             $crate::once_cell::sync::Lazy::new(|| {
                 let description = $crate::metadata::markdownify($description);
 
@@ -73,7 +74,8 @@ macro_rules! metadata {
         $( , { sub = $sub:expr, content = $content:expr } )*
         $( , { command = $command:expr, help = $help:expr } )*
     ) => {
-        pub const METADATA: $crate::once_cell::sync::Lazy<$crate::metadata::Metadata> =
+        #[allow(unused_mut)]
+        pub static METADATA: $crate::once_cell::sync::Lazy<$crate::metadata::Metadata> =
             $crate::once_cell::sync::Lazy::new(|| {
                 let description = $crate::metadata::markdownify($description);
 

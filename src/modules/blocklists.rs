@@ -23,6 +23,7 @@ use crate::tg::permissions::*;
 
 use crate::tg::dialog::dialog_or_default;
 
+use crate::tg::user::GetUser;
 use crate::util::error::BotError;
 use crate::util::error::Fail;
 use crate::util::error::Result;
@@ -33,6 +34,7 @@ use crate::util::glob::WildMatch;
 
 use crate::util::string::Speak;
 use botapi::gen_types::Message;
+use botapi::gen_types::UpdateExt;
 use botapi::gen_types::User;
 use chrono::Duration;
 use entities::{blocklists, triggers};
@@ -42,6 +44,7 @@ use itertools::Itertools;
 
 use lazy_static::lazy_static;
 use macros::entity_fmt;
+use macros::lang_fmt;
 use macros::update_handler;
 use redis::AsyncCommands;
 use regex::Regex;
@@ -225,13 +228,13 @@ pub mod entities {
             pub duration: Option<i64>,
         }
 
-        impl Into<ModelModel> for Model {
-            fn into(self) -> ModelModel {
+        impl From<Model> for ModelModel {
+            fn from(value: Model) -> Self {
                 ModelModel {
-                    chat: self.chat,
-                    action: self.action,
-                    reason: self.reason,
-                    duration: self.duration,
+                    chat: value.chat,
+                    action: value.action,
+                    reason: value.reason,
+                    duration: value.duration,
                 }
             }
         }
@@ -319,14 +322,14 @@ impl ModuleHelpers for Helper {
             })
             .collect();
         let out = BlockListsExport {
-            filters: if items.len() == 0 { None } else { Some(items) },
+            filters: if items.is_empty() { None } else { Some(items) },
             action_duration: 0,
             default_reason: "".to_owned(),
             should_delete: true,
             action: "nothing".to_owned(),
         };
 
-        let out = serde_json::to_value(&out)?;
+        let out = serde_json::to_value(out)?;
 
         Ok(Some(out))
     }
@@ -337,7 +340,7 @@ impl ModuleHelpers for Helper {
             let mut models = HashMap::<blocklists::ModelModel, Vec<String>>::new();
 
             for blocklist in filters {
-                let reason = if blocklist.reason.len() == 0 {
+                let reason = if blocklist.reason.is_empty() {
                     None
                 } else {
                     Some(blocklist.reason)
@@ -362,7 +365,7 @@ impl ModuleHelpers for Helper {
                     reason,
                     duration,
                 };
-                let v = models.entry(model).or_insert_with(|| Vec::new());
+                let v = models.entry(model).or_default();
                 v.push(blocklist.name);
             }
 
@@ -436,7 +439,37 @@ async fn delete_trigger(message: &Message, trigger: &str) -> Result<()> {
         .await?;
     let trigger = &trigger.to_lowercase();
     let hash_key = get_blocklist_hash_key(message.get_chat().get_id());
-    let key: Option<i64> = REDIS
+
+    let filters = blocklists::Entity::find()
+        .find_with_related(triggers::Entity)
+        .filter(
+            blocklists::Column::Chat
+                .eq(message.get_chat().get_id())
+                .and(triggers::Column::Trigger.eq(trigger.as_str())),
+        )
+        .all(*DB)
+        .await?;
+
+    log::info!(
+        "deleting {} blocklists for {}",
+        filters.len(),
+        trigger.as_str()
+    );
+
+    for (blocklist, trigger) in filters
+        .iter()
+        .map(|(b, t)| (b, t.iter().map(|v| v.trigger.as_str()).collect_vec()))
+    {
+        triggers::Entity::delete_many()
+            .filter(
+                triggers::Column::Trigger
+                    .is_in(trigger)
+                    .and(triggers::Column::BlocklistId.eq(blocklist.id)),
+            )
+            .exec(*DB)
+            .await?;
+    }
+    REDIS
         .query(|mut q| async move {
             let id: Option<i64> = q.hdel(&hash_key, trigger).await?;
             if let Some(id) = id {
@@ -448,37 +481,7 @@ async fn delete_trigger(message: &Message, trigger: &str) -> Result<()> {
             }
         })
         .await?;
-    if let Some(id) = key {
-        triggers::Entity::delete_many()
-            .filter(
-                triggers::Column::BlocklistId
-                    .eq(id)
-                    .and(triggers::Column::Trigger.eq(trigger.as_str())),
-            )
-            .exec(*DB)
-            .await?;
-    } else {
-        let filters = triggers::Entity::find()
-            .find_with_related(blocklists::Entity)
-            .filter(
-                blocklists::Column::Chat
-                    .eq(message.get_chat().get_id())
-                    .and(triggers::Column::Trigger.eq(trigger.as_str())),
-            )
-            .all(*DB)
-            .await?;
 
-        for (f, _) in filters {
-            triggers::Entity::delete_many()
-                .filter(
-                    triggers::Column::Trigger
-                        .eq(f.trigger)
-                        .and(triggers::Column::BlocklistId.eq(f.blocklist_id)),
-                )
-                .exec(*DB)
-                .await?;
-        }
-    }
     message.reply("Blocklist stopped").await?;
     Ok(())
 }
@@ -510,7 +513,7 @@ async fn search_cache(message: &Message, text: &str) -> Result<Option<blocklists
         .query(|mut q| async move {
             let mut iter: redis::AsyncIter<(String, i64)> = q.hscan(&hash_key).await?;
             while let Some((key, item)) = iter.next_item().await {
-                if key.len() == 0 {
+                if key.is_empty() {
                     continue;
                 }
                 let glob = WildMatch::new(&key);
@@ -603,7 +606,7 @@ async fn insert_blocklist(
     .exec(*DB)
     .await?;
     let hash_key = get_blocklist_hash_key(message.get_chat().get_id());
-    let id = model.id.clone();
+    let id = model.id;
     REDIS
         .pipe(|p| {
             for trigger in triggers {
@@ -618,12 +621,13 @@ async fn insert_blocklist(
 
 async fn command_blocklist<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
     ctx.check_permissions(|p| p.can_manage_chat).await?;
-
+    log::info!("adding blocklist ");
     let message = ctx.message()?;
 
     let cmd = MarkupBuilder::new(None)
         .set_text(args.text.to_owned())
         .filling(false)
+        .show_fillings(false)
         .header(true);
 
     let (body, _, _, header, footer) = cmd.build_filter().await;
@@ -633,33 +637,27 @@ async fn command_blocklist<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()>
     };
 
     let filters = filters.iter().map(|v| v.as_str()).collect::<Vec<&str>>();
-    let (action, duration) = if let Some(v) = footer {
-        let mut args = v.split(" ");
+    let (action, duration) = if let Some(v) = footer.last() {
+        let mut args = v.split(' ');
         match args.next() {
             Some("tmute") => (
                 ActionType::Mute,
-                args.next()
-                    .map(|d| {
-                        parse_duration_str(d, message.get_chat().get_id(), message.message_id).ok()
-                    })
-                    .flatten(),
+                args.next().and_then(|d| {
+                    parse_duration_str(d, message.get_chat().get_id(), message.message_id).ok()
+                }),
             ),
 
             Some("tban") => (
                 ActionType::Ban,
-                args.next()
-                    .map(|d| {
-                        parse_duration_str(d, message.get_chat().get_id(), message.message_id).ok()
-                    })
-                    .flatten(),
+                args.next().and_then(|d| {
+                    parse_duration_str(d, message.get_chat().get_id(), message.message_id).ok()
+                }),
             ),
             Some("twarn") => (
                 ActionType::Warn,
-                args.next()
-                    .map(|d| {
-                        parse_duration_str(d, message.get_chat().get_id(), message.message_id).ok()
-                    })
-                    .flatten(),
+                args.next().and_then(|d| {
+                    parse_duration_str(d, message.get_chat().get_id(), message.message_id).ok()
+                }),
             ),
             None => (ActionType::Delete, None),
             _ => {
@@ -709,73 +707,80 @@ async fn delete(message: &Message) -> Result<()> {
 async fn warn(ctx: &Context, user: &User, reason: Option<String>) -> Result<()> {
     let dialog = dialog_or_default(ctx.message()?.get_chat()).await?;
 
-    let time = dialog.warn_time.map(|t| Duration::try_seconds(t)).flatten();
-    ctx.warn_with_action(
-        user.get_id(),
-        reason.clone().as_ref().map(|v| v.as_str()),
-        time,
-    )
-    .await?;
+    let time = dialog.warn_time.and_then(Duration::try_seconds);
+    ctx.warn_with_action(user.get_id(), reason.clone().as_deref(), time)
+        .await?;
     Ok(())
 }
 
 async fn handle_trigger(ctx: &Context) -> Result<()> {
-    if let Ok(message) = ctx.message() {
-        if let Some(user) = message.get_from() {
-            if message.get_from().is_admin(message.get_chat()).await?
-                || is_dm(message.get_chat())
-                || is_approved(message.get_chat(), &user).await?
-            {
-                log::info!(
-                    "skipping trigger {}",
-                    message.get_from().is_admin(message.get_chat()).await?
-                );
-                return Ok(());
-            }
+    match ctx.update() {
+        UpdateExt::Message(message) | UpdateExt::EditedMessage(message) => {
+            if let Some(user) = message.get_from() {
+                if message.get_from().is_admin(message.get_chat()).await?
+                    || is_dm(message.get_chat())
+                    || is_approved(message.get_chat(), user).await?
+                {
+                    log::info!(
+                        "skipping trigger {}",
+                        message.get_from().is_admin(message.get_chat()).await?
+                    );
+                    return Ok(());
+                }
 
-            if let Some(text) = message.get_text() {
-                if let Some(res) = search_cache(message, &text).await? {
-                    let duration = res.duration.map(|v| Duration::try_seconds(v)).flatten();
-                    let duration_str = if let Some(duration) = duration {
-                        format!(" for {}", format_duration(duration.to_std()?))
-                    } else {
-                        format!("")
-                    };
-                    let reason_str = res
-                        .reason
-                        .as_ref()
-                        .map(|v| format!("Reason: {}", v))
-                        .unwrap_or_else(|| format!(""));
-                    match res.action {
-                        ActionType::Mute => {
-                            ctx.mute(user.get_id(), ctx.try_get()?.chat, duration)
-                                .await?;
-                            message
-                                .reply(format!(
-                                    "User said a banned word. Action: Muted{}\n{}",
-                                    duration_str, reason_str
-                                ))
-                                .await?;
+                if let Some(text) = message.get_text() {
+                    if let Some(res) = search_cache(message, text).await? {
+                        let duration = res.duration.and_then(Duration::try_seconds);
+                        let duration_str = if let Some(duration) = duration {
+                            lang_fmt!(ctx, "duration", format_duration(duration.to_std()?))
+                        } else {
+                            String::new()
+                        };
+                        let reason_str = res
+                            .reason
+                            .as_ref()
+                            .map(|v| lang_fmt!(ctx, "reason", v))
+                            .unwrap_or_default();
+                        match res.action {
+                            ActionType::Mute => {
+                                ctx.mute(user.get_id(), ctx.try_get()?.chat, duration)
+                                    .await?;
+                                let mention = user.mention().await?;
+                                message
+                                    .reply_fmt(entity_fmt!(
+                                        ctx,
+                                        "blockmute",
+                                        mention,
+                                        duration_str,
+                                        reason_str
+                                    ))
+                                    .await?;
+                            }
+                            ActionType::Ban => {
+                                ctx.ban(user.get_id(), duration, true).await?;
+                                let mention = user.mention().await?;
+                                message
+                                    .reply_fmt(entity_fmt!(
+                                        ctx,
+                                        "blockban",
+                                        mention,
+                                        duration_str,
+                                        reason_str
+                                    ))
+                                    .await?;
+                            }
+                            ActionType::Warn => {
+                                warn(ctx, user, res.reason).await?;
+                            }
+                            ActionType::Shame => (),
+                            ActionType::Delete => (),
                         }
-                        ActionType::Ban => {
-                            ctx.ban(user.get_id(), duration).await?;
-                            message
-                                .reply(format!(
-                                    "User said a banned word. Action: Ban{}\n{}",
-                                    duration_str, reason_str
-                                ))
-                                .await?;
-                        }
-                        ActionType::Warn => {
-                            warn(ctx, &user, res.reason).await?;
-                        }
-                        ActionType::Shame => (),
-                        ActionType::Delete => (),
+                        delete(message).await?;
                     }
-                    delete(message).await?;
                 }
             }
         }
+        _ => (),
     }
     Ok(())
 }
@@ -788,7 +793,7 @@ async fn list_triggers(message: &Message) -> Result<()> {
     if let Some(map) = res {
         let vals = map
             .into_iter()
-            .filter(|v| v.0.len() > 0)
+            .filter(|v| !v.0.is_empty())
             .map(|(key, _)| format!("\t- {}", key))
             .collect_vec()
             .join("\n");
@@ -828,7 +833,7 @@ async fn handle_command<'a>(ctx: &Context) -> Result<()> {
     }) = ctx.cmd()
     {
         match cmd {
-            "addblocklist" => command_blocklist(ctx, &args).await?,
+            "addblocklist" => command_blocklist(ctx, args).await?,
             "rmblocklist" => delete_trigger(message, args.text).await?,
             "blocklist" => list_triggers(message).await?,
             "rmallblocklists" => stopall(ctx, ctx.message()?.get_chat().get_id()).await?,
@@ -836,7 +841,7 @@ async fn handle_command<'a>(ctx: &Context) -> Result<()> {
         };
     }
 
-    handle_trigger(&ctx).await?;
+    handle_trigger(ctx).await?;
 
     Ok(())
 }

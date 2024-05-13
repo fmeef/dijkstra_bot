@@ -99,29 +99,27 @@ async fn get_lang_conversation(message: &Message, current: &Lang) -> Result<Conv
 
 async fn handle_command(ctx: &Context) -> Result<()> {
     if let Some(&Cmd {
-        cmd, message, lang, ..
+        cmd: "setlang",
+        message,
+        lang,
+        ..
     }) = ctx.cmd()
     {
-        match cmd {
-            "setlang" => {
-                let conv = get_lang_conversation(message, lang).await?;
+        let conv = get_lang_conversation(message, lang).await?;
 
-                if should_ignore_chat(message.get_chat().get_id()).await? {
-                    return Ok(());
-                }
-                TG.client()
-                    .build_send_message(
-                        message.get_chat().get_id(),
-                        &conv.get_current().await?.content,
-                    )
-                    .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
-                        conv.get_current_markup(3).await?,
-                    ))
-                    .build()
-                    .await?;
-            }
-            _ => (),
-        };
+        if should_ignore_chat(message.get_chat().get_id()).await? {
+            return Ok(());
+        }
+        TG.client()
+            .build_send_message(
+                message.get_chat().get_id(),
+                &conv.get_current().await?.content,
+            )
+            .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
+                conv.get_current_markup(3).await?,
+            ))
+            .build()
+            .await?;
     }
     Ok(())
 }

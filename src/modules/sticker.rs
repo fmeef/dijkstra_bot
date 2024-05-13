@@ -307,7 +307,7 @@ async fn handle_inline(query: &InlineQuery) -> Result<()> {
         })
         .collect::<Vec<InlineQueryResult>>();
     TG.client
-        .build_answer_inline_query(&query.get_id(), &stickers)
+        .build_answer_inline_query(query.get_id(), &stickers)
         .is_personal(true)
         .build()
         .await?;
@@ -357,12 +357,12 @@ async fn handle_command<'a>(message: &'a Message, cmd: Option<&Cmd<'a>>) -> Resu
 }
 
 async fn upload(message: &Message) -> Result<()> {
-    is_dm_or_die(&message.get_chat()).await?;
-    replace_conversation(message, |message| upload_sticker_conversation(message)).await?;
+    is_dm_or_die(message.get_chat()).await?;
+    replace_conversation(message, upload_sticker_conversation).await?;
     Ok(())
 }
 
-async fn delete_sticker<'a>(message: &'a Message, args: &Vec<TextArg<'a>>) -> Result<()> {
+async fn delete_sticker(message: &Message, args: &[TextArg<'_>]) -> Result<()> {
     drop_converstaion(message).await?;
     if let Some(TextArg::Arg(uuid)) = args.first() {
         log::info!("uuid {}", uuid);
@@ -408,8 +408,8 @@ async fn conv_start(conversation: Conversation, message: &Message) -> Result<()>
 
 async fn conv_upload(conversation: Conversation, message: &Message) -> Result<()> {
     if let Some(sticker) = message.get_sticker() {
-        let key = scope_key_by_chatuser(&KEY_TYPE_STICKER_ID, &message)?;
-        let taglist = scope_key_by_chatuser(&KEY_TYPE_TAG, &message)?;
+        let key = scope_key_by_chatuser(KEY_TYPE_STICKER_ID, message)?;
+        let taglist = scope_key_by_chatuser(KEY_TYPE_TAG, message)?;
         REDIS
             .pipe(|p| {
                 p.set(&key, sticker.get_file_id());
@@ -426,7 +426,7 @@ async fn conv_upload(conversation: Conversation, message: &Message) -> Result<()
 }
 
 async fn conv_name(conversation: Conversation, message: &Message) -> Result<()> {
-    let key = scope_key_by_chatuser(&KEY_TYPE_STICKER_NAME, &message)?;
+    let key = scope_key_by_chatuser(KEY_TYPE_STICKER_NAME, message)?;
     REDIS.sq(|p| p.set(&key, message.get_text())).await?;
     let text = conversation.transition(TRANSITION_TAG).await?;
     message.reply(text).await?;
@@ -434,12 +434,11 @@ async fn conv_name(conversation: Conversation, message: &Message) -> Result<()> 
 }
 
 async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<()> {
-    let key = scope_key_by_chatuser(&KEY_TYPE_STICKER_ID, &message)?;
-    let namekey = scope_key_by_chatuser(&KEY_TYPE_STICKER_NAME, &message)?;
-    let taglist = scope_key_by_chatuser(&KEY_TYPE_TAG, &message)?;
+    let key = scope_key_by_chatuser(KEY_TYPE_STICKER_ID, message)?;
+    let namekey = scope_key_by_chatuser(KEY_TYPE_STICKER_NAME, message)?;
+    let taglist = scope_key_by_chatuser(KEY_TYPE_TAG, message)?;
 
     let sticker_id: String = REDIS.sq(|p| p.get(&key)).await?;
-    let sticker_id = sticker_id;
     let text = message
         .get_text()
         .ok_or_else(|| BotError::conversation_err("no text"))?;
@@ -498,15 +497,15 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
 }
 
 async fn handle_conversation(message: &Message) -> Result<()> {
-    if !is_dm(&message.get_chat()) {
+    if !is_dm(message.get_chat()) {
         return Ok(());
     }
-    if let Some(conversation) = get_conversation(&message).await? {
+    if let Some(conversation) = get_conversation(message).await? {
         match conversation.get_current_text().await?.as_str() {
-            STATE_START => conv_start(conversation, &message).await,
-            STATE_UPLOAD => conv_upload(conversation, &message).await,
-            STATE_NAME => conv_name(conversation, &message).await,
-            STATE_TAGS => conv_moretags(conversation, &message).await,
+            STATE_START => conv_start(conversation, message).await,
+            STATE_UPLOAD => conv_upload(conversation, message).await,
+            STATE_NAME => conv_name(conversation, message).await,
+            STATE_TAGS => conv_moretags(conversation, message).await,
             _ => return Ok(()),
         }?;
     } else {

@@ -38,7 +38,7 @@ fn rules_model(ctx: &Context) -> Result<rules::Model> {
         )
     } else {
         let (media_id, media_type) = get_media_type(message)?;
-        let text = ctx.cmd().map(|&Cmd { ref args, .. }| args.text.to_owned());
+        let text = ctx.cmd().map(|Cmd { ref args, .. }| args.text.to_owned());
         (text, media_id, media_type)
     };
 
@@ -121,7 +121,7 @@ pub async fn handle_update(ctx: &Context) -> Result<()> {
             "setrules" => save_rule(ctx).await,
             "rules" => rules(ctx).await,
             "start" => {
-                let key: Option<i64> = handle_deep_link(ctx, |k| rules_deeplink_key(k)).await?;
+                let key: Option<i64> = handle_deep_link(ctx, rules_deeplink_key).await?;
                 if let Some(chat_id) = key {
                     let rules = if let Some(rules) = get_rule(chat_id).await? {
                         rules

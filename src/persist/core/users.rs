@@ -25,10 +25,10 @@ impl Related<super::messageentity::Entity> for Entity {
     }
 }
 
-impl Into<User> for Model {
-    fn into(self) -> User {
-        let mut builder = UserBuilder::new(self.user_id, self.is_bot, self.first_name);
-        if let Some(name) = self.last_name {
+impl From<Model> for User {
+    fn from(value: Model) -> Self {
+        let mut builder = UserBuilder::new(value.user_id, value.is_bot, value.first_name);
+        if let Some(name) = value.last_name {
             builder = builder.set_last_name(name);
         }
         builder.build()

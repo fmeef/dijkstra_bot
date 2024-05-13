@@ -11,7 +11,7 @@ use crate::tg::markdown::DefaultParseErr;
 use async_trait::async_trait;
 use bb8::RunError;
 use botapi::bot::{ApiError, Response};
-use botapi::gen_types::{Chat, Message};
+use botapi::gen_types::{Chat, ChatFullInfo, Message};
 use chrono::OutOfRangeError;
 use redis::RedisError;
 use sea_orm::{DbErr, RuntimeErr, TransactionError};
@@ -28,6 +28,12 @@ pub type Result<T> = std::result::Result<T, BotError>;
 /// Meant to be implemented on Result
 #[async_trait]
 pub trait SpeakErr<T: Send> {
+    /// Maps the error to BotError::Speak using a static message string
+    async fn speak<M, U>(self, ctx: &U, msg: M) -> Result<T>
+    where
+        U: Fail + Send + Sync,
+        M: AsRef<str> + Send;
+
     /// Maps the error to BotError::Speak using a custom function to derive error message
     async fn speak_err<F, U>(self, ctx: &U, func: F) -> Result<T>
     where
@@ -71,6 +77,23 @@ impl<T: Send, E: Into<BotError> + Send> SpeakErr<T> for std::result::Result<T, E
                 err.record_stats();
                 None
             }
+        }
+    }
+
+    async fn speak<M, U>(self, ctx: &U, msg: M) -> Result<T>
+    where
+        U: Fail + Send + Sync,
+        M: AsRef<str> + Send,
+    {
+        match self {
+            Err(err) => {
+                let err = err.into();
+                match err {
+                    BotError::ApiError(_) => ctx.fail(msg),
+                    _ => ctx.fail(msg),
+                }
+            }
+            Ok(v) => Ok(v),
         }
     }
 
@@ -154,8 +177,10 @@ impl<T: Send, E: Into<BotError> + Send> SpeakErr<T> for std::result::Result<T, E
 
     async fn silent(self) -> Result<T> {
         match self.map_err(|e| e.into()) {
-            Err(BotError::Speak { err: Some(err), .. }) => Err(*err),
-            Err(BotError::Speak { say, err: None, .. }) => Err(BotError::Generic(say)),
+            Err(BotError::Speak { err: Some(err), .. }) => Err(BotError::Silent(err)),
+            Err(BotError::Speak { say, err: None, .. }) => {
+                Err(BotError::Silent(Box::new(BotError::Generic(say))))
+            }
             v => v,
         }
     }
@@ -206,6 +231,16 @@ impl Fail for Chat {
     }
 }
 
+impl Fail for ChatFullInfo {
+    fn fail<T: AsRef<str>, R>(&self, message: T) -> Result<R> {
+        Err(self.fail_err(message))
+    }
+
+    fn fail_err<T: AsRef<str>>(&self, message: T) -> BotError {
+        BotError::speak(message.as_ref(), self.get_id(), None)
+    }
+}
+
 /// thiserror enum for all possible errors
 #[derive(Debug, Error)]
 pub enum BotError {
@@ -216,6 +251,8 @@ pub enum BotError {
         message: Option<i64>,
         err: Option<Box<BotError>>,
     },
+    #[error("{0}")]
+    Silent(Box<BotError>),
     #[error("Telegram API error: {0}")]
     ApiError(#[from] ApiError),
     #[error("Invalid conversation: {0}")]
@@ -264,6 +301,10 @@ pub enum BotError {
     QueryError(#[from] sea_query::error::Error),
     #[error("System time error: {0}")]
     SystemTimeError(#[from] SystemTimeError),
+    #[error("Rhai eval error: {0}")]
+    RhaiEvalErr(#[from] Box<rhai::EvalAltResult>),
+    #[error("Rhai parse error: {0}")]
+    RhaiParseError(#[from] rhai::ParseError),
 }
 
 impl<T> From<tokio::sync::mpsc::error::SendError<T>> for BotError {
@@ -329,11 +370,7 @@ impl BotError {
                         .error_code
                         .map(|v| v.to_string())
                         .unwrap_or_else(|| "invalid".to_owned()),
-                    error
-                        .description
-                        .as_ref()
-                        .map(|v| v.as_str())
-                        .unwrap_or("no description")
+                    error.description.as_deref().unwrap_or("no description")
                 );
                 if let Some(error_code) = error.error_code {
                     crate::persist::metrics::count_error_code(error_code);
@@ -350,11 +387,10 @@ impl BotError {
     }
 
     /// get humanreadable error string to print to user via telegram
-    pub fn get_tg_error<'a>(&'a self) -> &'a str {
+    pub fn get_tg_error(&self) -> &'_ str {
         if let BotError::ApiError(err) = self {
             err.get_response()
-                .map(|r| r.description.as_ref().map(|v| v.as_str()))
-                .flatten()
+                .and_then(|r| r.description.as_deref())
                 .unwrap_or("")
         } else {
             ""
@@ -363,18 +399,19 @@ impl BotError {
 
     /// send message via telegram for this error, returning true if a message was sent
     pub async fn get_message(&self) -> Result<bool> {
-        if let Self::Speak {
-            say, chat, message, ..
-        } = self
-        {
-            if let Some(message) = message {
-                chat.force_reply(say, *message).await?;
-            } else {
-                chat.speak(say).await?;
+        match self {
+            Self::Speak {
+                say, chat, message, ..
+            } => {
+                if let Some(message) = message {
+                    chat.force_reply(say, *message).await?;
+                } else {
+                    chat.speak(say).await?;
+                }
+                Ok(true)
             }
-            Ok(true)
-        } else {
-            Ok(false)
+            Self::Silent(_) => Ok(true),
+            _ => Ok(false),
         }
     }
 }

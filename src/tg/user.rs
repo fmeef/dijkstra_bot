@@ -2,6 +2,8 @@
 //! This is intended to reduce the number of telegram requests, user information
 //! stored in persistent database, and to allow reverse lookup of @ handles
 
+use std::borrow::Cow;
+
 use crate::persist::redis::RedisStr;
 use crate::statics::{CONFIG, REDIS, TG};
 use crate::util::error::Result;
@@ -28,13 +30,13 @@ pub async fn get_me() -> Result<User> {
     let me_key = "user_me";
     REDIS
         .query(|mut q| async move {
-            let me: Option<RedisStr> = q.get(&me_key).await?;
+            let me: Option<RedisStr> = q.get(me_key).await?;
             if let Some(me) = me {
                 Ok(me.get()?)
             } else {
                 let me = TG.client().get_me().await?;
                 let me_str = RedisStr::new(&me)?;
-                q.set(&me_key, me_str).await?;
+                q.set(me_key, me_str).await?;
                 Ok(me)
             }
         })
@@ -46,7 +48,7 @@ pub(crate) async fn record_cache_user(user: &User) -> Result<()> {
     let key = get_user_cache_key(user.get_id());
     let st = RedisStr::new(user)?;
     if let Some(username) = user.get_username() {
-        let uname = get_username_cache_key(&username);
+        let uname = get_username_cache_key(username);
         REDIS
             .pipe(|p| {
                 p.set(&key, st)
@@ -76,7 +78,7 @@ pub async fn record_cache_chat(chat: &Chat) -> Result<()> {
 /// Parse an update for users and chats and record them as needed
 pub async fn record_cache_update(update: &UpdateExt) -> Result<()> {
     if let Some(user) = RecordUser::get_user(update) {
-        record_cache_user(&user).await?;
+        record_cache_user(user).await?;
     }
     if let UpdateExt::Message(m) = update {
         if let Some(m) = m.get_reply_to_message() {
@@ -144,7 +146,7 @@ pub async fn get_chat(chat: i64) -> Result<Option<Chat>> {
 /// extension trait for getting human readable names from telegram objects
 pub trait Username {
     /// get the human readable name, often either the display name, @ handle, or id number
-    fn name_humanreadable<'a>(&'a self) -> String;
+    fn name_humanreadable(&self) -> Cow<'_, str>;
 }
 
 /// extension trait for recording a chat to redis
@@ -165,7 +167,7 @@ pub trait GetChat {
 #[async_trait]
 pub trait RecordUser {
     /// helper to get the user from the value (not from cache)
-    fn get_user<'a>(&'a self) -> Option<&'a User>;
+    fn get_user(&self) -> Option<&'_ User>;
 
     /// record this user to redis. Does nothing if full information is not present
     async fn record_user(&self) -> Result<()>;
@@ -177,26 +179,28 @@ pub trait GetUser {
     /// Get the user's full information from redis cache
     async fn get_cached_user(&self) -> Result<Option<User>>;
 
-    async fn cached_name(&self) -> Result<String>;
+    async fn cached_name<'a>(&'a self) -> Result<Cow<'a, str>>;
 
     async fn mention(&self) -> Result<Markup<String>>;
 }
 
 impl Username for User {
-    fn name_humanreadable<'a>(&'a self) -> String {
+    fn name_humanreadable(&self) -> Cow<'_, str> {
         self.get_username()
-            .map(|v| format!("@{}", v.escape(false)))
-            .unwrap_or_else(|| self.get_id().to_string())
+            .map(|v| Cow::Owned(format!("@{}", v.escape(false))))
+            .unwrap_or_else(|| Cow::Owned(self.get_id().to_string()))
     }
 }
 
 impl Username for Chat {
-    fn name_humanreadable<'a>(&'a self) -> String {
-        self.get_title().map(|v| v.to_owned()).unwrap_or_else(|| {
-            self.get_username()
-                .map(|v| v.escape(false))
-                .unwrap_or_else(|| self.get_id().to_string())
-        })
+    fn name_humanreadable(&self) -> Cow<'_, str> {
+        if let Some(title) = self.get_title() {
+            Cow::Owned(title.to_owned())
+        } else if let Some(ref v) = self.username {
+            v.escape(false)
+        } else {
+            Cow::Owned(self.get_id().to_string())
+        }
     }
 }
 
@@ -225,21 +229,24 @@ impl GetUser for i64 {
         get_user(*self).await
     }
 
-    async fn cached_name(&self) -> Result<String> {
+    async fn cached_name<'a>(&'a self) -> Result<Cow<'a, str>> {
         let res = if let Some(user) = self.get_cached_user().await? {
-            user.name_humanreadable()
+            Cow::Owned(user.name_humanreadable().into_owned())
         } else {
-            self.to_string().escape(false)
+            Cow::Owned(self.to_string())
         };
         Ok(res)
     }
 
     async fn mention(&self) -> Result<Markup<String>> {
         let res = if let Some(user) = self.get_cached_user().await? {
-            let name = user.name_humanreadable();
+            let name = user
+                .get_username()
+                .map(|v| format!("@{}", v))
+                .unwrap_or_else(|| self.to_string());
             MarkupType::TextMention(user).text(name)
         } else {
-            MarkupType::Text.text(self.to_string().escape(false))
+            MarkupType::Text.text(self.to_string())
         };
         Ok(res)
     }
@@ -251,13 +258,13 @@ impl GetUser for User {
         Ok(Some(self.clone()))
     }
 
-    async fn cached_name(&self) -> Result<String> {
+    async fn cached_name<'a>(&'a self) -> Result<Cow<'a, str>> {
         Ok(self.name_humanreadable())
     }
 
     async fn mention(&self) -> Result<Markup<String>> {
         let name = self.name_humanreadable();
-        Ok(MarkupType::TextMention(self.clone()).text(name))
+        Ok(MarkupType::TextMention(self.clone()).text(name.into_owned()))
     }
 }
 
@@ -270,7 +277,7 @@ impl GetChat for i64 {
 
 #[async_trait]
 impl RecordUser for User {
-    fn get_user<'a>(&'a self) -> Option<&'a User> {
+    fn get_user(&self) -> Option<&'_ User> {
         Some(self)
     }
 
@@ -281,7 +288,7 @@ impl RecordUser for User {
 
 #[async_trait]
 impl RecordUser for UpdateExt {
-    fn get_user<'a>(&'a self) -> Option<&'a User> {
+    fn get_user(&self) -> Option<&'_ User> {
         match self {
             UpdateExt::Message(ref message) => message.get_from(),
             UpdateExt::EditedMessage(ref message) => message.get_from(),
@@ -302,6 +309,10 @@ impl RecordUser for UpdateExt {
             UpdateExt::MessageReactionCount(_) => None,
             UpdateExt::ChatBoost(_) => None,
             UpdateExt::RemovedChatBoost(_) => None,
+            UpdateExt::DeletedBusinessMessages(_) => None,
+            UpdateExt::BusinessConnection(ref c) => Some(c.get_user()),
+            UpdateExt::EditedBusinessMessage(_) => None,
+            UpdateExt::BusinessMessage(_) => None,
         }
     }
 

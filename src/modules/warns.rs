@@ -1,7 +1,7 @@
 use crate::tg::command::{Cmd, Context};
 use crate::tg::markdown::remove_fillings;
 use crate::tg::user::{GetUser, Username};
-use crate::util::error::Fail;
+use crate::util::error::{BotError, Fail, SpeakErr};
 
 use crate::{
     metadata::metadata, tg::admin_helpers::*, tg::command::TextArgs, tg::permissions::*,
@@ -15,10 +15,10 @@ metadata!("Warns",
     r#"
     Keep your users in line with warnings! Good for pressuring people not to say the word "bro"
 
-    Use the /warn command by either passing a mention/username or by replying to a user to warn.  
+    Use the /warn command by either passing a mention/username or by replying to a user to warn.
     After a user gets a set amount of warnings \(default 3\) the action specified by the /warnmode will
     be applied. The default action is to mute the user.
- 
+
     "#,
     { command = "warn", help = "Warns a user"},
     { command = "warns", help = "Get warn count of a user"},
@@ -40,18 +40,21 @@ pub async fn warn(context: &Context) -> Result<()> {
                 return ctx.fail(lang_fmt!(ctx.try_get()?.lang, "warnadmin"));
             }
 
-            let reason = args
-                .map(|a| {
-                    if a.args.len() > 0 {
-                        Some(a.text.trim())
-                    } else {
-                        None
-                    }
-                })
-                .flatten();
+            let reason = args.and_then(|a| {
+                if !a.args.is_empty() {
+                    Some(a.text.trim())
+                } else {
+                    None
+                }
+            });
 
             ctx.warn_with_action(user, reason, None).await?;
             Ok(())
+        })
+        .await
+        .speak_err_raw(context, |v| match v {
+            BotError::UserNotFound => Some(lang_fmt!(context, "failuser", "warn")),
+            _ => None,
         })
         .await?;
     Ok(())
@@ -62,7 +65,7 @@ pub async fn warns(context: &Context) -> Result<()> {
         context.is_group_or_die().await?;
         let chat = v.chat;
         let lang = v.lang;
-        self_admin_or_die(&chat).await?;
+        self_admin_or_die(chat).await?;
         context
             .action_user(|ctx, user, _| async move {
                 let warns = get_warns(ctx.try_get()?.chat, user).await?;
@@ -84,6 +87,11 @@ pub async fn warns(context: &Context) -> Result<()> {
                     .await?;
                 Ok(())
             })
+            .await
+            .speak_err_raw(context, |v| match v {
+                BotError::UserNotFound => Some(lang_fmt!(context, "failuser", "check warns for")),
+                _ => None,
+            })
             .await?;
     }
     Ok(())
@@ -92,7 +100,7 @@ pub async fn warns(context: &Context) -> Result<()> {
 pub async fn clear<'a>(ctx: &Context) -> Result<()> {
     let message = ctx.message()?;
     ctx.is_group_or_die().await?;
-    self_admin_or_die(&message.get_chat()).await?;
+    self_admin_or_die(message.get_chat()).await?;
     ctx.check_permissions(|p| p.can_restrict_members).await?;
     ctx.action_user(|ctx, user, _| async move {
         clear_warns(ctx.message()?.get_chat(), user).await?;
@@ -100,6 +108,11 @@ pub async fn clear<'a>(ctx: &Context) -> Result<()> {
         ctx.reply_fmt(entity_fmt!(ctx, "clearwarns", user.mention().await?))
             .await?;
         Ok(())
+    })
+    .await
+    .speak_err_raw(ctx, |v| match v {
+        BotError::UserNotFound => Some(lang_fmt!(ctx, "failuser", "clear warns for")),
+        _ => None,
     })
     .await?;
 
@@ -140,7 +153,7 @@ async fn cmd_warn_limit<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
     ctx.check_permissions(|p| p.can_restrict_members).await?;
     let message = ctx.message()?;
     let chat = ctx.try_get()?.chat.name_humanreadable();
-    match i32::from_str_radix(args.text.trim(), 10) {
+    match str::parse(args.text.trim()) {
         Ok(num) => {
             if num > 0 {
                 set_warn_limit(message.get_chat(), num).await?;

@@ -65,18 +65,12 @@ pub async fn refresh_notes(
             .collect_vec();
         let st = notes
             .iter()
-            .filter_map(|v| {
-                if let Some(s) = RedisStr::new(&v).ok() {
-                    Some((v.0.name.clone(), s))
-                } else {
-                    None
-                }
-            })
+            .filter_map(|v| RedisStr::new(&v).ok().map(|s| (v.0.name.clone(), s)))
             .collect_vec();
         REDIS
             .pipe(|q| {
-                if st.len() > 0 {
-                    q.hset_multiple(&hash_key, &st.as_slice());
+                if !st.is_empty() {
+                    q.hset_multiple(&hash_key, st.as_slice());
                 }
                 q.expire(&hash_key, CONFIG.timing.cache_timeout)
             })
@@ -183,12 +177,12 @@ pub async fn get_note_by_name(
 }
 
 /// Handles a note button transition
-pub fn handle_transition<'a>(
-    ctx: &'a Context,
+pub fn handle_transition(
+    ctx: &Context,
     chat: i64,
     note: String,
     callback: CallbackQuery,
-) -> BoxFuture<'a, Result<()>> {
+) -> BoxFuture<'_, Result<()>> {
     async move {
         log::info!("current note: {}", note);
         if let Some((note, extra_entities, extra_buttons)) = get_note_by_name(note, chat).await? {

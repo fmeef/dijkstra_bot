@@ -29,6 +29,7 @@ use futures::FutureExt;
 use itertools::Itertools;
 use lazy_static::__Deref;
 use macros::entity_fmt;
+use macros::lang_fmt;
 use macros::update_handler;
 use redis::AsyncCommands;
 use sea_orm::entity::ActiveValue;
@@ -322,10 +323,8 @@ pub mod entities {
             pub button_text: Option<String>,
             pub callback_data: Option<String>,
             pub button_url: Option<String>,
-            pub owner_id: Option<i64>,
             pub pos_x: Option<i32>,
             pub pos_y: Option<i32>,
-            pub b_owner_id: Option<i64>,
             pub raw_text: Option<String>,
 
             // entity fields
@@ -359,7 +358,7 @@ pub mod entities {
                 Option<triggers::Model>,
             ) {
                 let button = if let (Some(button_text), Some(owner_id), Some(pos_x), Some(pos_y)) =
-                    (self.button_text, self.b_owner_id, self.pos_x, self.pos_y)
+                    (self.button_text, self.entity_id, self.pos_x, self.pos_y)
                 {
                     Some(button::Model {
                         button_text,
@@ -390,7 +389,7 @@ pub mod entities {
                 };
 
                 let entity = if let (Some(tg_type), Some(offset), Some(length), Some(owner_id)) =
-                    (self.tg_type, self.offset, self.length, self.owner_id)
+                    (self.tg_type, self.offset, self.length, self.entity_id)
                 {
                     Some(EntityWithUser {
                         tg_type,
@@ -672,21 +671,20 @@ async fn search_cache(
                 if let Some(mut idx) = t.find(&key) {
                     if idx == 0 && idx + key.len() == text.len() {
                         return get_filter(message, item).await;
+                    }
+                    if idx == 0 {
+                        idx = 1;
+                    }
+                    let keylen = if key.len() + 1 < text.len() {
+                        key.len() + idx
                     } else {
-                        if idx == 0 {
-                            idx = 1;
-                        }
-                        let keylen = if key.len() + 1 < text.len() {
-                            key.len() + idx
-                        } else {
-                            text.len() - 1
-                        };
-                        let ws = &text[idx - 1..keylen];
-                        if ws.starts_with(|c: char| c.is_whitespace())
-                            || ws.ends_with(|c: char| c.is_whitespace())
-                        {
-                            return get_filter(message, item).await;
-                        }
+                        text.len() - 1
+                    };
+                    let ws = &text[idx - 1..keylen];
+                    if ws.starts_with(|c: char| c.is_whitespace())
+                        || ws.ends_with(|c: char| c.is_whitespace())
+                    {
+                        return get_filter(message, item).await;
                     }
                 }
             }
@@ -703,7 +701,7 @@ async fn update_cache_from_db(message: &Message) -> Result<()> {
 
         REDIS
             .try_pipe(|p| {
-                p.hset(&hash_key, "empty", 0);
+                p.hset(&hash_key, "", 0);
                 for (filter, (entities, buttons, triggers)) in res.into_iter() {
                     let key = get_filter_key(message, filter.id);
                     log::info!("triggers {}", triggers.len());
@@ -760,6 +758,11 @@ async fn command_filter<'a>(c: &Context, args: &TextArgs<'a>) -> Result<()> {
                     .iter()
                     .map(|v| v.to_lowercase())
                     .collect::<Vec<String>>();
+
+                if triggers.iter().any(|v| v.trim().is_empty()) {
+                    return ctx.fail(lang_fmt!(ctx, "emptynotallowed"));
+                }
+
                 let (f, message) = if let Some(message) = message.get_reply_to_message() {
                     (message.get_text().map(|v| v.to_owned()), message)
                 } else {
@@ -775,7 +778,8 @@ async fn command_filter<'a>(c: &Context, args: &TextArgs<'a>) -> Result<()> {
                     .filter(
                         filters::Column::Chat
                             .eq(message.get_chat().get_id())
-                            .and(triggers::Column::Trigger.is_in(triggers.as_slice())),
+                            .and(triggers::Column::Trigger.is_in(triggers.as_slice()))
+                            .and(filters::Column::MediaId.is_not_null()),
                     )
                     .into_tuple()
                     .all(tx)
@@ -861,7 +865,6 @@ async fn command_filter<'a>(c: &Context, args: &TextArgs<'a>) -> Result<()> {
         .join("\n - ");
     let text = MarkupType::Code.text(&filters_fmt);
     c.message()?
-        .get_chat()
         .reply_fmt(entity_fmt!(c, "addfilter", text))
         .await?;
     Ok(())
@@ -870,7 +873,7 @@ async fn command_filter<'a>(c: &Context, args: &TextArgs<'a>) -> Result<()> {
 async fn handle_trigger(ctx: &Context) -> Result<()> {
     let message = ctx.message()?;
     if let Some(text) = message.get_text() {
-        if let Some((res, extra_entities, extra_buttons)) = search_cache(message, &text).await? {
+        if let Some((res, extra_entities, extra_buttons)) = search_cache(message, text).await? {
             SendMediaReply::new(ctx, res.media_type)
                 .button_callback(|_, _| async move { Ok(()) }.boxed())
                 .text(res.text)
@@ -891,6 +894,7 @@ async fn list_triggers(message: &Message) -> Result<()> {
     if let Some(map) = res {
         let vals = map
             .into_iter()
+            .filter(|(k, v)| !k.is_empty() && *v != 0)
             .map(|(key, _)| format!("\t- {}", key))
             .collect_vec()
             .join("\n");
@@ -911,7 +915,7 @@ async fn stopall(ctx: &Context) -> Result<()> {
 
     let key = get_filter_hash_key(message);
     REDIS.sq(|q| q.del(&key)).await?;
-    message.reply("Stopped all filters").await?;
+    ctx.reply("Stopped all filters").await?;
     Ok(())
 }
 
@@ -924,13 +928,13 @@ async fn handle_command(ctx: &Context) -> Result<()> {
     }) = ctx.cmd()
     {
         match cmd {
-            "filter" => command_filter(ctx, &args).await?,
+            "filter" => command_filter(ctx, args).await?,
             "stop" => delete_trigger(ctx, args.text).await?,
             "filters" => list_triggers(message).await?,
             "stopall" => stopall(ctx).await?,
             _ => handle_trigger(ctx).await?,
         };
-    } else if let Ok(_) = ctx.message() {
+    } else if ctx.message().is_ok() {
         handle_trigger(ctx).await?;
     }
 

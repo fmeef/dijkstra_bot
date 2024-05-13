@@ -1,6 +1,6 @@
 //! Helpers for managing federations, subscribable ban lists
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{hash_map::Entry, HashMap, HashSet};
 
 use crate::{
     persist::{
@@ -64,7 +64,7 @@ fn get_fed_key(owner: i64) -> String {
 
 #[inline(always)]
 fn get_fban_key(fban: &Uuid) -> String {
-    format!("fban:{}", fban.to_string())
+    format!("fban:{}", fban)
 }
 
 #[inline(always)]
@@ -79,7 +79,7 @@ fn get_fed_chat_key(chat: i64) -> String {
 
 #[inline(always)]
 fn get_fban_set_key(fed: &Uuid) -> String {
-    format!("fbs:{}", fed.to_string())
+    format!("fbs:{}", fed)
 }
 
 pub async fn get_fban_for_chatmember(user: i64, chat: i64) -> Result<Option<fbans::Model>> {
@@ -222,7 +222,7 @@ pub async fn is_user_fbanned(user: i64, chat: i64, reply: i64) -> Result<Option<
                 let key = get_fban_key(&v.get::<Uuid>()?);
                 let fb: Option<RedisStr> = REDIS.sq(|q| q.get(&key)).await?;
                 if let Some(fb) = fb {
-                    return Ok(fb.get()?);
+                    return fb.get();
                 }
                 log::info!("fban cache empty?");
             } else {
@@ -307,9 +307,9 @@ pub async fn update_fed(owner: i64, newname: String) -> Result<federations::Mode
         .await?;
 
     REDIS.sq(|q| q.del(&key)).await?;
-    Ok(model
+    model
         .pop()
-        .ok_or_else(|| BotError::Generic("no fed".to_owned()))?)
+        .ok_or_else(|| BotError::Generic("no fed".to_owned()))
 }
 
 pub async fn fban_user(fban: fbans::Model, user: &User) -> Result<()> {
@@ -334,7 +334,7 @@ pub async fn get_fed(user: i64) -> Result<Option<federations::Model>> {
     for _ in 0..4 {
         let v: Option<RedisStr> = REDIS.sq(|q| q.get(&key)).await?;
         if let Some(v) = v {
-            return Ok(v.get()?);
+            return v.get();
         }
         try_update_fban_cache(user).await?;
     }
@@ -462,7 +462,7 @@ pub async fn is_user_gbanned(user: i64) -> Result<Option<(gbans::Model, users::M
 
 #[inline(always)]
 fn get_fedadmin_key(fed: &Uuid) -> String {
-    format!("fad:{}", fed.to_string())
+    format!("fad:{}", fed)
 }
 
 pub async fn fpromote(fed: Uuid, user: i64) -> Result<()> {
@@ -627,11 +627,8 @@ pub async fn try_update_fban_cache(user: i64) -> Result<()> {
                     fed_name,
                 };
 
-                if !fban_cache.contains_key(&federation_model.fed_id) {
-                    fban_cache.insert(
-                        federation_model.fed_id,
-                        (HashSet::new(), federation_model.subscribed),
-                    );
+                if let Entry::Vacant(fban_cache) = fban_cache.entry(federation_model.fed_id) {
+                    fban_cache.insert((HashSet::new(), federation_model.subscribed));
                 }
 
                 let fed_key = get_fed_key(federation_model.owner);
@@ -680,7 +677,7 @@ pub async fn try_update_fban_cache(user: i64) -> Result<()> {
 
             for (fed, (fbans, subscribed)) in fban_cache.iter() {
                 log::info!("updating subscribed {:?}", subscribed);
-                let key = get_fban_set_key(&fed);
+                let key = get_fban_set_key(fed);
                 p.hset(&key, true, true);
                 for (user, fban) in fbans {
                     p.hset(&key, user, fban.to_redis()?);
@@ -696,8 +693,8 @@ pub async fn try_update_fban_cache(user: i64) -> Result<()> {
                         log::warn!("somehow found a subscription cycle for fed {}: {}", fed, s);
                         break;
                     }
-                    seen.insert(&s);
-                    if let Some((fbans, subscribed)) = fban_cache.get(&s) {
+                    seen.insert(s);
+                    if let Some((fbans, subscribed)) = fban_cache.get(s) {
                         for (user, fban) in fbans {
                             p.hset(&key, user, fban.to_redis()?);
                         }
@@ -719,7 +716,7 @@ impl Context {
     pub async fn unfban(&self, user: i64, fed: &Uuid) -> Result<()> {
         let v = self.try_get()?;
         let chat = v.chat;
-        let key = get_fban_set_key(&fed);
+        let key = get_fban_set_key(fed);
         if let Some(fban) = is_user_fbanned(user, chat.get_id(), self.message()?.message_id).await?
         {
             iter_unfban_user(user, &fban.federation).await?;
@@ -755,11 +752,11 @@ impl Context {
             let cancel = InlineKeyboardButtonBuilder::new("Cancel".to_owned())
                 .set_callback_data(Uuid::new_v4().to_string())
                 .build();
-            let lang = self.lang().clone();
+            let lang = *self.lang();
             confirm.on_push_multi(move |callback| async move {
                 if callback.get_from().get_id() != user {
                     TG.client
-                        .build_answer_callback_query(&callback.get_id())
+                        .build_answer_callback_query(callback.get_id())
                         .show_alert(true)
                         .text(&lang_fmt!(lang, "fpromotenotauth"))
                         .build()
@@ -774,7 +771,7 @@ impl Context {
                     match fpromote(fed.fed_id, user).await {
                         Ok(_) => {
                             TG.client
-                                .build_answer_callback_query(&callback.get_id())
+                                .build_answer_callback_query(callback.get_id())
                                 .show_alert(true)
                                 .text(&lang_fmt!(lang, "fpromoted"))
                                 .build()
@@ -782,7 +779,7 @@ impl Context {
                         }
                         Err(err) => {
                             TG.client
-                                .build_answer_callback_query(&callback.get_id())
+                                .build_answer_callback_query(callback.get_id())
                                 .show_alert(true)
                                 .text(&lang_fmt!(lang, "failfpromote", err))
                                 .build()
@@ -797,7 +794,7 @@ impl Context {
             cancel.on_push_multi(move |callback| async move {
                 if callback.get_from().get_id() != me {
                     TG.client
-                        .build_answer_callback_query(&callback.get_id())
+                        .build_answer_callback_query(callback.get_id())
                         .show_alert(true)
                         .text("You are not the fed owner")
                         .build()
@@ -820,7 +817,7 @@ impl Context {
                         .await?;
                 }
                 TG.client
-                    .build_answer_callback_query(&callback.get_id())
+                    .build_answer_callback_query(callback.get_id())
                     .build()
                     .await?;
 
@@ -830,7 +827,7 @@ impl Context {
             builder.button(confirm);
             builder.button(cancel);
             if let Some(user) = user.get_cached_user().await? {
-                let name = user.name_humanreadable();
+                let name = user.name_humanreadable().into_owned();
                 let mention = MarkupType::TextMention(user).text(&name);
                 self.reply_fmt(
                     entity_fmt!(ctx, "fpromote", mention)
@@ -839,6 +836,11 @@ impl Context {
                 .await?;
             }
             Ok(())
+        })
+        .await
+        .speak_err_raw(self, |v| match v {
+            BotError::UserNotFound => Some(lang_fmt!(self, "failuser", "fpromote")),
+            _ => None,
         })
         .await?;
         Ok(())

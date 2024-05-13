@@ -1,6 +1,6 @@
+use dijkstra::persist::core::*;
 use dijkstra::persist::migrate::ManagerHelper;
 use sea_orm_migration::prelude::*;
-use dijkstra::persist::core::*;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;

@@ -80,7 +80,7 @@ impl Model {
         owner_id: i64,
     ) -> crate::util::error::Result<Self> {
         if let Some(user) = messageentity.get_user() {
-            insert_user(&user).await?;
+            insert_user(user).await?;
         }
         let tg_type = DbMarkupType::from_tg_type(messageentity.get_tg_type())?;
         Ok(Self {

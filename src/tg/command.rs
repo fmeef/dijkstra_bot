@@ -59,7 +59,7 @@ fn get_input_type<'a>(
     end: usize,
 ) -> InputType<'a> {
     if let Some(reply) = message.get_reply_to_message() {
-        InputType::Reply(name, reply.get_text(), &reply)
+        InputType::Reply(name, reply.get_text(), reply)
     } else {
         let tail = &textargs.text[end..];
         InputType::Command(name, Some(tail), message)
@@ -192,7 +192,7 @@ impl<'a, 'b> PopSlice<'b, 'a> for ArgSlice<'a> {
     fn pop_slice(&'b self) -> Option<(TextArg<'a>, ArgSlice<'a>)> {
         if let Some(arg) = self.args.first() {
             let res = ArgSlice {
-                text: &self.text[arg.get_text().len()..].trim(),
+                text: self.text[arg.get_text().len()..].trim(),
                 args: &self.args[1..],
             };
             Some((arg.r(), res))
@@ -203,10 +203,7 @@ impl<'a, 'b> PopSlice<'b, 'a> for ArgSlice<'a> {
 }
 
 fn get_arg_type<'a>(message: &'a Message, entity: &'a MessageEntity) -> Option<EntityArg<'a>> {
-    if let Some(text) = message
-        .get_text()
-        .map_or(message.get_caption(), |v| Some(v))
-    {
+    if let Some(text) = message.get_text().map_or(message.get_caption(), Some) {
         let start = entity.get_offset() as usize;
         let end = start + entity.get_length() as usize;
         let text = &text[start..end];
@@ -214,8 +211,8 @@ fn get_arg_type<'a>(message: &'a Message, entity: &'a MessageEntity) -> Option<E
             "hashtag" => Some(EntityArg::Hashtag(text)),
             "mention" => Some(EntityArg::Mention(&text[1..])), //do not include @ in mention
             "url" => Some(EntityArg::Url(text)),
-            "text_mention" => entity.get_user().map(|u| EntityArg::TextMention(&u)),
-            "text_link" => entity.get_url().map(|u| EntityArg::TextLink(&u)),
+            "text_mention" => entity.get_user().map(EntityArg::TextMention),
+            "text_link" => entity.get_url().map(EntityArg::TextLink),
             _ => None,
         }
     } else {
@@ -224,11 +221,11 @@ fn get_arg_type<'a>(message: &'a Message, entity: &'a MessageEntity) -> Option<E
 }
 
 /// Parse a single argument manually. Useful for when you don't need the full text of a command
-pub fn single_arg<'a>(s: &'a str) -> Option<(TextArg<'a>, usize, usize)> {
+pub fn single_arg(s: &str) -> Option<(TextArg<'_>, usize, usize)> {
     ARGS.find(s).map(|v| {
         if QUOTE.is_match(v.as_str()) {
             (
-                TextArg::Quote(&v.as_str().trim_matches(&['\"'])),
+                TextArg::Quote(v.as_str().trim_matches(&['\"'])),
                 v.start(),
                 v.end(),
             )
@@ -279,23 +276,19 @@ impl StaticContext {
         let v = Yoke::attach_to_cart(self, |v| {
             (
                 v,
-                if let Some(chat) = v.chat() {
-                    Some(ContextYoke {
-                        update: v.update(),
-                        chat,
-                        lang: v.lang(),
-                        command: v.parse_cmd_struct(),
-                    })
-                } else {
-                    None
-                },
+                v.chat().map(|chat| ContextYoke {
+                    update: v.update(),
+                    chat,
+                    lang: v.lang(),
+                    command: v.parse_cmd_struct(),
+                }),
             )
         });
         Context(v)
     }
 
     /// Parse a command from a message. Returns none if the message isn't a /command or !command
-    pub fn parse_cmd_struct<'a>(&'a self) -> Option<Cmd<'a>> {
+    pub fn parse_cmd_struct(&self) -> Option<Cmd<'_>> {
         self.parse_cmd().map(|(cmd, args, entities)| Cmd {
             cmd,
             args,
@@ -306,27 +299,25 @@ impl StaticContext {
     }
 
     /// Parse individual components of a /command or !command
-    pub fn parse_cmd<'a>(&'a self) -> Option<(&'a str, TextArgs<'a>, Entities<'a>)> {
+    pub fn parse_cmd(&self) -> Option<(&'_ str, TextArgs<'_>, Entities<'_>)> {
         if let Ok(message) = self.message() {
             if let Some(cmd) = message
                 .get_text()
-                .map_or_else(|| message.get_caption(), |v| Some(v))
+                .map_or_else(|| message.get_caption(), Some)
             {
                 log::info!("cmd {}", cmd);
-                if let Some(head) = COMMOND_HEAD.find(&cmd) {
+                if let Some(head) = COMMOND_HEAD.find(cmd) {
                     let entities = if let Some(entities) = message.get_entities() {
                         let mut entities = entities
                             .iter()
-                            .filter(|p| match p.get_tg_type().as_ref() {
-                                "hashtag" => true,
-                                "mention" => true,
-                                "url" => true,
-                                "text_mention" => true,
-                                "text_link" => true,
-                                _ => false,
+                            .filter(|p| {
+                                matches!(
+                                    p.get_tg_type(),
+                                    "hashtag" | "mention" | "url" | "text_mention" | "text_link"
+                                )
                             })
                             .collect::<Vec<&MessageEntity>>();
-                        entities.sort_by(|o, n| n.get_offset().cmp(&o.get_offset()));
+                        entities.sort_by_key(|n| n.get_offset());
                         entities
                     } else {
                         vec![]
@@ -339,7 +330,7 @@ impl StaticContext {
                         .find_iter(tail)
                         .map(|v| {
                             if let Some(m) = QUOTE.find(v.as_str()) {
-                                TextArg::Quote(&m.as_str().trim_matches(&['\"']))
+                                TextArg::Quote(m.as_str().trim_matches(&['\"']))
                             } else {
                                 TextArg::Arg(v.as_str())
                             }
@@ -350,7 +341,7 @@ impl StaticContext {
                             .trim_end()
                             .trim_end_matches(&*AT_HANDLE),
                         TextArgs {
-                            text: &tail,
+                            text: tail,
                             args: raw_args,
                         },
                         args.collect(),
@@ -366,14 +357,14 @@ impl StaticContext {
         }
     }
 
-    pub fn chat_ok<'a>(&'a self) -> Result<&'a Chat> {
+    pub fn chat_ok(&self) -> Result<&'_ Chat> {
         let c = self
             .chat()
             .ok_or_else(|| BotError::Generic("no chat".to_owned()))?;
         Ok(c)
     }
 
-    pub fn message<'a>(&'a self) -> Result<&'a Message> {
+    pub fn message(&self) -> Result<&'_ Message> {
         if let UpdateExt::Message(ref message) = self.update {
             Ok(message)
         } else {
@@ -381,15 +372,15 @@ impl StaticContext {
         }
     }
 
-    pub fn update<'a>(&'a self) -> &'a UpdateExt {
+    pub fn update(&self) -> &'_ UpdateExt {
         &self.update
     }
 
-    pub fn lang<'a>(&'a self) -> &'a Lang {
+    pub fn lang(&self) -> &'_ Lang {
         &self.lang
     }
 
-    pub fn chat<'a>(&'a self) -> Option<&'a Chat> {
+    pub fn chat(&self) -> Option<&'_ Chat> {
         match self.update {
             UpdateExt::Message(ref m) => Some(m.get_chat()),
             UpdateExt::EditedMessage(ref m) => Some(m.get_chat()),
@@ -402,17 +393,14 @@ impl StaticContext {
         }
     }
 
-    pub fn chatuser<'a>(&'a self) -> Option<ChatUser> {
+    pub fn chatuser(&self) -> Option<ChatUser> {
         match self.update {
             UpdateExt::Message(ref m) => m.get_chatuser(),
             UpdateExt::EditedMessage(ref m) => m.get_chatuser(),
-            UpdateExt::CallbackQuery(ref m) => m
-                .get_message()
-                .map(|m| match m {
-                    MaybeInaccessibleMessage::Message(m) => m.get_chatuser(),
-                    MaybeInaccessibleMessage::InaccessibleMessage(_) => None,
-                })
-                .flatten(),
+            UpdateExt::CallbackQuery(ref m) => m.get_message().and_then(|m| match m {
+                MaybeInaccessibleMessage::Message(m) => m.get_chatuser(),
+                MaybeInaccessibleMessage::InaccessibleMessage(_) => None,
+            }),
             UpdateExt::ChatMember(ref m) => Some(ChatUser {
                 chat: m.get_chat(),
                 user: m.get_from(),
@@ -448,7 +436,7 @@ impl StaticContext {
 impl Context {
     pub fn is_supergroup_or_die(&self) -> Result<()> {
         if let Some(chat) = self.chat() {
-            match chat.get_tg_type().as_ref() {
+            match chat.get_tg_type() {
                 "private" => self.fail(lang_fmt!(self, "baddm")),
                 "group" => self.fail(lang_fmt!(self, "notsupergroup")),
                 _ => Ok(()),
@@ -459,26 +447,26 @@ impl Context {
     }
 
     pub fn is_dm(&self) -> bool {
-        self.chat().map(|c| is_dm(c)).unwrap_or(false)
+        self.chat().map(is_dm).unwrap_or(false)
     }
-    pub fn update<'a>(&'a self) -> &'a UpdateExt {
+    pub fn update(&self) -> &'_ UpdateExt {
         &self.0.get().0.update
     }
-    pub fn get<'a>(&'a self) -> &'a Option<ContextYoke<'a>> {
+    pub fn get(&self) -> &'_ Option<ContextYoke<'_>> {
         &self.0.get().1
     }
 
-    pub fn get_static<'a>(&'a self) -> &'a StaticContext {
-        &self.0.get().0
+    pub fn get_static(&self) -> &'_ StaticContext {
+        self.0.get().0
     }
 
-    pub fn try_get<'a>(&'a self) -> Result<&'a ContextYoke<'a>> {
+    pub fn try_get(&self) -> Result<&'_ ContextYoke<'_>> {
         self.get()
             .as_ref()
             .ok_or_else(|| BotError::Generic("Not a chat context".to_owned()))
     }
 
-    pub fn get_real_from<'a>(&'a self) -> Result<&'a User> {
+    pub fn get_real_from(&self) -> Result<&'_ User> {
         let message = self.message()?;
         if message.get_sender_chat().is_some() {
             return self.fail(lang_fmt!(self, "anonchannelbad"));
@@ -490,7 +478,7 @@ impl Context {
         }
     }
 
-    pub fn chat<'a>(&'a self) -> Option<&'a Chat> {
+    pub fn chat(&self) -> Option<&'_ Chat> {
         match self.get().as_ref().map(|v| v.update) {
             Some(UpdateExt::Message(ref m)) => Some(m.get_chat()),
             Some(UpdateExt::EditedMessage(ref m)) => Some(m.get_chat()),
@@ -503,7 +491,7 @@ impl Context {
         }
     }
 
-    pub fn message<'a>(&'a self) -> Result<&'a Message> {
+    pub fn message(&self) -> Result<&'_ Message> {
         if let Some(UpdateExt::Message(ref message)) = self.get().as_ref().map(|v| v.update) {
             Ok(message)
         } else {
@@ -512,8 +500,8 @@ impl Context {
     }
 
     /// Makes accessing command related fields more ergonomic
-    pub fn cmd<'a>(&'a self) -> Option<&'a Cmd<'a>> {
-        self.get().as_ref().map(|v| v.command.as_ref()).flatten()
+    pub fn cmd(&self) -> Option<&'_ Cmd<'_>> {
+        self.get().as_ref().and_then(|v| v.command.as_ref())
     }
 }
 
@@ -546,16 +534,16 @@ impl IsGroupAdmin for Context {
 
 impl Context {
     /// Parse a command from a message. Returns none if the message isn't a /command or !command
-    pub fn parse_cmd_struct<'a>(&'a self) -> Option<Cmd<'a>> {
+    pub fn parse_cmd_struct(&self) -> Option<Cmd<'_>> {
         self.get_static().parse_cmd_struct()
     }
 
     /// Parse individual components of a /command or !command
-    pub fn parse_cmd<'a>(&'a self) -> Option<(&'a str, TextArgs<'a>, Entities<'a>)> {
+    pub fn parse_cmd(&self) -> Option<(&'_ str, TextArgs<'_>, Entities<'_>)> {
         self.get_static().parse_cmd()
     }
 
-    pub fn lang<'a>(&'a self) -> &'a Lang {
+    pub fn lang(&self) -> &'_ Lang {
         &self.get_static().lang
     }
 }
@@ -593,7 +581,7 @@ impl Speak for Context {
 }
 
 impl UpdateHelpers for Context {
-    fn user_event<'a>(&'a self) -> Option<super::admin_helpers::UserChanged<'a>> {
+    fn user_event(&self) -> Option<super::admin_helpers::UserChanged<'_>> {
         self.update().user_event()
     }
 }
@@ -619,7 +607,7 @@ where
     F: FnOnce(&str) -> String,
     R: DeserializeOwned,
 {
-    if let Some(&Cmd { ref args, .. }) = ctx.cmd() {
+    if let Some(Cmd { ref args, .. }) = ctx.cmd() {
         if let Some(u) = args.args.first().map(|a| a.get_text()) {
             if let Ok(base) = general_purpose::URL_SAFE_NO_PAD.decode(u) {
                 if let Ok(base) = Uuid::from_slice(base.as_slice()) {

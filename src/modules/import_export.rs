@@ -24,7 +24,7 @@ use super::{all_export, all_import};
 metadata!("Import/Export",
     r#"
     Import and export data from select modules in a format compatible with a certain feminine
-    flower-based bot on telegram. 
+    flower-based bot on telegram.
     "#,
     { command = "import", help = "Import data for the current chat" },
     { command = "export", help = "Export data for the current chat"}
@@ -94,8 +94,8 @@ async fn get_taint_menu(ctx: &Context) -> Result<()> {
 
     let m: HashMap<&str, Vec<&taint::Model>> =
         taints.iter().fold(HashMap::new(), |mut acc, val| {
-            let vec = acc.entry(val.scope.as_str()).or_insert_with(|| Vec::new());
-            vec.push(&val);
+            let vec = acc.entry(val.scope.as_str()).or_default();
+            vec.push(val);
             acc
         });
     let text = "Select a module to recover media from";
@@ -115,7 +115,7 @@ async fn get_taint_menu(ctx: &Context) -> Result<()> {
         let contents = value
             .into_iter()
             .map(|t| {
-                let notes = t.notes.as_ref().map(|v| v.as_str()).unwrap_or("");
+                let notes = t.notes.as_deref().unwrap_or("");
                 let media = t.id;
                 format!("[`{}] - {}", media, notes)
             })

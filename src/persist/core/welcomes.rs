@@ -61,7 +61,7 @@ impl Related<Entity> for crate::persist::core::entity::Entity {
 impl ActiveModelBehavior for ActiveModel {}
 #[derive(FromQueryResult)]
 pub struct WelcomesWithEntities {
-    /// Welcome fields    
+    /// Welcome fields
     pub chat: Option<i64>,
     pub text: Option<String>,
     pub media_id: Option<String>,
@@ -77,7 +77,6 @@ pub struct WelcomesWithEntities {
     pub button_text: Option<String>,
     pub callback_data: Option<String>,
     pub button_url: Option<String>,
-    pub owner_id: Option<i64>,
     pub pos_x: Option<i32>,
     pub pos_y: Option<i32>,
     pub raw_text: Option<String>,
@@ -107,7 +106,6 @@ pub struct WelcomesWithEntities {
     pub goodbye_user: Option<i64>,
     pub goodbye_language: Option<String>,
     pub goodbye_emoji_id: Option<String>,
-    pub goodbye_owner_id: Option<i64>,
 
     // goodbye user fields
     pub goodbye_user_id: Option<i64>,
@@ -124,19 +122,22 @@ pub struct WelcomesWithEntities {
     pub is_bot: Option<bool>,
 }
 
+pub struct WelcomeEntities {
+    pub filter: Option<Model>,
+    pub button: Option<button::Model>,
+    pub goodbye_button: Option<button::Model>,
+    pub welcome_entity: Option<EntityWithUser>,
+    pub goodbye_entity: Option<EntityWithUser>,
+}
+
 impl WelcomesWithEntities {
-    pub fn get(
-        self,
-    ) -> (
-        Option<Model>,
-        Option<button::Model>,
-        Option<button::Model>,
-        Option<EntityWithUser>,
-        Option<EntityWithUser>,
-    ) {
-        let button = if let (Some(button_text), Some(owner_id), Some(pos_x), Some(pos_y)) =
-            (self.button_text, self.owner_id, self.pos_x, self.pos_y)
-        {
+    pub fn get(self) -> WelcomeEntities {
+        let button = if let (Some(button_text), Some(owner_id), Some(pos_x), Some(pos_y)) = (
+            self.button_text,
+            self.welcome_entity_id,
+            self.pos_x,
+            self.pos_y,
+        ) {
             Some(button::Model {
                 button_text,
                 owner_id: Some(owner_id),
@@ -152,7 +153,7 @@ impl WelcomesWithEntities {
 
         let goodbye_button = if let (Some(button_text), Some(owner_id), Some(pos_x), Some(pos_y)) = (
             self.goodbye_button_text,
-            self.goodbye_owner_id,
+            self.goodbye_entity_id,
             self.goodbye_pos_x,
             self.goodbye_pos_y,
         ) {
@@ -186,9 +187,12 @@ impl WelcomesWithEntities {
             None
         };
 
-        let welcome_entity = if let (Some(tg_type), Some(offset), Some(length), Some(owner_id)) =
-            (self.tg_type, self.offset, self.length, self.owner_id)
-        {
+        let welcome_entity = if let (Some(tg_type), Some(offset), Some(length), Some(owner_id)) = (
+            self.tg_type,
+            self.offset,
+            self.length,
+            self.welcome_entity_id,
+        ) {
             Some(EntityWithUser {
                 tg_type,
                 offset,
@@ -212,7 +216,7 @@ impl WelcomesWithEntities {
             self.goodbye_tg_type,
             self.goodbye_offset,
             self.goodbye_length,
-            self.goodbye_owner_id,
+            self.goodbye_entity_id,
         ) {
             Some(EntityWithUser {
                 tg_type,
@@ -233,13 +237,13 @@ impl WelcomesWithEntities {
             None
         };
 
-        (
+        WelcomeEntities {
             filter,
             button,
             goodbye_button,
             welcome_entity,
             goodbye_entity,
-        )
+        }
     }
 }
 #[derive(Iden)]
@@ -290,7 +294,6 @@ where
             messageentity::Column::User,
             messageentity::Column::Language,
             messageentity::Column::EmojiId,
-            messageentity::Column::OwnerId,
         ])
         .columns([
             button::Column::ButtonText,
@@ -426,40 +429,60 @@ where
         .all(*DB)
         .await?;
 
-    let res = res.into_iter().map(|v| v.get()).fold(
-        FiltersMap::new(),
-        |mut acc, (filter, button, gb_button, entity, goodbye)| {
-            //        log::info!("got entity {:?} goodbye {:?}", entity, goodbye);
-            if let Some(filter) = filter {
-                let (entitylist, goodbyelist, buttonlist, gb_buttonlist) =
-                    acc.entry(filter).or_insert_with(|| {
-                        (
-                            HashSet::new(),
-                            HashSet::new(),
-                            HashSet::new(),
-                            HashSet::new(),
-                        )
-                    });
+    let res = res
+        .into_iter()
+        .map(|v| v.get())
+        .map(
+            |WelcomeEntities {
+                 filter,
+                 button,
+                 goodbye_button,
+                 welcome_entity,
+                 goodbye_entity,
+             }| {
+                (
+                    filter,
+                    button,
+                    goodbye_button,
+                    welcome_entity,
+                    goodbye_entity,
+                )
+            },
+        )
+        .fold(
+            FiltersMap::new(),
+            |mut acc, (filter, button, gb_button, entity, goodbye)| {
+                //        log::info!("got entity {:?} goodbye {:?}", entity, goodbye);
+                if let Some(filter) = filter {
+                    let (entitylist, goodbyelist, buttonlist, gb_buttonlist) =
+                        acc.entry(filter).or_insert_with(|| {
+                            (
+                                HashSet::new(),
+                                HashSet::new(),
+                                HashSet::new(),
+                                HashSet::new(),
+                            )
+                        });
 
-                if let Some(button) = button {
-                    buttonlist.insert(button);
-                }
+                    if let Some(button) = button {
+                        buttonlist.insert(button);
+                    }
 
-                if let Some(entity) = entity {
-                    entitylist.insert(entity);
-                }
+                    if let Some(entity) = entity {
+                        entitylist.insert(entity);
+                    }
 
-                if let Some(goodbye) = goodbye {
-                    goodbyelist.insert(goodbye);
-                }
+                    if let Some(goodbye) = goodbye {
+                        goodbyelist.insert(goodbye);
+                    }
 
-                if let Some(gb) = gb_button {
-                    gb_buttonlist.insert(gb);
+                    if let Some(gb) = gb_button {
+                        gb_buttonlist.insert(gb);
+                    }
                 }
-            }
-            acc
-        },
-    );
+                acc
+            },
+        );
 
     Ok(res)
 }

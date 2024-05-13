@@ -41,6 +41,12 @@ pub struct RoseExport {
     pub data: HashMap<String, serde_json::Value>,
 }
 
+impl Default for RoseExport {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RoseExport {
     pub fn new() -> Self {
         let bot_id = ME.get().unwrap().get_id();
@@ -57,7 +63,7 @@ fn get_taint_key(media_id: &str) -> String {
 }
 
 pub async fn is_tainted(media_id: &str, scope: &str, chat: i64) -> Result<bool> {
-    let key = get_taint_key(&media_id);
+    let key = get_taint_key(media_id);
     let out = default_cache_query(
         |_, _| async move {
             Ok(taint::Entity::find()
@@ -145,7 +151,7 @@ pub async fn remove_taint(taint: &str) -> Result<()> {
         .exec(*DB)
         .await?;
 
-    let key = get_taint_key(&taint);
+    let key = get_taint_key(taint);
     REDIS.sq(|p| p.del(&key)).await?;
 
     Ok(())
@@ -192,39 +198,36 @@ impl Context {
         } else {
             false
         } {
-            match self.update() {
-                UpdateExt::Message(ref message) => {
-                    if let Some(user) = message.get_from() {
-                        let key = get_patch_taint_key(user.get_id());
-                        let media_id: Option<RedisStr> = REDIS.sq(|q| q.get(&key)).await?;
-                        if let (Some(media_id), Some((new_media_id, new_media_type))) =
-                            (media_id, message.get_media_id())
-                        {
-                            let taint: UpdateTaint = media_id.get()?;
-                            if scope == taint.scope {
-                                if taint.media_type != new_media_type {
-                                    self.reply(lang_fmt!(
-                                        self,
-                                        "wrongmediatype",
-                                        new_media_type,
-                                        taint.media_type
-                                    ))
-                                    .await?;
-                                    return Ok(());
-                                }
-
-                                log::info!("handle taint {} {}", taint.media_id, new_media_id);
-
-                                cb(&taint, new_media_id).await?;
-                                REDIS.sq(|q| q.del(&key)).await?;
-                                remove_taint(&taint.media_id).await?;
+            if let UpdateExt::Message(ref message) = self.update() {
+                if let Some(user) = message.get_from() {
+                    let key = get_patch_taint_key(user.get_id());
+                    let media_id: Option<RedisStr> = REDIS.sq(|q| q.get(&key)).await?;
+                    if let (Some(media_id), Some((new_media_id, new_media_type))) =
+                        (media_id, message.get_media_id())
+                    {
+                        let taint: UpdateTaint = media_id.get()?;
+                        if scope == taint.scope {
+                            if taint.media_type != new_media_type {
+                                self.reply(lang_fmt!(
+                                    self,
+                                    "wrongmediatype",
+                                    new_media_type,
+                                    taint.media_type
+                                ))
+                                .await?;
                                 return Ok(());
                             }
+
+                            log::info!("handle taint {} {}", taint.media_id, new_media_id);
+
+                            cb(&taint, new_media_id).await?;
+                            REDIS.sq(|q| q.del(&key)).await?;
+                            remove_taint(&taint.media_id).await?;
+                            return Ok(());
                         }
                     }
                 }
-                _ => (),
-            };
+            }
         }
         Ok(())
     }

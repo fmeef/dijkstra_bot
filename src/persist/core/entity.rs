@@ -69,7 +69,7 @@ where
 {
     log::info!("inserting {} entities", entities.len());
 
-    if entities.len() > 0 || buttons.get().iter().map(|v| v.len()).sum::<usize>() > 0 {
+    if !entities.is_empty() || buttons.get().iter().map(|v| v.len()).sum::<usize>() > 0 {
         let entity_id = Entity::insert(ActiveModel {
             id: ActiveValue::NotSet,
         })
@@ -77,12 +77,12 @@ where
         .await?
         .id;
 
-       let entities: Vec<messageentity::Model> = stream::iter(entities)
+        let entities: Vec<messageentity::Model> = stream::iter(entities)
             .then(|v| async move { messageentity::Model::from_entity(v, entity_id).await })
             .try_collect()
             .await?;
 
-        if entities.len() > 0 {
+        if !entities.is_empty() {
             messageentity::Entity::insert_many(
                 entities
                     .into_iter()
@@ -118,7 +118,7 @@ where
             })
             .map(|v| v.into_active_model())
             .collect_vec();
-        if buttons.len() > 0 {
+        if !buttons.is_empty() {
             button::Entity::insert_many(buttons)
                 .on_conflict(
                     OnConflict::columns([

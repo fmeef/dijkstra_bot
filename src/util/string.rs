@@ -5,7 +5,7 @@
 pub use crate::langs::*;
 use crate::persist::core::dialogs;
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisStr};
-use crate::statics::{CONFIG, DB, REDIS, TG};
+use crate::statics::{CHAT_GOVERNER, CONFIG, DB, REDIS, TG};
 use crate::tg::admin_helpers::IntoChatUser;
 use crate::tg::markdown::{EntityMessage, MarkupBuilder};
 use crate::util::error::Result;
@@ -49,6 +49,8 @@ pub async fn should_ignore_chat(chat: i64) -> Result<bool> {
             Ok(count)
         })
         .await?;
+
+    CHAT_GOVERNER.until_key_ready(&chat).await;
     Ok(count >= CONFIG.timing.antifloodwait_count)
 }
 
@@ -411,7 +413,7 @@ pub async fn get_chat_lang(chat: i64) -> Result<Lang> {
     )
     .query(&key, &())
     .await?;
-    Ok(res.unwrap_or_else(|| Lang::En))
+    Ok(res.unwrap_or(Lang::En))
 }
 
 /// Sets the current langauge config for the chat

@@ -33,19 +33,15 @@ pub struct Model {
 
 impl Model {
     pub fn get_taint(&self, reason: Option<String>) -> Option<taint::Model> {
-        if let Some(ref media_id) = self.media_id {
-            Some(taint::Model {
-                media_id: media_id.clone(),
-                scope: crate::tg::notes::MODULE_NAME.to_owned(),
-                media_type: self.media_type.clone(),
-                notes: reason,
-                chat: self.chat,
-                id: Uuid::new_v4(),
-                details: self.text.clone(),
-            })
-        } else {
-            None
-        }
+        self.media_id.as_ref().map(|media_id| taint::Model {
+            media_id: media_id.clone(),
+            scope: crate::tg::notes::MODULE_NAME.to_owned(),
+            media_type: self.media_type.clone(),
+            notes: reason,
+            chat: self.chat,
+            id: Uuid::new_v4(),
+            details: self.text.clone(),
+        })
     }
 }
 
@@ -90,7 +86,6 @@ struct FiltersWithEntities {
     pub button_url: Option<String>,
     pub pos_x: Option<i32>,
     pub pos_y: Option<i32>,
-    pub b_owner_id: Option<i64>,
     pub raw_text: Option<String>,
 
     // entity fields
@@ -101,7 +96,6 @@ struct FiltersWithEntities {
     pub user: Option<i64>,
     pub language: Option<String>,
     pub emoji_id: Option<String>,
-    pub owner_id: Option<i64>,
 
     // user fields
     pub user_id: Option<i64>,
@@ -114,7 +108,7 @@ struct FiltersWithEntities {
 impl FiltersWithEntities {
     fn get(self) -> (Option<Model>, Option<button::Model>, Option<EntityWithUser>) {
         let button = if let (Some(button_text), Some(owner_id), Some(pos_x), Some(pos_y)) =
-            (self.button_text, self.b_owner_id, self.pos_x, self.pos_y)
+            (self.button_text, self.entity_id, self.pos_x, self.pos_y)
         {
             Some(button::Model {
                 button_text,
@@ -146,7 +140,7 @@ impl FiltersWithEntities {
         };
 
         let entity = if let (Some(tg_type), Some(offset), Some(length), Some(owner_id)) =
-            (self.tg_type, self.offset, self.length, self.owner_id)
+            (self.tg_type, self.offset, self.length, self.entity_id)
         {
             Some(EntityWithUser {
                 tg_type,

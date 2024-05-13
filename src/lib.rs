@@ -56,6 +56,12 @@ pub struct DijkstraOpts {
     handler: UpdateHandler,
 }
 
+impl Default for DijkstraOpts {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DijkstraOpts {
     /// Constructs a new empty config
     pub fn new() -> Self {

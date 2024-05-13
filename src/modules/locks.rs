@@ -313,7 +313,7 @@ macro_rules! locks {
             let mut action: Option<ActionType> = None;
             let mut locks = Vec::<LockType>::new();
             match update {
-                UpdateExt::Message(ref message) => {
+                UpdateExt::Message(ref message) | UpdateExt::EditedMessage(ref message) => {
                     $(
                     $(
                     update_action(
@@ -417,9 +417,8 @@ locks! {
     lock!("command", "Bot commands", LockType::Command, |message| {
         if let Some(entities) = message.get_entities() {
             for entity in entities {
-                match entity.get_tg_type() {
-                    "bot_command" => return true,
-                    _ => (),
+                if entity.get_tg_type() == "bot_command" {
+                    return true;
                 }
             }
         }
@@ -445,12 +444,12 @@ pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
 
 fn is_tg_link<T: AsRef<str>>(url: T) -> bool {
     let url = url.as_ref();
-    let url = url.strip_prefix("http://").unwrap_or(&url);
+    let url = url.strip_prefix("http://").unwrap_or(url);
     let url = url.strip_prefix("https://").unwrap_or(url);
     url.starts_with("t.me") || url.starts_with("tg://")
 }
 
-fn is_out_of_chat_user<'a>(message: &'a Message) -> BoxFuture<'a, Result<bool>> {
+fn is_out_of_chat_user(message: &'_ Message) -> BoxFuture<'_, Result<bool>> {
     async move {
         if let Some(entities) = message.get_entities() {
             for entity in entities {
@@ -469,7 +468,7 @@ fn is_out_of_chat_user<'a>(message: &'a Message) -> BoxFuture<'a, Result<bool>> 
                     }
                     "mention" => {
                         if let Some(user) = message.get_text() {
-                            let user = user.strip_prefix("@").unwrap_or(&user);
+                            let user = user.strip_prefix('@').unwrap_or(user);
                             return if let Some(user) = get_user_username(user).await? {
                                 Ok(!is_chat_member(user.get_id(), message.get_chat().get_id())
                                     .await?)
@@ -493,7 +492,7 @@ fn is_out_of_chat_user<'a>(message: &'a Message) -> BoxFuture<'a, Result<bool>> 
     .boxed()
 }
 
-fn is_invite<'a>(message: &'a Message) -> BoxFuture<'a, Result<bool>> {
+fn is_invite(message: &Message) -> BoxFuture<'_, Result<bool>> {
     async move {
         if let Some(entities) = message.get_entities() {
             for entity in entities {
@@ -569,8 +568,7 @@ async fn clear_lock(message: &Message, locktype: LockType) -> Result<()> {
     Ok(())
 }
 
-async fn set_lock(message: &Message, locktype: LockType, user: &User) -> Result<()> {
-    user.admin_or_die(message.get_chat()).await?;
+async fn set_lock(message: &Message, locktype: LockType) -> Result<()> {
     let key = get_lock_key(message.get_chat().get_id(), &locktype);
     let model = locks::ActiveModel {
         chat: Set(message.get_chat().get_id()),
@@ -659,12 +657,7 @@ async fn set_lock_action(
     Ok(())
 }
 
-async fn handle_lock<'a>(
-    message: &Message,
-    cmd: &Option<&Cmd<'a>>,
-    user: &User,
-    lang: &Lang,
-) -> Result<()> {
+async fn handle_lock<'a>(message: &Message, cmd: &Option<&Cmd<'a>>, lang: &Lang) -> Result<()> {
     message
         .check_permissions(|p| p.can_delete_messages.and(p.can_change_info))
         .await?;
@@ -672,7 +665,7 @@ async fn handle_lock<'a>(
         (Some(lock), None) => {
             let t = lock.get_name().to_owned();
 
-            set_lock(message, lock, user).await?;
+            set_lock(message, lock).await?;
             message
                 .reply(lang_fmt!(
                     lang,
@@ -718,7 +711,7 @@ async fn handle_list(message: &Message) -> Result<()> {
         .all(*DB)
         .await?;
 
-    if locks.len() > 0 {
+    if !locks.is_empty() {
         let print = locks
             .iter()
             .map(|v| format!("\t-{}", v.lock_type.get_name()))
@@ -798,16 +791,14 @@ async fn handle_command(ctx: &Context) -> Result<()> {
     }) = ctx.cmd()
     {
         let command = ctx.try_get()?.command.as_ref();
-        if let Some(user) = message.get_from() {
-            match cmd {
-                "lock" => handle_lock(message, &command, &user, lang).await?,
-                "unlock" => handle_unlock(ctx, &command).await?,
-                "locks" => handle_list(message).await?,
-                "lockaction" => lock_action(message, &args).await?,
-                "available" => cmd_available(ctx).await?,
-                _ => (),
-            };
-        }
+        match cmd {
+            "lock" => handle_lock(message, &command, lang).await?,
+            "unlock" => handle_unlock(ctx, &command).await?,
+            "locks" => handle_list(message).await?,
+            "lockaction" => lock_action(message, args).await?,
+            "available" => cmd_available(ctx).await?,
+            _ => (),
+        };
     }
     Ok(())
 }
@@ -880,61 +871,51 @@ where
 
 async fn handle_user_event(update: &UpdateExt, ctx: &Context) -> Result<()> {
     if let (Some(action), locks) = action_from_update(update).await? {
-        match update {
-            UpdateExt::Message(ref message) => {
-                if let Some(user) = message.get_from() {
-                    if is_approved(message.get_chat(), user).await? {
-                        return Ok(());
-                    }
-                }
-                if message.get_from().is_admin(message.get_chat()).await? {
+        if let UpdateExt::Message(ref message) | UpdateExt::EditedMessage(ref message) = update {
+            if let Some(user) = message.get_from() {
+                if is_approved(message.get_chat(), user).await? {
                     return Ok(());
                 }
-                let default = get_default_settings(message.get_chat()).await?;
-                let lang = ctx.try_get()?.lang;
-                let reasons = locks
-                    .into_iter()
-                    .map(|v| lang_fmt!(lang, "lockedinchat", v.get_name()))
-                    .collect::<Vec<String>>()
-                    .join("\n");
+            }
+            if message.get_from().is_admin(message.get_chat()).await? {
+                return Ok(());
+            }
+            let default = get_default_settings(message.get_chat()).await?;
+            let lang = ctx.try_get()?.lang;
+            let reasons = locks
+                .into_iter()
+                .map(|v| lang_fmt!(lang, "lockedinchat", v.get_name()))
+                .collect::<Vec<String>>()
+                .join("\n");
 
-                match action {
-                    ActionType::Delete => {}
-                    ActionType::Ban => {
-                        ban_message(
-                            &message,
-                            default.duration.map(|v| Duration::try_seconds(v)).flatten(),
+            match action {
+                ActionType::Delete => {}
+                ActionType::Ban => {
+                    ban_message(message, default.duration.and_then(Duration::try_seconds)).await?;
+                    message.reply(lang_fmt!(lang, "lockban", reasons)).await?;
+                }
+                ActionType::Warn => {
+                    if let Some(chat) = message.get_sender_chat() {
+                        TG.client
+                            .build_ban_chat_sender_chat(message.get_chat().get_id(), chat.get_id())
+                            .build()
+                            .await?;
+                    } else if let Some(user) = message.get_from() {
+                        ctx.warn_with_action(
+                            user.get_id(),
+                            Some(&reasons),
+                            default.duration.and_then(Duration::try_seconds),
                         )
                         .await?;
-                        message.reply(lang_fmt!(lang, "lockban", reasons)).await?;
                     }
-                    ActionType::Warn => {
-                        if let Some(chat) = message.get_sender_chat() {
-                            TG.client
-                                .build_ban_chat_sender_chat(
-                                    message.get_chat().get_id(),
-                                    chat.get_id(),
-                                )
-                                .build()
-                                .await?;
-                        } else if let Some(user) = message.get_from() {
-                            ctx.warn_with_action(
-                                user.get_id(),
-                                Some(&reasons),
-                                default.duration.map(|v| Duration::try_seconds(v)).flatten(),
-                            )
-                            .await?;
-                        }
-                    }
-                    _ => (),
                 }
-
-                TG.client
-                    .build_delete_message(message.get_chat().get_id(), message.get_message_id())
-                    .build()
-                    .await?;
+                _ => (),
             }
-            _ => (),
+
+            TG.client
+                .build_delete_message(message.get_chat().get_id(), message.get_message_id())
+                .build()
+                .await?;
         }
     }
     Ok(())

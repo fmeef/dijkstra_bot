@@ -1,7 +1,7 @@
 //! ORM type for storing metadata on conversations
 //! conversations being DMs, channels, and supergroups
 
-use crate::tg::admin_helpers::is_dm;
+use crate::tg::admin_helpers::is_dm_info;
 use crate::util::error::Fail;
 use crate::{persist::admin::actions::ActionType, statics::TG};
 use botapi::gen_types::{Chat, ChatPermissionsBuilder};
@@ -76,8 +76,8 @@ impl Model {
     pub async fn from_chat(chat: &Chat) -> crate::util::error::Result<ActiveModel> {
         let chat = TG.client.get_chat(chat.get_id()).await?;
         let def = &ChatPermissionsBuilder::new().build();
-        let permissions = if is_dm(&chat) {
-            &def
+        let permissions = if is_dm_info(&chat) {
+            def
         } else {
             chat.get_permissions()
                 .ok_or_else(|| chat.fail_err("failed to get chat permissions"))?

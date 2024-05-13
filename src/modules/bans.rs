@@ -1,11 +1,16 @@
 use crate::{
     metadata::metadata,
     statics::TG,
-    tg::admin_helpers::*,
-    tg::command::{Cmd, Context},
-    tg::{permissions::*, user::GetUser},
-    util::error::{Result, SpeakErr},
-    util::string::Speak,
+    tg::{
+        admin_helpers::*,
+        command::{Cmd, Context},
+        permissions::*,
+        user::GetUser,
+    },
+    util::{
+        error::{BotError, Result, SpeakErr},
+        string::Speak,
+    },
 };
 use botapi::gen_types::ChatPermissionsBuilder;
 
@@ -15,17 +20,17 @@ metadata!("Bans",
     r#"
     Ever had a problem with users being too annoying? Has someone admitted to using
     a turing-complete language \(known to be a dangerous piracy tool\) or downloaded a
-    yellow terrorist app? This module is the solution!  
+    yellow terrorist app? This module is the solution!
     Mute or ban users, punish blue-texters with /kickme, etc
 
     Ban and mute commands take an optional time parameter \(5m, 1d, etc\) and can either take a user
     parameter by mention or @handle or by replying to the user's message.
 
-    [*Examples]  
-    [_bans a user for 5 minutes]  
+    [*Examples]
+    [_bans a user for 5 minutes]
     /ban @username 5m
 
-    [_mutes a user forever]  
+    [_mutes a user forever]
     /mute @username
     "#,
     { command = "kickme", help = "Send a free course on termux hacking"},
@@ -44,6 +49,11 @@ pub async fn unban_cmd(ctx: &Context) -> Result<()> {
         ctx.reply_fmt(entity_fmt!(ctx, "unbanned", entity)).await?;
         Ok(())
     })
+    .await
+    .speak_err_raw(ctx, |v| match v {
+        BotError::UserNotFound => Some(lang_fmt!(ctx, "failuser", "unban")),
+        _ => None,
+    })
     .await?;
     Ok(())
 }
@@ -53,14 +63,19 @@ pub async fn ban_cmd(ctx: &Context) -> Result<()> {
     let lang = ctx.try_get()?.lang;
     ctx.action_user(|ctx, user, args| async move {
         let duration = ctx.parse_duration(&args)?;
-        ctx.ban(user, duration)
+        ctx.ban(user, duration, true)
             .await
             .speak_err_code(ctx.message()?.get_chat(), 400, |_| {
-                lang_fmt!(lang, "failban")
+                lang_fmt!(lang, "failuser", "ban")
             })
             .await?;
 
         Ok(())
+    })
+    .await
+    .speak_err_raw(ctx, |v| match v {
+        BotError::UserNotFound => Some(lang_fmt!(ctx, "failuser", "ban")),
+        _ => None,
     })
     .await?;
     Ok(())
@@ -77,6 +92,11 @@ pub async fn kick_cmd<'a>(ctx: &Context) -> Result<()> {
                 .await?;
         }
         Ok(())
+    })
+    .await
+    .speak_err_raw(ctx, |v| match v {
+        BotError::UserNotFound => Some(lang_fmt!(ctx, "failuser", "kick")),
+        _ => None,
     })
     .await?;
     Ok(())
@@ -156,21 +176,19 @@ async fn kickme(ctx: &Context) -> Result<()> {
     ctx.is_group_or_die().await?;
     let message = ctx.message()?;
     let v = ctx.try_get()?;
-    self_admin_or_die(&message.get_chat()).await?;
-    if message.get_from().is_admin(&message.get_chat()).await? {
+    self_admin_or_die(message.get_chat()).await?;
+    if message.get_from().is_admin(message.get_chat()).await? {
         message.reply(lang_fmt!(v.lang, "kickadmin")).await?;
-    } else {
-        if let Some(from) = message.get_from() {
-            TG.client()
-                .build_ban_chat_member(message.get_chat().get_id(), from.get_id())
-                .build()
-                .await?;
-            TG.client()
-                .build_unban_chat_member(message.get_chat().get_id(), from.get_id())
-                .build()
-                .await?;
-            message.reply(lang_fmt!(v.lang, "kickme")).await?;
-        }
+    } else if let Some(from) = message.get_from() {
+        TG.client()
+            .build_ban_chat_member(message.get_chat().get_id(), from.get_id())
+            .build()
+            .await?;
+        TG.client()
+            .build_unban_chat_member(message.get_chat().get_id(), from.get_id())
+            .build()
+            .await?;
+        message.reply(lang_fmt!(v.lang, "kickme")).await?;
     }
 
     Ok(())

@@ -28,7 +28,6 @@ use captcha::gen;
 use chrono::Duration;
 use futures::FutureExt;
 use macros::lang_fmt;
-use rand::rngs::ThreadRng;
 use rand::seq::SliceRandom;
 use rand::{thread_rng, Rng};
 use redis::{AsyncCommands, Script};
@@ -158,7 +157,7 @@ pub(crate) async fn welcome_members(
         lang_fmt!(lang, "defaultwelcome")
     };
 
-    let buttons = if let Some(_) = captcha {
+    let buttons = if captcha.is_some() {
         let url = get_captcha_url(&upd.chat, &upd.from).await?;
 
         let button = InlineKeyboardButtonBuilder::new("Captcha".to_owned())
@@ -170,7 +169,7 @@ pub(crate) async fn welcome_members(
     };
     let c = ctx.clone();
     let chat = upd.get_chat().get_id();
-    let b = extra_buttons.get_or_insert_with(|| InlineKeyboardBuilder::default());
+    let b = extra_buttons.get_or_insert_with(InlineKeyboardBuilder::default);
 
     for button in buttons {
         b.button(button);
@@ -259,15 +258,16 @@ fn insert_incorrect(
     res: &mut Vec<InlineKeyboardButton>,
     correct: &str,
     supported: &Vec<char>,
-    rng: &mut ThreadRng,
     unmute_chat: i64,
 ) {
+    let mut rng = thread_rng();
     let mut s = String::with_capacity(correct.len());
     for _ in correct.chars() {
-        if let Some(ch) = supported.choose(rng) {
+        if let Some(ch) = supported.choose(&mut rng) {
             s.push(*ch);
         }
     }
+    drop(rng);
     let s = InlineKeyboardButtonBuilder::new(s)
         .set_callback_data(Uuid::new_v4().to_string())
         .build();
@@ -304,7 +304,7 @@ fn insert_incorrect(
                         .build_delete_message(message.get_chat().get_id(), message.get_message_id())
                         .build()
                         .await?;
-                    reset_incorrect_tries(&callback.get_from(), unmute_chat).await?;
+                    reset_incorrect_tries(callback.get_from(), unmute_chat).await?;
                     Ok(true)
                 }
             } else {
@@ -315,13 +315,13 @@ fn insert_incorrect(
     res.push(s);
 }
 
-async fn get_invite_link<'a>(chat: &'a Chat) -> Result<Option<String>> {
+async fn get_invite_link(chat: &Chat) -> Result<Option<String>> {
     let unmute_chat = TG.client().build_get_chat(chat.get_id()).build().await?;
 
     Ok(unmute_chat.get_invite_link().map(|v| v.to_owned()))
 }
 
-fn get_choices<'a>(
+fn get_choices(
     correct: String,
     supported: &Vec<char>,
     times: usize,
@@ -331,17 +331,11 @@ fn get_choices<'a>(
     let mut rng = thread_rng();
     let mut res = Vec::<InlineKeyboardButton>::with_capacity(times);
     let pos = rng.gen_range(0..=times);
-    log::info!("selected captcha correct pos {}", pos);
+    drop(rng);
+    //log::info!("selected captcha correct pos {}", pos);
     let incorrect_chat = unmute_chat.get_id();
     for _ in 0..pos {
-        insert_incorrect(
-            &ctx,
-            &mut res,
-            correct.as_str(),
-            supported,
-            &mut rng,
-            incorrect_chat,
-        );
+        insert_incorrect(ctx, &mut res, correct.as_str(), supported, incorrect_chat);
     }
 
     let correct_button = InlineKeyboardButtonBuilder::new(correct.clone())
@@ -380,10 +374,10 @@ fn get_choices<'a>(
             }
             c.authorize_user(callback.get_from().get_id(), &unmute_chat)
                 .await?;
-            reset_incorrect_tries(&callback.get_from(), unmute_chat.get_id()).await?;
+            reset_incorrect_tries(callback.get_from(), unmute_chat.get_id()).await?;
         }
         TG.client()
-            .build_answer_callback_query(&callback.get_id())
+            .build_answer_callback_query(callback.get_id())
             .build()
             .await?;
 
@@ -392,14 +386,7 @@ fn get_choices<'a>(
     res.push(correct_button);
 
     for _ in (pos + 1)..times {
-        insert_incorrect(
-            &ctx,
-            &mut res,
-            correct.as_str(),
-            supported,
-            &mut rng,
-            incorrect_chat,
-        );
+        insert_incorrect(ctx, &mut res, correct.as_str(), supported, incorrect_chat);
     }
     res
 }
@@ -449,13 +436,6 @@ async fn button_captcha<'a>(
     unmute_button.on_push(|callback| async move {
         bctx.authorize_user(callback.get_from().get_id(), bctx.try_get()?.chat)
             .await?;
-        if let Some(MaybeInaccessibleMessage::Message(message)) = callback.get_message() {
-            message
-                .reply(lang_fmt!(bctx, "userunmuted"))
-                .await?
-                .delete_after_time(Duration::try_minutes(5).unwrap());
-        }
-
         Ok(())
     });
     let mut button = InlineKeyboardBuilder::default();
@@ -472,16 +452,12 @@ async fn button_captcha<'a>(
         )
         .await?;
     } else if !should_ignore_chat(upd.get_chat().get_id()).await? {
-        let m = TG
-            .client()
-            .build_send_message(
-                upd.get_chat().get_id(),
-                "Push the button to unmute yourself",
-            )
+        TG.client()
+            .build_send_message(upd.get_chat().get_id(), &lang_fmt!(ctx, "pushunmute"))
             .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(button.build()))
             .build()
-            .await?;
-        m.delete_after_time(Duration::try_minutes(5).unwrap());
+            .await?
+            .delete_after_time(Duration::try_minutes(5).unwrap());
     }
 
     Ok(())
@@ -545,7 +521,7 @@ impl Context {
         buttons: Option<InlineKeyboardBuilder>,
         gb_buttons: Option<InlineKeyboardBuilder>,
     ) -> Result<()> {
-        if let Some(UserChanged::UserJoined(ref message)) = self.update().user_event() {
+        if let Some(UserChanged::UserJoined(message)) = self.update().user_event() {
             let me = ME.get().unwrap();
             let user = message.get_from();
             if user.get_id() == me.get_id() || user.is_admin(message.get_chat()).await? {
@@ -628,13 +604,13 @@ impl Context {
                             welcome,
                             entities,
                             buttons,
-                            &self.lang(),
+                            self.lang(),
                             captcha,
                         )
                         .await?
                     }
                     UserChanged::UserLeft(_) => {
-                        goodbye_members(self, welcome, goodbye, gb_buttons, &self.lang()).await?
+                        goodbye_members(self, welcome, goodbye, gb_buttons, self.lang()).await?
                     }
                 }
             }
@@ -778,6 +754,7 @@ impl Context {
             Ok(v.get()?)
         } else {
             let res = welcomes::get_filters_join(welcomes::Column::Chat.eq(chat_id)).await?;
+            log::info!("should_welcome cache miss {:?}", res);
             let res = res
                 .into_iter()
                 .map(|(model, (entity, goodbye, button, gb_button))| {

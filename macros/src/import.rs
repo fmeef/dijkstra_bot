@@ -35,9 +35,9 @@ fn glob_modules<T: AsRef<str>>(spec: T, file_ext: &str) -> Vec<String> {
     glob::glob(spec.as_ref())
         .expect("invalid glob pattern")
         .map(|v| v.expect("glob error"))
-        .map(|v| PathBufWrapper(v))
+        .map(PathBufWrapper)
         .map(|v| {
-            read_dir(&v.0)
+            read_dir(v.0)
                 .expect("directory does not exist")
                 .map(|d| d.expect("entry does not exist"))
                 .filter(|d| {
@@ -47,15 +47,14 @@ fn glob_modules<T: AsRef<str>>(spec: T, file_ext: &str) -> Vec<String> {
                         && (name.ends_with(file_ext)
                             || (d
                                 .file_type()
-                                .expect(&format!("file type for {} does not exist", name))
+                                .unwrap_or_else(|_| panic!("file type for {} does not exist", name))
                                 .is_dir()
                                 && read_dir(d.path())
                                     .expect("subdirectory not found")
-                                    .find(|f| {
+                                    .any(|f| {
                                         f.as_ref().expect("subdirectory file not found").file_name()
                                             == "mod.rs"
-                                    })
-                                    .is_some()))
+                                    })))
                 })
                 .map(|d| d.file_name().to_string_lossy().into_owned())
                 .map(|name| name.trim_end_matches(file_ext).to_owned())
@@ -69,9 +68,9 @@ fn glob_docs<T: AsRef<str>>(spec: T, file_ext: &str) -> Vec<(String, Vec<(String
     glob::glob(spec.as_ref())
         .expect("invalid glob pattern")
         .map(|v| v.expect("glob error"))
-        .map(|v| PathBufWrapper(v))
+        .map(PathBufWrapper)
         .map(|v| {
-            read_dir(&v.0)
+            read_dir(v.0)
                 .expect("directory does not exist")
                 .map(|d| d.expect("entry does not exist"))
                 .filter(|d| {
@@ -95,7 +94,9 @@ fn glob_docs<T: AsRef<str>>(spec: T, file_ext: &str) -> Vec<(String, Vec<(String
                                 })
                                 .collect()
                         })
-                        .expect(&format!("can't find {}", v.file_name().to_string_lossy()));
+                        .unwrap_or_else(|_| {
+                            panic!("can't find {}", v.file_name().to_string_lossy())
+                        });
                     // .unwrap_or_else(|_| vec![]);
                     let v = v.file_name().to_string_lossy().into_owned();
                     let v = v.trim_end_matches(file_ext).to_owned();
@@ -266,11 +267,11 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
                                             err.record_stats();
                                         }
                                         Ok(v) => if ! v {
-                                            if let Some(chat) = ctx.chat() {
-                                                if let Err(err) = chat.reply(err.to_string()).await {
-                                                    log::warn!("triple fault! {}", err);
-                                                }
-                                            }
+                                            // if let Some(chat) = ctx.chat() {
+                                            //     if let Err(err) = chat.reply(err.to_string()).await {
+                                            //         log::warn!("triple fault! {}", err);
+                                            //     }
+                                            // }
 
                                             log::warn!("handle_update {} error: {}", #updates::METADATA.name, err);
                                         }

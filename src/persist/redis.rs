@@ -50,7 +50,7 @@ where
     P: Send + Sync,
 {
     let res: Vec<R> = REDIS.drain_list(key).await?;
-    if res.len() == 0 {
+    if res.is_empty() {
         Ok((false, vec![]))
     } else {
         Ok((true, res))
@@ -188,10 +188,8 @@ where
 }
 
 /// Maps redis errors to types we support
-pub fn error_mapper(err: RedisError) -> BotError {
-    match err.kind() {
-        _ => BotError::conversation_err("some redis error"),
-    }
+pub fn error_mapper(_: RedisError) -> BotError {
+    BotError::conversation_err("some redis error")
 }
 
 // Workaround for redis-rs's inability to support non-utf8 strings
@@ -390,7 +388,7 @@ where
         conn.lrange::<&str, Vec<Vec<u8>>>(key, 0, -1)
             .await?
             .into_iter()
-            .map(|v| rmp_serde::from_slice(&v.as_slice()).map_err(|e| e.into()))
+            .map(|v| rmp_serde::from_slice(v.as_slice()).map_err(|e| e.into()))
             .collect()
     }
 
@@ -438,7 +436,7 @@ where
         Fut: Future<Output = Result<R>> + Send,
         R: Send,
     {
-        Ok(func(self.pool.get().await?).await?)
+        func(self.pool.get().await?).await
     }
 
     /// Run one or more redis queries using the connection provided to the
@@ -459,7 +457,7 @@ where
 
     /// Gets a single connection from the connection pool.
     /// NOTE: this connection will not be returned to the pool until it is dropped
-    pub async fn conn<'a>(&'a self) -> Result<PooledConnection<'a, C>> {
+    pub async fn conn(&self) -> Result<PooledConnection<'_, C>> {
         let res = self.pool.get().await?;
         Ok(res)
     }

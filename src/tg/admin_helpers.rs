@@ -16,14 +16,16 @@ use crate::{
         redis::{default_cache_query, CachedQuery, CachedQueryTrait, RedisCache, RedisStr},
     },
     statics::{CONFIG, DB, ME, REDIS, TG},
-    util::error::{BotError, Fail, Result},
-    util::string::{get_chat_lang, Speak},
+    util::{
+        error::{BotError, Fail, Result, SpeakErr},
+        string::{get_chat_lang, Speak},
+    },
 };
 
 use async_trait::async_trait;
 use botapi::gen_types::{
-    Chat, ChatMember, ChatMemberUpdated, ChatPermissions, ChatPermissionsBuilder, Document,
-    InlineKeyboardButtonBuilder, MaybeInaccessibleMessage, Message, UpdateExt, User,
+    Chat, ChatFullInfo, ChatMember, ChatMemberUpdated, ChatPermissions, ChatPermissionsBuilder,
+    Document, InlineKeyboardButtonBuilder, MaybeInaccessibleMessage, Message, UpdateExt, User,
 };
 use bytes::Bytes;
 use chrono::{DateTime, Duration, Utc};
@@ -63,7 +65,7 @@ pub struct ChatUser<'a> {
 /// Trait for getting a ChatUser from either a type containing both chat and user
 /// or a chat (with provided extra user)
 pub trait IntoChatUser {
-    fn get_chatuser<'a>(&'a self) -> Option<ChatUser<'a>>;
+    fn get_chatuser(&self) -> Option<ChatUser<'_>>;
     fn get_chatuser_user<'a>(&'a self, user: &'a User) -> ChatUser<'a>;
 }
 
@@ -89,14 +91,14 @@ pub trait UpdateHelpers {
     /// Since telegram requires a lot of different cases to determine whether an
     /// update is a 'chat left' or 'chat joined' event we simplify it by parsing to a
     /// UserChanged type
-    fn user_event<'a>(&'a self) -> Option<UserChanged<'a>>;
+    fn user_event(&self) -> Option<UserChanged<'_>>;
 }
 
 impl UpdateHelpers for UpdateExt {
     /// Since telegram requires a lot of different cases to determine whether an
     /// update is a 'chat left' or 'chat joined' event we simplify it by parsing to a
     /// UserChanged type
-    fn user_event<'a>(&'a self) -> Option<UserChanged<'a>> {
+    fn user_event(&'_ self) -> Option<UserChanged<'_>> {
         if let UpdateExt::ChatMember(member) = self {
             if member.get_from().get_id() == ME.get().unwrap().get_id() {
                 return None;
@@ -170,7 +172,7 @@ impl DeleteAfterTime for Option<Message> {
 }
 
 impl IntoChatUser for Message {
-    fn get_chatuser<'a>(&'a self) -> Option<ChatUser<'a>> {
+    fn get_chatuser(&self) -> Option<ChatUser<'_>> {
         self.get_from().map(|f| ChatUser {
             user: f,
             chat: self.get_chat(),
@@ -193,6 +195,10 @@ pub async fn is_self_admin(chat: &Chat) -> Result<bool> {
 
 /// Returns true if a chat is a direct message with a user
 pub fn is_dm(chat: &Chat) -> bool {
+    chat.get_tg_type() == "private"
+}
+
+pub fn is_dm_info(chat: &ChatFullInfo) -> bool {
     chat.get_tg_type() == "private"
 }
 
@@ -420,7 +426,7 @@ pub async fn get_warns(chat: &Chat, user_id: i64) -> Result<Vec<warns::Model>> {
         },
         |key, _| async move {
             let (exists, count): (bool, Vec<RedisStr>) =
-                REDIS.pipe(|q| q.exists(&key).smembers(&key)).await?;
+                REDIS.pipe(|q| q.exists(key).smembers(key)).await?;
             Ok((
                 exists,
                 count
@@ -483,8 +489,7 @@ pub async fn get_warns_count(message: &Message, user: i64) -> Result<i32> {
                 Ok(count)
             },
             |key, _| async move {
-                let (exists, count): (bool, u64) =
-                    REDIS.pipe(|q| q.exists(&key).scard(&key)).await?;
+                let (exists, count): (bool, u64) = REDIS.pipe(|q| q.exists(key).scard(key)).await?;
                 Ok((exists, count))
             },
             |_, v| async move { Ok(v) },
@@ -617,8 +622,7 @@ pub async fn get_approvals(chat: &Chat) -> Result<Vec<(i64, String)>> {
             let id = res.user;
             let name = user
                 .pop()
-                .map(|v| v.username)
-                .flatten()
+                .and_then(|v| v.username)
                 .unwrap_or_else(|| id.to_string());
             (id, name)
         })
@@ -675,7 +679,7 @@ pub async fn change_chat_permissions(chat: &Chat, permissions: &ChatPermissions)
     let old = current_perms
         .get_permissions()
         .ok_or_else(|| chat.fail_err("failed to get chat permissions"))?;
-    new = merge_permissions(&old, new);
+    new = merge_permissions(old, new);
     new = merge_permissions(permissions, new);
     let new = new.build();
     TG.client
@@ -694,20 +698,18 @@ pub async fn ban_message(message: &Message, duration: Option<Duration>) -> Resul
             .build_ban_chat_sender_chat(message.get_chat().get_id(), senderchat.get_id())
             .build()
             .await?;
-    } else {
-        if let Some(user) = message.get_from() {
-            if let Some(duration) = duration.map(|v| Utc::now().checked_add_signed(v)).flatten() {
-                TG.client()
-                    .build_ban_chat_member(message.get_chat().get_id(), user.get_id())
-                    .until_date(duration.timestamp())
-                    .build()
-                    .await?;
-            } else {
-                TG.client()
-                    .build_ban_chat_member(message.get_chat().get_id(), user.get_id())
-                    .build()
-                    .await?;
-            }
+    } else if let Some(user) = message.get_from() {
+        if let Some(duration) = duration.and_then(|v| Utc::now().checked_add_signed(v)) {
+            TG.client()
+                .build_ban_chat_member(message.get_chat().get_id(), user.get_id())
+                .until_date(duration.timestamp())
+                .build()
+                .await?;
+        } else {
+            TG.client()
+                .build_ban_chat_member(message.get_chat().get_id(), user.get_id())
+                .build()
+                .await?;
         }
     }
     Ok(())
@@ -727,7 +729,7 @@ pub async fn is_dm_or_die(chat: &Chat) -> Result<()> {
 /// Check if the group is a supergroup, and warn the user while returning error if it is not
 pub async fn is_group_or_die(chat: &Chat) -> Result<()> {
     let lang = get_chat_lang(chat.get_id()).await?;
-    match chat.get_tg_type().as_ref() {
+    match chat.get_tg_type() {
         "private" => chat.fail(lang_fmt!(lang, "baddm")),
         "group" => chat.fail(lang_fmt!(lang, "notsupergroup")),
         _ => Ok(()),
@@ -752,22 +754,19 @@ impl Context {
     /// Checks an update for user interactions and applies the current action for the user
     /// if it is pending. clearing the pending flag in the process
     pub async fn handle_pending_action_update<'a>(&self) -> Result<()> {
-        match self.update() {
-            UpdateExt::Message(ref message) => {
-                if !is_dm(&message.get_chat()) {
-                    if let Some(user) = message.get_from() {
-                        self.handle_pending_action(user).await?;
-                    }
+        if let UpdateExt::Message(ref message) = self.update() {
+            if !is_dm(message.get_chat()) {
+                if let Some(user) = message.get_from() {
+                    self.handle_pending_action(user).await?;
                 }
             }
-            _ => (),
         };
 
         Ok(())
     }
 
     /// Parse an std::chrono::Duration from a argument list
-    pub fn parse_duration<'a>(&self, args: &Option<ArgSlice<'a>>) -> Result<Option<Duration>> {
+    pub fn parse_duration(&self, args: &Option<ArgSlice<'_>>) -> Result<Option<Duration>> {
         if let Some(args) = args {
             if let Some(thing) = args.args.first() {
                 let head = &thing.get_text()[0..thing.get_text().len() - 1];
@@ -859,10 +858,10 @@ impl Context {
     /// afterwards, the pending flag is cleared
     pub async fn handle_pending_action(&self, user: &User) -> Result<()> {
         let chat = self.try_get()?.chat;
-        if !is_self_admin(&chat).await? {
+        if !is_self_admin(chat).await? {
             return Ok(());
         }
-        if let Some(action) = get_action(&chat, &user).await? {
+        if let Some(action) = get_action(chat, user).await? {
             log::info!("handling pending action user {}", user.name_humanreadable());
             let time = Utc::now();
             if let Some(expire) = action.expires {
@@ -908,7 +907,7 @@ impl Context {
                         .await?;
                 }
 
-                update_actions_pending(&chat, &user, false).await?;
+                update_actions_pending(chat, user, false).await?;
             }
         }
 
@@ -1006,7 +1005,7 @@ impl Context {
         } else if user.is_admin(chat).await? {
             self.fail(lang_fmt!(self.try_get()?.lang, "muteadmin"))
         } else {
-            if let Some(time) = time.map(|t| Utc::now().checked_add_signed(t)).flatten() {
+            if let Some(time) = time.and_then(|t| Utc::now().checked_add_signed(t)) {
                 TG.client()
                     .build_restrict_chat_member(chat.get_id(), user, permissions)
                     .until_date(time.timestamp())
@@ -1018,7 +1017,7 @@ impl Context {
                     .build()
                     .await?;
             }
-            let time = time.map(|t| Utc::now().checked_add_signed(t)).flatten();
+            let time = time.and_then(|t| Utc::now().checked_add_signed(t));
             update_actions_permissions(user, chat, permissions, time).await?;
             Ok(())
         }
@@ -1035,6 +1034,11 @@ impl Context {
             me.change_permissions(user, &permissions, duration).await?;
 
             Ok(())
+        })
+        .await
+        .speak_err_raw(self, |v| match v {
+            BotError::UserNotFound => Some(lang_fmt!(self, "failuser", "update permissions for")),
+            _ => None,
         })
         .await
     }
@@ -1067,31 +1071,31 @@ impl Context {
         .await
     }
 
-    pub async fn action_message<'a, F, Fut>(&'a self, action: F) -> Result<()>
+    pub async fn action_message<'a, F, Fut, R>(&'a self, action: F) -> Result<R>
     where
         F: FnOnce(&'a Context, ActionMessage<'a>, Option<ArgSlice<'a>>) -> Fut,
-        Fut: Future<Output = Result<()>>,
+        Fut: Future<Output = Result<R>>,
     {
         let message = self.message()?;
         let args = self.try_get()?.command.as_ref().map(|a| &a.args);
         log::info!("action_message {:?}", args);
 
-        if let Some(message) = message.get_reply_to_message() {
+        let r = if let Some(message) = message.get_reply_to_message() {
             action(
                 self,
                 ActionMessage::Reply(message),
                 args.map(|a| a.as_slice()),
             )
-            .await?;
+            .await?
         } else {
             action(
                 self,
                 ActionMessage::Me(self.message()?),
                 args.map(|a| a.as_slice()),
             )
-            .await?;
+            .await?
         };
-        Ok(())
+        Ok(r)
     }
 
     /// Runs the provided function with parameters specifying a user and message parsed from the
@@ -1115,10 +1119,7 @@ impl Context {
             .unwrap_or_else(|| &VECDEQUE);
 
         if let (Some(user), Some(message)) = (
-            message
-                .get_reply_to_message()
-                .map(|v| v.get_from())
-                .flatten(),
+            message.get_reply_to_message().and_then(|v| v.get_from()),
             message.get_reply_to_message(),
         ) {
             action(
@@ -1138,7 +1139,7 @@ impl Context {
                     action(
                         self,
                         Some(user.get_id()),
-                        args.map(|a| a.pop_slice_tail()).flatten(),
+                        args.and_then(|a| a.pop_slice_tail()),
                         ActionMessage::Me(self.message()?),
                     )
                     .await?;
@@ -1148,53 +1149,44 @@ impl Context {
                     action(
                         self,
                         Some(user.get_id()),
-                        args.map(|a| a.pop_slice_tail()).flatten(),
+                        args.and_then(|a| a.pop_slice_tail()),
                         ActionMessage::Me(self.message()?),
                     )
                     .await?;
                     Ok(Some(user.get_id()))
                 }
-                _ => {
-                    match args
-                        .map(|v| {
-                            v.args
-                                .first()
-                                .map(|v| i64::from_str_radix(v.get_text(), 10))
-                        })
-                        .flatten()
-                    {
-                        Some(Ok(v)) => {
-                            action(
-                                self,
-                                Some(v),
-                                args.map(|a| a.pop_slice_tail()).flatten(),
-                                ActionMessage::Me(self.message()?),
-                            )
-                            .await?;
-                            Ok(Some(v))
-                        }
-                        Some(Err(_)) => {
-                            action(
-                                self,
-                                None,
-                                args.map(|a| a.pop_slice_tail()).flatten(),
-                                ActionMessage::Me(self.message()?),
-                            )
-                            .await?;
-                            Ok(None)
-                        }
-                        None => {
-                            action(
-                                self,
-                                None,
-                                args.map(|a| a.pop_slice_tail()).flatten(),
-                                ActionMessage::Me(self.message()?),
-                            )
-                            .await?;
-                            Ok(None)
-                        }
+                _ => match args.and_then(|v| v.args.first().map(|v| str::parse(v.get_text()))) {
+                    Some(Ok(v)) => {
+                        action(
+                            self,
+                            Some(v),
+                            args.and_then(|a| a.pop_slice_tail()),
+                            ActionMessage::Me(self.message()?),
+                        )
+                        .await?;
+                        Ok(Some(v))
                     }
-                }
+                    Some(Err(_)) => {
+                        action(
+                            self,
+                            None,
+                            args.and_then(|a| a.pop_slice_tail()),
+                            ActionMessage::Me(self.message()?),
+                        )
+                        .await?;
+                        Ok(None)
+                    }
+                    None => {
+                        action(
+                            self,
+                            None,
+                            args.and_then(|a| a.pop_slice_tail()),
+                            ActionMessage::Me(self.message()?),
+                        )
+                        .await?;
+                        Ok(None)
+                    }
+                },
             }
         }
     }
@@ -1210,8 +1202,7 @@ impl Context {
         let message = self.message()?;
         let dialog = dialog_or_default(message.get_chat()).await?;
         let lang = get_chat_lang(message.get_chat().get_id()).await?;
-        let time: Option<chrono::TimeDelta> =
-            dialog.warn_time.map(|t| Duration::try_seconds(t)).flatten();
+        let time: Option<chrono::TimeDelta> = dialog.warn_time.and_then(Duration::try_seconds);
         let (count, model) = warn_user(
             message,
             user,
@@ -1231,7 +1222,7 @@ impl Context {
             }?;
         } else if let Some(model) = model {
             let name = user.mention().await?;
-            let mut text = if let Some(_) = reason {
+            let mut text = if reason.is_some() {
                 entity_fmt!(
                     self,
                     "warnreason",
@@ -1306,7 +1297,7 @@ impl Context {
             });
 
             if let Some(reason) = reason {
-                text.builder.text(&reason);
+                text.builder.text(reason);
             }
             text.builder.buttons.button(button);
             message.reply_fmt(text).await?;
@@ -1319,7 +1310,7 @@ impl Context {
     pub async fn warn_ban(&self, user: i64, count: i32, duration: Option<Duration>) -> Result<()> {
         log::info!("warn_ban");
         let message = self.message()?;
-        self.ban(user, duration).await?;
+        self.ban(user, duration, true).await?;
         message
             .reply_fmt(entity_fmt!(
                 self,
@@ -1333,7 +1324,7 @@ impl Context {
 
     /// Bans a user in the given chat (from message), transparently handling anonymous channels.
     /// if a duration is specified. the ban will be lifted
-    pub async fn ban(&self, user: i64, duration: Option<Duration>) -> Result<()> {
+    pub async fn ban(&self, user: i64, duration: Option<Duration>, silent: bool) -> Result<()> {
         let message = self.message()?;
         let lang = get_chat_lang(message.get_chat().get_id()).await?;
         if let Some(senderchat) = message.get_sender_chat() {
@@ -1341,28 +1332,34 @@ impl Context {
                 .build_ban_chat_sender_chat(message.get_chat().get_id(), senderchat.get_id())
                 .build()
                 .await?;
-            let name = senderchat.name_humanreadable();
-            if let Some(user) = user.get_cached_user().await? {
-                let mention = MarkupType::TextMention(user).text(&name);
-                message
-                    .reply_fmt(entity_fmt!(self, "banchat", mention))
-                    .await?;
-            } else {
-                message.reply(lang_fmt!(lang, "banchat", name)).await?;
+            if !silent {
+                let name = senderchat.name_humanreadable();
+                if let Some(user) = user.get_cached_user().await? {
+                    let mention = MarkupType::TextMention(user).text(&name);
+
+                    message
+                        .reply_fmt(entity_fmt!(self, "banchat", mention))
+                        .await?;
+                } else {
+                    message.reply(lang_fmt!(lang, "banchat", name)).await?;
+                }
             }
         }
 
         let me = ME.get().unwrap();
 
-        if user == me.get_id() {
-            return self.fail(lang_fmt!(lang, "banmyself"));
-        }
-        if user.is_admin(message.get_chat()).await? {
+        let err = if user == me.get_id() {
+            self.fail(lang_fmt!(lang, "banmyself"))
+        } else if user.is_admin(message.get_chat()).await? {
             let banadmin = lang_fmt!(lang, "banadmin");
-            return self.fail(banadmin);
-        }
+            self.fail(banadmin)
+        } else {
+            Ok(())
+        };
 
-        if let Some(duration) = duration.map(|v| Utc::now().checked_add_signed(v)).flatten() {
+        if silent { err.silent().await } else { err }?;
+
+        if let Some(duration) = duration.and_then(|v| Utc::now().checked_add_signed(v)) {
             TG.client()
                 .build_ban_chat_member(message.get_chat().get_id(), user)
                 .until_date(duration.timestamp())
@@ -1376,9 +1373,12 @@ impl Context {
         }
 
         let mention = user.mention().await?;
-        message
-            .reply_fmt(entity_fmt!(self, "banned", mention))
-            .await?;
+
+        if !silent {
+            message
+                .reply_fmt(entity_fmt!(self, "banned", mention))
+                .await?;
+        }
 
         Ok(())
     }
@@ -1482,7 +1482,7 @@ where
     T: Sized + AsRef<str>,
 {
     fn none_if_empty(self) -> Option<Self> {
-        if self.as_ref().len() == 0 {
+        if self.as_ref().is_empty() {
             None
         } else {
             Some(self)
@@ -1504,7 +1504,7 @@ impl FileGetter for Document {
             .get_file_path()
             .ok_or_else(|| BotError::Generic("Document file path missing".to_owned()))?;
 
-        Ok(get_file(&path).await?)
+        Ok(get_file(path).await?)
     }
 
     async fn get_text(&self) -> Result<String> {
@@ -1512,7 +1512,7 @@ impl FileGetter for Document {
         let path = file
             .get_file_path()
             .ok_or_else(|| BotError::Generic("Docuemnt file path missing".to_owned()))?;
-        Ok(get_file_text(&path).await?)
+        Ok(get_file_text(path).await?)
     }
 }
 
@@ -1592,41 +1592,29 @@ pub async fn update_actions_permissions(
         is_banned: NotSet,
         can_send_messages: permissions
             .get_can_send_messages()
-            .map(|v| Set(v))
+            .map(Set)
             .unwrap_or(NotSet),
-        can_send_audio: permissions
-            .get_can_send_audios()
-            .map(|v| Set(v))
-            .unwrap_or(NotSet),
+        can_send_audio: permissions.get_can_send_audios().map(Set).unwrap_or(NotSet),
 
         can_send_document: permissions
             .get_can_send_documents()
-            .map(|v| Set(v))
+            .map(Set)
             .unwrap_or(NotSet),
-        can_send_photo: permissions
-            .get_can_send_photos()
-            .map(|v| Set(v))
-            .unwrap_or(NotSet),
+        can_send_photo: permissions.get_can_send_photos().map(Set).unwrap_or(NotSet),
 
-        can_send_video: permissions
-            .get_can_send_videos()
-            .map(|v| Set(v))
-            .unwrap_or(NotSet),
+        can_send_video: permissions.get_can_send_videos().map(Set).unwrap_or(NotSet),
         can_send_voice_note: permissions
             .get_can_send_voice_notes()
-            .map(|v| Set(v))
+            .map(Set)
             .unwrap_or(NotSet),
         can_send_video_note: permissions
             .get_can_send_video_notes()
-            .map(|v| Set(v))
+            .map(Set)
             .unwrap_or(NotSet),
-        can_send_poll: permissions
-            .get_can_send_polls()
-            .map(|v| Set(v))
-            .unwrap_or(NotSet),
+        can_send_poll: permissions.get_can_send_polls().map(Set).unwrap_or(NotSet),
         can_send_other: permissions
             .get_can_send_other_messages()
-            .map(|v| Set(v))
+            .map(Set)
             .unwrap_or(NotSet),
         action: NotSet,
         expires: Set(expires),

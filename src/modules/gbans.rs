@@ -1,17 +1,17 @@
-use macros::update_handler;
+use macros::{lang_fmt, update_handler};
 
 use crate::persist::admin::gbans;
 use crate::tg::command::{Cmd, Context};
 use crate::tg::federations::gban_user;
 use crate::tg::permissions::IsGroupAdmin;
 use crate::tg::user::GetUser;
-use crate::util::error::Result;
+use crate::util::error::{BotError, Result, SpeakErr};
 use crate::{metadata::metadata, util::string::Speak};
 
 metadata!("Global Bans",
     r#"
     Global bans \(gbans\) ban a user across every chat the bot is in. This is a drastic action
-    and therefore can only be taken by support users or the owner of the bot. 
+    and therefore can only be taken by support users or the owner of the bot.
     "#,
     { command = "gban", help = "Ban a user in all chats" },
     { command = "ungban", help = "Unban a user in all chats" }
@@ -29,6 +29,11 @@ async fn ungban(ctx: &Context) -> Result<()> {
 
         Ok(())
     })
+    .await
+    .speak_err_raw(ctx, |v| match v {
+        BotError::UserNotFound => Some(lang_fmt!(ctx, "failuser", "ungban")),
+        _ => None,
+    })
     .await?;
     Ok(())
 }
@@ -40,8 +45,7 @@ async fn gban(ctx: &Context) -> Result<()> {
 
             model.reason = args
                 .map(|v| v.text.trim().to_owned())
-                .map(|v| (!v.is_empty()).then(|| v))
-                .flatten();
+                .and_then(|v| (!v.is_empty()).then_some(v));
             gban_user(model, user).await?;
             ctx.reply("user gbanned").await?;
         } else {
@@ -49,6 +53,11 @@ async fn gban(ctx: &Context) -> Result<()> {
         }
 
         Ok(())
+    })
+    .await
+    .speak_err_raw(ctx, |v| match v {
+        BotError::UserNotFound => Some(lang_fmt!(ctx, "failuser", "gban")),
+        _ => None,
     })
     .await?;
     Ok(())

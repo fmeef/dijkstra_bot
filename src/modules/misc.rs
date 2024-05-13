@@ -1,11 +1,11 @@
-use macros::update_handler;
+use macros::{lang_fmt, update_handler};
 
 use crate::tg::command::{Cmd, Context};
 use crate::tg::dialog::get_user_chats;
 use crate::tg::markdown::EntityMessage;
 use crate::tg::permissions::IsGroupAdmin;
 use crate::tg::user::GetUser;
-use crate::util::error::Result;
+use crate::util::error::{BotError, Result, SpeakErr};
 use crate::{metadata::metadata, util::string::Speak};
 
 metadata!("Misc",
@@ -24,6 +24,11 @@ async fn get_id(ctx: &Context) -> Result<()> {
         }
         Ok(())
     })
+    .await
+    .speak_err_raw(ctx, |v| match v {
+        BotError::UserNotFound => Some(lang_fmt!(ctx, "failuser", "get id for")),
+        _ => None,
+    })
     .await?;
     Ok(())
 }
@@ -37,11 +42,16 @@ pub async fn allchats(ctx: &Context) -> Result<()> {
         for chat in chats {
             let chat = chat.cached_name().await?;
             message.push_str(&chat);
-            message.push_str("\n");
+            message.push('\n');
         }
 
         ctx.reply(message).await?;
         Ok(())
+    })
+    .await
+    .speak_err_raw(ctx, |v| match v {
+        BotError::UserNotFound => Some(lang_fmt!(ctx, "failuser", "get chats for")),
+        _ => None,
     })
     .await?;
     Ok(())

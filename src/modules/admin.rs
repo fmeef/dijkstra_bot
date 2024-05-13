@@ -2,6 +2,7 @@ use crate::tg::command::Cmd;
 use crate::tg::markdown::EntityMessage;
 use crate::tg::permissions::*;
 use crate::tg::user::GetUser;
+use crate::util::error::{BotError, SpeakErr};
 use crate::{
     metadata::metadata,
     tg::command::Context,
@@ -46,12 +47,17 @@ async fn promote(context: &Context) -> Result<()> {
             }
             Ok(())
         })
+        .await
+        .speak_err_raw(context, |v| match v {
+            BotError::UserNotFound => Some(lang_fmt!(context, "failuser", "promote")),
+            _ => None,
+        })
         .await?;
 
     Ok(())
 }
 
-async fn demote<'a>(context: &'a Context) -> Result<()> {
+async fn demote(context: &Context) -> Result<()> {
     context.check_permissions(|p| p.can_promote_members).await?;
     context
         .action_user(|ctx, user, _| async move {
@@ -69,6 +75,11 @@ async fn demote<'a>(context: &'a Context) -> Result<()> {
             }
 
             Ok(())
+        })
+        .await
+        .speak_err_raw(context, |v| match v {
+            BotError::UserNotFound => Some(lang_fmt!(context, "failuser", "demote")),
+            _ => None,
         })
         .await?;
 

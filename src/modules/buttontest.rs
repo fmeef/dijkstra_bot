@@ -1,22 +1,25 @@
 use crate::metadata::{metadata, ModuleHelpers};
 use crate::statics::TG;
+use crate::tg::admin_helpers::ActionMessage;
 use crate::tg::command::{Cmd, Context};
+use crate::tg::greetings::send_captcha;
+use crate::tg::permissions::IsGroupAdmin;
 use crate::tg::rosemd::{RoseMdDecompiler, RoseMdParser};
-use crate::util::error::Result;
+use crate::util::error::{Fail, Result, SpeakErr};
+use crate::util::scripting::{ManagedRhai, RHAI_ENGINE};
 use crate::util::string::Speak;
 use botapi::gen_types::Message;
 use macros::update_handler;
+use rhai::Dynamic;
+use rhai::Scope;
 use sea_orm_migration::MigrationTrait;
 
-metadata!("Antipiracy",
+metadata!(
+    "Debug",
     r#"
-    This is just a debugging module, it will be removed eventually. 
+    Nothing here yet
     "#,
-    Helper,
-    { command = "report", help = "Report a pirate for termination" },
-    { command = "crash", help = "Intentionally trigger a floodwait for debugging"},
-    { command = "markdown", help = "Reply to a message to parse as markdown"},
-    { command = "murkdown", help = "Reply to a message to parse as murkdown" }
+    Helper
 );
 
 const BIG: &str = r#"
@@ -40,7 +43,7 @@ Suspendisse sit amet pharetra turpis, eu mollis nunc. Sed volutpat aliquet conse
 "#;
 
 pub async fn get_metadata() -> Result<Option<serde_json::Value>> {
-    let v = serde_json::to_value(&())?;
+    let v = serde_json::to_value(())?;
     Ok(Some(v))
 }
 
@@ -105,7 +108,7 @@ impl ModuleHelpers for Helper {
 async fn handle_markdown(message: &Message) -> Result<bool> {
     if let Some(message) = message.get_reply_to_message() {
         if let Some(text) = message.get_text() {
-            let md = RoseMdParser::new(&text, true);
+            let md = RoseMdParser::new(text, true);
             let (msg, entities, _) = md.parse();
             TG.client()
                 .build_send_message(message.get_chat().get_id(), &msg)
@@ -117,11 +120,65 @@ async fn handle_markdown(message: &Message) -> Result<bool> {
     Ok(false)
 }
 
+async fn eval_script(ctx: &Context) -> Result<()> {
+    ctx.action_message(|ctx, am, args| async move {
+        let args = args.ok_or_else(|| ctx.fail_err("missing arg"))?;
+        let mut scope = Scope::new();
+        scope.set_or_push("m", ctx.message()?.clone());
+        let text = match am {
+            ActionMessage::Me(_) => args.text.to_owned(),
+            ActionMessage::Reply(m) => m.text.clone().unwrap_or_default(),
+        };
+        log::info!("{}", text);
+        let res: Dynamic = ManagedRhai::new(text, &RHAI_ENGINE)
+            .scope(scope)
+            .post()
+            .await
+            .speak_err(ctx, |e| format!("Failed to compile: {}", e))
+            .await?;
+        let res = res.to_string();
+        let res = if res.trim().is_empty() {
+            "()".to_owned()
+        } else {
+            res
+        };
+        ctx.reply(res).await?;
+        Ok(())
+    })
+    .await
+}
+
+async fn map_script(ctx: &Context) -> Result<()> {
+    ctx.action_message(|ctx, am, args| async move {
+        let args = args.ok_or_else(|| ctx.fail_err("missing arg"))?;
+        let text = args.text.to_owned();
+        let message = match am {
+            ActionMessage::Me(m) => m,
+            ActionMessage::Reply(m) => m,
+        };
+        log::info!("{}", text);
+        let res: Dynamic = ManagedRhai::new_mapper(text, &RHAI_ENGINE, (message.clone(),))
+            .post()
+            .await
+            .speak_err(ctx, |e| format!("Failed to compile: {}", e))
+            .await?;
+        let res = res.to_string();
+        let res = if res.trim().is_empty() {
+            "()".to_owned()
+        } else {
+            res
+        };
+        ctx.reply(res).await?;
+        Ok(())
+    })
+    .await
+}
+
 async fn handle_decompile(message: &Message) -> Result<bool> {
     if let Some(message) = message.get_reply_to_message() {
         if let (Some(text), Some(entities)) = (message.get_text(), message.get_entities()) {
             let buttons = vec![];
-            let md = RoseMdDecompiler::new(&text, entities, &buttons);
+            let md = RoseMdDecompiler::new(text, entities, &buttons);
             let msg = md.decompile();
             TG.client()
                 .build_send_message(message.get_chat().get_id(), &msg)
@@ -154,6 +211,16 @@ pub async fn handle_update(ctx: &Context) -> Result<()> {
             }
             "biig" => {
                 message.reply(BIG).await?;
+            }
+            "eval" => {
+                eval_script(ctx).await?;
+            }
+            "map" => {
+                map_script(ctx).await?;
+            }
+            "cd" => {
+                ctx.check_permissions(|p| p.is_support).await?;
+                send_captcha(message, message.get_chat().to_owned(), ctx).await?;
             }
             _ => (),
         };

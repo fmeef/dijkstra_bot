@@ -41,7 +41,7 @@ impl InlineKeyboardBuilder {
         Self(value)
     }
 
-    pub fn get_mut<'a>(&'a mut self) -> &'a mut Vec<Vec<button::Model>> {
+    pub fn get_mut(&mut self) -> &'_ mut Vec<Vec<button::Model>> {
         &mut self.0
     }
 
@@ -81,16 +81,14 @@ impl InlineKeyboardBuilder {
                     } else {
                         self.0.push(vec![button]);
                     }
-                } else {
-                    if let Some(v) = self.0.last_mut() {
-                        if v.len() < MAX_BUTTONS {
-                            v.push(button);
-                        } else {
-                            self.0.push(vec![button]);
-                        }
+                } else if let Some(v) = self.0.last_mut() {
+                    if v.len() < MAX_BUTTONS {
+                        v.push(button);
                     } else {
-                        log::info!("merge button fell off end");
+                        self.0.push(vec![button]);
                     }
+                } else {
+                    log::info!("merge button fell off end");
                 }
             }
         }
@@ -121,7 +119,7 @@ impl InlineKeyboardBuilder {
     }
 
     /// gets mutable access to stored vec
-    pub fn get<'a>(&'a self) -> &'a Vec<Vec<button::Model>> {
+    pub fn get(&self) -> &'_ Vec<Vec<button::Model>> {
         &self.0
     }
 
@@ -153,13 +151,13 @@ impl InlineKeyboardBuilder {
 /// Beware, this calls functions in static contexts
 pub trait OnPush {
     /// Register a button callback that is only called once, then unregistered
-    fn on_push<'a, F, Fut>(&self, func: F)
+    fn on_push<F, Fut>(&self, func: F)
     where
         F: FnOnce(CallbackQuery) -> Fut + Sync + Send + 'static,
         Fut: Future<Output = Result<()>> + Send + 'static;
 
     /// Register a button callback that is called until it returns false
-    fn on_push_multi<'a, F, Fut>(&self, func: F)
+    fn on_push_multi<F, Fut>(&self, func: F)
     where
         F: Fn(CallbackQuery) -> Fut + Sync + Send + 'static,
         Fut: Future<Output = Result<bool>> + Send + 'static;
@@ -196,7 +194,7 @@ mod test {
 
         assert_eq!(builder.row_len(), 1);
         println!("{:?}", builder.get());
-        let last = builder.get().last().map(|v| v.first()).flatten().unwrap();
+        let last = builder.get().last().and_then(|v| v.first()).unwrap();
         assert_eq!(last.pos_x, 0);
         assert_eq!(last.pos_y, 1);
     }

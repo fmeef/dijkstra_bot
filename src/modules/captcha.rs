@@ -21,7 +21,7 @@ use uuid::Uuid;
 
 metadata!("Captcha",
     r#"
-       Set a captcha in the group to keep bots out. Supports two security levels, text and button. 
+       Set a captcha in the group to keep bots out. Supports two security levels, text and button.
     "#,
     { command = "captcha", help = "Enabled or disables captcha. Usage: /captcha \\<on/off\\>" },
     { command = "captchamode", help = "Sets the captcha mode to either button or text"},
@@ -62,7 +62,7 @@ async fn handle_command<'a>(ctx: &Context) -> Result<()> {
     if let Some(&Cmd {
         cmd,
         ref args,
-        ref message,
+        message,
         ..
     }) = ctx.cmd()
     {

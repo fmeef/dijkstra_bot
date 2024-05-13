@@ -18,7 +18,7 @@ fn prometheus_serve() -> tokio::task::JoinHandle<Result<()>> {
     tokio::spawn(async move {
         Server::run(
             default_registry(),
-            CONFIG.logging.prometheus_hook.clone(),
+            CONFIG.logging.prometheus_hook,
             Notify::new().notified(),
         )
         .await?;

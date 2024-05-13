@@ -196,7 +196,7 @@ pub async fn update_chat(
             .all(*DB)
             .await?;
 
-        if members.len() > 0 {
+        if !members.is_empty() {
             REDIS
                 .pipe(|p| {
                     for v in members.iter() {
@@ -228,7 +228,7 @@ pub async fn is_chat_member(user: i64, chat: i64) -> Result<bool> {
     let key = get_member_key(user);
     let v = match REDIS.pipe(|p| p.exists(&key).sismember(&key, chat)).await {
         Ok((true, v)) => Ok::<bool, BotError>(v),
-        Err(err) => Err(err.into()),
+        Err(err) => Err(err),
         Ok((false, _)) => {
             let mut v = update_chat(user).await?;
             let model = chat_members::ActiveModel {
@@ -236,7 +236,7 @@ pub async fn is_chat_member(user: i64, chat: i64) -> Result<bool> {
                 user_id: Set(user),
                 banned_by_me: NotSet,
             };
-            Ok(v.find(|p| p.eq(&model)).is_some())
+            Ok(v.any(|p| p.eq(&model)))
         }
     }?;
 
@@ -245,7 +245,7 @@ pub async fn is_chat_member(user: i64, chat: i64) -> Result<bool> {
 
 /// Returns an iterator over all the chats a user has been seen in
 pub async fn get_user_chats(user: i64) -> Result<impl Iterator<Item = i64> + Send> {
-    let v = update_chat(user).await?.into_iter().filter_map(|v| {
+    let v = update_chat(user).await?.filter_map(|v| {
         if let Set(id) = v.chat_id {
             Some(id)
         } else {
@@ -256,15 +256,13 @@ pub async fn get_user_chats(user: i64) -> Result<impl Iterator<Item = i64> + Sen
 }
 
 pub async fn get_user_banned_chats(user: i64) -> Result<impl Iterator<Item = i64> + Send> {
-    let v = update_chat(user).await?.into_iter().filter_map(|v| {
+    let v = update_chat(user).await?.filter_map(|v| {
         if let Set(false) = v.banned_by_me {
             None
+        } else if let Set(id) = v.chat_id {
+            Some(id)
         } else {
-            if let Set(id) = v.chat_id {
-                Some(id)
-            } else {
-                None
-            }
+            None
         }
     });
     Ok(v)
@@ -367,7 +365,7 @@ pub struct ConversationState {
     pub transitions: BTreeMap<(Uuid, String), FSMTransition>,
     rediskey: String,
     #[serde(default, skip)]
-    state_callback: Option<Box<dyn Fn(Uuid, Conversation) -> () + Send + Sync>>,
+    state_callback: Option<Box<dyn Fn(Uuid, Conversation) + Send + Sync>>,
 }
 
 /// Converstation state machine with internal state backed by redis.
@@ -455,7 +453,7 @@ impl ConversationState {
     }
 
     /// get a reference to the starting state
-    pub fn get_start<'a>(&'a self) -> Result<&'a FSMState> {
+    pub fn get_start(&self) -> Result<&'_ FSMState> {
         if let Some(start) = self.states.get(&self.start) {
             Ok(start)
         } else {
@@ -471,7 +469,7 @@ impl ConversationState {
     /// register a callback to be called whenever the state changes
     pub fn state_callback<F>(&mut self, callback: F) -> &mut Self
     where
-        F: Fn(Uuid, Conversation) -> () + Send + Sync + 'static,
+        F: Fn(Uuid, Conversation) + Send + Sync + 'static,
     {
         self.state_callback = Some(Box::new(callback));
         self
@@ -513,7 +511,7 @@ impl ConversationState {
 
 impl Conversation {
     /// Get a reference to the starting state of the conversation
-    pub fn get_start<'a>(&'a self) -> Result<&'a FSMState> {
+    pub fn get_start(&self) -> Result<&'_ FSMState> {
         if let Some(start) = self.0.states.get(&self.0.start) {
             Ok(start)
         } else {
@@ -527,7 +525,7 @@ impl Conversation {
     }
 
     /// Transition this conversation to a new state by transition keyword
-    pub async fn transition<'a, S>(&'a self, next: S) -> Result<&'a str>
+    pub async fn transition<S>(&self, next: S) -> Result<&'_ str>
     where
         S: Into<String>,
     {
@@ -568,7 +566,7 @@ impl Conversation {
     }
 
     /// Gets a reference to the current state using redis
-    pub async fn get_current<'a>(&'a self) -> Result<&'a FSMState> {
+    pub async fn get_current(&self) -> Result<&'_ FSMState> {
         let current: String = REDIS.sq(|p| p.get(&self.0.rediskey)).await?;
         let current = Uuid::from_str(&current)?;
         if let Some(current) = self.0.states.get(&current) {
@@ -611,7 +609,7 @@ impl Conversation {
                 .await?;
 
             TG.client()
-                .build_answer_callback_query(&callback.get_id())
+                .build_answer_callback_query(callback.get_id())
                 .build()
                 .await?;
         }
@@ -678,7 +676,7 @@ impl Conversation {
 
 /// gets the current conversation for the chat-user pair (from a message's sender)
 pub async fn get_conversation(message: &Message) -> Result<Option<Conversation>> {
-    let key = get_conversation_key_message(&message)?;
+    let key = get_conversation_key_message(message)?;
     let rstr = REDIS
         .query(|mut c| async move {
             if c.exists(&key).await? {
@@ -734,7 +732,7 @@ where
     } else {
         let res = create(message)?;
         let s = RedisStr::new(&res)?;
-        let key = get_conversation_key_message(&message)?;
+        let key = get_conversation_key_message(message)?;
         REDIS
             .pipe(|p| {
                 p.atomic();

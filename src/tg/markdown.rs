@@ -17,25 +17,22 @@ use lazy_static::lazy_static;
 use markdown::{Block, ListItem, Span};
 use pomelo::pomelo;
 use regex::Regex;
+
+use std::borrow::Cow;
+use std::collections::BTreeSet;
 use std::fmt::Display;
 use std::sync::Arc;
 use thiserror::Error;
 use uuid::Uuid;
 
 /// Custom error type for murkdown parse failure. TODO: add additional context here
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Default)]
 pub struct DefaultParseErr {}
 
 impl Display for DefaultParseErr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("default parse error")?;
         Ok(())
-    }
-}
-
-impl Default for DefaultParseErr {
-    fn default() -> Self {
-        DefaultParseErr {}
     }
 }
 
@@ -50,7 +47,6 @@ pub enum Header {
 pub struct FilterCommond {
     pub header: Option<Header>,
     pub body: Vec<TgSpan>,
-    pub footer: Option<String>,
 }
 
 /// Type for representing murkdown syntax tree
@@ -120,7 +116,6 @@ lazy_static! {
 
 //     raw       ::= RawChar(C) { C.into() }
 //     raw       ::= raw(mut R) RawChar(C) { R.push(C); R }
-
 //     word      ::= LCurly RCurly { super::TgSpan::NoOp }
 //     word      ::= LCurly raw(W) RCurly { super::TgSpan::Filling(W) }
 //     word      ::= LSBracket Tick raw(W) RSBracket { super::TgSpan::Code(W) }
@@ -133,7 +128,6 @@ lazy_static! {
 //     word      ::= LTBracket raw(W) RTBracket LParen raw(L) RParen { super::TgSpan::Button(W, L) }
 //     word      ::= LTBracket LTBracket raw(W) RTBracket RTBracket LParen raw(L) RParen { super::TgSpan::NewlineButton(W, L) }
 // }
-
 pomelo! {
     %include {
              use super::{FilterCommond, Header};
@@ -171,15 +165,13 @@ pomelo! {
     input    ::= header(A) Eof {
         FilterCommond {
             header: Some(A),
-            body: vec![],
-            footer: None
+            body: vec![]
         }
     }
     input    ::= header(A) Whitespace(_) main(W) Eof {
         FilterCommond {
             header: Some(A),
-            body: W,
-            footer: None
+            body: W
         }
     }
     // input    ::= header(A)  footer(F) {
@@ -201,8 +193,7 @@ pomelo! {
     input    ::= main(A) Eof {
          FilterCommond {
             header: None,
-            body: A,
-            footer: None
+            body: A
         }
     }
 
@@ -257,20 +248,23 @@ pomelo! {
     // }
 
     blocklist ::= wstr(S) { S }
-    blocklist ::= wstr(mut S) Star { S.push_str("*"); S }
-    blocklist ::= wstr(mut S) Star blocklist(V) { S.push_str("*"); S.push_str(&V); S }
+    blocklist ::= wstr(mut S) Star { S.push('*'); S }
+    blocklist ::= wstr(mut S) Star blocklist(V) { S.push('*'); S.push_str(&V); S }
 
 
     blockstr ::= Str(S) { S }
-    blockstr ::= Str(mut S) Star { S.push_str("*"); S }
-    blockstr ::= Str(mut S) Star blockstr(V) { S.push_str("*"); S.push_str(&V); S }
+    blockstr ::= Str(mut S) Star { S.push('*'); S }
+    blockstr ::= Str(mut S) Star blockstr(V) { S.push('*'); S.push_str(&V); S }
 
     quote    ::= Quote blocklist(A) Quote { A }
+    quote    ::= Quote Whitespace(A) Quote { A }
+    quote    ::= Quote Quote { "".to_owned() }
     multi    ::= LParen list(A) RParen {A }
     list     ::= ign(A) { vec![A] }
+    list     ::= quote(A) { vec![ParsedArg::Quote(A)] }
     list     ::= list(mut L) Comma ign(A) { L.push(A); L }
-    list     ::= list(mut L) Comma quote(A) { L.push(ParsedArg::Quote(A)); L }
-
+    list     ::= list(mut L) Comma Whitespace(_) quote(A) { L.push(ParsedArg::Quote(A)); L }
+    list     ::= list(mut L) Comma Whitespace(_) quote(A) Whitespace(_) { L.push(ParsedArg::Quote(A)); L }
 }
 
 use parser::{Parser, Token};
@@ -349,13 +343,14 @@ impl Lexer {
                 }
                 idx += 1;
                 continue;
-            } else if self.escape {
+            }
+            if self.escape {
                 self.escape = false;
                 self.rawbuf.push(*char);
                 if let Some(c) = self.s.get(idx + 1) {
                     if is_valid(*c, self.header) || (char.is_whitespace() != c.is_whitespace()) {
                         let s: String = self.rawbuf.drain(..).collect();
-                        if char.is_whitespace() && s.len() > 0 && s.trim().len() == 0 {
+                        if char.is_whitespace() && !s.is_empty() && s.trim().is_empty() {
                             output.push(Token::Whitespace(s));
                         } else {
                             output.push(Token::Str(s));
@@ -364,7 +359,7 @@ impl Lexer {
                 } else {
                     let s: String = self.rawbuf.drain(..).collect();
 
-                    if char.is_whitespace() && s.len() > 0 && s.trim().len() == 0 {
+                    if char.is_whitespace() && !s.is_empty() && s.trim().is_empty() {
                         output.push(Token::Whitespace(s));
                     } else {
                         output.push(Token::Str(s));
@@ -384,7 +379,8 @@ impl Lexer {
                         output.push(Token::DoubleUnderscore);
                         idx += 1;
                         continue;
-                    } else if idx > 0 && self.s.get(idx - 1).map(|v| *v != '_').unwrap_or(true) {
+                    }
+                    if idx > 0 && self.s.get(idx - 1).map(|v| *v != '_').unwrap_or(true) {
                         output.push(Token::Underscore);
                     }
                 }
@@ -406,12 +402,9 @@ impl Lexer {
                             Some(false)
                         },
                     ) {
-                        if let Some((tick, _)) = self
-                            .s
-                            .get(idx + 2..)
-                            .map(|thing| thing.iter().find_position(|p| **p == '`' || **p == ']'))
-                            .flatten()
-                        {
+                        if let Some((tick, _)) = self.s.get(idx + 2..).and_then(|thing| {
+                            thing.iter().find_position(|p| **p == '`' || **p == ']')
+                        }) {
                             // if tick > 0 {
                             //     log::info!("escape2 {:?} ", self.s.get(tick + idx + 1));
                             // }
@@ -422,7 +415,7 @@ impl Lexer {
                                 self.code = self
                                     .s
                                     .get(idx + 2..tick + idx + 2)
-                                    .map(|v| MonoMode::Code(v.into_iter().collect()));
+                                    .map(|v| MonoMode::Code(v.iter().collect()));
 
                                 if tick + 3 < self.s.len() {
                                     idx += tick + 2;
@@ -462,7 +455,7 @@ impl Lexer {
                             let s = self.rawbuf.clone();
                             self.rawbuf.clear();
 
-                            if char.is_whitespace() && s.len() > 0 && s.trim().len() == 0 {
+                            if char.is_whitespace() && !s.is_empty() && s.trim().is_empty() {
                                 output.push(Token::Whitespace(s));
                             } else {
                                 output.push(Token::Str(s));
@@ -471,7 +464,7 @@ impl Lexer {
                     } else {
                         let s: String = self.rawbuf.drain(..).collect();
 
-                        if char.is_whitespace() && s.len() > 0 && s.trim().len() == 0 {
+                        if char.is_whitespace() && !s.is_empty() && s.trim().is_empty() {
                             output.push(Token::Whitespace(s));
                         } else {
                             output.push(Token::Str(s));
@@ -492,24 +485,69 @@ pub type ButtonFn = Arc<
 >;
 
 pub trait Escape {
-    fn escape(&self, header: bool) -> String;
+    fn unescape(&self, header: bool) -> Cow<'_, str>;
+    fn escape(&self, header: bool) -> Cow<'_, str>;
+    fn is_escaped(&self, header: bool) -> bool;
 }
 
 impl<T> Escape for T
 where
     T: AsRef<str>,
 {
-    fn escape(&self, header: bool) -> String {
+    fn escape(&self, header: bool) -> Cow<'_, str> {
         let s = self.as_ref();
-        s.chars()
-            .flat_map(|c| {
-                if is_valid(c, header) && c != '}' && c != '{' {
-                    vec!['\\', c]
-                } else {
-                    vec![c]
+        // if self.is_escaped(header) {
+        //     return Cow::Borrowed(s);
+        // }
+
+        let mut out = String::with_capacity(s.len());
+        let mut iter = s.chars().peekable();
+        while let Some(c) = iter.next() {
+            if let Some(n) = iter.peek() {
+                if c == '\\' && (*n == '\\' || is_valid(*n, header)) {
+                    continue;
                 }
-            })
-            .collect()
+            }
+
+            if c == '\\' || (is_valid(c, header) && c != '}' && c != '{') {
+                out.push('\\');
+            }
+
+            out.push(c);
+        }
+
+        Cow::Owned(out)
+    }
+
+    fn is_escaped(&self, header: bool) -> bool {
+        let mut iter = self.as_ref().chars().peekable();
+        while let Some(c) = iter.next() {
+            if let Some(n) = iter.peek() {
+                if is_valid(*n, header) && c != '\\' && *n != '\\' {
+                    return false;
+                }
+            }
+        }
+
+        true
+    }
+
+    fn unescape(&self, header: bool) -> Cow<'_, str> {
+        let s = self.as_ref();
+        let mut res = String::with_capacity(s.len());
+        let mut iter = s.chars().peekable();
+
+        while let Some(c) = iter.next() {
+            if let Some(n) = iter.peek() {
+                if is_valid(*n, header) && c == '\\' {
+                    res.push(*n);
+                } else {
+                    res.push(c);
+                    res.push(*n);
+                }
+            }
+        }
+        Cow::Owned(res)
     }
 }
 
@@ -547,15 +585,16 @@ pub struct MarkupBuilder {
     pub entities: Vec<MessageEntity>,
     pub buttons: InlineKeyboardBuilder,
     pub header: Option<Header>,
-    pub footer: Option<String>,
     pub offset: i64,
     pub diff: i64,
     pub text: String,
     pub filling: bool,
     pub enabled_header: bool,
+    pub enabled_fillings: bool,
     button_function: ButtonFn,
     chatuser: Option<OwnedChatUser>,
     pub built_markup: Option<EReplyMarkup>,
+    pub fillings: BTreeSet<String>,
 }
 
 #[inline(always)]
@@ -569,7 +608,7 @@ pub(crate) fn rules_deeplink_key(key: &str) -> String {
 }
 
 pub fn get_markup_for_buttons(button: Vec<button::Model>) -> Option<InlineKeyboardBuilder> {
-    if button.len() == 0 {
+    if button.is_empty() {
         None
     } else {
         let b = button
@@ -608,19 +647,20 @@ impl MarkupBuilder {
             text: String::new(),
             buttons: InlineKeyboardBuilder::default(),
             header: None,
-            footer: None,
             filling: false,
             enabled_header: false,
+            enabled_fillings: true,
             button_function: Arc::new(|_, _| async move { Ok(()) }.boxed()),
             chatuser: None,
             built_markup: None,
+            fillings: BTreeSet::new(),
         }
     }
 
-    async fn rules<'a>(&'a mut self) -> Result<()> {
+    async fn rules(&mut self) -> Result<()> {
         log::info!("adding rules {}", self.chatuser.is_some());
         if let Some(ref chatuser) = self.chatuser {
-            let url = post_deep_link(chatuser.chat.get_id(), |k| rules_deeplink_key(k)).await?;
+            let url = post_deep_link(chatuser.chat.get_id(), rules_deeplink_key).await?;
 
             let button = InlineKeyboardButtonBuilder::new("Get rules".to_owned())
                 .set_url(url)
@@ -630,7 +670,7 @@ impl MarkupBuilder {
         Ok(())
     }
 
-    pub async fn button<'a>(&'a mut self, hint: String, button_text: String) -> Result<()> {
+    pub async fn button(&mut self, hint: String, button_text: String) -> Result<()> {
         if let Some(ref chatuser) = self.chatuser {
             log::info!(
                 "building button for note: {} with chat {}",
@@ -643,7 +683,7 @@ impl MarkupBuilder {
             .as_ref()
             .map(|v| is_dm(&v.chat))
             .unwrap_or(true);
-        let button = if button_text.starts_with("#") && button_text.len() > 1 && is_dm {
+        let button = if button_text.starts_with('#') && button_text.len() > 1 && is_dm {
             let tail = &button_text[1..];
 
             let button = InlineKeyboardButtonBuilder::new(hint)
@@ -652,7 +692,7 @@ impl MarkupBuilder {
 
             (*self.button_function)(tail.to_owned(), &button).await?;
             button
-        } else if !is_dm && button_text.starts_with("#") && button_text.len() > 1 {
+        } else if !is_dm && button_text.starts_with('#') && button_text.len() > 1 {
             let chat = self
                 .chatuser
                 .as_ref()
@@ -660,7 +700,7 @@ impl MarkupBuilder {
             let chat = chat.chat.get_id();
             let tail = &button_text[1..];
 
-            let url = post_deep_link((chat, tail), |v| button_deeplink_key(v)).await?;
+            let url = post_deep_link((chat, tail), button_deeplink_key).await?;
 
             InlineKeyboardButtonBuilder::new(hint).set_url(url).build()
         } else {
@@ -674,7 +714,7 @@ impl MarkupBuilder {
         Ok(())
     }
 
-    fn parse_tgspan<'a>(&'a mut self, span: Vec<TgSpan>) -> BoxFuture<Result<(i64, i64)>> {
+    fn parse_tgspan(&mut self, span: Vec<TgSpan>) -> BoxFuture<Result<(i64, i64)>> {
         async move {
             // if topplevel {
             //     log::info!("parse_tgspan {:?}", span);
@@ -739,11 +779,11 @@ impl MarkupBuilder {
 
                         self.text(s);
                     }
-                    (TgSpan::Filling(filling), Some(ref chatuser)) if self.filling => {
+                    (TgSpan::Filling(filling), Some(chatuser)) if self.filling => {
                         match filling.as_str() {
                             "username" => {
                                 let user = chatuser.user.clone();
-                                let name = user.name_humanreadable();
+                                let name = user.name_humanreadable().into_owned();
                                 size += name.encode_utf16().count() as i64;
                                 self.text_mention(name, user, None);
                             }
@@ -768,7 +808,7 @@ impl MarkupBuilder {
                                 self.text_mention(first, user, None);
                             }
                             "chatname" => {
-                                let chat = chatuser.chat.name_humanreadable();
+                                let chat = chatuser.chat.name_humanreadable().into_owned();
                                 size += chat.encode_utf16().count() as i64;
                                 self.text(chat);
                             }
@@ -788,9 +828,18 @@ impl MarkupBuilder {
                         }
                     }
                     (TgSpan::Filling(filling), _) => {
-                        let s = format!("{{{}}}", filling);
-                        size += s.encode_utf16().count() as i64;
-                        self.text(s);
+                        if filling.trim().is_empty() {
+                            let s = format!("{{{}}}", filling);
+                            size += s.encode_utf16().count() as i64;
+                            self.text(s);
+                        } else {
+                            if self.enabled_fillings {
+                                let s = format!("{{{}}}", filling);
+                                size += s.encode_utf16().count() as i64;
+                                self.text(s);
+                            }
+                            self.fillings.insert(filling);
+                        }
                     }
                     (TgSpan::NoOp, _) => (),
                 };
@@ -872,7 +921,7 @@ impl MarkupBuilder {
                 self.text_link(hint, link, None);
                 i
             }
-            Span::Image(_, _, _) => 0 as i64,
+            Span::Image(_, _, _) => 0,
             Span::Emphasis(emp) => {
                 let mut size: i64 = 0;
                 let start = self.offset;
@@ -924,17 +973,17 @@ impl MarkupBuilder {
     }
 
     pub async fn append<'a, T>(
-        &'a mut self,
+        &mut self,
         text: T,
         existing: Option<Vec<MessageEntity>>,
-    ) -> Result<&'a mut Self>
+    ) -> Result<&'_ mut Self>
     where
         T: AsRef<str>,
     {
         let text = text.as_ref();
         if let (Some(existing), Some(ref existingnew)) = (self.existing_entities.as_mut(), existing)
         {
-            existing.extend_from_slice(&existingnew);
+            existing.extend_from_slice(existingnew);
         }
         let mut parser = Parser::new();
         let mut tokenizer = Lexer::new(text, false);
@@ -944,12 +993,12 @@ impl MarkupBuilder {
         let res = parser.end_of_input()?;
         self.parse_tgspan(res.body).await?;
         if let Some(ref existing) = self.existing_entities {
-            self.entities.extend_from_slice(&existing.as_slice());
+            self.entities.extend_from_slice(existing.as_slice());
         }
         Ok(self)
     }
 
-    pub fn chatuser<'a>(mut self, chatuser: Option<&ChatUser<'a>>) -> Self {
+    pub fn chatuser(mut self, chatuser: Option<&ChatUser<'_>>) -> Self {
         self.chatuser = chatuser.map(|v| v.into());
         self
     }
@@ -965,7 +1014,7 @@ impl MarkupBuilder {
         self
     }
 
-    pub fn build<'a>(&'a self) -> (&'a str, &'a Vec<MessageEntity>) {
+    pub fn build(&self) -> (&'_ str, &'_ Vec<MessageEntity>) {
         (&self.text, &self.entities)
     }
 
@@ -987,7 +1036,7 @@ impl MarkupBuilder {
         }
 
         if let Some(ref existing) = self.existing_entities {
-            self.entities.extend_from_slice(&existing.as_slice());
+            self.entities.extend_from_slice(existing.as_slice());
         }
 
         Ok((self.text, self.entities, self.buttons))
@@ -1009,7 +1058,7 @@ impl MarkupBuilder {
         }
 
         if let Some(ref existing) = self.existing_entities {
-            self.entities.extend_from_slice(&existing.as_slice());
+            self.entities.extend_from_slice(existing.as_slice());
         }
 
         Ok(())
@@ -1025,12 +1074,12 @@ impl MarkupBuilder {
         }
     }
 
-    pub async fn build_murkdown_nofail_ref<'a>(
-        &'a mut self,
+    pub async fn build_murkdown_nofail_ref(
+        &mut self,
     ) -> (
-        &'a mut String,
-        &'a mut Vec<MessageEntity>,
-        Option<&'a mut EReplyMarkup>,
+        &'_ mut String,
+        &'_ mut Vec<MessageEntity>,
+        Option<&'_ mut EReplyMarkup>,
     ) {
         if let Ok(()) = self.nofail_internal().await {
             self.built_markup = Some(EReplyMarkup::InlineKeyboardMarkup(
@@ -1065,8 +1114,13 @@ impl MarkupBuilder {
         self
     }
 
+    pub fn show_fillings(mut self, fillings: bool) -> Self {
+        self.enabled_fillings = fillings;
+        self
+    }
+
     /// Appends new unformated text
-    pub fn text<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
+    pub fn text<T: AsRef<str>>(&mut self, text: T) -> &'_ mut Self {
         self.offset += self.push_text(text);
         self
     }
@@ -1084,12 +1138,12 @@ impl MarkupBuilder {
     }
 
     /// Appends a markup value
-    pub fn regular_fmt<'a, T: AsRef<str>>(&'a mut self, entity_type: Markup<T>) -> &'a mut Self {
+    pub fn regular_fmt<T: AsRef<str>>(&mut self, entity_type: Markup<T>) -> &'_ mut Self {
         let text = entity_type.get_text();
         let n = text.encode_utf16().count() as i64;
         // let v = text.chars().filter(|p| *p == '\\').count() as i64;
 
-        self.text.push_str(&text);
+        self.text.push_str(&text.escape(self.enabled_header));
         match entity_type.markup_type {
             MarkupType::Text => {}
             _ => {
@@ -1105,7 +1159,7 @@ impl MarkupBuilder {
 
                 let entity = entity.build();
                 self.existing_entities
-                    .get_or_insert_with(|| Vec::new())
+                    .get_or_insert_with(Vec::new)
                     .push(entity);
             }
         }
@@ -1115,11 +1169,11 @@ impl MarkupBuilder {
     }
 
     /// Appends a markup value
-    pub fn regular<'a, T: AsRef<str>>(&'a mut self, entity_type: Markup<T>) -> &'a mut Self {
+    pub fn regular<T: AsRef<str>>(&mut self, entity_type: Markup<T>) -> &'_ mut Self {
         let text = entity_type.get_text();
         let n = text.encode_utf16().count() as i64;
 
-        self.text.push_str(&text);
+        self.text.push_str(text);
         match entity_type.markup_type {
             MarkupType::Text => {}
             _ => {
@@ -1145,17 +1199,17 @@ impl MarkupBuilder {
     fn push_text<T: AsRef<str>>(&mut self, text: T) -> i64 {
         let text = text.as_ref();
         let n = text.encode_utf16().count() as i64;
-        self.text.push_str(&text);
+        self.text.push_str(text);
         n
     }
 
     /// Appends a new text link. Pass a number for advance to allow text/formatting overlap
-    pub fn text_link<'a, T: AsRef<str>>(
-        &'a mut self,
+    pub fn text_link<T: AsRef<str>>(
+        &mut self,
         text: T,
         link: String,
         advance: Option<i64>,
-    ) -> &'a mut Self {
+    ) -> &'_ mut Self {
         let text = text.as_ref();
         let n = self.push_text(text);
         //        let text = text.escape(self.enabled_header);
@@ -1169,12 +1223,12 @@ impl MarkupBuilder {
     }
 
     /// Appends a new text mention. Pass a number for advance to allow text/formatting overlap
-    pub fn text_mention<'a, T: AsRef<str>>(
-        &'a mut self,
+    pub fn text_mention<T: AsRef<str>>(
+        &mut self,
         text: T,
         mention: User,
         advance: Option<i64>,
-    ) -> &'a Self {
+    ) -> &'_ Self {
         let text = text.as_ref();
         let n = self.push_text(text);
         let entity = MessageEntityBuilder::new(self.offset, n)
@@ -1188,12 +1242,12 @@ impl MarkupBuilder {
     }
 
     /// Appends a new pre block. Pass a number for advance to allow text/formatting overlap
-    pub fn pre<'a, T: AsRef<str>>(
-        &'a mut self,
+    pub fn pre<T: AsRef<str>>(
+        &mut self,
         text: T,
         language: String,
         advance: Option<i64>,
-    ) -> &'a Self {
+    ) -> &'_ Self {
         let text = text.as_ref();
         let n = self.push_text(text);
         let entity = MessageEntityBuilder::new(self.offset, n)
@@ -1206,12 +1260,12 @@ impl MarkupBuilder {
     }
 
     /// Appends a new custom emoji. Pass a number for advance to allow text/formatting overlap
-    pub fn custom_emoji<'a, T: AsRef<str>>(
-        &'a mut self,
+    pub fn custom_emoji<T: AsRef<str>>(
+        &mut self,
         text: T,
         emoji_id: String,
         advance: Option<i64>,
-    ) -> &'a Self {
+    ) -> &'_ Self {
         let text = text.as_ref();
         let n = self.push_text(text);
         let entity = MessageEntityBuilder::new(self.offset, n)
@@ -1224,67 +1278,67 @@ impl MarkupBuilder {
     }
 
     /// Appends strikethrouh text. Pass a number for advance to allow text/formatting overlap
-    pub fn strikethrough<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
+    pub fn strikethrough<T: AsRef<str>>(&mut self, text: T) -> &'_ mut Self {
         self.regular(MarkupType::StrikeThrough.text(&text))
     }
 
     /// Appends a new hashtag. Pass a number for advance to allow text/formatting overlap
-    pub fn hashtag<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
+    pub fn hashtag<T: AsRef<str>>(&mut self, text: T) -> &'_ mut Self {
         self.regular(MarkupType::HashTag.text(&text))
     }
 
     /// Appends a new cashtag. Pass a number for advance to allow text/formatting overlap
-    pub fn cashtag<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
+    pub fn cashtag<T: AsRef<str>>(&mut self, text: T) -> &'_ mut Self {
         self.regular(MarkupType::CashTag.text(&text))
     }
 
     /// Appends a new bot command. Pass a number for advance to allow text/formatting overlap
-    pub fn bot_command<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
+    pub fn bot_command<T: AsRef<str>>(&mut self, text: T) -> &'_ mut Self {
         self.regular(MarkupType::BotCommand.text(&text))
     }
 
     /// Appends a new email. Pass a number for advance to allow text/formatting overlap
-    pub fn email<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
+    pub fn email<T: AsRef<str>>(&mut self, text: T) -> &'_ mut Self {
         self.regular(MarkupType::Email.text(&text))
     }
 
     /// Appends a new phone number. Pass a number for advance to allow text/formatting overlap
-    pub fn phone_number<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
+    pub fn phone_number<T: AsRef<str>>(&mut self, text: T) -> &'_ mut Self {
         self.regular(MarkupType::PhoneNumber.text(&text))
     }
 
     /// Appends bold text. Pass a number for advance to allow text/formatting overlap
-    pub fn bold<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
+    pub fn bold<T: AsRef<str>>(&mut self, text: T) -> &'_ mut Self {
         self.regular(MarkupType::Bold.text(&text))
     }
 
     /// Appends a italic text. Pass a number for advance to allow text/formatting overlap
-    pub fn italic<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
+    pub fn italic<T: AsRef<str>>(&mut self, text: T) -> &'_ mut Self {
         self.regular(MarkupType::Italic.text(&text))
     }
 
     /// Appends underline text. Pass a number for advance to allow text/formatting overlap
-    pub fn underline<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
+    pub fn underline<T: AsRef<str>>(&mut self, text: T) -> &'_ mut Self {
         self.regular(MarkupType::Underline.text(&text))
     }
 
     /// Appends spoiler text. Pass a number for advance to allow text/formatting overlap
-    pub fn spoiler<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
+    pub fn spoiler<T: AsRef<str>>(&mut self, text: T) -> &'_ mut Self {
         self.regular(MarkupType::Spoiler.text(&text))
     }
 
     /// Appends a formatted code block. Pass a number for advance to allow text/formatting overlap
-    pub fn code<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
+    pub fn code<T: AsRef<str>>(&mut self, text: T) -> &'_ mut Self {
         self.regular(MarkupType::Code.text(&text))
     }
 
     /// Appends a new mention. Pass a number for advance to allow text/formatting overlap
-    pub fn mention<'a, T: AsRef<str>>(&'a mut self, text: T) -> &'a mut Self {
+    pub fn mention<T: AsRef<str>>(&mut self, text: T) -> &'_ mut Self {
         self.regular(MarkupType::Mention.text(&text))
     }
 
     /// shortcut for adding whitespace
-    pub fn s<'a>(&'a mut self) -> &'a mut Self {
+    pub fn s(&mut self) -> &'_ mut Self {
         let t = " ";
         let count = t.encode_utf16().count() as i64;
 
@@ -1300,15 +1354,16 @@ impl MarkupBuilder {
         Vec<MessageEntity>,
         InlineKeyboardBuilder,
         Option<Header>,
-        Option<String>,
+        BTreeSet<String>,
     ) {
+        self.enabled_header = true;
         if let Ok(()) = self.nofail_internal().await {
             (
                 self.text,
                 self.entities,
                 self.buttons,
                 self.header,
-                self.footer,
+                self.fillings,
             )
         } else {
             (
@@ -1316,7 +1371,7 @@ impl MarkupBuilder {
                 self.entities,
                 self.buttons,
                 self.header,
-                self.footer,
+                self.fillings,
             )
         }
     }
@@ -1345,7 +1400,7 @@ pub async fn retro_fillings<'a>(
     let mut pos = 0;
     let mut prev = 0;
     let iter: Vec<regex::Match<'_>> = FILLER_REGEX.find_iter(&text).collect();
-    if iter.len() == 0 {
+    if iter.is_empty() {
         return Ok((text, entities));
     }
     for mat in iter {
@@ -1357,7 +1412,7 @@ pub async fn retro_fillings<'a>(
         // log::info!("matching {}: {}", filling, pos);
         let (text, entity) = match filling {
             "username" => {
-                let user = chatuser.user.to_owned();
+                let user = chatuser.user;
                 let name = user.name_humanreadable();
                 let start = pos;
                 let len = name.encode_utf16().count() as i64;
@@ -1366,34 +1421,34 @@ pub async fn retro_fillings<'a>(
                     Some(
                         MessageEntityBuilder::new(start, len)
                             .set_type("text_mention".to_owned())
-                            .set_user(user)
+                            .set_user(user.to_owned())
                             .build(),
                     ),
                 )
             }
             "first" => {
-                let first = chatuser.user.get_first_name().to_owned();
-                (first, None)
+                let first = chatuser.user.get_first_name();
+                (Cow::Borrowed(first), None)
             }
             "last" => {
                 let last = chatuser
                     .user
                     .get_last_name()
-                    .map(|v| v.to_owned())
-                    .unwrap_or_else(|| "".to_owned());
+                    .map(Cow::Borrowed)
+                    .unwrap_or(Cow::Borrowed(""));
                 (last, None)
             }
             "mention" => {
-                let user = chatuser.user.to_owned();
-                let first = user.get_first_name().to_owned();
+                let user = chatuser.user;
+                let first = user.get_first_name();
                 let start = pos;
                 let len = first.encode_utf16().count() as i64;
                 (
-                    first,
+                    Cow::Borrowed(first),
                     Some(
                         MessageEntityBuilder::new(start, len)
                             .set_type("text_mention".to_owned())
-                            .set_user(user)
+                            .set_user(user.to_owned())
                             .build(),
                     ),
                 )
@@ -1404,26 +1459,25 @@ pub async fn retro_fillings<'a>(
             }
             "rules" => {
                 if let Some(buttons) = buttons.as_mut() {
-                    let url =
-                        post_deep_link(chatuser.chat.get_id(), |k| rules_deeplink_key(k)).await?;
+                    let url = post_deep_link(chatuser.chat.get_id(), rules_deeplink_key).await?;
 
                     let button = InlineKeyboardButtonBuilder::new("Get rules".to_owned())
                         .set_url(url)
                         .build();
                     buttons.button(button);
 
-                    ("".to_owned(), None)
+                    (Cow::Owned("".to_owned()), None)
                 } else {
-                    ("{rules}".to_owned(), None)
+                    (Cow::Owned("{rules}".to_owned()), None)
                 }
             }
             "id" => {
                 let id = chatuser.user.get_id().to_string();
-                (id, None)
+                (Cow::Owned(id), None)
             } // TODO: handle rules filler
             s => {
                 let s = format!("{{{}}}", s);
-                (s, None)
+                (Cow::Owned(s), None)
             }
         };
 
@@ -1502,7 +1556,7 @@ where
     T: AsRef<str>,
 {
     fn from(value: T) -> Self {
-        MarkupType::Text.text(value.as_ref().escape(false))
+        MarkupType::Text.text(value.as_ref().escape(false).into_owned())
     }
 }
 
@@ -1546,7 +1600,7 @@ where
     }
 
     /// gets the unformatted text for this markup
-    fn get_text<'a>(&'a self) -> &'a str {
+    fn get_text(&self) -> &'_ str {
         self.text.as_ref()
     }
 
@@ -1602,8 +1656,9 @@ impl EntityMessage {
         self
     }
 
-    pub async fn call<'a>(&'a mut self) -> CallSendMessage<'a, i64> {
+    pub async fn call(&mut self) -> CallSendMessage<'_, i64> {
         if self.disable_murkdown {
+            self.builder.build_murkdown_nofail_ref().await;
             let call = TG
                 .client
                 .build_send_message(self.chat, &self.builder.text)
@@ -1630,7 +1685,7 @@ impl EntityMessage {
         }
     }
 
-    pub fn textentities<'a>(&'a self) -> (&'a str, &'a Vec<MessageEntity>) {
+    pub fn textentities(&self) -> (&'_ str, &'_ Vec<MessageEntity>) {
         (&self.builder.text, &self.builder.entities)
     }
 }
@@ -1710,8 +1765,8 @@ mod test {
             panic!("Missing Eof");
         }
 
-        if let Some(_) = tokens.next() {
-            assert!(false);
+        if tokens.next().is_some() {
+            panic!("Extra token?");
         }
     }
 
@@ -1744,6 +1799,14 @@ mod test {
     }
 
     #[test]
+    fn double_escape() {
+        let st = "this_is_a_string";
+        let escape = st.escape(false);
+        let d = escape.escape(false);
+        assert_eq!(escape, d);
+    }
+
+    #[test]
     fn escape_multipoint() {
         let s = "help me 😄";
         assert_eq!(s, s.escape(false));
@@ -1751,7 +1814,7 @@ mod test {
 
     #[test]
     fn raw_test() {
-        if let Some(TgSpan::Raw(res)) = test_parse(RAW).body.get(0) {
+        if let Some(TgSpan::Raw(res)) = test_parse(RAW).body.first() {
             assert_eq!(res, RAW);
         } else {
             panic!("failed to parse");
@@ -1776,10 +1839,10 @@ mod test {
             test_parse(ESCAPE).body.as_slice()[0..]
         {
             let mut r = String::new();
-            r.push_str(&res);
-            r.push_str(&ws);
-            r.push_str(&res2);
-            assert_eq!(r, ESCAPE.replace("\\", "").as_str());
+            r.push_str(res);
+            r.push_str(ws);
+            r.push_str(res2);
+            assert_eq!(r, ESCAPE.replace('\\', "").as_str());
         } else {
             panic!("failed to parse");
         }

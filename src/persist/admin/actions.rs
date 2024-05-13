@@ -2,12 +2,14 @@
 //! This allows for bans or restrictions to be applied to a user that has not been interacted with
 //! in 48 hours (a telegram limitation) or is not cached in redis and specified by username
 
+use std::hash::Hash;
+
 use crate::util::error::BotError;
 use chrono::Utc;
 use sea_orm::{entity::prelude::*, IntoActiveValue};
 use serde::{Deserialize, Serialize};
 
-#[derive(EnumIter, DeriveActiveEnum, Serialize, Deserialize, Clone, Debug, Hash)]
+#[derive(EnumIter, DeriveActiveEnum, Serialize, Deserialize, Clone, Debug)]
 #[sea_orm(rs_type = "i32", db_type = "Integer")]
 pub enum ActionType {
     #[sea_orm(num_value = 1)]
@@ -101,7 +103,13 @@ impl ActionType {
 
 impl PartialOrd for ActionType {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.get_severity().partial_cmp(&other.get_severity())
+        Some(Ord::cmp(&self.get_severity(), &other.get_severity()))
+    }
+}
+
+impl Hash for ActionType {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.get_severity().hash(state)
     }
 }
 

@@ -1,11 +1,13 @@
 addblocklist: Added blocklist {}
 addfilter: Added filter {}
+emptynotallowed: Empty filters are not allowed
 anonban: Anonymous channels cannot fban users
 anonfed: Anonymous channels cannot create federations
 approved: Approved user {}
 baddm: This command does not work in a dm
 banadmin: I am not going to ban an admin
-banchat: Banned anonymous channel {}, they won't be able to speak but are still lurking
+banchat:
+  Banned anonymous channel {}, they won't be able to speak but are still lurking
   somewhere...
 banmyself: I am not going to ban myself
 banned: Banned user {}
@@ -23,23 +25,23 @@ defaultgoodbye: Goodbye {{mention}}
 defaultwelcome: Hi there {{mention}}, welcome to {{chatname}}
 demote: Demoted user {}
 dmhelp: Contact me in pm for help!
-erranonchannelfed: Anonymous channels can't own feds. Try running this command from
+erranonchannelfed:
+  Anonymous channels can't own feds. Try running this command from
   your main account
-failban: 'Failed to ban user, I haven''t interacted with them in the last 48 hours.
-  Please forward me one of their messages
+failuser: |
+  Failed to {} user, I haven't interacted with them in the last 48 hours.
 
-  in order to allow me to interact with them
-
-  '
-failfpromote: 'Failed to promote user: {}'
-failmute: 'Failed to change this user''s permissions. I haven''t interacted with them
+  Please forward me one of their messages in order to allow me to interact with them
+failfpromote: "Failed to promote user: {}"
+failmute:
+  "Failed to change this user's permissions. I haven't interacted with them
   in the last 48 hours.
 
   Please forward me one of their messages in order to allow me to interact with them
 
-  '
+  "
 fban: Good riddance! Fbanned user {} in {}
-fbanreason: 'Good riddence!
+fbanreason: "Good riddence!
 
   User {} banned in fed {}
 
@@ -47,31 +49,31 @@ fbanreason: 'Good riddence!
 
   {}
 
-  '
+  "
 fedadmin: You are the admin of fed {} with id {}
 fedowner: You are the owner of fed {} with id {}
-fedsforuser: 'Feds for user {}:
+fedsforuser: "Feds for user {}:
 
   {}
 
-  '
-filters: 'Filters in chat {}:
+  "
+filters: "Filters in chat {}:
 
 
-  {}'
+  {}"
 foundadmins: Found {} admins
 fpromote: The user {} needs to confirm the fpromotion before continuing
 fpromoted: You have been promoted
 fpromotenotauth: You are not authorized to accept this promotion
-fstat: 'Fstat for {}:
+fstat: "Fstat for {}:
 
   {}
 
-  '
+  "
 fstatline: '{} with reason "{}"'
-gbanned: 'Good riddance!
+gbanned: "Good riddance!
 
-  User {} gbanned for {}'
+  User {} gbanned for {}"
 getrules: Get the chat rules {{rules}}
 helpbutton: Click me for help!
 invalid_help: Invalid help page {}
@@ -83,14 +85,14 @@ kickme: BLUE TEXT MUST CLICK
 lackingadminrights: User {} lacking admin rights
 listnotes: Notes for {}
 clearnotes: Cleared all notes for chat {}
-lockban: 'User {{mention}} banned!
+lockban: "User {{mention}} banned!
 
   [*Reason:]
 
   {}
 
-  '
-lockedinchat: '- {} is locked in this chat'
+  "
+lockedinchat: "- {} is locked in this chat"
 locknotspec: Invalid lock type, see /help for available locks
 lockwarn: "User {{mention}} warned! \n[*Reason:]\n{}\n"
 muteadmin: I am not going to mute an admin
@@ -102,12 +104,13 @@ negwarns: Negative warn limits don't make much sense
 noactionarg: You need to specify the action to set
 nofed: This user does not own a federation.
 noreason: No reason
-norules: 'This chat has no rules. Complete anarchy. Feel free to spam it and post
+norules:
+  "This chat has no rules. Complete anarchy. Feel free to spam it and post
   pirated udemy
 
   courses
 
-  '
+  "
 notdm: This command can only be used in dm
 notfbanned: User {} not fbanned
 notfedadmin: You are not a fedadmin in federation {}. Only fedadmins can issue fbans
@@ -142,7 +145,8 @@ specifytime: You need to specify a time for this command
 specifyuser: You need to specify a user
 startcmd: Send /help to get a list of available commands
 subscribefed: Successfully subscribed fed {} to {}
-test: 'Invalid murkdown: {}'
+test: "Invalid murkdown: {}"
+failmurk: Murkdown syntax error. Please check /help formatting
 thing: thing
 unapproved: Unapproved user {}
 unbanchat: Unbanned anonymous channel {}
@@ -150,23 +154,24 @@ unbanned: Unbanned user {}
 unfban: Unfbanned user {}
 unfbanperm: You need to be an fedadmin to unfban
 unmuteuser: Unmuted user {}
-usernotfound: User not found. Only users that have been seen recently can be interacted
+usernotfound:
+  User not found. Only users that have been seen recently can be interacted
   with
-warn: 'Yowzers!: Warned user {} with {}/{} warns'
+warn: "Yowzers!: Warned user {} with {}/{} warns"
 warnadmin: I am not going to warn an admin! What the absolute hecking heck
 warnban: That's {} warnings! User {} banned
 warnlimit: Set the warn limit to {} for chat {}
 warnmode: Set the warn mode to {} for chat {}
 warnmute: That's {} warnings! User {} muted
-warnreason: 'Yowzers! Warned user {} with {}/{} warns
+warnreason: "Yowzers! Warned user {} with {}/{} warns
 
   [*Reason:]
-  
-  '
-warns: 'Warns for user {}:
 
-  {}'
-warnsline: 'Reason: {}'
+  "
+warns: "Warns for user {}:
+
+  {}"
+warnsline: "Reason: {}"
 welcome: Welcome to {}, a modular group management bot written in rust
 welcomeinvalid: Invalid argument, use on/off/yes/no
 
@@ -181,11 +186,11 @@ taintforward: |
   This media must be type {}
 taintupdatednote: Media id has been updated for {} notes.
 wrongmediatype: The media you sent is the wrong media type {}, it needs to be {}
-wrongmediaid: The media you forwarded is not the original media. 
+wrongmediaid: The media you forwarded is not the original media.
 taintdetected: |
   Imported data for chat {}
-  
-  WHOOPS! Your imported data contains media from another bot. 
+
+  WHOOPS! Your imported data contains media from another bot.
   Use /taint to list this media and /fixtaint to replace it.
 imported: Imported data for chat {}
 enablekick: Enabled captcha kick. Users will be removed from the group after failing to solve the captcha.
@@ -201,6 +206,7 @@ incorrect: Incorrect choice, you have {} tries remaining
 captchawarning: If you do not solve this captcha correctly you will be terminated by memetic kill agent
 pressme: Press me to unmute yourself!
 userunmuted: User unmuted!
+pushunmute: Push the button to unmute yourself
 solvecaptcha: Solve this captcha to continue
 captcha: Captcha
 disabledcaptcha: Disabled captcha
@@ -209,3 +215,11 @@ captchanotenabled: Captcha is not enabled
 anonchannelbad: Anonymous channels are not allowed to use this functionality.
 nosender: This message does not have a sender
 dateoutofrange: The time {} is out of range
+blockmute: |
+  User {} said a banned word! Action: muted{}
+  {}
+blockban: |
+  User {} said a banned word! Action: banned{}
+  {}
+reason: Reason {}
+duration: for {}

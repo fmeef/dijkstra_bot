@@ -26,11 +26,11 @@ metadata!("Federations",
     r#"
     Federated bans are a way to maintain subscribable lists of banned users. Federations
     store lists of banned users and groups can subscribe to them to autoban all banned users
-    in that federation.  
+    in that federation.
 
     Each federation has an owner, and a number of admins, all of which are cable of issuing fbans
-    in that federation. Federations can subscribe to other federations to receive their bans \(but not 
-    their actual ban list \) 
+    in that federation. Federations can subscribe to other federations to receive their bans \(but not
+    their actual ban list \)
     "#,
     { command = "fban", help = "Bans a user in the current chat's federation" },
     { command = "joinfed", help = "Joins a chat to a federation. Only one fed per chat" },
@@ -59,8 +59,7 @@ async fn fban(ctx: &Context) -> Result<()> {
                     let mut model = fbans::Model::new(&user, fed);
                     model.reason = args
                         .map(|v| v.text.trim().to_owned())
-                        .map(|v| (!v.is_empty()).then(|| v))
-                        .flatten();
+                        .and_then(|v| (!v.is_empty()).then_some(v));
                     let reason = model.reason.clone();
                     fban_user(model, &user).await?;
                     if let Some(reason) = reason {
@@ -94,6 +93,11 @@ async fn fban(ctx: &Context) -> Result<()> {
         }
 
         Ok(())
+    })
+    .await
+    .speak_err_raw(ctx, |v| match v {
+        BotError::UserNotFound => Some(lang_fmt!(ctx, "failuser", "fban")),
+        _ => None,
     })
     .await?;
     Ok(())
@@ -183,6 +187,11 @@ pub async fn unfban(ctx: &Context) -> Result<()> {
         }
         Ok(())
     })
+    .await
+    .speak_err_raw(ctx, |v| match v {
+        BotError::UserNotFound => Some(lang_fmt!(ctx, "failuser", "unfban")),
+        _ => None,
+    })
     .await?;
     Ok(())
 }
@@ -235,16 +244,18 @@ async fn fstat_cmd(ctx: &Context) -> Result<()> {
                     ctx,
                     "fstatline",
                     fed.fed_id,
-                    fban.reason
-                        .as_ref()
-                        .map(|v| v.as_str())
-                        .unwrap_or("No reason")
+                    fban.reason.as_deref().unwrap_or("No reason")
                 )
             })
             .join("\n");
         ctx.reply_fmt(entity_fmt!(ctx, "fstat", user.mention().await?, v))
             .await?;
         Ok(())
+    })
+    .await
+    .speak_err_raw(ctx, |v| match v {
+        BotError::UserNotFound => Some(lang_fmt!(ctx, "failuser", "get fstat for")),
+        _ => None,
     })
     .await?;
     Ok(())

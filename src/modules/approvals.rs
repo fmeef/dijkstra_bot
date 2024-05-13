@@ -4,13 +4,13 @@ use crate::tg::permissions::*;
 
 use crate::tg::markdown::{EntityMessage, MarkupType};
 use crate::tg::user::{get_user, GetUser, Username};
-use crate::util::error::Result;
+use crate::util::error::{BotError, Result, SpeakErr};
 
 use crate::metadata::metadata;
 use crate::util::string::Speak;
 use botapi::gen_types::UserBuilder;
 
-use macros::{entity_fmt, update_handler};
+use macros::{entity_fmt, lang_fmt, update_handler};
 metadata!("Approvals",
     r#"
     Approvals are a tool to allow specific users to be ignored by automated admin actions  
@@ -35,6 +35,11 @@ async fn cmd_approve<'a>(ctx: &Context) -> Result<()> {
         }
         Ok(())
     })
+    .await
+    .speak_err_raw(ctx, |v| match v {
+        BotError::UserNotFound => Some(lang_fmt!(ctx, "failuser", "approve")),
+        _ => None,
+    })
     .await?;
     Ok(())
 }
@@ -47,6 +52,11 @@ async fn cmd_unapprove(ctx: &Context) -> Result<()> {
         ctx.reply_fmt(entity_fmt!(ctx, "unapproved", name)).await?;
 
         Ok(())
+    })
+    .await
+    .speak_err_raw(ctx, |v| match v {
+        BotError::UserNotFound => Some(lang_fmt!(ctx, "failuser", "unapprove")),
+        _ => None,
     })
     .await?;
     Ok(())
@@ -62,7 +72,7 @@ async fn command_list<'a>(context: &Context) -> Result<()> {
             .bold(format!("Approved users for {}\n", chat_name));
         for (userid, name) in get_approvals(chat).await? {
             if let Some(user) = get_user(userid).await? {
-                let name = user.name_humanreadable();
+                let name = user.name_humanreadable().into_owned();
                 res.builder.text_mention(&name, user, None);
             } else {
                 let n = name.clone();

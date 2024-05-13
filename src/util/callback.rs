@@ -140,7 +140,7 @@ where
 {
     type Fut = BotDbFuture<'a, R>;
     fn cb_boxed(&self, db: T) -> Self::Fut {
-        (*self).0.cb(db).boxed()
+        self.0.cb(db).boxed()
     }
 }
 

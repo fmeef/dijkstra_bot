@@ -16,10 +16,10 @@ use crate::tg::notes::{
 use crate::tg::permissions::IsGroupAdmin;
 use crate::tg::rosemd::{RoseMdDecompiler, RoseMdParser};
 use crate::tg::user::Username;
-use crate::util::error::{BotError, Fail, Result};
+use crate::util::error::{BotError, Fail, Result, SpeakErr};
 use crate::util::string::Speak;
 use ::sea_orm_migration::prelude::*;
-use botapi::gen_types::{Message, MessageEntity};
+use botapi::gen_types::MessageEntity;
 use futures::FutureExt;
 use macros::{lang_fmt, update_handler};
 use redis::AsyncCommands;
@@ -31,8 +31,8 @@ use crate::persist::core::{entity, media::*, notes};
 
 metadata!("Notes",
     r#"
-    Easily store and retrive text, media, and other content by keywords. 
-    Useful for storing answers to often asked questions or searching uploaded media.     
+    Easily store and retrive text, media, and other content by keywords.
+    Useful for storing answers to often asked questions or searching uploaded media.
     "#,
     Helper,
     { command = "save", help = "Saves a note" },
@@ -79,9 +79,9 @@ impl ModuleHelpers for Helper {
                 };
                 let text = RoseMdDecompiler::new(text, &entities, buttons.get_inline_keyboard())
                     .decompile()
-                    .replace("\n", "\\n");
+                    .replace('\n', "\\n");
                 NotesItem {
-                    data_id: model.media_id.unwrap_or_else(|| String::new()),
+                    data_id: model.media_id.unwrap_or_else(String::new),
                     name: note,
                     text,
                     note_type: model.media_type.get_rose_type(),
@@ -94,7 +94,7 @@ impl ModuleHelpers for Helper {
             notes: items,
         };
 
-        Ok(Some(serde_json::to_value(&out)?))
+        Ok(Some(serde_json::to_value(out)?))
     }
 
     async fn import(&self, chat: i64, value: serde_json::Value) -> Result<()> {
@@ -113,7 +113,7 @@ impl ModuleHelpers for Helper {
                 protect: false,
                 media_type: MediaType::from_rose_type(note.note_type),
                 entity_id,
-                media_id: if note.data_id.len() == 0 {
+                media_id: if note.data_id.is_empty() {
                     None
                 } else {
                     Some(note.data_id)
@@ -141,15 +141,14 @@ impl ModuleHelpers for Helper {
     }
 }
 
-async fn get_model<'a>(message: &'a Message, args: &'a TextArgs<'a>) -> Result<notes::Model> {
+async fn get_model<'a>(ctx: &'a Context, args: &'a TextArgs<'a>) -> Result<notes::Model> {
+    let message = ctx.message()?;
     let input_type = get_content(message, args)?;
     let res = match input_type {
         InputType::Reply(name, text, message) => {
             let chatuser = message.get_chatuser();
             let (media_id, media_type) = get_media_type(message)?;
-            let text = text
-                .map(|t| Some(t))
-                .unwrap_or_else(|| message.get_caption());
+            let text = text.map(Some).unwrap_or_else(|| message.get_caption());
             let (text, entity_id) = if let Some(text) = text {
                 let extra = message.get_entities().map(|v| v.to_owned());
 
@@ -158,7 +157,11 @@ async fn get_model<'a>(message: &'a Message, args: &'a TextArgs<'a>) -> Result<n
                     .filling(false)
                     .header(false)
                     .set_text(text.to_owned());
-                let (text, entities, buttons) = md.build_murkdown().await?;
+                let (text, entities, buttons) = md
+                    .build_murkdown()
+                    .await
+                    .speak(ctx, lang_fmt!(ctx, "failmurk"))
+                    .await?;
                 let entity_id = entity::insert(*DB, &entities, buttons).await?;
                 (Some(text), entity_id)
             } else {
@@ -178,9 +181,7 @@ async fn get_model<'a>(message: &'a Message, args: &'a TextArgs<'a>) -> Result<n
         InputType::Command(name, content, message) => {
             let (media_id, media_type) = get_media_type(message)?;
             let chatuser = message.get_chatuser();
-            let content = content
-                .map(|t| Some(t))
-                .unwrap_or_else(|| message.get_caption());
+            let content = content.map(Some).unwrap_or_else(|| message.get_caption());
 
             let (text, entity_id) = if let Some(text) = content {
                 log::info!("content {}", text);
@@ -192,7 +193,11 @@ async fn get_model<'a>(message: &'a Message, args: &'a TextArgs<'a>) -> Result<n
                     .filling(false)
                     .header(false)
                     .set_text(text.to_owned());
-                let (text, entities, buttons) = md.build_murkdown().await?;
+                let (text, entities, buttons) = md
+                    .build_murkdown()
+                    .await
+                    .speak(ctx, lang_fmt!(ctx, "failmurk"))
+                    .await?;
                 let entity_id = entity::insert(*DB, &entities, buttons).await?;
                 (Some(text), entity_id)
             } else {
@@ -214,22 +219,16 @@ async fn get_model<'a>(message: &'a Message, args: &'a TextArgs<'a>) -> Result<n
 }
 
 async fn handle_command<'a>(ctx: &Context) -> Result<()> {
-    if let Some(&Cmd {
-        cmd,
-        ref args,
-        message,
-        ..
-    }) = ctx.cmd()
-    {
+    if let Some(&Cmd { cmd, ref args, .. }) = ctx.cmd() {
         match cmd {
-            "save" => save(ctx, &args).await,
+            "save" => save(ctx, args).await,
             "get" => get(ctx).await,
-            "delete" => delete(message, args).await,
+            "delete" => delete(ctx, args).await,
             "notes" => list_notes(ctx).await,
             "clearnotes" => clear_notes_cmd(ctx).await,
             "start" => {
                 let note: Option<(i64, String)> =
-                    handle_deep_link(ctx, |k| button_deeplink_key(k)).await?;
+                    handle_deep_link(ctx, button_deeplink_key).await?;
                 if let Some((chat, note)) = note {
                     log::info!("handling note deep link {} {}", chat, note);
                     print_chat(ctx, note, chat).await?;
@@ -319,7 +318,7 @@ async fn print_chat(ctx: &Context, name: String, chat: i64) -> Result<()> {
 async fn get<'a>(ctx: &Context) -> Result<()> {
     ctx.is_group_or_die().await?;
     let message = ctx.message()?;
-    if let Some(&Cmd { ref args, .. }) = ctx.cmd() {
+    if let Some(Cmd { ref args, .. }) = ctx.cmd() {
         let name = match args.args.first() {
             Some(TextArg::Arg(name)) => Some(name),
             Some(TextArg::Quote(name)) => Some(name),
@@ -346,12 +345,12 @@ async fn delete_by_id(name: String, chat: i64) -> Result<()> {
     Ok(())
 }
 
-async fn delete<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
-    message.check_permissions(|p| p.can_change_info).await?;
-    let model = get_model(message, args).await?;
+async fn delete<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
+    ctx.check_permissions(|p| p.can_change_info).await?;
+    let model = get_model(ctx, args).await?;
     let name = model.name.clone();
-    delete_by_id(model.name, message.get_chat().get_id()).await?;
-    message.reply(format!("Deleted note {}", name)).await?;
+    delete_by_id(model.name, ctx.message()?.get_chat().get_id()).await?;
+    ctx.reply(format!("Deleted note {}", name)).await?;
     Ok(())
 }
 
@@ -364,7 +363,7 @@ async fn list_notes(ctx: &Context) -> Result<()> {
         message.get_chat().name_humanreadable()
     )]
     .into_iter()
-    .chain(notes.iter().map(|(n, _)| format!("- {}", n)))
+    .chain(notes.keys().map(|n| format!("- {}", n)))
     .collect::<Vec<String>>()
     .join("\n");
     message.reply(m).await?;
@@ -375,7 +374,7 @@ async fn save<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
     ctx.check_permissions(|p| p.can_change_info).await?;
     let message = ctx.message()?;
     let chat = message.get_chat().name_humanreadable();
-    let model = get_model(message, args).await?;
+    let model = get_model(ctx, args).await?;
     let key = format!("note:{}:{}", message.get_chat().get_id(), model.name);
     log::info!("save key: {}", key);
     let hash_key = get_hash_key(message.get_chat().get_id());
@@ -440,9 +439,9 @@ pub async fn handle_update<'a>(cmd: &Context) -> Result<()> {
         })
         .await?;
         if let Some(text) = message.get_text() {
-            if text.starts_with("#") && text.len() > 1 {
+            if text.starts_with('#') && text.len() > 1 {
                 let tail = &text[1..];
-                print(cmd, tail.to_owned()).await?;
+                print(cmd, tail.to_owned()).await.silent().await?;
             }
         }
     }

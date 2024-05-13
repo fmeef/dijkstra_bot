@@ -14,11 +14,11 @@ use super::button::InlineKeyboardBuilder;
 /// This is kind of a hack
 pub trait IntoUtf16Chars {
     /// Gets the representation of this type as utf16.
-    fn into_utf16_chars(&self) -> Vec<char>;
+    fn get_utf16_chars(&self) -> Vec<char>;
 }
 
 impl IntoUtf16Chars for &str {
-    fn into_utf16_chars(&self) -> Vec<char> {
+    fn get_utf16_chars(&self) -> Vec<char> {
         self.encode_utf16()
             .map(|v| v.into())
             .map(|v| char::from_u32(v).unwrap())
@@ -27,7 +27,7 @@ impl IntoUtf16Chars for &str {
 }
 
 impl IntoUtf16Chars for String {
-    fn into_utf16_chars(&self) -> Vec<char> {
+    fn get_utf16_chars(&self) -> Vec<char> {
         self.encode_utf16()
             .map(|v| v.into())
             .map(|v| char::from_u32(v).unwrap())
@@ -36,46 +36,29 @@ impl IntoUtf16Chars for String {
 }
 
 fn is_valid_rose(token: &str) -> bool {
-    match token {
-        "`" => true,
-        "```" => true,
-        "_" => true,
-        "__" => true,
-        "~" => true,
-        "*" => true,
-        "|" => true,
-        "||" => true,
-        "!" => true,
-        "[" => true,
-        "]" => true,
-        "(" => true,
-        ")" => true,
-        "\\" => true,
-        _ => false,
-    }
+    matches!(
+        token,
+        "`" | "```" | "_" | "__" | "~" | "*" | "|" | "||" | "!" | "[" | "]" | "(" | ")" | "\\"
+    )
 }
 
 fn string_index(chars: &[char], idx: &str) -> Option<usize> {
-    let idx = idx.into_utf16_chars();
+    let idx = idx.get_utf16_chars();
     chars
         .iter()
         .enumerate()
-        .find(|(x, _)| (&chars[*x..]).starts_with(idx.as_slice()))
+        .find(|(x, _)| (chars[*x..]).starts_with(idx.as_slice()))
         .map(|(v, _)| v)
 }
 
 fn valid_start(chars: &[char], pos: usize) -> bool {
-    let r = (pos == 0 || !chars[pos - 1].is_alphanumeric())
-        && !(pos == chars.len() - 1 || chars[pos + 1].is_whitespace());
-
-    r
+    (pos == 0 || !chars[pos - 1].is_alphanumeric())
+        && !(pos == chars.len() - 1 || chars[pos + 1].is_whitespace())
 }
 
 fn valid_end(chars: &[char], pos: usize) -> bool {
-    let r = !(pos == 0 || chars[pos - 1].is_whitespace())
-        && (pos == chars.len() - 1 || !chars[pos + 1].is_alphanumeric());
-
-    r
+    !(pos == 0 || chars[pos - 1].is_whitespace())
+        && (pos == chars.len() - 1 || !chars[pos + 1].is_alphanumeric())
 }
 
 fn is_escaped(chars: &[char], pos: usize) -> bool {
@@ -91,9 +74,7 @@ fn is_escaped(chars: &[char], pos: usize) -> bool {
         }
         break;
     }
-    let r = (pos - i) % 2 == 0;
-
-    r
+    (pos - i) % 2 == 0
 }
 
 fn get_valid_end(chars: &[char], item: &str) -> Option<usize> {
@@ -177,7 +158,7 @@ fn find_link_sections_idx(chars: &[char]) -> Option<(usize, usize)> {
     None
 }
 
-fn get_link_contents<'a>(chars: &'a [char]) -> Option<(&'a [char], String, usize)> {
+fn get_link_contents(chars: &[char]) -> Option<(&'_ [char], String, usize)> {
     if let Some((link_text, link_url)) = find_link_sections_idx(chars) {
         let content: String = chars[link_text + 2..link_url].iter().collect();
         let text = &chars[1..link_text];
@@ -210,14 +191,14 @@ impl<'a> RoseMdDecompiler<'a> {
     /// Creates a new decompiler type from entities, buttons, and text
     pub fn new(
         out: &'a str,
-        entities: &'a Vec<MessageEntity>,
+        entities: &'a [MessageEntity],
         buttons: &'a Vec<Vec<InlineKeyboardButton>>,
     ) -> Self {
         Self {
             out,
             buttons,
             entities: entities.iter().fold(BTreeMap::new(), |mut acc, value| {
-                let v = acc.entry(value.get_offset()).or_insert_with(|| Vec::new());
+                let v = acc.entry(value.get_offset()).or_default();
                 v.push(value);
                 acc
             }),
@@ -228,7 +209,7 @@ impl<'a> RoseMdDecompiler<'a> {
     /// Executes the decompilation, returning a markdown string
     pub fn decompile(mut self) -> String {
         let mut out = String::new();
-        for (offset, ch) in self.out.into_utf16_chars().into_iter().enumerate() {
+        for (offset, ch) in self.out.get_utf16_chars().into_iter().enumerate() {
             if let Some(entity) = self.entities.remove(&(offset as i64)) {
                 for entity in entity.into_iter().rev() {
                     //     "match entity: {} {}",
@@ -250,7 +231,7 @@ impl<'a> RoseMdDecompiler<'a> {
                     let e = self
                         .current
                         .entry(entity.get_offset() + entity.get_length())
-                        .or_insert_with(|| Vec::new());
+                        .or_default();
                     e.push(entity);
                 }
             }
@@ -312,7 +293,7 @@ impl RoseMdParser {
         Self {
             prefixes,
             same_line_suffix: "same".to_owned(),
-            chars: chars.into_utf16_chars(),
+            chars: chars.get_utf16_chars(),
             enable_buttons,
         }
     }
@@ -485,12 +466,12 @@ impl RoseMdParser {
                                 }
 
                                 let content = content.trim_start_matches(prefix);
-                                let content = content.trim_start_matches("/");
+                                let content = content.trim_start_matches('/');
 
                                 let sameline = content.ends_with(&self.same_line_suffix);
                                 let content = if sameline
                                     || builder.get().len() == 1
-                                        && builder.get().first().unwrap().len() == 0
+                                        && builder.get().first().unwrap().is_empty()
                                 {
                                     content.trim_end_matches(&self.same_line_suffix)
                                 } else {
@@ -498,7 +479,7 @@ impl RoseMdParser {
                                     content
                                 };
 
-                                if content.starts_with("#") {
+                                if content.starts_with('#') {
                                     let bt =
                                         InlineKeyboardButtonBuilder::new(nested_text.to_owned())
                                             .build();
@@ -537,14 +518,10 @@ impl RoseMdParser {
                 ']' | '(' | ')' => {
                     text.push(ch);
                 }
-                '\\' => {
-                    if x + 1 < chars.len() {
-                        if is_valid_rose(chars[x + 1].to_string().as_str()) {
-                            text.push(chars[x + 1]);
-                            i.next();
-                            continue;
-                        }
-                    }
+                '\\' if x + 1 < chars.len() && is_valid_rose(chars[x + 1].to_string().as_str()) => {
+                    text.push(chars[x + 1]);
+                    i.next();
+                    continue;
                 }
                 _ => (),
             }
@@ -605,8 +582,7 @@ mod test {
                 .first()
                 .unwrap()
                 .raw_text
-                .as_ref()
-                .map(|v| v.as_str()),
+                .as_deref(),
             Some("#note")
         );
     }
@@ -621,7 +597,7 @@ mod test {
         assert_eq!(buttons.get().len(), 1);
         let b = buttons.build();
         let b = b.get_inline_keyboard();
-        let decompiler = RoseMdDecompiler::new(&text, &entities, &b);
+        let decompiler = RoseMdDecompiler::new(&text, &entities, b);
         let out = decompiler.decompile();
 
         println!("{}", out);
@@ -668,16 +644,16 @@ mod test {
 
         let b = buttons.build();
         let b = b.get_inline_keyboard();
-        let decompiler = RoseMdDecompiler::new(&text, &entities, &b);
+        let decompiler = RoseMdDecompiler::new(&text, &entities, b);
         let out = decompiler.decompile();
 
         assert_eq!(out, t);
     }
 
     #[test]
-    fn into_utf16_chars() {
+    fn get_utf16_chars() {
         let v = "im so many sads";
-        for (v, n) in v.chars().zip(v.into_utf16_chars()) {
+        for (v, n) in v.chars().zip(v.get_utf16_chars()) {
             assert_eq!(v, n);
         }
     }
@@ -695,7 +671,7 @@ mod test {
 
         let b = buttons.build();
         let b = b.get_inline_keyboard();
-        let decompiler = RoseMdDecompiler::new(&text, &entities, &b);
+        let decompiler = RoseMdDecompiler::new(&text, &entities, b);
         let out = decompiler.decompile();
 
         assert!(out == t || out == t_rev);

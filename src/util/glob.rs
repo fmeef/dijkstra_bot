@@ -97,7 +97,7 @@ impl WildMatch {
                 }
                 Some(p)
                     if input_char.is_whitespace()
-                        && !(p.next_char.map(|c| c.is_whitespace()) == Some(true)) =>
+                        && p.next_char.map(|c| c.is_whitespace()) != Some(true) =>
                 {
                     if pattern_idx + 1 == self.pattern.len() && start {
                         return true;
@@ -122,7 +122,7 @@ impl WildMatch {
                     pattern_idx += 1;
                 }
                 Some(p) if p.has_wildcard => {
-                    if p.next_char == None {
+                    if p.next_char.is_none() {
                         return true;
                     }
                 }
@@ -255,7 +255,7 @@ impl Glob {
     }
 }
 
-#[allow(unused_imports)]
+#[cfg(test)]
 mod tests {
     use super::*;
     #[test]

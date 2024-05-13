@@ -60,9 +60,9 @@ ENV USER=bobot
 ENV UID=10001
 
 RUN apt update && apt install -y postgresql-client redis fish gdb lld libssl-dev valgrind
-RUN rustup default stable && rustup component add rustfmt && \
+RUN rustup default stable && rustup component add rustfmt clippy && \
  rustup toolchain install nightly && \
- rustup component add rustfmt --toolchain nightly && \
+ rustup component add rustfmt clippy --toolchain nightly && \
  cargo install sea-orm-cli cargo-edit
 RUN git clone https://github.com/rust-lang/rust-analyzer.git /opt/rust-analyzer && \
     cd /opt/rust-analyzer && \

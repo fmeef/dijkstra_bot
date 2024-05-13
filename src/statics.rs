@@ -17,7 +17,7 @@ use clap::Parser;
 use governor::clock::QuantaClock;
 use governor::middleware::NoOpMiddleware;
 use governor::state::{InMemoryState, NotKeyed};
-use governor::{Quota, RateLimiter};
+use governor::{DefaultKeyedRateLimiter, Quota, RateLimiter};
 use lazy_static::lazy_static;
 use log::LevelFilter;
 use once_cell::sync::OnceCell;
@@ -28,7 +28,6 @@ use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
-
 use tokio::runtime::Runtime;
 
 /// Serializable log config for webhook
@@ -45,7 +44,7 @@ pub struct WebhookConfig {
 }
 
 /// Administration and moderation options
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct Admin {
     /// Users with special administrative access on the bot
     pub sudo_users: HashSet<i64>,
@@ -83,10 +82,11 @@ pub struct Config {
     pub logging: LogConfig,
     pub timing: Timing,
     pub admin: Admin,
+    pub compute_threads: usize,
 }
 
 /// Configuration for loadable modules
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct Modules {
     /// List of modules to disable
     pub disabled: HashSet<String>,
@@ -112,34 +112,16 @@ pub struct Timing {
 }
 
 pub fn module_enabled(module: &str) -> bool {
-    if CONFIG.modules.enabled.len() == 0 {
+    if CONFIG.modules.enabled.is_empty() {
         !CONFIG.modules.disabled.contains(module)
     } else {
         CONFIG.modules.enabled.contains(module)
     }
 }
 
-impl Default for Modules {
-    fn default() -> Self {
-        Self {
-            disabled: HashSet::new(),
-            enabled: HashSet::new(),
-        }
-    }
-}
-
 impl LogConfig {
     pub fn get_log_level(&self) -> LevelFilter {
         self.log_level.0
-    }
-}
-
-impl Default for Admin {
-    fn default() -> Self {
-        Self {
-            sudo_users: HashSet::new(),
-            support_users: HashSet::new(),
-        }
     }
 }
 
@@ -192,6 +174,7 @@ impl Default for Config {
             webhook: WebhookConfig::default(),
             timing: Timing::default(),
             admin: Admin::default(),
+            compute_threads: num_cpus::get(),
         }
     }
 }
@@ -272,6 +255,8 @@ lazy_static! {
 lazy_static! {
     pub static ref BAN_GOVERNER: RateLimiter<NotKeyed, InMemoryState, QuantaClock, NoOpMiddleware> =
         RateLimiter::direct(Quota::per_second(NonZeroU32::new(30u32).unwrap()));
+    pub static ref CHAT_GOVERNER: DefaultKeyedRateLimiter<i64> =
+        DefaultKeyedRateLimiter::dashmap(Quota::per_second(NonZeroU32::new(1u32).unwrap()));
 }
 
 lazy_static! {

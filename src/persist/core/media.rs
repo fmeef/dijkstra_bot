@@ -21,12 +21,12 @@ use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
 pub trait GetMediaId {
-    fn get_media_id<'a>(&'a self) -> Option<(&'a str, MediaType)>;
+    fn get_media_id(&self) -> Option<(&'_ str, MediaType)>;
 }
 
 impl GetMediaId for Message {
-    fn get_media_id<'a>(&'a self) -> Option<(&'a str, MediaType)> {
-        if let Some(image) = self.get_photo().map(|p| p.first()).flatten() {
+    fn get_media_id(&self) -> Option<(&'_ str, MediaType)> {
+        if let Some(image) = self.get_photo().and_then(|p| p.first()) {
             return Some((image.get_file_id(), MediaType::Photo));
         }
 
@@ -104,11 +104,10 @@ impl MediaType {
 }
 
 /// Returns a tuple containing the MediaType and caption if exists for the provided message
-pub fn get_media_type<'a>(message: &'a Message) -> Result<(Option<String>, MediaType)> {
+pub fn get_media_type(message: &Message) -> Result<(Option<String>, MediaType)> {
     if let Some(photo) = message
         .get_photo()
-        .map(|p| p.first().map(|v| v.to_owned()))
-        .flatten()
+        .and_then(|p| p.first().map(|v| v.to_owned()))
     {
         Ok((Some(photo.get_file_id().to_owned()), MediaType::Photo))
     } else if let Some(sticker) = message.get_sticker().map(|s| s.get_file_id().to_owned()) {
@@ -119,7 +118,7 @@ pub fn get_media_type<'a>(message: &'a Message) -> Result<(Option<String>, Media
         Ok((Some(video), MediaType::Video))
     } else if let Some(audio) = message.get_audio().map(|v| v.get_file_id().to_owned()) {
         Ok((Some(audio), MediaType::Audio))
-    } else if let Some(_) = message.get_text() {
+    } else if message.get_text().is_some() {
         Ok((None, MediaType::Text))
     } else {
         message.fail("invalid")
@@ -199,7 +198,7 @@ where
     async fn note_button(&mut self) -> Result<()> {
         if let Ok(message) = self.context.message() {
             let chatuser = message.get_chatuser();
-            let is_dm = chatuser.as_ref().map(|v| is_dm(&v.chat)).unwrap_or(true);
+            let is_dm = chatuser.as_ref().map(|v| is_dm(v.chat)).unwrap_or(true);
             if self.buttons.is_none() {
                 self.buttons = Some(InlineKeyboardBuilder::default());
             }
@@ -210,7 +209,7 @@ where
             for l in buttonlist.get_mut() {
                 for b in l.iter_mut() {
                     if let Some(ref button) = b.raw_text {
-                        if button.starts_with("#") && button.len() > 1 && is_dm {
+                        if button.starts_with('#') && button.len() > 1 && is_dm {
                             let tail = &button[1..];
 
                             b.button_url = None;
@@ -222,15 +221,14 @@ where
                                 &b.clone().to_button(),
                             )
                             .await?;
-                        } else if !is_dm && button.starts_with("#") && button.len() > 1 {
+                        } else if !is_dm && button.starts_with('#') && button.len() > 1 {
                             let chat = chatuser
                                 .as_ref()
                                 .ok_or_else(|| BotError::Generic("missing chatuser".to_owned()))?;
                             let chat = chat.chat.get_id();
                             let tail = &button[1..];
 
-                            let url =
-                                post_deep_link((chat, tail), |v| button_deeplink_key(v)).await?;
+                            let url = post_deep_link((chat, tail), button_deeplink_key).await?;
                             b.button_url = Some(url);
                         };
                     }
@@ -280,9 +278,7 @@ where
 
             let text = text.unwrap_or_else(|| "".to_owned());
             let (text, entities, buttons) = if let Some(extra) = self.extra_entities {
-                let mut buttons = self
-                    .buttons
-                    .unwrap_or_else(|| InlineKeyboardBuilder::default());
+                let mut buttons = self.buttons.unwrap_or_default();
                 let (text, entities) = retro_fillings(
                     text,
                     extra,
@@ -411,9 +407,7 @@ where
             let callback = self
                 .callback
                 .ok_or_else(|| BotError::Generic("callback not set".to_owned()))?;
-            let mut buttons = self
-                .buttons
-                .unwrap_or_else(|| InlineKeyboardBuilder::default());
+            let mut buttons = self.buttons.unwrap_or_default();
             if should_ignore_chat(chat).await? {
                 return Ok(());
             }
@@ -548,9 +542,7 @@ where
             return Ok(());
         }
 
-        let mut buttons = self
-            .buttons
-            .unwrap_or_else(|| InlineKeyboardBuilder::default());
+        let mut buttons = self.buttons.unwrap_or_default();
         let text = self.text.unwrap_or_else(|| "".to_owned());
         let (text, entities, mut buttons) = if let Some(extra) = self.extra_entities {
             let (text, entities) = retro_fillings(

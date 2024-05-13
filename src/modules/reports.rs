@@ -12,7 +12,7 @@ use macros::{lang_fmt, textentity_fmt, update_handler};
 
 metadata!("Reports",
     r#"
-    Allow users to report wrongdoers to admins. Each report notifies up to 4 admins.  
+    Allow users to report wrongdoers to admins. Each report notifies up to 4 admins.
     "#,
     { command = "report", help = "Reports a user"}
 
@@ -87,7 +87,7 @@ async fn handle_command(ctx: &Context) -> Result<()> {
     }
 
     if let Ok(Some(message)) = ctx.message().map(|m| m.get_text()) {
-        if let Some(message) = message.trim_start().split_whitespace().next() {
+        if let Some(message) = message.split_whitespace().next() {
             match message {
                 "@admin" => report(ctx).await,
                 "@admins" => report(ctx).await,

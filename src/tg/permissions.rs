@@ -120,7 +120,7 @@ impl NamedBotPermissions {
         let user = message
             .get_from()
             .ok_or_else(|| message.fail_err("Permission denied, user does not exist"))?;
-        Self::from_chatuser(&user, &chat).await
+        Self::from_chatuser(user, chat).await
     }
 }
 
@@ -175,6 +175,8 @@ pub struct NamedPermissionContent {
 #[derive(Clone, Debug)]
 pub struct NamedPermission(Vec<NamedPermissionContent>);
 
+// Clippy isn't samrt enough to know that From<bool> is a conflicting implementation
+#[allow(clippy::from_over_into)]
 impl Into<bool> for NamedPermission {
     fn into(self) -> bool {
         self.0.iter().all(|v| v.val)
@@ -223,24 +225,24 @@ pub struct BotPermissions {
     pub can_pin_messages: bool,
 }
 
-impl Into<NamedBotPermissions> for BotPermissions {
-    fn into(self) -> NamedBotPermissions {
+impl From<BotPermissions> for NamedBotPermissions {
+    fn from(value: BotPermissions) -> Self {
         NamedBotPermissions {
-            can_manage_chat: NamedPermission::new("CanManageChat", self.can_manage_chat),
+            can_manage_chat: NamedPermission::new("CanManageChat", value.can_manage_chat),
             can_restrict_members: NamedPermission::new(
                 "CanRestrictMembers",
-                self.can_restrict_members,
+                value.can_restrict_members,
             ),
             can_delete_messages: NamedPermission::new(
                 "CanDeleteMessasges",
-                self.can_delete_messages,
+                value.can_delete_messages,
             ),
-            can_change_info: NamedPermission::new("CanChangeInfo", self.can_change_info),
+            can_change_info: NamedPermission::new("CanChangeInfo", value.can_change_info),
             can_promote_members: NamedPermission::new(
                 "CanPromoteMembers",
-                self.can_promote_members,
+                value.can_promote_members,
             ),
-            can_pin_messages: NamedPermission::new("CanPinMessages", self.can_pin_messages),
+            can_pin_messages: NamedPermission::new("CanPinMessages", value.can_pin_messages),
             is_sudo: NamedPermission::new("Sudo", false),
             is_support: NamedPermission::new("Support", false),
         }
@@ -348,8 +350,8 @@ where
             let user = callback.get_from();
             if let Some(MaybeInaccessibleMessage::Message(message)) = callback.get_message() {
                 let permission =
-                    NamedBotPermissions::from_chatuser(&user, message.get_chat()).await?;
-                if let Ok(_) = out.send(Some((permission, callback))).await {
+                    NamedBotPermissions::from_chatuser(user, message.get_chat()).await?;
+                if out.send(Some((permission, callback))).await.is_ok() {
                     Ok(false)
                 } else {
                     Ok(true)
@@ -407,7 +409,7 @@ where
     let lang = get_chat_lang(chat.get_id()).await?;
 
     if anon {
-        return get_permission_from_anonchannel(sp, func, &chat, &lang).await;
+        return get_permission_from_anonchannel(sp, func, chat, &lang).await;
     }
     log::info!("trying user {} {}", user.get_id(), chat.get_id());
     let permission = if let Some(admin) = chat.is_user_admin(user.get_id()).await? {
@@ -462,7 +464,7 @@ impl IsGroupAdmin for Message {
             .ok_or_else(|| BotError::Generic("user not found".to_owned()))?;
 
         let chat = self.get_chat();
-        let res = NamedBotPermissions::from_chatuser(&user, chat).await?;
+        let res = NamedBotPermissions::from_chatuser(user, chat).await?;
         Ok(res.into())
     }
 
@@ -471,14 +473,14 @@ impl IsGroupAdmin for Message {
         F: Fn(NamedBotPermissions) -> NamedPermission + Send,
     {
         let chat = self.get_chat();
-        is_group_or_die(&chat).await?;
+        is_group_or_die(chat).await?;
         let user = self
             .get_from()
             .ok_or_else(|| BotError::Generic("user not found".to_owned()))?;
         if let Some(chat) = self.get_sender_chat() {
-            handle_perm_check(self, func, &user, chat, true).await
+            handle_perm_check(self, func, user, chat, true).await
         } else {
-            handle_perm_check(self, func, &user, chat, false).await
+            handle_perm_check(self, func, user, chat, false).await
         }
     }
 }
@@ -545,7 +547,7 @@ impl<'a> IsAdmin for Option<&'a User> {
         let user = self
             .as_ref()
             .ok_or_else(|| BotError::Generic("user not found".to_owned()))?;
-        let res = NamedBotPermissions::from_chatuser(&user, chat).await?;
+        let res = NamedBotPermissions::from_chatuser(user, chat).await?;
         Ok(res.into())
     }
     async fn check_permissions<F>(&self, chat: &Chat, func: F) -> Result<()>
@@ -557,7 +559,7 @@ impl<'a> IsAdmin for Option<&'a User> {
         let user = self
             .as_ref()
             .ok_or_else(|| BotError::Generic("user not found".to_owned()))?;
-        handle_perm_check(chat, func, &user, chat, false).await
+        handle_perm_check(chat, func, user, chat, false).await
     }
 }
 
@@ -752,7 +754,7 @@ impl GetCachedAdmins for Chat {
     }
 
     async fn refresh_cached_admins(&self) -> Result<(HashMap<i64, ChatMember>, bool)> {
-        if let Err(_) = is_group_or_die(self).await {
+        if is_group_or_die(self).await.is_err() {
             return Ok((HashMap::new(), false));
         }
 

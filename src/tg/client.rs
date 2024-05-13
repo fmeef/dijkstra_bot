@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 
 use botapi::{
-    bot::{ApiError, Bot},
+    bot::{ApiError, Bot, BotBuilder},
     ext::{BotUrl, LongPoller, Webhook},
     gen_types::{
         CallbackQuery, InlineKeyboardButton, InlineKeyboardButtonBuilder, Message,
@@ -63,7 +63,7 @@ impl MetadataCollection {
                     .collect::<Vec<String>>()
                     .join("\n");
 
-                if v.commands.len() > 0 {
+                if !v.commands.is_empty() {
                     format!("[*{}]:\n{}\n\nCommands:\n{}", v.name, v.description, helps)
                 } else {
                     format!("[*{}]\n{}", v.name, v.description)
@@ -112,10 +112,11 @@ impl MetadataCollection {
     }
 }
 
+pub type UpdateCallback =
+    Arc<dyn for<'b> Fn(&'b Context) -> BoxFuture<'b, Result<()>> + Send + Sync>;
+
 /// wrapper around a function that is called once for every update received by the bot
-pub struct UpdateHandler(
-    Option<Arc<dyn for<'b> Fn(&'b Context) -> BoxFuture<'b, Result<()>> + Send + Sync>>,
-);
+pub struct UpdateHandler(Option<UpdateCallback>);
 
 impl UpdateHandler {
     pub(crate) async fn handle_update(&self, ctx: &Context) {
@@ -164,9 +165,15 @@ impl UpdateHandler {
     }
 }
 
+impl Default for UpdateHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Clone for UpdateHandler {
     fn clone(&self) -> Self {
-        Self(self.0.as_ref().map(|v| Arc::clone(v)))
+        Self(self.0.clone())
     }
 }
 
@@ -201,7 +208,7 @@ pub(crate) async fn show_help<'a>(
             let me = ME.get().unwrap();
             let param = args.map(|v| v.to_lowercase());
             log::info!("custom help {:?}", param);
-            let conv = match helps.get_conversation(&message, param).await {
+            let conv = match helps.get_conversation(message, param).await {
                 Ok(v) => v,
                 Err(_) => {
                     message
@@ -295,7 +302,10 @@ impl TgClient {
             MetadataCollection(metadata.into_iter().map(|v| (v.name.clone(), v)).collect());
         let token = token.into();
         Self {
-            client: Bot::new_auto_wait(token.clone(), true).unwrap(),
+            client: BotBuilder::new(token.clone())
+                .unwrap()
+                .auto_wait(true)
+                .build(),
             token,
             modules: Arc::new(metadata),
             button_events: Arc::new(DashMap::new()),
@@ -313,7 +323,10 @@ impl TgClient {
             MetadataCollection(metadata.into_iter().map(|v| (v.name.clone(), v)).collect());
         let token = token.into();
         Self {
-            client: Bot::new_auto_wait(token.clone(), true).unwrap(),
+            client: BotBuilder::new(token.clone())
+                .unwrap()
+                .auto_wait(true)
+                .build(),
             token,
             modules: Arc::new(metadata),
             button_events: Arc::new(DashMap::new()),
@@ -455,7 +468,7 @@ impl TgClient {
         Ok(())
     }
 
-    pub fn client<'a>(&'a self) -> &'a Bot {
+    pub fn client(&self) -> &'_ Bot {
         &self.client
     }
 }
@@ -468,7 +481,7 @@ impl Clone for TgClient {
             modules: Arc::clone(&self.modules),
             button_events: Arc::clone(&self.button_events),
             button_repeat: Arc::clone(&self.button_repeat),
-            handler: UpdateHandler(self.handler.0.as_ref().map(|v| Arc::clone(v))),
+            handler: UpdateHandler(self.handler.0.clone()),
         }
     }
 }
