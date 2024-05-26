@@ -333,6 +333,11 @@ pub fn message_fmt(tokens: TokenStream) -> TokenStream {
         {
             #c ::statics::TG.client()
                 .build_send_message(#ctx.try_get()?.chat.get_id(), &#m)
+                .link_preview_options(
+                    &::botapi::gen_types::LinkPreviewOptionsBuilder::new()
+                        .set_is_disabled(true)
+                        .build(),
+                )
         }
     };
     TokenStream::from(res)

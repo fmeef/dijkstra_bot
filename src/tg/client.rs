@@ -5,22 +5,10 @@
 
 use std::collections::HashMap;
 
-use botapi::{
-    bot::{ApiError, Bot, BotBuilder},
-    ext::{BotUrl, LongPoller, Webhook},
-    gen_types::{
-        CallbackQuery, InlineKeyboardButton, InlineKeyboardButtonBuilder, Message,
-        ReplyParametersBuilder, UpdateExt,
-    },
-};
-use convert_case::Casing;
-use dashmap::DashMap;
-use macros::{lang_fmt, message_fmt};
-
 use super::{
     admin_helpers::is_dm,
-    button::{get_url, InlineKeyboardBuilder},
-    command::Context,
+    button::InlineKeyboardBuilder,
+    command::{Context, TextArgs},
     dialog::{dialog_from_update, Conversation, ConversationState},
     permissions::*,
     user::RecordUser,
@@ -28,8 +16,11 @@ use super::{
 use crate::{
     metadata::{markdownify, Metadata},
     modules,
-    statics::ME,
-    tg::{admin_helpers::IntoChatUser, markdown::MarkupBuilder},
+    tg::{
+        admin_helpers::IntoChatUser,
+        command::{post_deep_link, PopSlice},
+        markdown::MarkupBuilder,
+    },
     util::{
         callback::{MultiCallback, MultiCb, SingleCallback, SingleCb},
         error::Fail,
@@ -37,19 +28,30 @@ use crate::{
     },
 };
 use crate::{
-    statics::{CONFIG, TG},
+    statics::{CONFIG, ME, TG},
     util::error::Result,
     util::string::get_chat_lang,
 };
+use botapi::{
+    bot::{ApiError, Bot, BotBuilder},
+    ext::{BotUrl, LongPoller, Webhook},
+    gen_types::{
+        CallbackQuery, InlineKeyboardButton, InlineKeyboardButtonBuilder,
+        LinkPreviewOptionsBuilder, Message, ReplyParametersBuilder, UpdateExt,
+    },
+};
 use convert_case::Case;
+use convert_case::Casing;
+use dashmap::DashMap;
 use futures::{future::BoxFuture, Future, StreamExt};
+use macros::{lang_fmt, message_fmt};
 use std::sync::Arc;
 
 static INVALID: &str = "invalid";
 
 /// List of module info for populating bot help
 #[derive(Debug)]
-pub struct MetadataCollection(HashMap<String, Metadata>);
+pub struct MetadataCollection(HashMap<String, Arc<Metadata>>);
 
 impl MetadataCollection {
     fn get_module_text(&self, module: &str) -> String {
@@ -105,7 +107,14 @@ impl MetadataCollection {
 
         let conversation = state.build();
         conversation.write_self().await?;
-        if let Some(current) = current {
+        if let Some(mut current) = current {
+            for (module, v) in self.0.iter() {
+                // log::info!("checking {:?}", v.commands);
+                if v.commands.contains_key(&current) {
+                    current = module.to_lowercase();
+                    break;
+                }
+            }
             conversation.transition(current).await?;
         }
         Ok(conversation)
@@ -200,24 +209,51 @@ pub(crate) async fn show_help<'a>(
     ctx: &Context,
     message: &Message,
     helps: Arc<MetadataCollection>,
-    args: Option<&'a str>,
+    args_raw: &'a TextArgs<'a>,
 ) -> Result<bool> {
     if !should_ignore_chat(message.get_chat().get_id()).await? {
         let lang = get_chat_lang(message.get_chat().get_id()).await?;
+
+        let param = args_raw
+            .args
+            .first()
+            .map(|v| v.get_text())
+            .map(|v| v.to_lowercase());
+
+        let args = args_raw.as_slice();
+        let args = args.pop_slice().map(|(_, v)| v);
+        log::info!("custom help {:?}", param);
         if is_dm(message.get_chat()) {
             let me = ME.get().unwrap();
-            let param = args.map(|v| v.to_lowercase());
-            log::info!("custom help {:?}", param);
-            let conv = match helps.get_conversation(message, param).await {
+
+            let conv = match helps.get_conversation(message, param.clone()).await {
                 Ok(v) => v,
                 Err(_) => {
                     message
-                        .reply(lang_fmt!(lang, "invalid_help", args.unwrap_or("default")))
+                        .reply(lang_fmt!(
+                            lang,
+                            "invalid_help",
+                            param.as_deref().unwrap_or("default")
+                        ))
                         .await?;
                     return Ok(false);
                 }
             };
+            if let Some(mut args) = args {
+                while let Some((arg, a)) = args.pop_slice() {
+                    args = a;
+                    let arg = arg.get_text().to_lowercase();
+                    match conv.transition(&arg).await {
+                        Ok(_) => (),
+                        Err(_) => {
+                            message.reply(lang_fmt!(lang, "invalid_help", arg)).await?;
+                            return Ok(false);
+                        }
+                    }
+                }
+            }
             let current = conv.get_current().await?;
+
             let m = if current.state_id == conv.get_start()?.state_id {
                 lang_fmt!(lang, "welcome", me.get_first_name())
             } else {
@@ -238,11 +274,16 @@ pub(crate) async fn show_help<'a>(
                 .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
                     conv.get_current_markup(3).await?,
                 ))
+                .link_preview_options(
+                    &LinkPreviewOptionsBuilder::new()
+                        .set_is_disabled(true)
+                        .build(),
+                )
                 .reply_parameters(&ReplyParametersBuilder::new(message.get_message_id()).build())
                 .build()
                 .await?;
         } else {
-            let url = get_url(format!("help{}", args.unwrap_or("")))?;
+            let url = post_deep_link(args_raw, help_key).await?;
             let mut button = InlineKeyboardBuilder::default();
 
             button.button(
@@ -263,6 +304,11 @@ pub(crate) async fn show_help<'a>(
     Ok(true)
 }
 
+#[inline(always)]
+pub fn help_key(key: &str) -> String {
+    format!("gethelp:{}", key)
+}
+
 impl TgClient {
     /// Register a button callback to be called when the corresponding callback button sends an update
     /// This callback will only fire once and be removed afterwards
@@ -272,7 +318,6 @@ impl TgClient {
         Fut: Future<Output = Result<()>> + Send + 'static,
     {
         if let Some(data) = button.get_callback_data() {
-            //            log::info!("registering button callback with data {}", data);
             self.button_events
                 .insert(data.to_owned(), SingleCb::new(func));
         }
@@ -286,7 +331,6 @@ impl TgClient {
         Fut: Future<Output = Result<bool>> + Send + 'static,
     {
         if let Some(data) = button.get_callback_data() {
-            //            log::info!("registering button callback with data {}", data);
             self.button_repeat
                 .insert(data.to_owned(), MultiCb::new(func));
         }
@@ -298,8 +342,12 @@ impl TgClient {
         T: Into<String>,
     {
         let metadata = modules::get_metadata();
-        let metadata =
-            MetadataCollection(metadata.into_iter().map(|v| (v.name.clone(), v)).collect());
+        let metadata = MetadataCollection(
+            metadata
+                .into_iter()
+                .map(|v| (v.name.clone(), Arc::new(v)))
+                .collect(),
+        );
         let token = token.into();
         Self {
             client: BotBuilder::new(token.clone())
@@ -319,8 +367,12 @@ impl TgClient {
     where
         T: Into<String>,
     {
-        let metadata =
-            MetadataCollection(metadata.into_iter().map(|v| (v.name.clone(), v)).collect());
+        let metadata = MetadataCollection(
+            metadata
+                .into_iter()
+                .map(|v| (v.name.clone(), Arc::new(v)))
+                .collect(),
+        );
         let token = token.into();
         Self {
             client: BotBuilder::new(token.clone())

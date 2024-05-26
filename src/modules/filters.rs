@@ -21,6 +21,7 @@ use crate::tg::permissions::*;
 use crate::util::error::BotError;
 use crate::util::error::Fail;
 use crate::util::error::Result;
+use crate::util::string::AlignCharBoundry;
 use crate::util::string::Speak;
 use botapi::gen_types::Message;
 use botapi::gen_types::MessageEntity;
@@ -675,12 +676,17 @@ async fn search_cache(
                     if idx == 0 {
                         idx = 1;
                     }
-                    let keylen = if key.len() + 1 < text.len() {
+                    let mut keylen = if key.len() + 1 < text.len() {
                         key.len() + idx
                     } else {
                         text.len() - 1
                     };
-                    let ws = &text[idx - 1..keylen];
+
+                    idx = text.align_char_boundry(idx - 1);
+
+                    keylen = text.align_char_boundry(keylen);
+
+                    let ws = &text[idx..keylen];
                     if ws.starts_with(|c: char| c.is_whitespace())
                         || ws.ends_with(|c: char| c.is_whitespace())
                     {

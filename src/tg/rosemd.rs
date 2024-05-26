@@ -340,14 +340,14 @@ impl RoseMdParser {
                                 text.push(ch);
                                 continue;
                             }
-                            item = "||".to_owned();
+                            "||".clone_into(&mut item);
                             if let Some((i, c)) = i.next() {
                                 x = i;
                                 ch = *c;
                             }
                         }
                         '_' if x + 1 < chars.len() && chars[x + 1] == '_' => {
-                            item = "__".to_owned();
+                            "__".clone_into(&mut item);
                             if let Some((i, c)) = i.next() {
                                 x = i;
                                 ch = *c;
@@ -357,7 +357,7 @@ impl RoseMdParser {
                             && chars[x + 1] == '`'
                             && chars[x + 2] == '`' =>
                         {
-                            item = "```".to_owned();
+                            "```".clone_into(&mut item);
                             i.next();
 
                             if let Some((i, c)) = i.next() {

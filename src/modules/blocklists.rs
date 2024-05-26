@@ -2,19 +2,22 @@ use std::collections::HashMap;
 
 use crate::metadata::ModuleHelpers;
 use crate::persist::admin::actions::ActionType;
+use crate::persist::admin::actions::FilterType;
 use crate::persist::redis::default_cache_query;
 use crate::persist::redis::CachedQueryTrait;
 use crate::persist::redis::RedisCache;
 use crate::persist::redis::RedisStr;
+use crate::persist::redis::ToRedisStr;
 use crate::statics::CONFIG;
 use crate::statics::DB;
 use crate::statics::REDIS;
-use crate::statics::TG;
-use crate::tg::admin_helpers::is_approved;
-use crate::tg::admin_helpers::is_dm;
 use crate::tg::admin_helpers::parse_duration_str;
+use crate::tg::admin_helpers::ActionMessage;
+use crate::tg::admin_helpers::DeleteAfterTime;
+use crate::tg::admin_helpers::UpdateHelpers;
 use crate::tg::command::Cmd;
 use crate::tg::command::Context;
+use crate::tg::command::PopSlice;
 use crate::tg::command::TextArgs;
 use crate::tg::markdown::Header;
 use crate::tg::markdown::MarkupBuilder;
@@ -30,24 +33,28 @@ use crate::util::error::Result;
 
 use crate::metadata::metadata;
 
+use crate::util::error::SpeakErr;
 use crate::util::glob::WildMatch;
 
+use crate::util::scripting::ModAction;
 use crate::util::string::Speak;
 use botapi::gen_types::Message;
-use botapi::gen_types::UpdateExt;
 use botapi::gen_types::User;
 use chrono::Duration;
 use entities::{blocklists, triggers};
 use futures::FutureExt;
 use humantime::format_duration;
 use itertools::Itertools;
+use sea_orm::ModelTrait;
 
+use crate::util::scripting::{ManagedRhai, RHAI_ENGINE};
 use lazy_static::lazy_static;
 use macros::entity_fmt;
 use macros::lang_fmt;
 use macros::update_handler;
 use redis::AsyncCommands;
 use regex::Regex;
+use rhai::Dynamic;
 use sea_orm::entity::ActiveValue;
 use sea_orm::sea_query::OnConflict;
 use sea_orm::ActiveValue::{NotSet, Set};
@@ -62,13 +69,67 @@ use serde::{Deserialize, Serialize};
 metadata!("Blocklists",
     r#"Censor specific words in your group!. Supports globbing to match partial words."#,
     Helper,
+    { sub = "scripting", content = r#"
+    Blocklists now have alpha-quality support for rhai scripting! Scripts allow
+    taking arbitrary custom moderation action based on ANY value in telegram's updates.
+    Rhai scripts have access to raw telegram types and can inspect anything a standalone bot
+    can see! For more information on scripting and rhai syntax please check out
+    /help scripting
+
+    [__adding scripts:]\n
+    To add a blocklist as a script you can use the /scriptblocklist command.\n
+    examples:
+
+    Add a script that checks the message text for "botcoin"
+    /scriptblocklist my\_script\_name \|m\| glob\("\*botcoin\*" m.text.value\)
+
+    Add a script that bans any user with username "durov"
+    /scriptblocklist no\_pavel \|m\| m.from.value.username == "durov"
+
+
+    [__blocklists api:]\n
+    Each blocklist runs an anonymous function \(for more information see /help scripting\) that
+    takes a single parameter containing the incoming message. This function may either
+    return a boolean value or a ModAction type. If returning a boolean, true means trigger
+    the default blocklist action for that message and false means ignore the message.
+
+    ModAction is a custom type that represents an override action to be taken. Examples are
+    [`rust`
+    // warns a user with provided reason\n
+    ModAction::Warn("reason")\n
+    // Warns a user with no reason\n
+    ModAction::Warn(())\n
+    // Bans a user with provide reason\n
+    ModAction::Ban("reason")\n
+    // Deletes the message\n
+    ModAction::Delete n
+    // Replies to the message with provided text\n
+    ModAction::Speak("text")\n
+    // Mutes the user with the provided reason\n
+    ModAction::Mute("reason")
+    ]
+
+    Example script that always warns \(even if the default action is not warn\) when a
+    premium user speaks\n
+    [`rust`
+    |m| if m.from.value.is_premium.value {\n
+       ModAction::Warn("no premium users allowed")\n
+    } else {\n
+      ModAction::Ignore\n
+    }
+    ]
+        "#
+    },
     { command = "addblocklist", help = "\\<trigger\\> \\<reply\\> {action}: Add a blocklist" },
     { command = "blocklist", help = "List all blocklists" },
     { command = "rmblocklist", help = "Stop a blocklist by trigger" },
-    { command = "rmallblocklists", help = "Stop all blocklists" }
+    { command = "rmallblocklists", help = "Stop all blocklists" },
+    { command = "scriptblocklist", help = "Adds a rhai script as a blocklist with a provided name" },
+    { command = "rmscriptblocklist", help = "Moves a script blocklist by name"}
 );
 
 struct Migration;
+struct MigrationScripting;
 
 impl MigrationName for Migration {
     fn name(&self) -> &str {
@@ -76,10 +137,97 @@ impl MigrationName for Migration {
     }
 }
 
+impl MigrationName for MigrationScripting {
+    fn name(&self) -> &str {
+        "m20240444_000001_create_scripting_blocklist"
+    }
+}
+#[derive(Serialize, Deserialize, Clone)]
+enum FilterConfig {
+    Text,
+    Glob,
+    Script(String),
+}
+
+impl FilterConfig {
+    fn get_type(&self) -> FilterType {
+        match self {
+            Self::Text => FilterType::Text,
+            Self::Script(_) => FilterType::Script,
+            Self::Glob => FilterType::Glob,
+        }
+    }
+    fn get_handle(self) -> Option<String> {
+        if let FilterConfig::Script(handle) = self {
+            Some(handle)
+        } else {
+            None
+        }
+    }
+}
+
 pub mod entities {
-    use crate::persist::{admin::actions::ActionType, migrate::ManagerHelper};
+    use crate::persist::{
+        admin::actions::{ActionType, FilterType},
+        migrate::ManagerHelper,
+    };
     use ::sea_orm_migration::prelude::*;
     use chrono::Duration;
+
+    #[async_trait::async_trait]
+    impl MigrationTrait for super::MigrationScripting {
+        async fn up(&self, manager: &SchemaManager) -> std::result::Result<(), DbErr> {
+            manager
+                .alter_table(
+                    TableAlterStatement::new()
+                        .table(triggers::Entity)
+                        .add_column(
+                            ColumnDef::new(triggers::Column::FilterType)
+                                .integer()
+                                .not_null()
+                                .default(FilterType::Glob),
+                        )
+                        .to_owned(),
+                )
+                .await?;
+
+            manager
+                .alter_table(
+                    TableAlterStatement::new()
+                        .table(blocklists::Entity)
+                        .add_column(
+                            ColumnDef::new(blocklists::Column::Handle)
+                                .text()
+                                .null()
+                                .unique_key(),
+                        )
+                        .to_owned(),
+                )
+                .await?;
+            Ok(())
+        }
+
+        async fn down(&self, manager: &SchemaManager) -> std::result::Result<(), DbErr> {
+            manager
+                .alter_table(
+                    TableAlterStatement::new()
+                        .table(triggers::Entity)
+                        .drop_column(triggers::Column::FilterType)
+                        .to_owned(),
+                )
+                .await?;
+
+            manager
+                .alter_table(
+                    TableAlterStatement::new()
+                        .table(blocklists::Entity)
+                        .drop_column(blocklists::Column::Handle)
+                        .to_owned(),
+                )
+                .await?;
+            Ok(())
+        }
+    }
 
     #[async_trait::async_trait]
     impl MigrationTrait for super::Migration {
@@ -175,6 +323,8 @@ pub mod entities {
         use sea_orm::entity::prelude::*;
         use serde::{Deserialize, Serialize};
 
+        use crate::persist::admin::actions::FilterType;
+
         #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
         #[sea_orm(table_name = "blocklist_triggers")]
         pub struct Model {
@@ -182,6 +332,7 @@ pub mod entities {
             pub trigger: String,
             #[sea_orm(primay_key, unique)]
             pub blocklist_id: i64,
+            pub filter_type: FilterType,
         }
 
         #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -218,6 +369,8 @@ pub mod entities {
             pub action: ActionType,
             pub reason: Option<String>,
             pub duration: Option<i64>,
+            #[sea_orm(unique)]
+            pub handle: Option<String>,
         }
 
         #[derive(Hash, Eq, PartialEq, Clone, DeriveIntoActiveModel, Debug)]
@@ -226,6 +379,7 @@ pub mod entities {
             pub action: ActionType,
             pub reason: Option<String>,
             pub duration: Option<i64>,
+            pub handle: Option<String>,
         }
 
         impl From<Model> for ModelModel {
@@ -235,6 +389,7 @@ pub mod entities {
                     action: value.action,
                     reason: value.reason,
                     duration: value.duration,
+                    handle: value.handle,
                 }
             }
         }
@@ -259,7 +414,7 @@ pub mod entities {
 }
 
 pub fn get_migrations() -> Vec<Box<dyn MigrationTrait>> {
-    vec![Box::new(Migration)]
+    vec![Box::new(Migration), Box::new(MigrationScripting)]
 }
 
 #[derive(Serialize, Deserialize)]
@@ -269,6 +424,7 @@ struct BlockListsExport {
     default_reason: String,
     filters: Option<Vec<BlocklistFilter>>,
     should_delete: bool,
+    handle: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -327,6 +483,7 @@ impl ModuleHelpers for Helper {
             default_reason: "".to_owned(),
             should_delete: true,
             action: "nothing".to_owned(),
+            handle: None,
         };
 
         let out = serde_json::to_value(out)?;
@@ -364,6 +521,7 @@ impl ModuleHelpers for Helper {
                     action,
                     reason,
                     duration,
+                    handle: blocklists.handle.clone(),
                 };
                 let v = models.entry(model).or_default();
                 v.push(blocklist.name);
@@ -382,6 +540,7 @@ impl ModuleHelpers for Helper {
                             action: Set(v.action),
                             reason: Set(v.reason),
                             duration: Set(v.duration),
+                            handle: Set(v.handle),
                         }
                     }))
                     .on_empty_do_nothing()
@@ -402,6 +561,7 @@ impl ModuleHelpers for Helper {
                                 trigger.into_iter().map(|trigger| triggers::ActiveModel {
                                     blocklist_id: Set(id),
                                     trigger: Set(trigger),
+                                    filter_type: NotSet,
                                 });
 
                             triggers::Entity::insert_many(trigger).exec(tx).await?;
@@ -433,56 +593,97 @@ fn get_blocklist_hash_key(chat: i64) -> String {
     format!("bcache:{}", chat)
 }
 
-async fn delete_trigger(message: &Message, trigger: &str) -> Result<()> {
-    message
-        .check_permissions(|p| p.can_restrict_members.and(p.can_change_info))
+async fn delete_script(ctx: &Context, script: String) -> Result<()> {
+    ctx.check_permissions(|p| p.can_restrict_members.and(p.can_change_info))
         .await?;
-    let trigger = &trigger.to_lowercase();
-    let hash_key = get_blocklist_hash_key(message.get_chat().get_id());
+    let hash_key = get_blocklist_hash_key(ctx.message()?.chat.id);
 
-    let filters = blocklists::Entity::find()
-        .find_with_related(triggers::Entity)
-        .filter(
-            blocklists::Column::Chat
-                .eq(message.get_chat().get_id())
-                .and(triggers::Column::Trigger.eq(trigger.as_str())),
-        )
-        .all(*DB)
-        .await?;
+    DB.transaction::<_, (), BotError>(|tx| {
+        async move {
+            let res = blocklists::Entity::find()
+                .find_with_related(triggers::Entity)
+                .filter(blocklists::Column::Handle.eq(Some(script)))
+                .all(tx)
+                .await?;
 
-    log::info!(
-        "deleting {} blocklists for {}",
-        filters.len(),
-        trigger.as_str()
-    );
-
-    for (blocklist, trigger) in filters
-        .iter()
-        .map(|(b, t)| (b, t.iter().map(|v| v.trigger.as_str()).collect_vec()))
-    {
-        triggers::Entity::delete_many()
-            .filter(
-                triggers::Column::Trigger
-                    .is_in(trigger)
-                    .and(triggers::Column::BlocklistId.eq(blocklist.id)),
-            )
-            .exec(*DB)
-            .await?;
-    }
-    REDIS
-        .query(|mut q| async move {
-            let id: Option<i64> = q.hdel(&hash_key, trigger).await?;
-            if let Some(id) = id {
-                let key = get_blocklist_key(message, id);
-                q.del(&key).await?;
-                Ok(Some(id))
-            } else {
-                Ok(None)
+            for (blocklist, trigger) in res
+                .into_iter()
+                .map(|(b, t)| (b, t.into_iter().map(|v| v.trigger).collect_vec()))
+            {
+                REDIS.sq(|q| q.hdel(&hash_key, trigger)).await?;
+                blocklist.delete(tx).await?;
             }
-        })
+
+            Ok(())
+        }
+        .boxed()
+    })
+    .await?;
+
+    ctx.reply("Blocklist stopped").await?;
+
+    Ok(())
+}
+
+async fn delete_trigger(ctx: &Context, trigger: String) -> Result<()> {
+    ctx.check_permissions(|p| p.can_restrict_members.and(p.can_change_info))
         .await?;
 
-    message.reply("Blocklist stopped").await?;
+    let c = ctx.clone();
+    DB.transaction::<_, (), BotError>(move |tx| {
+        async move {
+            let message = c.message()?;
+            let trigger = &trigger.to_lowercase();
+            let hash_key = get_blocklist_hash_key(message.get_chat().get_id());
+            let filters = blocklists::Entity::find()
+                .find_with_related(triggers::Entity)
+                .filter(
+                    blocklists::Column::Chat
+                        .eq(message.get_chat().get_id())
+                        .and(triggers::Column::Trigger.eq(trigger.as_str())),
+                )
+                .all(tx)
+                .await?;
+
+            log::info!(
+                "deleting {} blocklists for {}",
+                filters.len(),
+                trigger.as_str()
+            );
+
+            for (blocklist, trigger) in filters
+                .iter()
+                .map(|(b, t)| (b, t.iter().map(|v| v.trigger.as_str()).collect_vec()))
+            {
+                triggers::Entity::delete_many()
+                    .filter(
+                        triggers::Column::Trigger
+                            .is_in(trigger)
+                            .and(triggers::Column::BlocklistId.eq(blocklist.id)),
+                    )
+                    .exec(tx)
+                    .await?;
+            }
+            REDIS
+                .query(|mut q| async move {
+                    let id: Option<i64> = q.hdel(&hash_key, trigger).await?;
+                    if let Some(id) = id {
+                        let key = get_blocklist_key(message, id);
+                        q.del(&key).await?;
+                        Ok(Some(id))
+                    } else {
+                        Ok(None)
+                    }
+                })
+                .await?;
+
+            Ok(())
+        }
+        .boxed()
+    })
+    .await?;
+    ctx.reply("Blocklist stopped").await?;
+
     Ok(())
 }
 
@@ -505,20 +706,109 @@ lazy_static! {
     static ref WHITESPACE: Regex = Regex::new(r#"\s+|\S*"#).unwrap();
 }
 
-#[allow(dead_code)]
-async fn search_cache(message: &Message, text: &str) -> Result<Option<blocklists::Model>> {
+async fn search_cache(
+    ctx: &Context,
+    message: &Message,
+    text: &str,
+) -> Result<Option<blocklists::Model>> {
     update_cache_from_db(message).await?;
     let hash_key = get_blocklist_hash_key(message.get_chat().get_id());
     REDIS
         .query(|mut q| async move {
-            let mut iter: redis::AsyncIter<(String, i64)> = q.hscan(&hash_key).await?;
-            while let Some((key, item)) = iter.next_item().await {
+            let mut iter: redis::AsyncIter<(String, RedisStr)> = q.hscan(&hash_key).await?;
+            while let Some((key, rs)) = iter.next_item().await {
                 if key.is_empty() {
                     continue;
                 }
-                let glob = WildMatch::new(&key);
-                if glob.matches(text) {
-                    return get_blocklist(message, item).await;
+
+                let (item, filtertype): (i64, FilterConfig) = rs.get()?;
+
+                match filtertype {
+                    FilterConfig::Glob => {
+                        let glob = WildMatch::new(&key);
+                        if glob.matches(text) {
+                            return get_blocklist(message, item).await;
+                        }
+                    }
+                    FilterConfig::Text => {
+                        if text.contains(&key) {
+                            return get_blocklist(message, item).await;
+                        }
+                    }
+                    FilterConfig::Script(_) => {
+                        let res: Result<Dynamic> = ManagedRhai::new_mapper(
+                            key,
+                            &RHAI_ENGINE,
+                            (message.clone(),),
+                        )
+                        .post()
+                        .await;
+
+                        let res = match res {
+                            Ok(action) => {
+                                if action.is_bool() {
+                                if let Some(res) = action.try_cast::<bool>() {
+                                    log::info!("handling bool script {}", res);
+                                    if res {
+                                        get_blocklist(message, item).await
+                                    } else {
+                                        Ok(None)
+                                    }
+                                } else {
+                                    Ok(None)
+                                }
+
+                                } else {
+                                let model = get_blocklist(message, item).await?;
+                                let tn = action.type_name();
+                                let res = match (action.try_cast::<ModAction>(), model) {
+                                    (Some(ModAction::Reply(reply)), _) => {
+                                        ctx.reply(reply).await?;
+                                        None
+                                    }
+                                    (Some(ModAction::Ignore), _) => None,
+                                    (Some(modaction), Some(mut model)) => {
+                                        if let Some(action) = modaction.get_action_type() {
+                                            model.action = action;
+                                        }
+                                        model.reason = modaction.to_reason();
+                                        Some(model)
+                                    }
+                                    (None, Some(mut model)) => {
+                                        model.action = ActionType::Delete;
+                                        model.reason = None;
+                                        ctx.reply(format!("Blocklist mapper function returned invalid type. Was {}, expected bool or ModAction", tn)).await?;
+                                        Some(model)
+                                    }
+                                    (_, None) => None,
+                                };
+
+                                Ok(res)
+
+                                }
+                            }
+                            Err(err) => {
+                                let mut bl = get_blocklist(message, item).await?;
+                                if let Some(bl) = bl.as_mut() {
+                                    bl.action = ActionType::Delete;
+                                    bl.reason = None;
+                                    ctx.reply(format!(
+                                        "Failed to block message, rhai error: {}",
+                                        err
+                                    ))
+                                    .await?;
+                                }
+                                Ok(bl)
+                            }
+
+                        };
+                    if let Ok(res) = res {
+                        if res.is_some() {
+                            return Ok(res);
+                        }
+                    }
+
+                    }
                 }
             }
             Ok(None)
@@ -544,8 +834,12 @@ async fn update_cache_from_db(message: &Message) -> Result<()> {
                     p.set(&key, filter_st)
                         .expire(&key, CONFIG.timing.cache_timeout);
                     for trigger in triggers.into_iter() {
-                        p.hset(&hash_key, trigger.trigger, filter.id)
-                            .expire(&hash_key, CONFIG.timing.cache_timeout);
+                        p.hset(
+                            &hash_key,
+                            trigger.trigger,
+                            (filter.id, Some(filter.handle.as_ref())).to_redis()?,
+                        )
+                        .expire(&hash_key, CONFIG.timing.cache_timeout);
                     }
                 }
                 Ok(p)
@@ -561,17 +855,39 @@ async fn insert_blocklist(
     action: ActionType,
     reason: Option<String>,
     duration: Option<Duration>,
+    filter_type: FilterConfig,
 ) -> Result<()> {
+    let ft = filter_type.get_type();
+    let triggers = triggers
+        .iter()
+        .map(|v| {
+            if let FilterConfig::Script(_) = filter_type {
+                (*v).to_owned()
+            } else {
+                v.to_lowercase()
+            }
+        })
+        .collect::<Vec<String>>();
+
     let model = blocklists::ActiveModel {
         id: ActiveValue::NotSet,
         chat: ActiveValue::Set(message.get_chat().get_id()),
         action: ActiveValue::Set(action),
         reason: ActiveValue::Set(reason),
         duration: ActiveValue::Set(duration.map(|v| v.num_seconds())),
+        handle: ActiveValue::Set(filter_type.clone().get_handle()),
     };
 
-    let model = blocklists::Entity::insert(model)
-        .on_conflict(
+    let model = blocklists::Entity::insert(model);
+
+    let model = if let FilterConfig::Script(_) = filter_type {
+        model.on_conflict(
+            OnConflict::column(blocklists::Column::Handle)
+                .update_column(blocklists::Column::Duration)
+                .to_owned(),
+        )
+    } else {
+        model.on_conflict(
             OnConflict::columns([
                 blocklists::Column::Chat,
                 blocklists::Column::Action,
@@ -580,42 +896,42 @@ async fn insert_blocklist(
             .update_column(blocklists::Column::Duration)
             .to_owned(),
         )
-        .exec_with_returning(*DB)
-        .await?;
-    let triggers = triggers
-        .iter()
-        .map(|v| v.to_lowercase())
-        .collect::<Vec<String>>();
-    triggers::Entity::insert_many(
-        triggers
-            .iter()
-            .map(|v| {
-                triggers::Model {
-                    trigger: (*v).to_owned(),
-                    blocklist_id: model.id,
-                }
-                .into_active_model()
-            })
-            .collect::<Vec<triggers::ActiveModel>>(),
-    )
-    .on_conflict(
-        OnConflict::columns([triggers::Column::Trigger, triggers::Column::BlocklistId])
-            .update_columns([triggers::Column::Trigger, triggers::Column::BlocklistId])
-            .to_owned(),
-    )
-    .exec(*DB)
+    }
+    .exec_with_returning(*DB)
     .await?;
+
+    let t = triggers
+        .iter()
+        .map(|v| {
+            triggers::Model {
+                trigger: (*v).to_owned(),
+                blocklist_id: model.id,
+                filter_type: ft,
+            }
+            .into_active_model()
+        })
+        .collect::<Vec<triggers::ActiveModel>>();
+
+    triggers::Entity::insert_many(t)
+        .on_conflict(
+            OnConflict::columns([triggers::Column::Trigger, triggers::Column::BlocklistId])
+                .update_columns([triggers::Column::Trigger, triggers::Column::BlocklistId])
+                .to_owned(),
+        )
+        .exec(*DB)
+        .await?;
     let hash_key = get_blocklist_hash_key(message.get_chat().get_id());
-    let id = model.id;
+    let id = (model.id, filter_type).to_redis()?;
+    let model_id = model.id;
     REDIS
         .pipe(|p| {
             for trigger in triggers {
-                p.hset(&hash_key, trigger, id);
+                p.hset(&hash_key, trigger, &id);
             }
             p
         })
         .await?;
-    model.cache(get_blocklist_key(message, id)).await?;
+    model.cache(get_blocklist_key(message, model_id)).await?;
     Ok(())
 }
 
@@ -677,7 +993,15 @@ async fn command_blocklist<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()>
     } else {
         (Some(body), message)
     };
-    insert_blocklist(message, filters.as_slice(), action, f, duration.flatten()).await?;
+    insert_blocklist(
+        message,
+        filters.as_slice(),
+        action,
+        f,
+        duration.flatten(),
+        FilterConfig::Glob,
+    )
+    .await?;
 
     let filters = [""]
         .into_iter()
@@ -696,11 +1020,72 @@ async fn command_blocklist<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()>
     Ok(())
 }
 
-async fn delete(message: &Message) -> Result<()> {
-    TG.client
-        .build_delete_message(message.get_chat().get_id(), message.get_message_id())
-        .build()
-        .await?;
+async fn script_blocklist<'a>(ctx: &Context) -> Result<()> {
+    ctx.check_permissions(|p| p.can_manage_chat).await?;
+    log::info!("adding script blocklist ");
+    ctx.action_message(|ctx, am, args| async move {
+        let (name, args) = args
+            .and_then(|a| a.pop_slice())
+            .ok_or_else(|| ctx.fail_err("Need to provide a script name"))?;
+        let (message, text) = match am {
+            ActionMessage::Me(message) => (message, args.text),
+            ActionMessage::Reply(message) => (
+                message,
+                message
+                    .text
+                    .as_deref()
+                    .ok_or_else(|| ctx.fail_err("The replied message has no text"))?,
+            ),
+        };
+
+        if text.trim().is_empty() {
+            let res = blocklists::Entity::find()
+                .find_with_related(triggers::Entity)
+                .filter(blocklists::Column::Handle.eq(name.get_text()))
+                .all(*DB)
+                .await?;
+            if let Some((_, triggers)) = res.first() {
+                if let Some(trigger) = triggers.first() {
+                    let t = MarkupType::Pre(Some("rust".to_owned())).text(&trigger.trigger);
+                    ctx.reply_fmt(entity_fmt!(ctx, "empty", t)).await?;
+                    return Ok(());
+                }
+            }
+            ctx.reply(format!(
+                "The script blocklist {} does not exist",
+                name.get_text()
+            ))
+            .await?;
+        } else {
+            ManagedRhai::new_mapper(text.to_owned(), &RHAI_ENGINE, (message.clone(),))
+                .compile()
+                .speak_err(ctx, |e| {
+                    format!("Failed to compile blocklist script: {}", e)
+                })
+                .await?;
+
+            insert_blocklist(
+                message,
+                &[text],
+                ActionType::Delete,
+                None,
+                None,
+                FilterConfig::Script(name.get_text().to_owned()),
+            )
+            .await?;
+            let text = MarkupType::Pre(Some("rust".to_owned())).text(text);
+
+            message
+                .get_chat()
+                .reply_fmt(entity_fmt!(ctx, "addscriptlocklist", text))
+                .await?;
+        }
+        Ok(())
+    })
+    .await?;
+
+    //  let filters = format!("\n{}", filters);
+
     Ok(())
 }
 
@@ -714,74 +1099,61 @@ async fn warn(ctx: &Context, user: &User, reason: Option<String>) -> Result<()> 
 }
 
 async fn handle_trigger(ctx: &Context) -> Result<()> {
-    match ctx.update() {
-        UpdateExt::Message(message) | UpdateExt::EditedMessage(message) => {
-            if let Some(user) = message.get_from() {
-                if message.get_from().is_admin(message.get_chat()).await?
-                    || is_dm(message.get_chat())
-                    || is_approved(message.get_chat(), user).await?
-                {
-                    log::info!(
-                        "skipping trigger {}",
-                        message.get_from().is_admin(message.get_chat()).await?
-                    );
-                    return Ok(());
-                }
-
-                if let Some(text) = message.get_text() {
-                    if let Some(res) = search_cache(message, text).await? {
-                        let duration = res.duration.and_then(Duration::try_seconds);
-                        let duration_str = if let Some(duration) = duration {
-                            lang_fmt!(ctx, "duration", format_duration(duration.to_std()?))
-                        } else {
-                            String::new()
-                        };
-                        let reason_str = res
-                            .reason
-                            .as_ref()
-                            .map(|v| lang_fmt!(ctx, "reason", v))
-                            .unwrap_or_default();
-                        match res.action {
-                            ActionType::Mute => {
-                                ctx.mute(user.get_id(), ctx.try_get()?.chat, duration)
-                                    .await?;
-                                let mention = user.mention().await?;
-                                message
-                                    .reply_fmt(entity_fmt!(
-                                        ctx,
-                                        "blockmute",
-                                        mention,
-                                        duration_str,
-                                        reason_str
-                                    ))
-                                    .await?;
-                            }
-                            ActionType::Ban => {
-                                ctx.ban(user.get_id(), duration, true).await?;
-                                let mention = user.mention().await?;
-                                message
-                                    .reply_fmt(entity_fmt!(
-                                        ctx,
-                                        "blockban",
-                                        mention,
-                                        duration_str,
-                                        reason_str
-                                    ))
-                                    .await?;
-                            }
-                            ActionType::Warn => {
-                                warn(ctx, user, res.reason).await?;
-                            }
-                            ActionType::Shame => (),
-                            ActionType::Delete => (),
+    if let Some(message) = ctx.should_moderate().await {
+        if let Some(user) = message.get_from() {
+            if let Some(text) = message.get_text() {
+                if let Some(res) = search_cache(ctx, message, text).await? {
+                    let duration = res.duration.and_then(Duration::try_seconds);
+                    let duration_str = if let Some(duration) = duration {
+                        lang_fmt!(ctx, "duration", format_duration(duration.to_std()?))
+                    } else {
+                        String::new()
+                    };
+                    let reason_str = res
+                        .reason
+                        .as_ref()
+                        .map(|v| lang_fmt!(ctx, "reason", v))
+                        .unwrap_or_default();
+                    match res.action {
+                        ActionType::Mute => {
+                            ctx.mute(user.get_id(), ctx.try_get()?.chat, duration)
+                                .await?;
+                            let mention = user.mention().await?;
+                            message
+                                .reply_fmt(entity_fmt!(
+                                    ctx,
+                                    "blockmute",
+                                    mention,
+                                    duration_str,
+                                    reason_str
+                                ))
+                                .await?;
                         }
-                        delete(message).await?;
+                        ActionType::Ban => {
+                            ctx.ban(user.get_id(), duration, true).await?;
+                            let mention = user.mention().await?;
+                            message
+                                .reply_fmt(entity_fmt!(
+                                    ctx,
+                                    "blockban",
+                                    mention,
+                                    duration_str,
+                                    reason_str
+                                ))
+                                .await?;
+                        }
+                        ActionType::Warn => {
+                            warn(ctx, user, res.reason).await?;
+                        }
+                        ActionType::Shame => (),
+                        ActionType::Delete => (),
                     }
+                    message.delete().await?;
                 }
             }
         }
-        _ => (),
     }
+
     Ok(())
 }
 
@@ -789,16 +1161,42 @@ async fn list_triggers(message: &Message) -> Result<()> {
     message.check_permissions(|p| p.can_manage_chat).await?;
     let hash_key = get_blocklist_hash_key(message.get_chat().get_id());
     update_cache_from_db(message).await?;
-    let res: Option<HashMap<String, i64>> = REDIS.sq(|q| q.hgetall(&hash_key)).await?;
+    let res: Option<HashMap<String, RedisStr>> = REDIS.sq(|q| q.hgetall(&hash_key)).await?;
     if let Some(map) = res {
-        let vals = map
-            .into_iter()
-            .filter(|v| !v.0.is_empty())
-            .map(|(key, _)| format!("\t- {}", key))
-            .collect_vec()
+        let iter = map
+            .iter()
+            .filter_map(|(k, v)| {
+                let v: Option<(i64, FilterConfig)> = v.get().ok();
+                v.map(|v| (k, v))
+            })
+            .filter(|(k, _)| !k.is_empty());
+
+        let scripts = iter
+            .clone()
+            .filter_map(|(_, v)| {
+                if let FilterConfig::Script(handle) = v.1 {
+                    Some(format!("\t- {}", handle))
+                } else {
+                    None
+                }
+            })
             .join("\n");
+
+        let vals = iter
+            .filter_map(|(n, v)| {
+                if let FilterConfig::Glob = v.1 {
+                    Some(format!("\t- {}", n))
+                } else {
+                    None
+                }
+            })
+            .join("\n");
+
         message
-            .reply(format!("Found blocklist items:\n{}", vals))
+            .reply(format!(
+                "Found text blocklists:\n{}\n\nFound script blocklists:\n{}",
+                vals, scripts
+            ))
             .await?;
     } else {
         message.reply("No blocklist items found!").await?;
@@ -834,7 +1232,9 @@ async fn handle_command<'a>(ctx: &Context) -> Result<()> {
     {
         match cmd {
             "addblocklist" => command_blocklist(ctx, args).await?,
-            "rmblocklist" => delete_trigger(message, args.text).await?,
+            "scriptblocklist" => script_blocklist(ctx).await?,
+            "rmblocklist" => delete_trigger(ctx, args.text.to_owned()).await?,
+            "rmscriptblocklist" => delete_script(ctx, args.text.to_owned()).await?,
             "blocklist" => list_triggers(message).await?,
             "rmallblocklists" => stopall(ctx, ctx.message()?.get_chat().get_id()).await?,
             _ => handle_trigger(ctx).await?,

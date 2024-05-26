@@ -6,6 +6,7 @@
 
 use crate::statics::{AT_HANDLE, USERNAME};
 use crate::util::error::Fail;
+use crate::util::string::AlignCharBoundry;
 use crate::{
     persist::redis::RedisStr,
     statics::{CONFIG, REDIS},
@@ -23,6 +24,7 @@ use lazy_static::lazy_static;
 use macros::lang_fmt;
 use redis::AsyncCommands;
 use regex::Regex;
+use serde::Deserialize;
 use serde::{de::DeserializeOwned, Serialize};
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -61,6 +63,7 @@ fn get_input_type<'a>(
     if let Some(reply) = message.get_reply_to_message() {
         InputType::Reply(name, reply.get_text(), reply)
     } else {
+        let end = textargs.text.align_char_boundry(end);
         let tail = &textargs.text[end..];
         InputType::Command(name, Some(tail), message)
     }
@@ -89,12 +92,50 @@ pub type Entities<'a> = VecDeque<EntityArg<'a>>;
 /// type alias for parsed argument list of a command
 pub type Args<'a> = Vec<TextArg<'a>>;
 
+pub type OwnedArgs = Vec<OwnedTextArg>;
+
 /// Contains references to both the unparsed text of a command (not including the /command)
 /// and the same text parsed into and argument list for convienience
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, Hash)]
 pub struct TextArgs<'a> {
     pub text: &'a str,
     pub args: Args<'a>,
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, Hash)]
+pub struct OwnedTextArgs {
+    pub text: String,
+    pub args: OwnedArgs,
+}
+
+impl OwnedTextArgs {
+    pub fn get_ref(&self) -> TextArgs<'_> {
+        let mut args = TextArgs {
+            text: &self.text,
+            args: Vec::with_capacity(self.args.len()),
+        };
+        for a in self.args.as_slice() {
+            args.args.push(a.get_ref());
+        }
+        args
+    }
+}
+
+/// A single argument, could be either raw text separated by whitespace or a quoted
+/// text block
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, Hash)]
+pub enum OwnedTextArg {
+    Arg(String),
+    Quote(String),
+}
+
+impl OwnedTextArg {
+    pub fn get_ref(&'_ self) -> TextArg<'_> {
+        match self {
+            Self::Arg(a) => TextArg::Arg(a),
+            Self::Quote(a) => TextArg::Quote(a),
+        }
+    }
 }
 
 /// A ranged slice of an argument list. Useful for recursively deconstructing commands
@@ -107,7 +148,7 @@ pub struct ArgSlice<'a> {
 
 /// A single argument, could be either raw text separated by whitespace or a quoted
 /// text block
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, Hash)]
 pub enum TextArg<'a> {
     Arg(&'a str),
     Quote(&'a str),
@@ -174,7 +215,9 @@ where
         if let Some(arg) = self.args.first() {
             let text = match arg {
                 TextArg::Arg(arg) => self.text[arg.len()..].trim(),
-                TextArg::Quote(arg) => self.text[arg.len() + 2..].trim(),
+                TextArg::Quote(arg) => {
+                    self.text[self.text.align_char_boundry(arg.len() + 2)..].trim()
+                }
             };
             let res = ArgSlice {
                 text,
@@ -206,10 +249,12 @@ fn get_arg_type<'a>(message: &'a Message, entity: &'a MessageEntity) -> Option<E
     if let Some(text) = message.get_text().map_or(message.get_caption(), Some) {
         let start = entity.get_offset() as usize;
         let end = start + entity.get_length() as usize;
+        let end = text.align_char_boundry(end);
+        let start = text.align_char_boundry(start);
         let text = &text[start..end];
         match entity.get_tg_type() {
             "hashtag" => Some(EntityArg::Hashtag(text)),
-            "mention" => Some(EntityArg::Mention(&text[1..])), //do not include @ in mention
+            "mention" => Some(EntityArg::Mention(&text[text.align_char_boundry(1)..])), //do not include @ in mention
             "url" => Some(EntityArg::Url(text)),
             "text_mention" => entity.get_user().map(EntityArg::TextMention),
             "text_link" => entity.get_url().map(EntityArg::TextLink),
@@ -336,10 +381,13 @@ impl StaticContext {
                             }
                         })
                         .collect();
+                    let mut cb = 1;
+                    cb = head.as_str().align_char_boundry(cb);
+
                     Some((
-                        &head.as_str()[1..head.end()]
+                        (head.as_str()[cb..head.end()]
                             .trim_end()
-                            .trim_end_matches(&*AT_HANDLE),
+                            .trim_end_matches(&*AT_HANDLE)),
                         TextArgs {
                             text: tail,
                             args: raw_args,
@@ -580,9 +628,14 @@ impl Speak for Context {
     }
 }
 
+#[async_trait]
 impl UpdateHelpers for Context {
     fn user_event(&self) -> Option<super::admin_helpers::UserChanged<'_>> {
         self.update().user_event()
+    }
+
+    async fn should_moderate(&self) -> Option<&'_ Message> {
+        self.update().should_moderate().await
     }
 }
 pub async fn post_deep_link<T, F>(value: T, key_func: F) -> Result<String>

@@ -5,6 +5,7 @@
 use crate::persist::core::button;
 use crate::statics::TG;
 use crate::util::error::{BotError, Result};
+use crate::util::string::AlignCharBoundry;
 use botapi::gen_methods::CallSendMessage;
 use botapi::gen_types::{
     Chat, EReplyMarkup, InlineKeyboardButton, InlineKeyboardButtonBuilder, MessageEntity,
@@ -504,12 +505,12 @@ where
         let mut iter = s.chars().peekable();
         while let Some(c) = iter.next() {
             if let Some(n) = iter.peek() {
-                if c == '\\' && (*n == '\\' || is_valid(*n, header)) {
+                if c == '\\' && (*n == '\\' || is_valid(*n, header) || c != '}' || c != '{') {
                     continue;
                 }
             }
 
-            if c == '\\' || (is_valid(c, header) && c != '}' && c != '{') {
+            if c == '\\' || (is_valid(c, header) || c == '}' || c == '{') {
                 out.push('\\');
             }
 
@@ -523,7 +524,7 @@ where
         let mut iter = self.as_ref().chars().peekable();
         while let Some(c) = iter.next() {
             if let Some(n) = iter.peek() {
-                if is_valid(*n, header) && c != '\\' && *n != '\\' {
+                if (is_valid(*n, header) && c != '}' && c != '{') && c != '\\' && *n != '\\' {
                     return false;
                 }
             }
@@ -541,10 +542,13 @@ where
             if let Some(n) = iter.peek() {
                 if is_valid(*n, header) && c == '\\' {
                     res.push(*n);
+                    iter.next();
+                    continue;
                 } else {
                     res.push(c);
-                    res.push(*n);
                 }
+            } else {
+                res.push(c);
             }
         }
         Cow::Owned(res)
@@ -684,7 +688,8 @@ impl MarkupBuilder {
             .map(|v| is_dm(&v.chat))
             .unwrap_or(true);
         let button = if button_text.starts_with('#') && button_text.len() > 1 && is_dm {
-            let tail = &button_text[1..];
+            let idx = button_text.align_char_boundry(1);
+            let tail = &button_text[idx..];
 
             let button = InlineKeyboardButtonBuilder::new(hint)
                 .set_callback_data(Uuid::new_v4().to_string())
@@ -777,7 +782,7 @@ impl MarkupBuilder {
                     (TgSpan::Raw(s), _) => {
                         size += s.encode_utf16().count() as i64;
 
-                        self.text(s);
+                        self.text_internal(&s);
                     }
                     (TgSpan::Filling(filling), Some(chatuser)) if self.filling => {
                         match filling.as_str() {
@@ -790,7 +795,7 @@ impl MarkupBuilder {
                             "first" => {
                                 let first = chatuser.user.get_first_name().to_owned();
                                 size += first.encode_utf16().count() as i64;
-                                self.text(first);
+                                self.text_internal(&first);
                             }
                             "last" => {
                                 let last = chatuser
@@ -799,7 +804,7 @@ impl MarkupBuilder {
                                     .map(|v| v.to_owned())
                                     .unwrap_or_else(|| "".to_owned());
                                 size += last.encode_utf16().count() as i64;
-                                self.text(last);
+                                self.text_internal(&last);
                             }
                             "mention" => {
                                 let user = chatuser.user.clone();
@@ -810,12 +815,12 @@ impl MarkupBuilder {
                             "chatname" => {
                                 let chat = chatuser.chat.name_humanreadable().into_owned();
                                 size += chat.encode_utf16().count() as i64;
-                                self.text(chat);
+                                self.text_internal(&chat);
                             }
                             "id" => {
                                 let id = chatuser.user.get_id().to_string();
                                 size += id.encode_utf16().count() as i64;
-                                self.text(id);
+                                self.text_internal(&id);
                             }
                             "rules" => {
                                 self.rules().await?;
@@ -823,7 +828,7 @@ impl MarkupBuilder {
                             s => {
                                 let s = format!("{{{}}}", s);
                                 size += s.encode_utf16().count() as i64;
-                                self.text(s);
+                                self.text_internal(&s);
                             }
                         }
                     }
@@ -831,12 +836,12 @@ impl MarkupBuilder {
                         if filling.trim().is_empty() {
                             let s = format!("{{{}}}", filling);
                             size += s.encode_utf16().count() as i64;
-                            self.text(s);
+                            self.text_internal(&s);
                         } else {
                             if self.enabled_fillings {
                                 let s = format!("{{{}}}", filling);
                                 size += s.encode_utf16().count() as i64;
-                                self.text(s);
+                                self.text_internal(&s);
                             }
                             self.fillings.insert(filling);
                         }
@@ -892,7 +897,7 @@ impl MarkupBuilder {
             Block::OrderedList(l, _) => l.into_iter().for_each(|i| self.parse_listitem(i)),
             Block::UnorderedList(l) => l.into_iter().for_each(|i| self.parse_listitem(i)),
             Block::Raw(str) => {
-                self.text(str);
+                self.text_internal(&str);
             }
             Block::Hr => (),
         };
@@ -903,12 +908,12 @@ impl MarkupBuilder {
         match span {
             Span::Break => {
                 let s = "\n";
-                self.text(s);
+                self.text_internal(s);
                 s.encode_utf16().count() as i64
             }
             Span::Text(text) => {
                 let i = text.encode_utf16().count() as i64;
-                self.text(text);
+                self.text_internal(&text);
                 i
             }
             Span::Code(code) => {
@@ -1121,6 +1126,12 @@ impl MarkupBuilder {
 
     /// Appends new unformated text
     pub fn text<T: AsRef<str>>(&mut self, text: T) -> &'_ mut Self {
+        self.offset += text.unescape(self.enabled_header).encode_utf16().count() as i64;
+        self.push_text(text);
+        self
+    }
+
+    fn text_internal(&mut self, text: &str) -> &'_ mut Self {
         self.offset += self.push_text(text);
         self
     }
@@ -1140,7 +1151,7 @@ impl MarkupBuilder {
     /// Appends a markup value
     pub fn regular_fmt<T: AsRef<str>>(&mut self, entity_type: Markup<T>) -> &'_ mut Self {
         let text = entity_type.get_text();
-        let n = text.encode_utf16().count() as i64;
+        let n = text.unescape(self.enabled_header).encode_utf16().count() as i64;
         // let v = text.chars().filter(|p| *p == '\\').count() as i64;
 
         self.text.push_str(&text.escape(self.enabled_header));
@@ -1152,7 +1163,7 @@ impl MarkupBuilder {
                 let entity = match entity_type.markup_type {
                     MarkupType::TextLink(link) => entity.set_url(link),
                     MarkupType::TextMention(mention) => entity.set_user(mention),
-                    MarkupType::Pre(pre) => entity.set_language(pre),
+                    MarkupType::Pre(Some(pre)) => entity.set_language(pre),
                     MarkupType::CustomEmoji(emoji) => entity.set_custom_emoji_id(emoji),
                     _ => entity,
                 };
@@ -1182,7 +1193,7 @@ impl MarkupBuilder {
                 let entity = match entity_type.markup_type {
                     MarkupType::TextLink(link) => entity.set_url(link),
                     MarkupType::TextMention(mention) => entity.set_user(mention),
-                    MarkupType::Pre(pre) => entity.set_language(pre),
+                    MarkupType::Pre(Some(pre)) => entity.set_language(pre),
                     MarkupType::CustomEmoji(emoji) => entity.set_custom_emoji_id(emoji),
                     _ => entity,
                 };
@@ -1404,6 +1415,8 @@ pub async fn retro_fillings<'a>(
         return Ok((text, entities));
     }
     for mat in iter {
+        // I promise no UTF-8 weirdness here. Regex is {.*} so always has
+        // ascii ends
         let filling = &mat.as_str()[1..mat.len() - 1];
         let regular = &text[prev..mat.start()];
         res.push_str(regular);
@@ -1545,9 +1558,10 @@ pub enum MarkupType {
     Code,
     Mention,
     Url,
+    BlockQuote,
     TextLink(String),
     TextMention(User),
-    Pre(String),
+    Pre(Option<String>),
     CustomEmoji(String),
 }
 
@@ -1582,6 +1596,7 @@ where
             MarkupType::TextMention(_) => "text_mention",
             MarkupType::TextLink(_) => "text_link",
             MarkupType::Pre(_) => "pre",
+            MarkupType::BlockQuote => "blockquote",
             MarkupType::CustomEmoji(_) => "custom_emoji",
             MarkupType::StrikeThrough => "strikethrough",
             MarkupType::HashTag => "hashtag",
@@ -1831,6 +1846,25 @@ mod test {
         let test = "This is a | string";
         let res = test.escape(false);
         assert_eq!(res, "This is a \\| string");
+    }
+
+    #[test]
+    fn unescape() {
+        let test = "this is a test\\_message";
+        let control = "already unescaped";
+        assert_eq!(test.unescape(false), "this is a test_message");
+        assert_eq!(control.unescape(false), "already unescaped");
+    }
+
+    #[test]
+    fn is_escaped() {
+        let is_escaped = "this is a test\\_message";
+        let not = "this is a test_message";
+        let control = "this is a test message";
+
+        assert!(is_escaped.is_escaped(true));
+        assert!(!not.is_escaped(true));
+        assert!(control.is_escaped(true));
     }
 
     #[test]

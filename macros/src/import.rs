@@ -227,16 +227,22 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
 
                     let help = if let Some(&crate::tg::command::Cmd{cmd, ref args, message, lang, ..}) = ctx.cmd() {
                          match cmd {
-                            "help" => crate::tg::client::show_help(&ctx, message, helps, args.args.first().map(|a| a.get_text())).await,
+                            "help" => crate::tg::client::show_help(&ctx, message, helps, args).await,
                             "start" => match args.args.first().map(|a| a.get_text()) {
                                 Some(v) => {
+                                    let deep_args: Option<crate::tg::command::OwnedTextArgs> =
+                                        crate::tg::command::handle_deep_link(&ctx, crate::tg::client::help_key).await?;
+                                    let deep_args = deep_args.as_ref().map(|v| v.get_ref());
                                     if let (Some("help"), Some(s)) = (v.get(0..4), v.get(4..)) {
                                         let s = if s.len() > 0 {
                                             Some(s)
                                         } else {
                                             None
                                         };
-                                        crate::tg::client::show_help(&ctx, message, helps, s).await?;
+                                        crate::tg::client::show_help(&ctx, message, helps, args).await?;
+                                        Ok(true)
+                                    } else if let Some(deep) = deep_args {
+                                        crate::tg::client::show_help(&ctx, message, helps, &deep).await?;
                                         Ok(true)
                                     } else {
                                         Ok(false)

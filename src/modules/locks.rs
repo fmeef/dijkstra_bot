@@ -1,10 +1,9 @@
 use self::entities::{default_locks, locks};
 use crate::metadata::ModuleHelpers;
 use crate::persist::admin::actions::ActionType;
-use crate::persist::admin::approvals;
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache};
 use crate::statics::{CONFIG, DB, REDIS};
-use crate::tg::admin_helpers::ban_message;
+use crate::tg::admin_helpers::{ban_message, is_approved, UpdateHelpers};
 use crate::tg::command::{Cmd, Context, TextArg, TextArgs};
 use crate::tg::dialog::is_chat_member;
 use crate::tg::permissions::*;
@@ -12,7 +11,7 @@ use crate::tg::user::{get_user_username, Username};
 use crate::util::error::{BotError, Result};
 use crate::util::string::{get_chat_lang, Lang};
 use crate::{metadata::metadata, statics::TG, util::string::Speak};
-use botapi::gen_types::{Chat, Message, UpdateExt, User};
+use botapi::gen_types::{Chat, Message, UpdateExt};
 use chrono::Duration;
 use entities::locks::LockType;
 use futures::future::BoxFuture;
@@ -742,31 +741,6 @@ async fn lock_action<'a>(message: &Message, args: &TextArgs<'a>) -> Result<()> {
     Ok(())
 }
 
-#[inline(always)]
-fn get_approval_key(chat: &Chat, user: &User) -> String {
-    format!("ap:{}:{}", chat.get_id(), user.get_id())
-}
-
-async fn is_approved(chat: &Chat, user: &User) -> Result<bool> {
-    let chat_id = chat.get_id();
-    let user_id = user.get_id();
-    let key = get_approval_key(chat, user);
-    let res = default_cache_query(
-        |_, _| async move {
-            let res = approvals::Entity::find_by_id((chat_id, user_id))
-                .one(*DB)
-                .await?;
-            Ok(res)
-        },
-        Duration::try_seconds(CONFIG.timing.cache_timeout).unwrap(),
-    )
-    .query(&key, &())
-    .await?
-    .is_some();
-
-    Ok(res)
-}
-
 async fn cmd_available(ctx: &Context) -> Result<()> {
     let available = ["[*Available locks]:".to_owned()]
         .into_iter()
@@ -869,53 +843,63 @@ where
     Ok(())
 }
 
+async fn handle_message_event(
+    message: &Message,
+    ctx: &Context,
+    action: ActionType,
+    locks: &[LockType],
+) -> Result<()> {
+    if let Some(user) = message.get_from() {
+        if is_approved(message.get_chat(), user.id).await? {
+            return Ok(());
+        }
+    }
+    if message.get_from().is_admin(message.get_chat()).await? {
+        return Ok(());
+    }
+    let default = get_default_settings(message.get_chat()).await?;
+    let lang = ctx.try_get()?.lang;
+    let reasons = locks
+        .iter()
+        .map(|v| lang_fmt!(lang, "lockedinchat", v.get_name()))
+        .collect::<Vec<String>>()
+        .join("\n");
+
+    match action {
+        ActionType::Delete => {}
+        ActionType::Ban => {
+            ban_message(message, default.duration.and_then(Duration::try_seconds)).await?;
+            message.reply(lang_fmt!(lang, "lockban", reasons)).await?;
+        }
+        ActionType::Warn => {
+            if let Some(chat) = message.get_sender_chat() {
+                TG.client
+                    .build_ban_chat_sender_chat(message.get_chat().get_id(), chat.get_id())
+                    .build()
+                    .await?;
+            } else if let Some(user) = message.get_from() {
+                ctx.warn_with_action(
+                    user.get_id(),
+                    Some(&reasons),
+                    default.duration.and_then(Duration::try_seconds),
+                )
+                .await?;
+            }
+        }
+        _ => (),
+    }
+
+    TG.client
+        .build_delete_message(message.get_chat().get_id(), message.get_message_id())
+        .build()
+        .await?;
+    Ok(())
+}
+
 async fn handle_user_event(update: &UpdateExt, ctx: &Context) -> Result<()> {
     if let (Some(action), locks) = action_from_update(update).await? {
-        if let UpdateExt::Message(ref message) | UpdateExt::EditedMessage(ref message) = update {
-            if let Some(user) = message.get_from() {
-                if is_approved(message.get_chat(), user).await? {
-                    return Ok(());
-                }
-            }
-            if message.get_from().is_admin(message.get_chat()).await? {
-                return Ok(());
-            }
-            let default = get_default_settings(message.get_chat()).await?;
-            let lang = ctx.try_get()?.lang;
-            let reasons = locks
-                .into_iter()
-                .map(|v| lang_fmt!(lang, "lockedinchat", v.get_name()))
-                .collect::<Vec<String>>()
-                .join("\n");
-
-            match action {
-                ActionType::Delete => {}
-                ActionType::Ban => {
-                    ban_message(message, default.duration.and_then(Duration::try_seconds)).await?;
-                    message.reply(lang_fmt!(lang, "lockban", reasons)).await?;
-                }
-                ActionType::Warn => {
-                    if let Some(chat) = message.get_sender_chat() {
-                        TG.client
-                            .build_ban_chat_sender_chat(message.get_chat().get_id(), chat.get_id())
-                            .build()
-                            .await?;
-                    } else if let Some(user) = message.get_from() {
-                        ctx.warn_with_action(
-                            user.get_id(),
-                            Some(&reasons),
-                            default.duration.and_then(Duration::try_seconds),
-                        )
-                        .await?;
-                    }
-                }
-                _ => (),
-            }
-
-            TG.client
-                .build_delete_message(message.get_chat().get_id(), message.get_message_id())
-                .build()
-                .await?;
+        if let Some(message) = update.should_moderate().await {
+            handle_message_event(message, ctx, action, &locks).await?;
         }
     }
     Ok(())

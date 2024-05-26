@@ -2,7 +2,7 @@ use crate::tg::admin_helpers::{approve, get_approvals, unapprove};
 use crate::tg::command::{Cmd, Context};
 use crate::tg::permissions::*;
 
-use crate::tg::markdown::{EntityMessage, MarkupType};
+use crate::tg::markdown::EntityMessage;
 use crate::tg::user::{get_user, GetUser, Username};
 use crate::util::error::{BotError, Result, SpeakErr};
 
@@ -13,7 +13,7 @@ use botapi::gen_types::UserBuilder;
 use macros::{entity_fmt, lang_fmt, update_handler};
 metadata!("Approvals",
     r#"
-    Approvals are a tool to allow specific users to be ignored by automated admin actions  
+    Approvals are a tool to allow specific users to be ignored by automated admin actions
     "#,
     { command = "approve", help = "Approves a user"},
     { command = "unapprove", help = "Removals approval" },
@@ -25,13 +25,8 @@ async fn cmd_approve<'a>(ctx: &Context) -> Result<()> {
     ctx.action_user(|ctx, user, _| async move {
         if let Some(user) = user.get_cached_user().await? {
             approve(ctx.message()?.get_chat(), &user).await?;
-            let name = user.name_humanreadable();
-            ctx.reply_fmt(entity_fmt!(
-                ctx,
-                "approved",
-                MarkupType::TextMention(user.clone()).text(&name)
-            ))
-            .await?;
+            let name = user.mention().await?;
+            ctx.reply_fmt(entity_fmt!(ctx, "approved", name)).await?;
         }
         Ok(())
     })

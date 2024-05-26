@@ -11,7 +11,6 @@ use crate::util::string::Speak;
 use botapi::gen_types::Message;
 use macros::update_handler;
 use rhai::Dynamic;
-use rhai::Scope;
 use sea_orm_migration::MigrationTrait;
 
 metadata!(
@@ -120,34 +119,6 @@ async fn handle_markdown(message: &Message) -> Result<bool> {
     Ok(false)
 }
 
-async fn eval_script(ctx: &Context) -> Result<()> {
-    ctx.action_message(|ctx, am, args| async move {
-        let args = args.ok_or_else(|| ctx.fail_err("missing arg"))?;
-        let mut scope = Scope::new();
-        scope.set_or_push("m", ctx.message()?.clone());
-        let text = match am {
-            ActionMessage::Me(_) => args.text.to_owned(),
-            ActionMessage::Reply(m) => m.text.clone().unwrap_or_default(),
-        };
-        log::info!("{}", text);
-        let res: Dynamic = ManagedRhai::new(text, &RHAI_ENGINE)
-            .scope(scope)
-            .post()
-            .await
-            .speak_err(ctx, |e| format!("Failed to compile: {}", e))
-            .await?;
-        let res = res.to_string();
-        let res = if res.trim().is_empty() {
-            "()".to_owned()
-        } else {
-            res
-        };
-        ctx.reply(res).await?;
-        Ok(())
-    })
-    .await
-}
-
 async fn map_script(ctx: &Context) -> Result<()> {
     ctx.action_message(|ctx, am, args| async move {
         let args = args.ok_or_else(|| ctx.fail_err("missing arg"))?;
@@ -211,9 +182,6 @@ pub async fn handle_update(ctx: &Context) -> Result<()> {
             }
             "biig" => {
                 message.reply(BIG).await?;
-            }
-            "eval" => {
-                eval_script(ctx).await?;
             }
             "map" => {
                 map_script(ctx).await?;

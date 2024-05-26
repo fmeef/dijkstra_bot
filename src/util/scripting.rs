@@ -8,6 +8,7 @@ use rhai::{export_module, exported_module, Dynamic, Engine, FnPtr, FuncArgs, Sco
 use threadpool::ThreadPool;
 use tokio::sync::mpsc;
 
+use crate::persist::admin::actions::ActionType;
 use crate::statics::CONFIG;
 
 use super::error::{BotError, Result};
@@ -25,14 +26,139 @@ thread_local! {
         terminate_on_progress(&mut engine, 1024);
         setup_all_rhai(&mut engine);
         let tg_api = exported_module!(tg_api);
+        let action = exported_module!(action);
         engine.register_global_module(tg_api.into());
+        engine.register_static_module("ModAction" ,action.into());
+        engine.register_type_with_name::<ModAction>("ModAction");
         engine
     });
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub enum ModAction {
+    Ignore,
+    Delete,
+    Reply(String),
+    Warn(Option<String>),
+    Ban(Option<String>),
+    Mute(Option<String>),
+}
+
+impl ModAction {
+    pub fn is_delete(&self) -> bool {
+        matches!(self, Self::Ignore)
+    }
+
+    pub fn get_action_type(&self) -> Option<ActionType> {
+        match self {
+            Self::Reply(_) => None,
+            Self::Ignore => None,
+            Self::Delete => Some(ActionType::Delete),
+            Self::Warn(_) => Some(ActionType::Warn),
+            Self::Ban(_) => Some(ActionType::Ban),
+            Self::Mute(_) => Some(ActionType::Mute),
+        }
+    }
+
+    pub fn to_reason(self) -> Option<String> {
+        match self {
+            Self::Reply(r) => Some(r),
+            Self::Ignore => None,
+            Self::Delete => None,
+            Self::Mute(r) => r,
+            Self::Ban(r) => r,
+            Self::Warn(r) => r,
+        }
+    }
+
+    // pub fn with_reason(self) -> Option<(ActionType, Option<String>)> {
+    //     match self {
+    //         Self::Ignore => None,
+    //         Self::Reply()
+    //     }
+    // }
+}
+
+#[allow(non_upper_case_globals, non_snake_case)]
+#[export_module]
+mod action {
+    use rhai::Dynamic;
+
+    use super::ModAction;
+
+    pub const Ignore: ModAction = ModAction::Ignore;
+
+    pub const Delete: ModAction = ModAction::Delete;
+
+    pub fn Reply(value: String) -> ModAction {
+        ModAction::Reply(value)
+    }
+
+    pub fn Warn(value: Dynamic) -> ModAction {
+        if let Some(value) = value.try_cast::<String>() {
+            ModAction::Warn(Some(value))
+        } else {
+            ModAction::Warn(None)
+        }
+    }
+
+    pub fn Ban(value: Dynamic) -> ModAction {
+        if let Some(value) = value.try_cast::<String>() {
+            ModAction::Ban(Some(value))
+        } else {
+            ModAction::Ban(None)
+        }
+    }
+
+    pub fn Mute(value: Dynamic) -> ModAction {
+        if let Some(value) = value.try_cast::<String>() {
+            ModAction::Mute(Some(value))
+        } else {
+            ModAction::Mute(None)
+        }
+    }
+
+    /// Return the current variant of `MyEnum`.
+    #[rhai_fn(global, get = "enum_type", pure)]
+    pub fn get_type(my_enum: &mut ModAction) -> String {
+        match my_enum {
+            ModAction::Ignore => "Ignore".to_string(),
+            ModAction::Delete => "Delete".to_string(),
+            ModAction::Reply(_) => "Reply".to_string(),
+            ModAction::Warn(_) => "Warn".to_string(),
+            ModAction::Ban(_) => "Ban".to_string(),
+            ModAction::Mute(_) => "Mute".to_owned(),
+        }
+    }
+
+    /// Return the inner value.
+    #[rhai_fn(global, get = "value", pure)]
+    pub fn get_value(my_enum: &mut ModAction) -> Dynamic {
+        match my_enum {
+            ModAction::Ignore => Dynamic::UNIT,
+            ModAction::Delete => Dynamic::UNIT,
+            ModAction::Reply(x) => Dynamic::from(x.clone()),
+            ModAction::Warn(x) => Dynamic::from(x.clone()),
+            ModAction::Ban(x) => Dynamic::from(x.clone()),
+            ModAction::Mute(x) => Dynamic::from(x.clone()),
+        }
+    }
+
+    // Printing
+    #[rhai_fn(global, name = "to_string", pure)]
+    pub fn to_string(my_enum: &mut ModAction) -> String {
+        format!("{my_enum:?}")
+    }
+
+    #[rhai_fn(global, name = "to_debug", pure)]
+    pub fn to_debug(my_enum: &mut ModAction) -> String {
+        format!("{:?}", my_enum)
+    }
+}
 #[export_module]
 mod tg_api {
     use crate::util::glob::WildMatch;
+    use rhai::Dynamic;
 
     pub fn glob(value: &str, matches: &str) -> bool {
         WildMatch::new(value).matches(matches)

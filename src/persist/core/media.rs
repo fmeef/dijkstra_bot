@@ -13,8 +13,8 @@ use crate::{
 };
 use botapi::gen_types::{
     EReplyMarkup, FileData, InlineKeyboardButton, InputFile, InputMedia, InputMediaAudioBuilder,
-    InputMediaDocumentBuilder, InputMediaPhotoBuilder, InputMediaVideoBuilder, Message,
-    MessageEntity, ReplyParametersBuilder,
+    InputMediaDocumentBuilder, InputMediaPhotoBuilder, InputMediaVideoBuilder,
+    LinkPreviewOptionsBuilder, Message, MessageEntity, ReplyParametersBuilder,
 };
 use futures::future::BoxFuture;
 use sea_orm::entity::prelude::*;
@@ -188,7 +188,7 @@ where
     }
 
     pub async fn entity_message(mut self, message: EntityMessage) -> Result<Self> {
-        let (text, entities, kb) = message.builder.build_murkdown().await?;
+        let (text, entities, kb) = message.builder.build_murkdown_nofail().await;
         self.extra_entities = Some(entities);
         self.text = Some(text);
         self.override_buttons = Some(kb);
@@ -522,6 +522,11 @@ where
                         .build_send_message(chat, &text)
                         .reply_markup(&buttons)
                         .entities(&entities)
+                        .link_preview_options(
+                            &LinkPreviewOptionsBuilder::new()
+                                .set_is_disabled(true)
+                                .build(),
+                        )
                         .build()
                         .await
                 }
@@ -668,6 +673,11 @@ where
                     )
                     .reply_markup(&buttons)
                     .entities(&entities)
+                    .link_preview_options(
+                        &LinkPreviewOptionsBuilder::new()
+                            .set_is_disabled(true)
+                            .build(),
+                    )
                     .build()
                     .await
             }

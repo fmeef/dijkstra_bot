@@ -11,7 +11,9 @@ use crate::tg::markdown::{EntityMessage, MarkupBuilder};
 use crate::util::error::Result;
 use async_trait::async_trait;
 use botapi::bot::Part;
-use botapi::gen_types::{Chat, EReplyMarkup, FileData, Message, ReplyParametersBuilder};
+use botapi::gen_types::{
+    Chat, EReplyMarkup, FileData, LinkPreviewOptionsBuilder, Message, ReplyParametersBuilder,
+};
 use chrono::Duration;
 use redis::Script;
 use sea_orm::sea_query::OnConflict;
@@ -119,6 +121,11 @@ impl Speak for i64 {
                 .build_send_message(*self, &text)
                 .entities(&entities)
                 .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(markup.build()))
+                .link_preview_options(
+                    &LinkPreviewOptionsBuilder::new()
+                        .set_is_disabled(true)
+                        .build(),
+                )
                 .build()
                 .await?;
 
@@ -130,7 +137,18 @@ impl Speak for i64 {
 
     async fn speak_fmt(&self, mut message: EntityMessage) -> Result<Option<Message>> {
         if !should_ignore_chat(*self).await? {
-            Ok(Some(message.call().await.build().await?))
+            Ok(Some(
+                message
+                    .call()
+                    .await
+                    .link_preview_options(
+                        &LinkPreviewOptionsBuilder::new()
+                            .set_is_disabled(true)
+                            .build(),
+                    )
+                    .build()
+                    .await?,
+            ))
         } else {
             Ok(None)
         }
@@ -138,7 +156,18 @@ impl Speak for i64 {
 
     async fn reply_fmt(&self, mut message: EntityMessage) -> Result<Option<Message>> {
         if !should_ignore_chat(*self).await? {
-            Ok(Some(message.call().await.build().await?))
+            Ok(Some(
+                message
+                    .call()
+                    .await
+                    .link_preview_options(
+                        &LinkPreviewOptionsBuilder::new()
+                            .set_is_disabled(true)
+                            .build(),
+                    )
+                    .build()
+                    .await?,
+            ))
         } else {
             Ok(None)
         }
@@ -177,6 +206,11 @@ impl Speak for i64 {
                 .entities(&entities)
                 .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(markup.build()))
                 .reply_parameters(&ReplyParametersBuilder::new(reply).build())
+                .link_preview_options(
+                    &LinkPreviewOptionsBuilder::new()
+                        .set_is_disabled(true)
+                        .build(),
+                )
                 .build()
                 .await?;
 
@@ -219,6 +253,11 @@ impl Speak for Message {
                 .build_send_message(self.get_chat().get_id(), &text)
                 .entities(&entities)
                 .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(markup.build()))
+                .link_preview_options(
+                    &LinkPreviewOptionsBuilder::new()
+                        .set_is_disabled(true)
+                        .build(),
+                )
                 .build()
                 .await?;
 
@@ -230,7 +269,18 @@ impl Speak for Message {
 
     async fn speak_fmt(&self, mut message: EntityMessage) -> Result<Option<Message>> {
         if !should_ignore_chat(self.get_chat().get_id()).await? {
-            Ok(Some(message.call().await.build().await?))
+            Ok(Some(
+                message
+                    .call()
+                    .await
+                    .link_preview_options(
+                        &LinkPreviewOptionsBuilder::new()
+                            .set_is_disabled(true)
+                            .build(),
+                    )
+                    .build()
+                    .await?,
+            ))
         } else {
             Ok(None)
         }
@@ -243,6 +293,11 @@ impl Speak for Message {
                     .call()
                     .await
                     .reply_parameters(&ReplyParametersBuilder::new(self.message_id).build())
+                    .link_preview_options(
+                        &LinkPreviewOptionsBuilder::new()
+                            .set_is_disabled(true)
+                            .build(),
+                    )
                     .build()
                     .await?,
             ))
@@ -284,6 +339,11 @@ impl Speak for Message {
                 .entities(&entities)
                 .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(markup.build()))
                 .reply_parameters(&ReplyParametersBuilder::new(self.get_message_id()).build())
+                .link_preview_options(
+                    &LinkPreviewOptionsBuilder::new()
+                        .set_is_disabled(true)
+                        .build(),
+                )
                 .build()
                 .await?;
             Ok(Some(m))
@@ -325,6 +385,11 @@ impl Speak for Message {
                 .entities(&entities)
                 .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(markup.build()))
                 .reply_parameters(&ReplyParametersBuilder::new(reply).build())
+                .link_preview_options(
+                    &LinkPreviewOptionsBuilder::new()
+                        .set_is_disabled(true)
+                        .build(),
+                )
                 .build()
                 .await?;
             Ok(Some(m))
@@ -344,6 +409,11 @@ impl Speak for Chat {
             let m = TG
                 .client()
                 .build_send_message(self.get_id(), message.as_ref())
+                .link_preview_options(
+                    &LinkPreviewOptionsBuilder::new()
+                        .set_is_disabled(true)
+                        .build(),
+                )
                 .build()
                 .await?;
             Ok(Some(m))
@@ -354,7 +424,18 @@ impl Speak for Chat {
 
     async fn speak_fmt(&self, mut message: EntityMessage) -> Result<Option<Message>> {
         if !should_ignore_chat(self.get_id()).await? {
-            Ok(Some(message.call().await.build().await?))
+            Ok(Some(
+                message
+                    .call()
+                    .await
+                    .link_preview_options(
+                        &LinkPreviewOptionsBuilder::new()
+                            .set_is_disabled(true)
+                            .build(),
+                    )
+                    .build()
+                    .await?,
+            ))
         } else {
             Ok(None)
         }
@@ -362,7 +443,18 @@ impl Speak for Chat {
 
     async fn reply_fmt(&self, mut message: EntityMessage) -> Result<Option<Message>> {
         if !should_ignore_chat(self.get_id()).await? {
-            Ok(Some(message.call().await.build().await?))
+            Ok(Some(
+                message
+                    .call()
+                    .await
+                    .link_preview_options(
+                        &LinkPreviewOptionsBuilder::new()
+                            .set_is_disabled(true)
+                            .build(),
+                    )
+                    .build()
+                    .await?,
+            ))
         } else {
             Ok(None)
         }
@@ -383,6 +475,11 @@ impl Speak for Chat {
                 .client()
                 .build_send_message(self.get_id(), message.as_ref())
                 .reply_parameters(&ReplyParametersBuilder::new(reply).build())
+                .link_preview_options(
+                    &LinkPreviewOptionsBuilder::new()
+                        .set_is_disabled(true)
+                        .build(),
+                )
                 .build()
                 .await?;
             Ok(Some(m))
@@ -438,4 +535,40 @@ pub async fn set_chat_lang(chat: &Chat, lang: Lang) -> Result<()> {
         .await?;
 
     Ok(())
+}
+
+pub trait AlignCharBoundry {
+    fn align_char_boundry(&self, idx: usize) -> usize;
+}
+
+impl AlignCharBoundry for &str {
+    fn align_char_boundry(&self, mut idx: usize) -> usize {
+        while !self.is_char_boundary(idx) && idx < self.len() {
+            idx += 1;
+        }
+        idx
+    }
+}
+
+impl AlignCharBoundry for String {
+    fn align_char_boundry(&self, idx: usize) -> usize {
+        self.as_str().align_char_boundry(idx)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::AlignCharBoundry;
+
+    #[test]
+    fn align_cyrillic_shit() {
+        let coin_scam = "выносим с игры быстро если успеете https://playdog.io";
+
+        for x in 0..coin_scam.len() {
+            let align = coin_scam.align_char_boundry(x);
+            println!("x={} align={} len={}", x, align, coin_scam.len());
+
+            assert!(coin_scam.is_char_boundary(align));
+        }
+    }
 }

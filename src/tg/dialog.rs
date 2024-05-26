@@ -15,7 +15,7 @@ use ::redis::AsyncCommands;
 
 use botapi::gen_types::{
     CallbackQuery, Chat, InlineKeyboardButtonBuilder, InlineKeyboardMarkup,
-    MaybeInaccessibleMessage, Message, UpdateExt,
+    LinkPreviewOptionsBuilder, MaybeInaccessibleMessage, Message, UpdateExt,
 };
 use chrono::{DateTime, Duration, Utc};
 use futures::future::BoxFuture;
@@ -604,6 +604,11 @@ impl Conversation {
                 .message_id(message.get_message_id())
                 .reply_markup(&n)
                 .entities(&entities)
+                .link_preview_options(
+                    &LinkPreviewOptionsBuilder::new()
+                        .set_is_disabled(true)
+                        .build(),
+                )
                 .chat_id(message.get_chat().get_id())
                 .build()
                 .await?;

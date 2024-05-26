@@ -24,6 +24,19 @@ pub enum ActionType {
     Delete,
 }
 
+#[derive(
+    EnumIter, DeriveActiveEnum, Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Hash,
+)]
+#[sea_orm(rs_type = "i32", db_type = "Integer")]
+pub enum FilterType {
+    #[sea_orm(num_value = 1)]
+    Text,
+    #[sea_orm(num_value = 2)]
+    Glob,
+    #[sea_orm(num_value = 3)]
+    Script,
+}
+
 impl IntoActiveValue<ActionType> for ActionType {
     fn into_active_value(self) -> sea_orm::ActiveValue<ActionType> {
         sea_orm::ActiveValue::Set(self)

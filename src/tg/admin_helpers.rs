@@ -13,12 +13,14 @@ use crate::{
             approvals, warns,
         },
         core::{dialogs, users},
-        redis::{default_cache_query, CachedQuery, CachedQueryTrait, RedisCache, RedisStr},
+        redis::{
+            default_cache_query, CachedQuery, CachedQueryTrait, RedisCache, RedisStr, ToRedisStr,
+        },
     },
     statics::{CONFIG, DB, ME, REDIS, TG},
     util::{
         error::{BotError, Fail, Result, SpeakErr},
-        string::{get_chat_lang, Speak},
+        string::{get_chat_lang, AlignCharBoundry, Speak},
     },
 };
 
@@ -47,12 +49,47 @@ use super::{
     command::{ArgSlice, Context, Entities, EntityArg, PopSlice},
     dialog::{dialog_or_default, get_dialog_key},
     markdown::MarkupType,
-    permissions::{GetCachedAdmins, IsAdmin},
+    permissions::{GetCachedAdmins, IsAdmin, IsGroupAdmin},
     user::{get_user_username, GetUser, Username},
 };
 
 lazy_static! {
     static ref VECDEQUE: Entities<'static> = VecDeque::new();
+}
+
+#[inline(always)]
+fn get_chat_key(chat: i64) -> String {
+    format!("gcch:{}", chat)
+}
+
+#[async_trait]
+pub trait GetChat {
+    async fn get_chat_cached(&self) -> Result<ChatFullInfo>;
+    async fn refresh_chat(&self) -> Result<()>;
+}
+
+#[async_trait]
+impl GetChat for i64 {
+    async fn get_chat_cached(&self) -> Result<ChatFullInfo> {
+        let key = get_chat_key(*self);
+        REDIS
+            .query(|mut q| async move {
+                let chat: Option<RedisStr> = q.get(&key).await?;
+                if let Some(chat) = chat {
+                    Ok(chat.get()?)
+                } else {
+                    let c = TG.client.get_chat(*self).await?;
+                    q.set(&key, c.to_redis()?).await?;
+                    q.expire(&key, 15).await?;
+                    Ok(c)
+                }
+            })
+            .await
+    }
+
+    async fn refresh_chat(&self) -> Result<()> {
+        Ok(())
+    }
 }
 
 /// Helper type for a named pair of chat and  user api types. Used to refer to a
@@ -87,13 +124,16 @@ impl<'a> UserChanged<'a> {
 }
 
 /// Trait for extending UpdateExt with helper functions to simplify parsing
+#[async_trait]
 pub trait UpdateHelpers {
     /// Since telegram requires a lot of different cases to determine whether an
     /// update is a 'chat left' or 'chat joined' event we simplify it by parsing to a
     /// UserChanged type
     fn user_event(&self) -> Option<UserChanged<'_>>;
+    async fn should_moderate(&self) -> Option<&'_ Message>;
 }
 
+#[async_trait]
 impl UpdateHelpers for UpdateExt {
     /// Since telegram requires a lot of different cases to determine whether an
     /// update is a 'chat left' or 'chat joined' event we simplify it by parsing to a
@@ -133,15 +173,59 @@ impl UpdateHelpers for UpdateExt {
             None
         }
     }
+
+    async fn should_moderate(&self) -> Option<&'_ Message> {
+        match self {
+            UpdateExt::Message(ref message) | UpdateExt::EditedMessage(ref message) => {
+                if message.is_group_admin().await.unwrap_or(false) {
+                    return None;
+                }
+                let chat = message.get_chat();
+                if let Some(ref sender_chat) = message.sender_chat {
+                    if is_approved(chat, sender_chat.id).await.unwrap_or(false) {
+                        return None;
+                    }
+                } else if let Some(ref user) = message.from {
+                    if is_approved(chat, user.id).await.unwrap_or(false) {
+                        return None;
+                    }
+                }
+                if let Some(ref fullchat) = message.sender_chat {
+                    match fullchat.id.get_chat_cached().await {
+                        Ok(fullchat) => {
+                            if fullchat.linked_chat_id != Some(message.chat.id)
+                                && Some(message.chat.id)
+                                    != message.sender_chat.as_ref().map(|v| v.id)
+                            {
+                                Some(message)
+                            } else {
+                                None
+                            }
+                        }
+                        Err(err) => {
+                            err.record_stats();
+                            Some(message)
+                        }
+                    }
+                } else {
+                    Some(message)
+                }
+            }
+            _ => None,
+        }
+    }
 }
 
 /// Trait for telegram objects that can be deleted after a delay.
 /// Meant to be used as an extension trait
+#[async_trait]
 pub trait DeleteAfterTime {
     /// Delete the object after the specified duration
     fn delete_after_time(&self, duration: Duration);
+    async fn delete(&self) -> Result<()>;
 }
 
+#[async_trait]
 impl DeleteAfterTime for Message {
     fn delete_after_time(&self, duration: Duration) {
         let chat_id = self.get_chat().get_id();
@@ -161,13 +245,29 @@ impl DeleteAfterTime for Message {
             Ok::<(), BotError>(())
         });
     }
+
+    async fn delete(&self) -> Result<()> {
+        TG.client
+            .build_delete_message(self.get_chat().get_id(), self.get_message_id())
+            .build()
+            .await?;
+        Ok(())
+    }
 }
 
+#[async_trait]
 impl DeleteAfterTime for Option<Message> {
     fn delete_after_time(&self, duration: Duration) {
         if let Some(message) = self {
             message.delete_after_time(duration);
         }
+    }
+
+    async fn delete(&self) -> Result<()> {
+        if let Some(message) = self {
+            message.delete().await?;
+        }
+        Ok(())
     }
 }
 
@@ -243,8 +343,9 @@ pub async fn kick_message(message: &Message) -> Result<()> {
 
 /// Parse a std::chrono::Duration from a human readable string (5m, 4d, etc)
 pub fn parse_duration_str(arg: &str, chat: i64, reply: i64) -> Result<Option<Duration>> {
-    let head = &arg[0..arg.len() - 1];
-    let tail = &arg[arg.len() - 1..];
+    let end = arg.align_char_boundry(arg.len() - 1);
+    let head = &arg[0..end];
+    let tail = &arg[end..];
     log::info!("head {} tail {}", head, tail);
     let head = match str::parse::<i64>(head) {
         Err(_) => return Err(BotError::speak("Enter a number", chat, Some(reply))),
@@ -583,9 +684,8 @@ pub async fn unapprove(chat: &Chat, user: i64) -> Result<()> {
 
 /// Checks if a user should be ignored when applying moderation. All modules should honor
 /// this when moderating
-pub async fn is_approved(chat: &Chat, user: &User) -> Result<bool> {
+pub async fn is_approved(chat: &Chat, user_id: i64) -> Result<bool> {
     let chat_id = chat.get_id();
-    let user_id = user.get_id();
     let key = get_approval_key(chat, user_id);
     let res = default_cache_query(
         |_, _| async move {
@@ -769,8 +869,11 @@ impl Context {
     pub fn parse_duration(&self, args: &Option<ArgSlice<'_>>) -> Result<Option<Duration>> {
         if let Some(args) = args {
             if let Some(thing) = args.args.first() {
-                let head = &thing.get_text()[0..thing.get_text().len() - 1];
-                let tail = &thing.get_text()[thing.get_text().len() - 1..];
+                let end = thing
+                    .get_text()
+                    .align_char_boundry(thing.get_text().len() - 1);
+                let head = &thing.get_text()[0..end];
+                let tail = &thing.get_text()[end..];
                 log::info!("head {} tail {}", head, tail);
                 let head = match str::parse::<i64>(head) {
                     Err(_) => return self.fail("Enter a number"),

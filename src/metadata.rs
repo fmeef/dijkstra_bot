@@ -14,23 +14,11 @@ pub fn markdownify<T: AsRef<str>>(description: T) -> String {
     let description = NEWLINE.replace_all(description.as_ref(), r#"\n"#);
     let description = DOUBLE_NEWLINE.replace_all(description.as_ref(), r#"\n\n"#);
 
-    //    let description = description.replace("\n\n", "\\n\\n");
-    let len = description.len();
-    let v = description
+    let description = description
         .trim_start()
         .lines()
         .map(|v| v.trim_start())
-        .collect::<Vec<&str>>();
-    let mut description = String::with_capacity(len);
-    let mut prev = "nil";
-    for line in v {
-        description.push_str(line);
-        if prev.trim_end().len() == prev.len() {
-            description.push(' ');
-        }
-        prev = line;
-    }
-    //let description = WHITESPACE.replace_all(&description, " ");
+        .collect::<String>();
     description.replace(r#"\n"#, "\n")
 }
 
@@ -65,7 +53,10 @@ macro_rules! metadata {
                     state: None
                 };
                 $(c.commands.insert($command.into(), $help.into());)*
-                $(c.sections.insert($sub.into(), $content.into());)*
+                $(
+                    let content = $crate::metadata::markdownify($content);
+                    c.sections.insert(&sub.into(), content.into());
+                )*
                 c
             });
     };
@@ -87,7 +78,10 @@ macro_rules! metadata {
                     state: Some(::std::sync::Arc::new($serialize))
                 };
                 $(c.commands.insert($command.into(), $help.into());)*
-                $(c.sections.insert($sub.into(), $content.into());)*
+                $(
+                    let content = $crate::metadata::markdownify($content);
+                    c.sections.insert($sub.into(), content.into());
+                )*
                 c
             });
     };

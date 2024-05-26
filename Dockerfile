@@ -1,5 +1,5 @@
 
-FROM docker.io/rust:alpine3.17 AS base
+FROM docker.io/rust:alpine3.20 AS base
 RUN apk update && apk add musl-dev openssl-dev openssl clang llvm pkgconfig gcc alpine-sdk git g++ perl make
 RUN update-ca-certificates
 
@@ -30,7 +30,7 @@ ENV CC=gcc
 ENV CXX=g++
 RUN cargo install --target-dir ./target --path . && cargo install --target-dir ./target  --path ./migration/
 
-FROM alpine:3.17 AS prod
+FROM alpine:3.20 AS prod
 
 COPY --from=builder /etc/passwd /etc/passwd
 COPY --from=builder /etc/group /etc/group
@@ -45,7 +45,7 @@ CMD [ "sh", "-c", "\
     /bobot/dijkstra --config /config/config.toml \
 "]
 
-FROM alpine:3.17 AS migrate
+FROM alpine:3.20 AS migrate
 
 COPY --from=builder /etc/passwd /etc/passwd
 COPY --from=builder /etc/group /etc/group

@@ -1,4 +1,8 @@
 addblocklist: Added blocklist {}
+addscriptlocklist: |
+  Added blocklist
+  {}
+empty: "{}"
 addfilter: Added filter {}
 emptynotallowed: Empty filters are not allowed
 anonban: Anonymous channels cannot fban users
