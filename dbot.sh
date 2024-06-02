@@ -46,12 +46,12 @@ echo "\n"
 failpackages()
 {
   echo "failed to install some packages, installation aborted"
-  exit 1 
+  exit 1
 }
 
 is_cry_ubuntu()
 {
-  if [ "$(lsb_release -rs)" = "22.04" ] 
+  if [ "$(lsb_release -rs)" = "22.04" ]
   then
     return 0
   else
@@ -65,7 +65,7 @@ setup_config()
   [ -f $BOX_PREFIX/config/config.toml ] && [ -f $BOT_PREFIX/db_pass.txt ] && return 0
 
   local db_pass="$(dd if=/dev/urandom bs=1 count=128 2>/dev/null | sha512sum | cut -d " " -f 1)"
-  echo $db_pass > $BOT_PREFIX/db_pass.txt 
+  echo $db_pass > $BOT_PREFIX/db_pass.txt
   local bot_token=""
   read -p "Enter bot token from @BotFather > " bot_token < /dev/tty
 
@@ -73,6 +73,12 @@ setup_config()
 
   cat <<EOF > $BOT_PREFIX/config/config.toml
 bot_token = '$bot_token'
+compute_threads = 1
+
+[modules]
+disabled = [ ]
+enabled = [ ]
+
 [persistence]
 database_connection = 'postgresql://bobot:$db_pass@db/bobot'
 redis_connection = 'redis://redis'
@@ -133,8 +139,8 @@ EOF
     echo "failed to reload systemd"
     exit 1
   fi
-  
-  if ! systemctl --user enable bot.service >/dev/null 2>&1  
+
+  if ! systemctl --user enable bot.service >/dev/null 2>&1
   then
     echo "failed to enable bot via systemd"
     exit 1
@@ -150,13 +156,13 @@ then
   then
     curl http://archive.ubuntu.com/ubuntu/pool/universe/g/golang-github-containernetworking-plugins/containernetworking-plugins_1.1.1+ds1-1_amd64.deb > /tmp/cry.deb 2> /dev/null
     $SUDO dpkg -i /tmp/cry.deb >/dev/null 2>&1 || failpackages
-  fi  
+  fi
   $SUDO apt-get update >/dev/null 2>&1 && $SUDO apt-get -y install podman git python3-pip >/dev/null 2>&1 || failpackages
   $SUDO pip3 install podman-compose >/dev/null 2>&1 || failpackages
 elif which dnf >/dev/null 2>&1
 then
   $SUDO dnf install -y podman podman-compose git containernetworking-plugins >/dev/null 2>&1
-elif which pacman >/dev/null 2>&1  
+elif which pacman >/dev/null 2>&1
 then
   $SUDO pacman -S podman podman-compose git cni-plugins >/dev/null 2>&1
 elif which yum >/dev/null 2>&1
@@ -192,6 +198,3 @@ setup_systemd
 echo "Successfully installed dijkstra! To start first edit $BOT_PREFIX/config/config.toml"
 echo "then run"
 echo "cd $BOT_PREFIX && podman-compose up"
-
-
-
