@@ -1,6 +1,6 @@
 [package]
 name = "dijkstra"
-version = "0.4.11"
+version = "0.4.12"
 edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -42,8 +42,8 @@ sea-query = { version = "0.30.7", features = [
     "postgres-types",
     "with-time",
 ] }
-serde = { version = "1.0.201", features = ["derive"] }
-thiserror = "1.0.60"
+serde = { version = "1.0.203", features = ["derive"] }
+thiserror = "1.0.61"
 tokio = { version = "1.37.0", features = ["full", "rt"] }
 uuid = { version = "1.8.0", features = ["v4", "serde"] }
 async-trait = "0.1.80"
@@ -77,7 +77,7 @@ rand = "0.8.5"
 base64 = "0.21.7"
 glob-match = "0.2.1"
 globset = { version = "0.4.14", features = ["serde"] }
-wildmatch = "2.3.3"
+wildmatch = "2.3.4"
 glob = "0.3.1"
 #llama-rs = { path = "./llama-rs/llama-rs" }
 rusty_pool = "0.7.0"
@@ -85,7 +85,7 @@ seq-macro = "0.3.5"
 convert_case = "0.6.0"
 unicase = "2.7.0"
 unicase_serde = "0.1.0"
-yoke = { version = "0.7.3", features = ["derive", "serde"] }
+yoke = { version = "0.7.4", features = ["derive", "serde"] }
 governor = "0.6.3"
 rustls-webpki = "0.101.7"
 reqwest = "0.11.27"
@@ -103,7 +103,7 @@ threadpool = "1.8.1"
 num_cpus = "1.16.0"
 
 [build-dependencies]
-anyhow = "1.0.83"
+anyhow = "1.0.86"
 
 [workspace]
 members = ['migration']

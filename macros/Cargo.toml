@@ -10,10 +10,10 @@ proc-macro = true
 [dependencies]
 syn = "1.0.109"
 quote = "1.0.36"
-proc-macro2 = "1.0.82"
+proc-macro2 = "1.0.84"
 include_dir = "0.7.3"
 serde_yaml = "0.9.34"
-serde = { version = "1.0.201", features = ["derive"] }
+serde = { version = "1.0.203", features = ["derive"] }
 lazy_static = "1.4.0"
 convert_case = "0.6.0"
 proc-macro-crate = "2.0.2"

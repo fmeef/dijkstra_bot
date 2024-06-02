@@ -190,6 +190,7 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
                 if crate::statics::module_enabled(#module_names) {
                 metadata.push(crate::metadata::Metadata {
                         name: #doc_globs.to_owned(),
+                        priority: None,
                         description: crate::metadata::markdownify(std::include_str!(#doc_names)),
                         commands: ::std::collections::HashMap::new(),
                         sections: #vecs,

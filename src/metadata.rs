@@ -13,12 +13,19 @@ lazy_static! {
 pub fn markdownify<T: AsRef<str>>(description: T) -> String {
     let description = NEWLINE.replace_all(description.as_ref(), r#"\n"#);
     let description = DOUBLE_NEWLINE.replace_all(description.as_ref(), r#"\n\n"#);
-
-    let description = description
-        .trim_start()
-        .lines()
+    let description = [""]
+        .into_iter()
+        .chain(description.as_ref().trim_start().lines())
         .map(|v| v.trim_start())
-        .collect::<String>();
+        .map(|v| {
+            if !v.ends_with(" ") && !v.ends_with("\\n") {
+                format!("{} ", v)
+            } else {
+                format!("{}", v)
+            }
+        })
+        .join("");
+
     description.replace(r#"\n"#, "\n")
 }
 
@@ -30,9 +37,11 @@ macro_rules! metadata {
         pub static METADATA: $crate::once_cell::sync::Lazy<$crate::metadata::Metadata> =
             $crate::once_cell::sync::Lazy::new(|| $crate::metadata::Metadata {
                 name: $name.into(),
+                priority: None,
                 description: $description.into(),
                 commands: ::std::collections::HashMap::new(),
-                sections: ::std::collections::HashMap::new()
+                sections: ::std::collections::HashMap::new(),
+                state: None
             });
     };
 
@@ -47,6 +56,7 @@ macro_rules! metadata {
 
                 let mut c = $crate::metadata::Metadata {
                     name: $name.into(),
+                    priority: None,
                     description,
                     commands: ::std::collections::HashMap::new(),
                     sections: ::std::collections::HashMap::new(),
@@ -72,6 +82,33 @@ macro_rules! metadata {
 
                 let mut c = $crate::metadata::Metadata {
                     name: $name.into(),
+                    priority: None,
+                    description,
+                    commands: ::std::collections::HashMap::new(),
+                    sections: ::std::collections::HashMap::new(),
+                    state: Some(::std::sync::Arc::new($serialize))
+                };
+                $(c.commands.insert($command.into(), $help.into());)*
+                $(
+                    let content = $crate::metadata::markdownify($content);
+                    c.sections.insert($sub.into(), content.into());
+                )*
+                c
+            });
+
+    };
+    ($name:expr, $description:expr, $serialize:expr, $priority:expr
+        $( , { sub = $sub:expr, content = $content:expr } )*
+        $( , { command = $command:expr, help = $help:expr } )*
+    ) => {
+        #[allow(unused_mut)]
+        pub static METADATA: $crate::once_cell::sync::Lazy<$crate::metadata::Metadata> =
+            $crate::once_cell::sync::Lazy::new(|| {
+                let description = $crate::metadata::markdownify($description);
+
+                let mut c = $crate::metadata::Metadata {
+                    name: $name.into(),
+                    priority: Some($priority),
                     description,
                     commands: ::std::collections::HashMap::new(),
                     sections: ::std::collections::HashMap::new(),
@@ -87,6 +124,7 @@ macro_rules! metadata {
     };
 }
 use async_trait::async_trait;
+use itertools::Itertools;
 use lazy_static::lazy_static;
 pub use metadata;
 use regex::Regex;
@@ -98,6 +136,7 @@ use crate::util::error::Result;
 #[derive(Clone, Debug)]
 pub struct Metadata {
     pub name: String,
+    pub priority: Option<i32>,
     pub description: String,
     pub commands: HashMap<String, String>,
     pub sections: HashMap<String, String>,
@@ -105,9 +144,10 @@ pub struct Metadata {
 }
 
 impl Metadata {
-    pub fn new(name: String, description: String) -> Self {
+    pub fn new(name: String, description: String, priority: Option<i32>) -> Self {
         Self {
             name,
+            priority,
             description,
             commands: HashMap::new(),
             sections: HashMap::new(),

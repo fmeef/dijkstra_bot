@@ -147,6 +147,10 @@ pub async fn get_chat(chat: i64) -> Result<Option<Chat>> {
 pub trait Username {
     /// get the human readable name, often either the display name, @ handle, or id number
     fn name_humanreadable(&self) -> Cow<'_, str>;
+    fn name_humanreadable_unescape(&self) -> Cow<'_, str> {
+        let name = self.name_humanreadable().into_owned();
+        Cow::Owned(name.unescape(false).into_owned())
+    }
 }
 
 /// extension trait for recording a chat to redis

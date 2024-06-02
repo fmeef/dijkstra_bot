@@ -1426,7 +1426,7 @@ pub async fn retro_fillings<'a>(
         let (text, entity) = match filling {
             "username" => {
                 let user = chatuser.user;
-                let name = user.name_humanreadable();
+                let name = user.name_humanreadable_unescape();
                 let start = pos;
                 let len = name.encode_utf16().count() as i64;
                 (
@@ -1467,7 +1467,7 @@ pub async fn retro_fillings<'a>(
                 )
             }
             "chatname" => {
-                let chat = chatuser.chat.name_humanreadable();
+                let chat = chatuser.chat.name_humanreadable_unescape();
                 (chat, None)
             }
             "rules" => {
