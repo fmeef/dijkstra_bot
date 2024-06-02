@@ -1,5 +1,5 @@
 #!/bin/sh
-
+set -x
 BOT_PREFIX=$HOME/.dijkstra
 
 if [ -d /data/data/com.termux ]
@@ -47,6 +47,16 @@ failpackages()
 {
   echo "failed to install some packages, installation aborted"
   exit 1
+}
+
+is_ancient_ubuntu()
+{
+  if [ "$(lsb_release -rs | sed 's/\.//g')" -lt 2005 ]
+  then
+	  return 0
+  else
+	  return 1
+  fi
 }
 
 is_cry_ubuntu()
@@ -156,6 +166,12 @@ then
   then
     curl http://archive.ubuntu.com/ubuntu/pool/universe/g/golang-github-containernetworking-plugins/containernetworking-plugins_1.1.1+ds1-1_amd64.deb > /tmp/cry.deb 2> /dev/null
     $SUDO dpkg -i /tmp/cry.deb >/dev/null 2>&1 || failpackages
+  fi
+  if is_ancient_ubuntu
+  then
+	  echo "deb http://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_$(lsb_release -rs)/ /" | $SUDO tee /etc/apt/sources.list.d/devel:kubic:libcontainers:stable.list
+	 curl -fsSL "https://download.opensuse.org/repositories/devel:kubic:libcontainers:stable/xUbuntu_$(lsb_release -rs)/Release.key" | gpg --dearmor | $SUDO tee /etc/apt/trusted.gpg.d/devel_kubic_libcontainers_stable.gpg > /dev/null
+	$SUDO apt update
   fi
   $SUDO apt-get update >/dev/null 2>&1 && $SUDO apt-get -y install podman git python3-pip >/dev/null 2>&1 || failpackages
   $SUDO pip3 install podman-compose >/dev/null 2>&1 || failpackages
