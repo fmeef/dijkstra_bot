@@ -363,6 +363,7 @@ dependencies = [
  "futures-core",
  "futures-util",
  "hyper",
+ "log",
  "ordered-float 4.2.0",
  "rand",
  "reqwest",
