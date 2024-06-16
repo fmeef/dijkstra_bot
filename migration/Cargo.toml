@@ -18,7 +18,7 @@ botapi = { path = "../botapi-rs" }
 tggen = { path = "../botapi-rs/generate" }
 async-trait = "0.1.80"
 openssl = { version = "0.10.64", features=["vendored"]}
-tokio = { version = "1.37.0", features = ["net", "socket2", "io-util", "tokio-macros"] }
+tokio = { version = "1.38.0", features = ["net", "socket2", "io-util", "tokio-macros"] }
 rustls-webpki = "0.101.7"
 chrono = "0.4.38"
 

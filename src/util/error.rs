@@ -163,14 +163,26 @@ impl<T: Send, E: Into<BotError> + Send> SpeakErr<T> for std::result::Result<T, E
         F: for<'b> FnOnce(&'b dyn DatabaseError) -> String + Send,
     {
         let self = self.map_err(|e| e.into());
-        if let Err(BotError::DbError(DbErr::Exec(RuntimeErr::SqlxError(ref err)))) = self {
-            if let Some(err) = err.as_database_error() {
-                log::warn!("db error: {:?}", err);
-                if err.code().map(|v| v.as_ref() == code).unwrap_or(false) {
-                    let message = func(err);
-                    return ctx.fail(message);
+        match self {
+            Err(BotError::DbError(DbErr::Exec(RuntimeErr::SqlxError(ref err)))) => {
+                if let Some(err) = err.as_database_error() {
+                    log::warn!("db error: {:?}", err);
+                    if err.code().map(|v| v.as_ref() == code).unwrap_or(false) {
+                        let message = func(err);
+                        return ctx.fail(message);
+                    }
                 }
             }
+            Err(BotError::DbError(DbErr::Query(RuntimeErr::SqlxError(ref err)))) => {
+                if let Some(err) = err.as_database_error() {
+                    log::warn!("db error: {:?}", err);
+                    if err.code().map(|v| v.as_ref() == code).unwrap_or(false) {
+                        let message = func(err);
+                        return ctx.fail(message);
+                    }
+                }
+            }
+            _ => (),
         }
         self
     }
@@ -406,6 +418,7 @@ impl BotError {
                 if let Some(message) = message {
                     chat.force_reply(say, *message).await?;
                 } else {
+                    log::warn!("attempted to speak error without reply-to message");
                     chat.speak(say).await?;
                 }
                 Ok(true)
