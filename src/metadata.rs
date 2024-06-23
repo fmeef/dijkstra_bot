@@ -65,7 +65,7 @@ macro_rules! metadata {
                 $(c.commands.insert($command.into(), $help.into());)*
                 $(
                     let content = $crate::metadata::markdownify($content);
-                    c.sections.insert(&sub.into(), content.into());
+                    c.sections.insert($sub.into(), content.into());
                 )*
                 c
             });

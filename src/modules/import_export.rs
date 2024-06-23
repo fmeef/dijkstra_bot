@@ -54,7 +54,7 @@ async fn get_taint<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
             .await?
     };
 
-    let m = taints.into_iter().group_by(|v| v.scope.clone());
+    let m = taints.into_iter().chunk_by(|v| v.scope.clone());
 
     let m = m
         .into_iter()

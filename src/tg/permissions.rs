@@ -426,6 +426,9 @@ where
     let sudo = permission.is_sudo.is_granted();
     let p = func(permission);
 
+    if !p.0.iter().any(|p| p.name == "Sudo") {
+        is_group_or_die(chat).await?;
+    }
     if !p.is_granted() && !sudo {
         sp.fail(lang_fmt!(lang, "permdenied", p.get_name()))
     } else {
@@ -473,7 +476,6 @@ impl IsGroupAdmin for Message {
         F: Fn(NamedBotPermissions) -> NamedPermission + Send,
     {
         let chat = self.get_chat();
-        is_group_or_die(chat).await?;
         let user = self
             .get_from()
             .ok_or_else(|| BotError::Generic("user not found".to_owned()))?;
@@ -509,7 +511,6 @@ impl IsAdmin for User {
     where
         F: Fn(NamedBotPermissions) -> NamedPermission + Send,
     {
-        is_group_or_die(chat).await?;
         handle_perm_check(chat, func, self, chat, false).await
     }
 }
@@ -554,8 +555,6 @@ impl<'a> IsAdmin for Option<&'a User> {
     where
         F: Fn(NamedBotPermissions) -> NamedPermission + Send,
     {
-        is_group_or_die(chat).await?;
-
         let user = self
             .as_ref()
             .ok_or_else(|| BotError::Generic("user not found".to_owned()))?;
@@ -600,7 +599,6 @@ impl IsAdmin for i64 {
     where
         F: Fn(NamedBotPermissions) -> NamedPermission + Send,
     {
-        is_group_or_die(chat).await?;
         let user = self
             .get_cached_user()
             .await?

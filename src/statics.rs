@@ -21,6 +21,7 @@ use governor::{DefaultKeyedRateLimiter, Quota, RateLimiter};
 use lazy_static::lazy_static;
 use log::LevelFilter;
 use once_cell::sync::OnceCell;
+use redis::aio::MultiplexedConnection;
 use sea_orm::entity::prelude::DatabaseConnection;
 
 use serde::{Deserialize, Serialize};
@@ -220,13 +221,13 @@ lazy_static! {
 //redis client
 #[cfg(not(test))]
 lazy_static! {
-    pub static ref REDIS_BACKEND: OnceCell<RedisPool<RedisConnectionManager, redis::aio::Connection>> =
+    pub static ref REDIS_BACKEND: OnceCell<RedisPool<RedisConnectionManager, MultiplexedConnection>> =
         OnceCell::new();
 }
 
 #[cfg(not(test))]
 lazy_static! {
-    pub static ref REDIS: &'static RedisPool<RedisConnectionManager, redis::aio::Connection> =
+    pub static ref REDIS: &'static RedisPool<RedisConnectionManager, MultiplexedConnection> =
         REDIS_BACKEND.get().unwrap();
 }
 

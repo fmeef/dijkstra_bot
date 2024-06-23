@@ -1,6 +1,5 @@
 use botapi::gen_types::MessageEntity;
 use futures::{stream, StreamExt, TryStreamExt};
-use itertools::Itertools;
 use sea_orm::{entity::prelude::*, ActiveValue, IntoActiveModel};
 use sea_query::OnConflict;
 use serde::{Deserialize, Serialize};
@@ -117,7 +116,7 @@ where
                 v
             })
             .map(|v| v.into_active_model())
-            .collect_vec();
+            .collect::<Vec<_>>();
         if !buttons.is_empty() {
             button::Entity::insert_many(buttons)
                 .on_conflict(

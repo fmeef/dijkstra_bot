@@ -80,7 +80,7 @@ impl Parse for LocaleInput {
         }
         Ok(Self {
             st,
-            format: input.parse_terminated(Expr::parse)?,
+            format: input.parse_terminated(Expr::parse, Token![,])?,
         })
     }
 }
@@ -103,7 +103,7 @@ impl Parse for LangLocaleInput {
         Ok(Self {
             ctx,
             st,
-            format: input.parse_terminated(Expr::parse)?,
+            format: input.parse_terminated(Expr::parse, Token![,])?,
         })
     }
 }
@@ -128,7 +128,7 @@ impl Parse for InlineRow {
 
 impl Parse for InlineInput {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        Ok(Self(input.parse_terminated(InlineRow::parse)?))
+        Ok(Self(input.parse_terminated(InlineRow::parse, Token![,])?))
     }
 }
 

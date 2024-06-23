@@ -19,6 +19,6 @@ tggen = { path = "../botapi-rs/generate" }
 async-trait = "0.1.80"
 openssl = { version = "0.10.64", features=["vendored"]}
 tokio = { version = "1.38.0", features = ["net", "socket2", "io-util", "tokio-macros"] }
-rustls-webpki = "0.101.7"
+rustls-webpki = "0.102.4"
 chrono = "0.4.38"
 

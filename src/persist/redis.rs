@@ -17,6 +17,7 @@ use crate::{
     },
 };
 use chrono::Duration;
+use redis::aio::{ConnectionLike, MultiplexedConnection};
 use redis_test::MockRedisConnection;
 use sea_orm::{ActiveModelTrait, IntoActiveModel};
 
@@ -286,7 +287,7 @@ pub struct RedisPoolBuilder {
 pub struct RedisPool<T, A>
 where
     T: bb8::ManageConnection<Connection = A>,
-    A: redis::aio::ConnectionLike + Send,
+    A: ConnectionLike + Send,
 {
     pool: Pool<T>,
 }
@@ -301,8 +302,8 @@ impl RedisPoolBuilder {
     }
 
     /// Build the pool and attempt connection
-    pub async fn build(self) -> Result<RedisPool<RedisConnectionManager, redis::aio::Connection>> {
-        RedisPool::<RedisConnectionManager, redis::aio::Connection>::new(self.connectionstr).await
+    pub async fn build(self) -> Result<RedisPool<RedisConnectionManager, MultiplexedConnection>> {
+        RedisPool::<RedisConnectionManager, MultiplexedConnection>::new(self.connectionstr).await
     }
 }
 
@@ -351,7 +352,7 @@ where
     /// create a new redis pool from a connection string and immediately connect to it
     pub async fn new<T: AsRef<str>>(
         connectionstr: T,
-    ) -> Result<RedisPool<RedisConnectionManager, redis::aio::Connection>> {
+    ) -> Result<RedisPool<RedisConnectionManager, MultiplexedConnection>> {
         let client = RedisConnectionManager::new(connectionstr.as_ref())?;
         //TODO: don't use a hardcoded size here
         let pool = Pool::builder().max_size(15).build(client).await?;
