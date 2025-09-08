@@ -9,16 +9,16 @@ name = "dijkstra_migration"
 path = "src/lib.rs"
 
 [dependencies]
-time = "0.3.36"
-sea-schema = { version = "0.14.2", default-features = false, features = [ "debug-print"] }
-sea-orm-migration = "0.12.15"
-sea-query = { version = "0.30.7", features = ["uuid", "bigdecimal", "with-bigdecimal", "with-chrono", "with-json", "backend-postgres", "sea-query-derive", "backend-postgres", "derive", "with-uuid", "thread-safe"] }
+time = "0.3.43"
+sea-schema = { version = "0.16.2", default-features = false, features = [ "debug-print"] }
+sea-orm-migration = "1.1.15"
+sea-query = { version = "0.32.7", features = ["uuid", "bigdecimal", "with-bigdecimal", "with-chrono", "with-json", "backend-postgres", "sea-query-derive", "backend-postgres", "derive", "with-uuid", "thread-safe"] }
 dijkstra = { path = "../" }
 botapi = { path = "../botapi-rs" }
 tggen = { path = "../botapi-rs/generate" }
-async-trait = "0.1.80"
-openssl = { version = "0.10.64", features=["vendored"]}
-tokio = { version = "1.38.0", features = ["net", "socket2", "io-util", "tokio-macros"] }
-rustls-webpki = "0.102.4"
-chrono = "0.4.38"
+async-trait = "0.1.89"
+openssl = { version = "0.10.73", features=["vendored"]}
+tokio = { version = "1.47.1", features = ["net", "socket2", "io-util", "tokio-macros"] }
+rustls-webpki = "0.103.4"
+chrono = "0.4.41"
 

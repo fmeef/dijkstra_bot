@@ -410,7 +410,7 @@ async fn conv_upload(conversation: Conversation, message: &Message) -> Result<()
     if let Some(sticker) = message.get_sticker() {
         let key = scope_key_by_chatuser(KEY_TYPE_STICKER_ID, message)?;
         let taglist = scope_key_by_chatuser(KEY_TYPE_TAG, message)?;
-        REDIS
+        let _: () = REDIS
             .pipe(|p| {
                 p.set(&key, sticker.get_file_id());
                 p.del(&taglist)
@@ -427,7 +427,7 @@ async fn conv_upload(conversation: Conversation, message: &Message) -> Result<()
 
 async fn conv_name(conversation: Conversation, message: &Message) -> Result<()> {
     let key = scope_key_by_chatuser(KEY_TYPE_STICKER_NAME, message)?;
-    REDIS.sq(|p| p.set(&key, message.get_text())).await?;
+    let _: () = REDIS.sq(|p| p.set(&key, message.get_text())).await?;
     let text = conversation.transition(TRANSITION_TAG).await?;
     message.reply(text).await?;
     Ok(())
@@ -480,7 +480,7 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
                 tag: text.to_string(),
             })?;
 
-            REDIS
+            let _: () = REDIS
                 .pipe(|p| {
                     p.atomic();
                     p.lpush(taglist, &tag)

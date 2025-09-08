@@ -89,7 +89,7 @@ where
 {
     if let Set(key) = model.chat_id {
         let key = get_dialog_key(key);
-        REDIS.sq(|q| q.del(&key)).await?;
+        let _: () = REDIS.sq(|q| q.del(&key)).await?;
     }
     dialogs::Entity::insert(model)
         .on_conflict(
@@ -148,7 +148,7 @@ pub async fn dialog_or_default(chat: &Chat) -> Result<dialogs::Model> {
             )
             .exec_with_returning(*DB)
             .await?;
-        REDIS
+        let _: () = REDIS
             .try_pipe(|q| {
                 Ok(q.set(&key, d.to_redis()?)
                     .expire(&key, CONFIG.timing.cache_timeout))
@@ -197,7 +197,7 @@ pub async fn update_chat(
             .await?;
 
         if !members.is_empty() {
-            REDIS
+            let _: () = REDIS
                 .pipe(|p| {
                     for v in members.iter() {
                         p.sadd(&key, v.chat_id);
@@ -339,7 +339,7 @@ pub async fn record_chat_member_banned(user: i64, chat: i64, banned: bool) -> Re
 
 pub async fn reset_banned_chats(user: i64) -> Result<()> {
     let key = get_member_key(user);
-    REDIS.sq(|q| q.del(&key)).await?;
+    let _: () = REDIS.sq(|q| q.del(&key)).await?;
     chat_members::Entity::update_many()
         .filter(chat_members::Column::UserId.eq(user))
         .set(chat_members::ActiveModel {
@@ -552,7 +552,7 @@ impl Conversation {
 
     /// Manually update the redis key for the current state wtih a new uuid.
     pub async fn write_key(&self, new: Uuid) -> Result<()> {
-        REDIS
+        let _: () = REDIS
             .pipe(|p| p.set(&self.0.rediskey.to_string(), new.to_string()))
             .await?;
         Ok(())
@@ -705,7 +705,7 @@ pub async fn get_conversation(message: &Message) -> Result<Option<Conversation>>
 /// delete the redis key for a conversation
 pub async fn drop_converstaion(message: &Message) -> Result<()> {
     let key = get_conversation_key_message(message)?;
-    REDIS.sq(|p| p.del(&key)).await?;
+    let _: () = REDIS.sq(|p| p.del(&key)).await?;
     Ok(())
 }
 
@@ -717,7 +717,7 @@ where
     let key = get_conversation_key_message(message)?;
     let conversation = create(message)?;
     let conversationstr = RedisStr::new(&conversation)?;
-    REDIS
+    let _: () = REDIS
         .pipe(|p| {
             p.atomic();
             p.set(&key, conversationstr);
@@ -738,7 +738,7 @@ where
         let res = create(message)?;
         let s = RedisStr::new(&res)?;
         let key = get_conversation_key_message(message)?;
-        REDIS
+        let _: () = REDIS
             .pipe(|p| {
                 p.atomic();
                 p.set(&key, s);

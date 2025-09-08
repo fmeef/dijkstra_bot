@@ -15,7 +15,9 @@ use futures::future::BoxFuture;
 use futures::FutureExt;
 use itertools::Itertools;
 use lazy_static::lazy_static;
-use markdown::{Block, ListItem, Span};
+
+use markdown::mdast::Node;
+use markdown::ParseOptions;
 use pomelo::pomelo;
 use regex::Regex;
 
@@ -719,7 +721,7 @@ impl MarkupBuilder {
         Ok(())
     }
 
-    fn parse_tgspan(&mut self, span: Vec<TgSpan>) -> BoxFuture<Result<(i64, i64)>> {
+    fn parse_tgspan<'a>(&'a mut self, span: Vec<TgSpan>) -> BoxFuture<'a, Result<(i64, i64)>> {
         async move {
             // if topplevel {
             //     log::info!("parse_tgspan {:?}", span);
@@ -871,67 +873,66 @@ impl MarkupBuilder {
         }
     }
 
-    fn parse_listitem(&mut self, list_item: ListItem) {
-        match list_item {
-            ListItem::Simple(spans) => spans.into_iter().for_each(|i| {
-                self.parse_span(i);
-            }),
-            ListItem::Paragraph(paragraphs) => {
-                paragraphs.into_iter().for_each(|i| self.parse_block(i))
-            }
-        }
-    }
+    // fn parse_listitem(&mut self, list_item: ListItem) -> i64 {
+    //     list_item
+    //         .children
+    //         .into_iter()
+    //         .map(|i| self.parse_block(i))
+    //         .sum()
+    // }
 
-    fn parse_block(&mut self, block: Block) {
+    fn parse_block(&mut self, block: Node) -> i64 {
         match block {
-            Block::Header(spans, _) => spans.into_iter().for_each(|s| {
-                self.parse_span(s);
-            }),
-            Block::Paragraph(spans) => spans.into_iter().for_each(|s| {
-                self.parse_span(s);
-            }),
-            Block::Blockquote(blocks) => blocks.into_iter().for_each(|b| self.parse_block(b)),
-            Block::CodeBlock(_, s) => {
-                self.code(s);
-            }
-            Block::OrderedList(l, _) => l.into_iter().for_each(|i| self.parse_listitem(i)),
-            Block::UnorderedList(l) => l.into_iter().for_each(|i| self.parse_listitem(i)),
-            Block::Raw(str) => {
-                self.text_internal(&str);
-            }
-            Block::Hr => (),
-        };
-    }
-
-    fn parse_span(&mut self, span: Span) -> i64 {
-        // log::info!("parse_span {:?}", span);
-        match span {
-            Span::Break => {
-                let s = "\n";
-                self.text_internal(s);
-                s.encode_utf16().count() as i64
-            }
-            Span::Text(text) => {
-                let i = text.encode_utf16().count() as i64;
-                self.text_internal(&text);
+            Node::Heading(spans) => spans
+                .children
+                .into_iter()
+                .map(|s| self.parse_block(s))
+                .sum::<i64>(),
+            Node::Paragraph(spans) => spans
+                .children
+                .into_iter()
+                .map(|s| self.parse_block(s))
+                .sum::<i64>(),
+            Node::Blockquote(blocks) => blocks
+                .children
+                .into_iter()
+                .map(|b| self.parse_block(b))
+                .sum::<i64>(),
+            Node::List(l) => l
+                .children
+                .into_iter()
+                .map(|i| self.parse_block(i))
+                .sum::<i64>(),
+            // Node::Break => {
+            //     let s = "\n";
+            //     self.text_internal(s);
+            //     s.encode_utf16().count() as i64
+            // }
+            Node::Text(text) => {
+                let i = text.value.encode_utf16().count() as i64;
+                self.text_internal(&text.value);
                 i
             }
-            Span::Code(code) => {
-                let i = code.encode_utf16().count() as i64;
-                self.code(code);
+            Node::Code(code) => {
+                let i = code.value.encode_utf16().count() as i64;
+                self.code(&code.value);
                 i
             }
-            Span::Link(hint, link, _) => {
-                let i = hint.encode_utf16().count() as i64;
-                self.text_link(hint, link, None);
-                i
+            Node::Link(link) => {
+                if let Some(hint) = link.title {
+                    let i = hint.encode_utf16().count() as i64;
+                    self.text_link(hint, link.url, None);
+                    i
+                } else {
+                    0
+                }
             }
-            Span::Image(_, _, _) => 0,
-            Span::Emphasis(emp) => {
+            Node::Image(_) => 0,
+            Node::Emphasis(emp) => {
                 let mut size: i64 = 0;
                 let start = self.offset;
-                emp.into_iter().for_each(|v| {
-                    size += self.parse_span(v);
+                emp.children.into_iter().for_each(|v| {
+                    size += self.parse_block(v);
                 });
                 let bold = MessageEntityBuilder::new(start, size)
                     .set_type("italic".to_owned())
@@ -940,11 +941,11 @@ impl MarkupBuilder {
                 size
             }
 
-            Span::Strong(emp) => {
+            Node::Strong(emp) => {
                 let mut size: i64 = 0;
                 let start = self.offset;
-                emp.into_iter().for_each(|v| {
-                    size += self.parse_span(v);
+                emp.children.into_iter().for_each(|v| {
+                    size += self.parse_block(v);
                 });
                 let bold = MessageEntityBuilder::new(start, size)
                     .set_type("bold".to_owned())
@@ -952,17 +953,22 @@ impl MarkupBuilder {
                 self.entities.push(bold);
                 size
             }
+            v => {
+                self.text_internal(&v.to_string());
+                0
+            } // TODO: handle more markdown
         }
     }
-
     /// Parses vanilla markdown and constructs a builder with the corresponding text
     /// and entities
     pub fn from_markdown<T: AsRef<str>>(text: T, existing: Option<Vec<MessageEntity>>) -> Self {
         let text = text.as_ref();
         let mut s = Self::new(existing);
-        markdown::tokenize(text).into_iter().for_each(|v| {
-            s.parse_block(v);
-        });
+        markdown::to_mdast(text, &ParseOptions::default())
+            .into_iter()
+            .for_each(|v| {
+                s.parse_block(v);
+            });
         s
     }
 

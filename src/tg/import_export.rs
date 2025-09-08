@@ -100,7 +100,7 @@ pub async fn set_taint(model: taint::Model) -> Result<()> {
         .exec_without_returning(*DB)
         .await?;
     if res > 0 {
-        REDIS.sq(|q| q.del(&key)).await?;
+        let _: () = REDIS.sq(|q| q.del(&key)).await?;
     }
     Ok(())
 }
@@ -133,7 +133,7 @@ pub async fn set_taint_vec(media_id: Vec<taint::Model>) -> Result<()> {
             if res > 0 {
                 for key in existing {
                     let k = get_taint_key(&key.media_id);
-                    REDIS.sq(|q| q.del(&k)).await?;
+                    let _: () = REDIS.sq(|q| q.del(&k)).await?;
                 }
             }
 
@@ -152,7 +152,7 @@ pub async fn remove_taint(taint: &str) -> Result<()> {
         .await?;
 
     let key = get_taint_key(taint);
-    REDIS.sq(|p| p.del(&key)).await?;
+    let _: () = REDIS.sq(|p| p.del(&key)).await?;
 
     Ok(())
 }
@@ -163,7 +163,7 @@ pub async fn remove_taint_vec(taints: Vec<String>) -> Result<()> {
         .exec(*DB)
         .await?;
 
-    REDIS
+    let _: () = REDIS
         .pipe(|p| {
             for taint in taints {
                 let key = get_taint_key(&taint);
@@ -221,7 +221,7 @@ impl Context {
                             log::info!("handle taint {} {}", taint.media_id, new_media_id);
 
                             cb(&taint, new_media_id).await?;
-                            REDIS.sq(|q| q.del(&key)).await?;
+                            let _: () = REDIS.sq(|q| q.del(&key)).await?;
                             remove_taint(&taint.media_id).await?;
                             return Ok(());
                         }
@@ -251,7 +251,7 @@ impl Context {
             log::info!("posting taint handler for {}", ctx.media_id);
             let key = get_patch_taint_key(user);
             let c = ctx.to_redis()?;
-            REDIS
+            let _: () = REDIS
                 .pipe(|q| {
                     q.set(&key, c)
                         .expire(&key, Duration::try_minutes(45).unwrap().num_seconds())
@@ -309,7 +309,7 @@ impl Context {
                     log::info!("posting taint handler for {}", ctx.media_id);
                     let key = get_patch_taint_key(user);
                     let ctx = ctx.to_redis()?;
-                    REDIS
+                    let _: () = REDIS
                         .pipe(|q| {
                             q.set(&key, ctx)
                                 .expire(&key, Duration::try_minutes(45).unwrap().num_seconds())

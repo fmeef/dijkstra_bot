@@ -211,7 +211,7 @@ pub fn get_langs(_: TokenStream) -> TokenStream {
             use sea_orm::entity::prelude::*;
 
             #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
-            #[sea_orm(rs_type = "String", db_type = "String(Some(16))")]
+            #[sea_orm(rs_type = "String", db_type = "String(StringLen::N(16))")]
             pub enum Lang {
                 #( #names ),*,
                 #[sea_orm(string_value = "Invalid")]

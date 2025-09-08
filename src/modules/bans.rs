@@ -63,13 +63,14 @@ pub async fn ban_cmd(ctx: &Context) -> Result<()> {
     let lang = ctx.try_get()?.lang;
     ctx.action_user(|ctx, user, args| async move {
         let duration = ctx.parse_duration(&args)?;
+        let mention = user.mention().await?;
         ctx.ban(user, duration, true)
             .await
             .speak_err_code(ctx.message()?.get_chat(), 400, |_| {
                 lang_fmt!(lang, "failuser", "ban")
             })
             .await?;
-
+        ctx.reply_fmt(entity_fmt!(ctx, "banned", mention)).await?;
         Ok(())
     })
     .await

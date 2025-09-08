@@ -563,7 +563,7 @@ async fn delete_trigger(ctx: &Context, trigger: &str) -> Result<()> {
                     let id: Option<i64> = q.hdel(&hash_key, trigger).await?;
                     if let Some(id) = id {
                         let key = get_filter_key(message, id);
-                        q.del(&key).await?;
+                        let _: () = q.del(&key).await?;
                     }
                     Ok(())
                 })
@@ -640,7 +640,7 @@ async fn get_filter(
             .next();
 
         if let Some(ref map) = map {
-            REDIS
+            let _: () = REDIS
                 .try_pipe(|p| {
                     Ok(p.set(&filter_key, map.to_redis()?)
                         .expire(&filter_key, CONFIG.timing.cache_timeout))
@@ -666,7 +666,8 @@ async fn search_cache(
     REDIS
         .query(|mut q| async move {
             let mut iter: redis::AsyncIter<(String, i64)> = q.hscan(&hash_key).await?;
-            while let Some((key, item)) = iter.next_item().await {
+            while let Some(it) = iter.next_item().await {
+                let (key, item) = it?;
                 log::info!("search cache {}", item);
                 let t = text.to_lowercase();
                 if let Some(mut idx) = t.find(&key) {
@@ -705,7 +706,7 @@ async fn update_cache_from_db(message: &Message) -> Result<()> {
         let res = filters::get_filters_join(filters::Column::Chat.eq(message.get_chat().get_id()))
             .await?;
 
-        REDIS
+        let _: () = REDIS
             .try_pipe(|p| {
                 p.hset(&hash_key, "", 0);
                 for (filter, (entities, buttons, triggers)) in res.into_iter() {
@@ -849,16 +850,16 @@ async fn command_filter<'a>(c: &Context, args: &TextArgs<'a>) -> Result<()> {
                     .filter(entity::Column::Id.is_in(old))
                     .exec(tx)
                     .await?;
-                REDIS
+                let _: () = REDIS
                     .pipe(|p| {
                         for trigger in triggers {
                             p.hset(&hash_key, trigger, model_id);
                         }
+                        p.set(&key, r);
                         p
                     })
                     .await?;
 
-                REDIS.pipe(|q| q.set(&key, r)).await?;
                 Ok(filters)
             }
             .boxed()
@@ -920,7 +921,7 @@ async fn stopall(ctx: &Context) -> Result<()> {
         .await?;
 
     let key = get_filter_hash_key(message);
-    REDIS.sq(|q| q.del(&key)).await?;
+    let _: () = REDIS.sq(|q| q.del(&key)).await?;
     ctx.reply("Stopped all filters").await?;
     Ok(())
 }

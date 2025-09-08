@@ -615,18 +615,18 @@ pub async fn update_self_admin(update: &UpdateExt) -> Result<()> {
             upsert_dialog(*DB, dialog.into_active_model()).await?;
             let key = get_chat_admin_cache_key(member.get_chat().get_id());
             member.get_chat().refresh_cached_admins().await?;
-            match member.get_new_chat_member() {
+            let _: () = match member.get_new_chat_member() {
                 ChatMember::ChatMemberAdministrator(admin) => {
                     log::info!("bot updated to admin");
                     let user_id = admin.get_user().get_id();
                     let admin = member.get_new_chat_member().to_redis()?;
-                    REDIS.sq(|q| q.hset(&key, user_id, admin)).await?;
+                    REDIS.sq(|q| q.hset(&key, user_id, admin)).await?
                 }
                 ChatMember::ChatMemberOwner(owner) => {
                     log::info!("Im soemhow the owner. What?");
                     let user_id = owner.get_user().get_id();
                     let admin = member.get_new_chat_member().to_redis()?;
-                    REDIS.sq(|q| q.hset(&key, user_id, admin)).await?;
+                    REDIS.sq(|q| q.hset(&key, user_id, admin)).await?
                 }
                 mamber => {
                     log::info!("Im not admin anymore ;(");
@@ -639,24 +639,24 @@ pub async fn update_self_admin(update: &UpdateExt) -> Result<()> {
                         ChatMember::ChatMemberRestricted(m) => m.get_user(),
                     }
                     .get_id();
-                    REDIS.sq(|q| q.hdel(&key, user_id)).await?;
+                    REDIS.sq(|q| q.hdel(&key, user_id)).await?
                 }
-            }
+            };
         }
         UpdateExt::ChatMember(member) => {
             let key = get_chat_admin_cache_key(member.get_chat().get_id());
             member.get_chat().refresh_cached_admins().await?;
-            match member.get_new_chat_member() {
+            let _: () = match member.get_new_chat_member() {
                 ChatMember::ChatMemberAdministrator(admin) => {
                     let user_id = admin.get_user().get_id();
                     let admin = member.get_new_chat_member().to_redis()?;
-                    REDIS.sq(|q| q.hset(&key, user_id, admin)).await?;
+                    REDIS.sq(|q| q.hset(&key, user_id, admin)).await?
                 }
 
                 ChatMember::ChatMemberOwner(admin) => {
                     let user_id = admin.get_user().get_id();
                     let admin = member.get_new_chat_member().to_redis()?;
-                    REDIS.sq(|q| q.hset(&key, user_id, admin)).await?;
+                    REDIS.sq(|q| q.hset(&key, user_id, admin)).await?
                 }
                 member => {
                     let user_id = match member {
@@ -669,9 +669,9 @@ pub async fn update_self_admin(update: &UpdateExt) -> Result<()> {
                     }
                     .get_id();
 
-                    REDIS.sq(|q| q.hdel(&key, user_id)).await?;
+                    REDIS.sq(|q| q.hdel(&key, user_id)).await?
                 }
-            }
+            };
         }
         _ => (),
     }
@@ -727,7 +727,7 @@ impl GetCachedAdmins for Chat {
             .await?;
         let key = get_chat_admin_cache_key(self.get_id());
         let cm = RedisStr::new(&mamber)?;
-        REDIS.sq(|q| q.hset(&key, user, cm)).await?;
+        let _: () = REDIS.sq(|q| q.hset(&key, user, cm)).await?;
         Ok(())
     }
 
@@ -747,7 +747,7 @@ impl GetCachedAdmins for Chat {
             .build()
             .await?;
         let key = get_chat_admin_cache_key(self.get_id());
-        REDIS.sq(|q| q.hdel(&key, user)).await?;
+        let _: () = REDIS.sq(|q| q.hdel(&key, user)).await?;
         Ok(())
     }
 
@@ -782,7 +782,7 @@ impl GetCachedAdmins for Chat {
                 .map(|cm| (cm.get_user().get_id(), cm))
                 .collect::<HashMap<i64, ChatMember>>();
             let mut admins = admins.into_iter().map(|cm| (cm.get_user().get_id(), cm));
-            REDIS
+            let _: () = REDIS
                 .try_pipe(|q| {
                     q.atomic();
                     q.del(&key);
@@ -804,7 +804,7 @@ impl Context {
         let chat = self.message()?.get_chat().get_id();
         let lock = format!("frca:{}", chat);
         if !REDIS.sq(|q| q.exists(&lock)).await? {
-            REDIS
+            let _: () = REDIS
                 .pipe(|q| {
                     q.set(&lock, true)
                         .expire(&lock, Duration::try_minutes(10).unwrap().num_seconds())
@@ -818,7 +818,7 @@ impl Context {
                 .build()
                 .await?;
             let mut admins = admins.into_iter().map(|cm| (cm.get_user().get_id(), cm));
-            REDIS
+            let _: () = REDIS
                 .try_pipe(|q| {
                     q.atomic();
                     q.del(&key);

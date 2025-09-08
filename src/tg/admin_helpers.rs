@@ -79,8 +79,8 @@ impl GetChat for i64 {
                     Ok(chat.get()?)
                 } else {
                     let c = TG.client.get_chat(*self).await?;
-                    q.set(&key, c.to_redis()?).await?;
-                    q.expire(&key, 15).await?;
+                    let _: () = q.set(&key, c.to_redis()?).await?;
+                    let _: () = q.expire(&key, 15).await?;
                     Ok(c)
                 }
             })
@@ -537,7 +537,7 @@ pub async fn get_warns(chat: &Chat, user_id: i64) -> Result<Vec<warns::Model>> {
             ))
         },
         |key, warns| async move {
-            REDIS
+            let _: () = REDIS
                 .try_pipe(|q| {
                     for v in &warns {
                         let ins = RedisStr::new(&v)?;
@@ -557,7 +557,7 @@ pub async fn get_warns(chat: &Chat, user_id: i64) -> Result<Vec<warns::Model>> {
             if Utc::now().timestamp() > expire.timestamp() {
                 log::info!("warn expired!");
                 let args = RedisStr::new(&warn)?;
-                REDIS.sq(|q| q.srem(&key, &args)).await?;
+                let _: () = REDIS.sq(|q| q.srem(&key, &args)).await?;
                 warn.delete(*DB).await?;
             } else {
                 res.push(warn);
@@ -604,7 +604,7 @@ pub async fn get_warns_count(message: &Message, user: i64) -> Result<i32> {
 /// Removes all warns from a user in a chat
 pub async fn clear_warns(chat: &Chat, user: i64) -> Result<()> {
     let key = get_warns_key(user, chat.get_id());
-    REDIS.sq(|q| q.del(&key)).await?;
+    let _: () = REDIS.sq(|q| q.del(&key)).await?;
     warns::Entity::delete_many()
         .filter(
             warns::Column::ChatId
@@ -678,7 +678,7 @@ pub async fn unapprove(chat: &Chat, user: i64) -> Result<()> {
 
     let key = get_approval_key(chat, user);
 
-    REDIS.sq(|q| q.del(&key)).await?;
+    let _: () = REDIS.sq(|q| q.del(&key)).await?;
     Ok(())
 }
 
@@ -1365,7 +1365,7 @@ impl Context {
                         if let Some(res) = warns::Entity::find_by_id(model).one(*DB).await? {
                             let st = RedisStr::new(&res)?;
                             res.delete(*DB).await?;
-                            REDIS.sq(|q| q.srem(&key, st)).await?;
+                            let _: () = REDIS.sq(|q| q.srem(&key, st)).await?;
                         }
                         TG.client
                             .build_edit_message_reply_markup()

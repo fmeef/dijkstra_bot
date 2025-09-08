@@ -21,6 +21,7 @@ use governor::{DefaultKeyedRateLimiter, Quota, RateLimiter};
 use lazy_static::lazy_static;
 use log::LevelFilter;
 use once_cell::sync::OnceCell;
+#[cfg(not(test))]
 use redis::aio::MultiplexedConnection;
 use sea_orm::entity::prelude::DatabaseConnection;
 

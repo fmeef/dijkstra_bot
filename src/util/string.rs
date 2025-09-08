@@ -60,7 +60,7 @@ pub async fn should_ignore_chat(chat: i64) -> Result<bool> {
 /// as long as the key exists. Part of ratelimiting system
 pub async fn ignore_chat(chat: i64, time: &Duration) -> Result<()> {
     let key = format!("ign:{}", chat);
-    REDIS
+    let _: () = REDIS
         .pipe(|q| q.set(&key, true).expire(&key, time.num_seconds()))
         .await?;
     Ok(())
@@ -519,7 +519,7 @@ pub async fn set_chat_lang(chat: &Chat, lang: Lang) -> Result<()> {
     let mut c = dialogs::Model::from_chat(chat).await?;
     c.language = Set(lang);
     let key = get_lang_key(chat.get_id());
-    REDIS
+    let _: () = REDIS
         .pipe(|p| {
             p.set(&key, r)
                 .expire(&key, Duration::try_hours(12).unwrap().num_seconds())

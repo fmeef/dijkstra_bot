@@ -266,7 +266,7 @@ pub async fn create_federation(ctx: &Context, federation: federations::Model) ->
             err => return Err(err.into()),
         },
         Ok(v) => {
-            REDIS
+            let _: () = REDIS
                 .try_pipe(|q| {
                     Ok(q.set(&key, Some(v).to_redis()?)
                         .expire(&key, CONFIG.timing.cache_timeout))
@@ -288,7 +288,7 @@ pub async fn subfed(fed: &Uuid, sub: &Uuid) -> Result<federations::Model> {
     .await?;
 
     let key = get_fed_key(model.owner);
-    REDIS.sq(|q| q.del(&key)).await?;
+    let _: () = REDIS.sq(|q| q.del(&key)).await?;
     try_update_fban_cache(model.owner).await?;
     Ok(model)
 }
@@ -306,7 +306,7 @@ pub async fn update_fed(owner: i64, newname: String) -> Result<federations::Mode
         .exec_with_returning(*DB)
         .await?;
 
-    REDIS.sq(|q| q.del(&key)).await?;
+    let _: () = REDIS.sq(|q| q.del(&key)).await?;
     model
         .pop()
         .ok_or_else(|| BotError::Generic("no fed".to_owned()))
@@ -325,7 +325,7 @@ pub async fn fban_user(fban: fbans::Model, user: &User) -> Result<()> {
         .exec_with_returning(*DB)
         .await?;
     model.cache(&key).await?;
-    REDIS.sq(|q| q.del(&setkey)).await?; //TODO: less drastic
+    let _: () = REDIS.sq(|q| q.del(&setkey)).await?; //TODO: less drastic
     Ok(())
 }
 
@@ -481,7 +481,7 @@ pub async fn fpromote(fed: Uuid, user: i64) -> Result<()> {
     )
     .exec(*DB)
     .await?;
-    REDIS.sq(|q| q.del(&key)).await?;
+    let _: () = REDIS.sq(|q| q.del(&key)).await?;
     Ok(())
 }
 
@@ -491,7 +491,7 @@ pub async fn refresh_fedadmin_cache(fed: &Uuid) -> Result<()> {
         .all(*DB)
         .await?;
     let key = get_fedadmin_key(fed);
-    REDIS
+    let _: () = REDIS
         .pipe(|p| {
             p.atomic();
             p.del(&key);
@@ -524,7 +524,7 @@ pub async fn join_fed(chat: &Chat, fed: &Uuid) -> Result<()> {
     model.federation = Set(Some(*fed));
     upsert_dialog(*DB, model).await?;
 
-    REDIS.sq(|p| p.del(&key)).await?;
+    let _: () = REDIS.sq(|p| p.del(&key)).await?;
     // try_update_fed_cache(chat.get_id()).await?;
     Ok(())
 }
@@ -537,7 +537,7 @@ pub async fn try_update_fed_cache(chat: i64) -> Result<()> {
         .await?;
     log::info!("try_update_fed_cache {}", feds.len());
 
-    REDIS
+    let _: () = REDIS
         .try_pipe(|p| {
             let key = get_fed_chat_key(chat);
             p.hset(&key, true, true);
@@ -599,7 +599,7 @@ pub async fn try_update_fban_cache(user: i64) -> Result<()> {
     let fbans = get_fbans_for_user_with_chats(user).await?;
 
     log::info!("update fban cache {}", fbans.len());
-    REDIS
+    let _: () = REDIS
         .try_pipe(|p| {
             p.atomic();
 
@@ -721,7 +721,7 @@ impl Context {
         {
             iter_unfban_user(user, &fban.federation).await?;
             fban.delete(*DB).await?;
-            REDIS.sq(|q| q.del(&key)).await?;
+            let _: () = REDIS.sq(|q| q.del(&key)).await?;
             self.reply_fmt(entity_fmt!(self, "unfban", user.mention().await?))
                 .await?;
         } else {
@@ -851,7 +851,7 @@ impl Context {
 
         let delete = gbans::Entity::delete_by_id(user).exec(*DB).await?;
         if delete.rows_affected > 0 {
-            REDIS.sq(|q| q.del(&key)).await?;
+            let _: () = REDIS.sq(|q| q.del(&key)).await?;
             tokio::spawn(async move { iter_unban_user(user).await.log() });
 
             Ok(())

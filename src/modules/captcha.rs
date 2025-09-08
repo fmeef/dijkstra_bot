@@ -16,7 +16,6 @@ use base64::Engine;
 use botapi::gen_types::{Chat, User};
 use macros::{lang_fmt, update_handler};
 use redis::AsyncCommands;
-use sea_orm_migration::MigrationName;
 use uuid::Uuid;
 
 metadata!("Captcha",
@@ -28,14 +27,6 @@ metadata!("Captcha",
     { command = "captchakick", help = "Sets the timeout for removing users who haven't solved the captcha. off to disable"}
 
 );
-
-pub struct Migration;
-
-impl MigrationName for Migration {
-    fn name(&self) -> &str {
-        "m20230214_000001_create_captcha"
-    }
-}
 
 async fn captchakick_cmd<'a>(ctx: &Context, args: &'a TextArgs<'a>) -> Result<()> {
     ctx.check_permissions(|p| p.can_change_info.and(p.can_restrict_members))

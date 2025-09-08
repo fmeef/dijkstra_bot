@@ -610,7 +610,7 @@ async fn delete_script(ctx: &Context, script: String) -> Result<()> {
                 .into_iter()
                 .map(|(b, t)| (b, t.into_iter().map(|v| v.trigger).collect_vec()))
             {
-                REDIS.sq(|q| q.hdel(&hash_key, trigger)).await?;
+                let _: () = REDIS.sq(|q| q.hdel(&hash_key, trigger)).await?;
                 blocklist.delete(tx).await?;
             }
 
@@ -669,7 +669,7 @@ async fn delete_trigger(ctx: &Context, trigger: String) -> Result<()> {
                     let id: Option<i64> = q.hdel(&hash_key, trigger).await?;
                     if let Some(id) = id {
                         let key = get_blocklist_key(message, id);
-                        q.del(&key).await?;
+                        let _: () = q.del(&key).await?;
                         Ok(Some(id))
                     } else {
                         Ok(None)
@@ -716,7 +716,8 @@ async fn search_cache(
     REDIS
         .query(|mut q| async move {
             let mut iter: redis::AsyncIter<(String, RedisStr)> = q.hscan(&hash_key).await?;
-            while let Some((key, rs)) = iter.next_item().await {
+            while let Some(it) = iter.next_item().await {
+                let (key, rs) = it?;
                 if key.is_empty() {
                     continue;
                 }
@@ -825,7 +826,7 @@ async fn update_cache_from_db(message: &Message) -> Result<()> {
             .find_with_related(triggers::Entity)
             .all(*DB)
             .await?;
-        REDIS
+        let _: () = REDIS
             .try_pipe(|p| {
                 p.hset(&hash_key, "", 0);
                 for (filter, triggers) in res.into_iter() {
@@ -923,7 +924,7 @@ async fn insert_blocklist(
     let hash_key = get_blocklist_hash_key(message.get_chat().get_id());
     let id = (model.id, filter_type).to_redis()?;
     let model_id = model.id;
-    REDIS
+    let _: () = REDIS
         .pipe(|p| {
             for trigger in triggers {
                 p.hset(&hash_key, trigger, &id);
@@ -1211,8 +1212,7 @@ async fn delete_all(chat: i64) -> Result<()> {
         .await?;
 
     let key = get_blocklist_hash_key(chat);
-    REDIS.sq(|q| q.del(&key)).await?;
-    Ok(())
+    REDIS.sq(|q| q.del(&key)).await
 }
 
 async fn stopall(ctx: &Context, chat: i64) -> Result<()> {

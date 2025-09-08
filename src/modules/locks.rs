@@ -563,7 +563,7 @@ async fn clear_lock(message: &Message, locktype: LockType) -> Result<()> {
     locks::Entity::delete_by_id((chat, locktype))
         .exec(*DB)
         .await?;
-    REDIS.sq(|q| q.del(&key)).await?;
+    let _: () = REDIS.sq(|q| q.del(&key)).await?;
     Ok(())
 }
 

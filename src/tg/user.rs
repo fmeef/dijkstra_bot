@@ -36,7 +36,7 @@ pub async fn get_me() -> Result<User> {
             } else {
                 let me = TG.client().get_me().await?;
                 let me_str = RedisStr::new(&me)?;
-                q.set(me_key, me_str).await?;
+                let _: () = q.set(me_key, me_str).await?;
                 Ok(me)
             }
         })
@@ -47,7 +47,7 @@ pub async fn get_me() -> Result<User> {
 pub(crate) async fn record_cache_user(user: &User) -> Result<()> {
     let key = get_user_cache_key(user.get_id());
     let st = RedisStr::new(user)?;
-    if let Some(username) = user.get_username() {
+    let _: () = if let Some(username) = user.get_username() {
         let uname = get_username_cache_key(username);
         REDIS
             .pipe(|p| {
@@ -56,12 +56,12 @@ pub(crate) async fn record_cache_user(user: &User) -> Result<()> {
                     .set(&uname, user.get_id())
                     .expire(&uname, CONFIG.timing.cache_timeout)
             })
-            .await?;
+            .await?
     } else {
         REDIS
             .pipe(|p| p.set(&key, st).expire(&key, CONFIG.timing.cache_timeout))
-            .await?;
-    }
+            .await?
+    };
     Ok(())
 }
 
@@ -69,7 +69,7 @@ pub(crate) async fn record_cache_user(user: &User) -> Result<()> {
 pub async fn record_cache_chat(chat: &Chat) -> Result<()> {
     let key = get_chat_cache_key(chat.get_id());
     let st = RedisStr::new(chat)?;
-    REDIS
+    let _: () = REDIS
         .pipe(|p| p.set(&key, st).expire(&key, CONFIG.timing.cache_timeout))
         .await?;
     Ok(())
@@ -317,6 +317,7 @@ impl RecordUser for UpdateExt {
             UpdateExt::BusinessConnection(ref c) => Some(c.get_user()),
             UpdateExt::EditedBusinessMessage(_) => None,
             UpdateExt::BusinessMessage(_) => None,
+            UpdateExt::PurchasedPaidMedia(ref p) => Some(p.get_from()),
         }
     }
 

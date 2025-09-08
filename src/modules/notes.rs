@@ -340,7 +340,7 @@ async fn get<'a>(ctx: &Context) -> Result<()> {
 
 async fn delete_by_id(name: String, chat: i64) -> Result<()> {
     let hash_key = get_hash_key(chat);
-    REDIS.sq(|q| q.hdel(&hash_key, &name)).await?;
+    let _: () = REDIS.sq(|q| q.hdel(&hash_key, &name)).await?;
     notes::Entity::delete_by_id((name, chat)).exec(*DB).await?;
     Ok(())
 }
@@ -378,7 +378,7 @@ async fn save<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
     let key = format!("note:{}:{}", message.get_chat().get_id(), model.name);
     log::info!("save key: {}", key);
     let hash_key = get_hash_key(message.get_chat().get_id());
-    REDIS.sq(|q| q.del(&hash_key)).await?;
+    let _: () = REDIS.sq(|q| q.del(&hash_key)).await?;
     let name = model.name.clone();
     notes::Entity::insert(model.cache(key).await?)
         .on_conflict(
@@ -429,7 +429,7 @@ pub async fn handle_update<'a>(cmd: &Context) -> Result<()> {
 
                 let key = get_hash_key(taint.chat);
 
-                REDIS.sq(|q| q.del(&key)).await?;
+                let _: () = REDIS.sq(|q| q.del(&key)).await?;
 
                 c.reply(lang_fmt!(c, "taintupdatednote", note.len()))
                     .await?;

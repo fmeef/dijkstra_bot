@@ -8,13 +8,13 @@ proc-macro = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-syn = "2.0.68"
-quote = "1.0.36"
-proc-macro2 = "1.0.86"
+syn = "2.0.106"
+quote = "1.0.40"
+proc-macro2 = "1.0.101"
 include_dir = "0.7.4"
 serde_yaml = "0.9.34"
-serde = { version = "1.0.203", features = ["derive"] }
+serde = { version = "1.0.219", features = ["derive"] }
 lazy_static = "1.5.0"
-convert_case = "0.6.0"
-proc-macro-crate = "3.1.0"
-glob = "0.3.1"
+convert_case = "0.8.0"
+proc-macro-crate = "3.3.0"
+glob = "0.3.3"

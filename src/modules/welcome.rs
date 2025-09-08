@@ -19,12 +19,12 @@ metadata!("Welcome",
     r#"
     Welcomes users with custom message. Welcome messages are send when a user joins and
     goodbye messages are sent when a user leaves. Note: this only works in groups with 50
-    or fewer members. Groups with more than 50 members will not send welcome messages.  
+    or fewer members. Groups with more than 50 members will not send welcome messages.
 
-    [*Example:]  
-    /welcome on  
+    [*Example:]
+    /welcome on
     /setwelcome Hi there \{mention\}, welcome to \{chatname\}
-    
+
     "#,
     { command = "welcome", help = "Usage: welcome \\<on/off\\>. Enables or disables welcome" },
     { command = "setwelcome", help = "Sets the welcome text. Reply to a message or media to set"},
@@ -127,7 +127,7 @@ async fn enable_welcome<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang)
         )
         .exec_with_returning(*DB)
         .await?;
-    REDIS.sq(|q| q.del(&key)).await?;
+    let _: () = REDIS.sq(|q| q.del(&key)).await?;
     message.reply("Enabled welcome").await?;
     Ok(())
 }
@@ -156,7 +156,7 @@ async fn set_goodbye<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang) ->
     } else {
         lang_fmt!(lang, "setgoodbye", "*media*")
     };
-    REDIS.sq(|q| q.del(&key)).await?;
+    let _: () = REDIS.sq(|q| q.del(&key)).await?;
 
     message.reply(text).await?;
     Ok(())
@@ -188,7 +188,7 @@ async fn set_welcome<'a>(message: &Message, args: &TextArgs<'a>, lang: &Lang) ->
     } else {
         lang_fmt!(lang, "setwelcome", "*media*")
     };
-    REDIS.sq(|q| q.del(&key)).await?;
+    let _: () = REDIS.sq(|q| q.del(&key)).await?;
     message.reply(text).await?;
     Ok(())
 }
@@ -219,7 +219,7 @@ async fn reset_welcome(message: &Message, lang: &Lang) -> Result<()> {
     let key = format!("welcome:{}", chat);
 
     welcomes::Entity::delete_by_id(chat).exec(*DB).await?;
-    REDIS.sq(|q| q.del(&key)).await?;
+    let _: () = REDIS.sq(|q| q.del(&key)).await?;
     message.reply(lang_fmt!(lang, "resetwelcome")).await?;
     Ok(())
 }

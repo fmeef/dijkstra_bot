@@ -441,7 +441,7 @@ impl StaticContext {
         }
     }
 
-    pub fn chatuser(&self) -> Option<ChatUser> {
+    pub fn chatuser<'a>(&'a self) -> Option<ChatUser<'a>> {
         match self.update {
             UpdateExt::Message(ref m) => m.get_chatuser(),
             UpdateExt::EditedMessage(ref m) => m.get_chatuser(),
@@ -646,7 +646,7 @@ where
     let ser = RedisStr::new(&value)?;
     let r = Uuid::new_v4();
     let key = key_func(&r.to_string());
-    REDIS
+    let _: () = REDIS
         .pipe(|q| q.set(&key, ser).expire(&key, CONFIG.timing.cache_timeout))
         .await?;
     let bs = general_purpose::URL_SAFE_NO_PAD.encode(r.into_bytes());

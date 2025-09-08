@@ -3,7 +3,7 @@ use std::fs::read_dir;
 use proc_macro2::{Ident, TokenStream};
 use quote::{quote, ToTokens};
 pub struct PathBufWrapper(std::path::PathBuf);
-pub struct PathList(Vec<PathBufWrapper>);
+// pub struct PathList(Vec<PathBufWrapper>);
 
 impl ToTokens for PathBufWrapper {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
@@ -14,22 +14,22 @@ impl ToTokens for PathBufWrapper {
     }
 }
 
-impl ToTokens for PathList {
-    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        let iter = self.0.iter();
-        tokens.extend(quote! {
-            {
-            let mut _pathvec = Vec::<std::path::PathBuf>::new();
-            #(
-                let _pathitem: std::path::PathBuf = #iter;
-                _pathvec.push(_pathitem);
-            )*
+// impl ToTokens for PathList {
+//     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+//         let iter = self.0.iter();
+//         tokens.extend(quote! {
+//             {
+//             let mut _pathvec = Vec::<std::path::PathBuf>::new();
+//             #(
+//                 let _pathitem: std::path::PathBuf = #iter;
+//                 _pathvec.push(_pathitem);
+//             )*
 
-            _pathvec
-            }
-        })
-    }
-}
+//             _pathvec
+//             }
+//         })
+//     }
+// }
 
 fn glob_modules<T: AsRef<str>>(spec: T, file_ext: &str) -> Vec<String> {
     glob::glob(spec.as_ref())

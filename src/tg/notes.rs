@@ -67,7 +67,7 @@ pub async fn refresh_notes(
             .iter()
             .filter_map(|v| RedisStr::new(&v).ok().map(|s| (v.0.name.clone(), s)))
             .collect_vec();
-        REDIS
+        let _: () = REDIS
             .pipe(|q| {
                 if !st.is_empty() {
                     q.hset_multiple(&hash_key, st.as_slice());
@@ -105,7 +105,7 @@ pub async fn clear_notes(chat: i64) -> Result<()> {
                 .filter(entity::Column::Id.is_in(ids))
                 .exec(tx)
                 .await?;
-            REDIS.sq(|q| q.del(key)).await?;
+            let _: () = REDIS.sq(|q| q.del(key)).await?;
             Ok(())
         }
         .boxed()

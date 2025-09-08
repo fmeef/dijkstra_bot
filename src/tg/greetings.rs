@@ -24,12 +24,13 @@ use botapi::gen_types::{
     InlineKeyboardButtonBuilder, MaybeInaccessibleMessage, Message, MessageEntity,
     ReplyParametersBuilder, UpdateExt, User,
 };
-use captcha::gen;
+
+use captcha::generate;
 use chrono::Duration;
 use futures::FutureExt;
 use macros::lang_fmt;
-use rand::seq::SliceRandom;
-use rand::{thread_rng, Rng};
+use rand::seq::IndexedRandom;
+use rand::{rng, Rng};
 use redis::{AsyncCommands, Script};
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter};
@@ -58,7 +59,7 @@ pub async fn update_auth_cache(chat: i64) -> Result<()> {
             .all(*DB)
             .await?;
 
-        REDIS
+        let _: () = REDIS
             .pipe(|p| {
                 for row in rows {
                     p.sadd(&key, row.user);
@@ -75,7 +76,7 @@ pub(crate) async fn get_captcha_url(chat: &Chat, user: &User) -> Result<String> 
     let ser = (chat, user).to_redis()?;
     let r = Uuid::new_v4();
     let key = get_callback_key(&r.to_string());
-    REDIS
+    let _: () = REDIS
         .pipe(|q| q.set(&key, ser).expire(&key, CONFIG.timing.cache_timeout))
         .await?;
     let bs = general_purpose::URL_SAFE_NO_PAD.encode(r.into_bytes());
@@ -204,7 +205,7 @@ pub(crate) async fn welcome_members(
 }
 
 fn build_captcha_sync() -> (String, Vec<u8>, Vec<char>) {
-    let captcha = gen(captcha::Difficulty::Hard);
+    let captcha = generate(captcha::Difficulty::Hard);
 
     (
         captcha.chars_as_string(),
@@ -260,7 +261,7 @@ fn insert_incorrect(
     supported: &Vec<char>,
     unmute_chat: i64,
 ) {
-    let mut rng = thread_rng();
+    let mut rng = rng();
     let mut s = String::with_capacity(correct.len());
     for _ in correct.chars() {
         if let Some(ch) = supported.choose(&mut rng) {
@@ -328,9 +329,9 @@ fn get_choices(
     unmute_chat: Chat,
     ctx: &Context,
 ) -> Vec<InlineKeyboardButton> {
-    let mut rng = thread_rng();
+    let mut rng = rng();
     let mut res = Vec::<InlineKeyboardButton>::with_capacity(times);
-    let pos = rng.gen_range(0..=times);
+    let pos = rng.random_range(0..=times);
     drop(rng);
     //log::info!("selected captcha correct pos {}", pos);
     let incorrect_chat = unmute_chat.get_id();
@@ -531,7 +532,7 @@ impl Context {
             if !user_is_authorized(chat.get_id(), user.get_id()).await? {
                 self.mute(user.get_id(), self.try_get()?.chat, None).await?;
                 let key = get_captcha_auth_key(user.get_id(), chat.get_id());
-                REDIS
+                let _: () = REDIS
                     .pipe(|q| {
                         q.set(&key, true)
                             .expire(&key, Duration::try_minutes(10).unwrap().num_seconds())
@@ -685,7 +686,7 @@ impl Context {
             .exec(*DB)
             .await?;
 
-        REDIS.sq(|q| q.del(&key)).await?;
+        let _: () = REDIS.sq(|q| q.del(&key)).await?;
         message.reply(lang_fmt!(self, "disabledcaptcha")).await?;
         Ok(())
     }
@@ -777,7 +778,7 @@ impl Context {
                 .next();
 
             if let Some(ref map) = res {
-                REDIS
+                let _: () = REDIS
                     .try_pipe(|p| {
                         Ok(p.set(&key, map.to_redis()?)
                             .expire(&key, CONFIG.timing.cache_timeout))

@@ -87,7 +87,7 @@ where
     V: Serialize + 'a,
 {
     let valstr = RedisStr::new(&val)?;
-    REDIS
+    let _: () = REDIS
         .pipe(|p| p.set(key, valstr).expire(key, expire.num_seconds()))
         .await?;
     Ok(val)
@@ -231,7 +231,7 @@ impl RedisStr {
 impl FromRedisValue for RedisStr {
     fn from_redis_value(v: &redis::Value) -> redis::RedisResult<Self> {
         match *v {
-            redis::Value::Data(ref data) => Ok(RedisStr(data.to_owned())),
+            redis::Value::BulkString(ref data) => Ok(RedisStr(data.to_owned())),
             _ => Err(RedisError::from((
                 ErrorKind::TypeError,
                 "Response was of incompatible type",
@@ -249,7 +249,7 @@ impl ToRedisArgs for RedisStr {
         out.write_arg(self.0.as_slice())
     }
 
-    fn is_single_arg(&self) -> bool {
+    fn is_single_vec_arg(_: &[Self]) -> bool {
         true
     }
 }
@@ -316,7 +316,6 @@ impl std::fmt::Debug for MockPool {
     }
 }
 
-#[async_trait]
 impl bb8::ManageConnection for MockPool {
     type Connection = MockRedisConnection;
     type Error = RedisError;
@@ -347,7 +346,7 @@ impl RedisPool<MockPool, MockRedisConnection> {
 impl<C, A> RedisPool<C, A>
 where
     C: bb8::ManageConnection<Connection = A, Error = RedisError>,
-    A: redis::aio::ConnectionLike + Send,
+    A: redis::aio::ConnectionLike + Send + Sync,
 {
     /// create a new redis pool from a connection string and immediately connect to it
     pub async fn new<T: AsRef<str>>(
@@ -366,17 +365,18 @@ where
         V: Serialize + Send + Sync,
         U: Iterator<Item = V>,
     {
-        self.try_pipe(|p| {
-            p.atomic();
-            p.del(key);
-            obj.try_for_each(|v| {
-                let v = RedisStr::new(&v)?;
-                p.lpush(key, v);
-                Ok::<(), BotError>(())
-            })?;
-            Ok(p)
-        })
-        .await?;
+        let _: () = self
+            .try_pipe(|p| {
+                p.atomic();
+                p.del(key);
+                obj.try_for_each(|v| {
+                    let v = RedisStr::new(&v)?;
+                    p.lpush(key, v);
+                    Ok::<(), BotError>(())
+                })?;
+                Ok(p)
+            })
+            .await?;
         Ok(())
     }
 
@@ -527,7 +527,7 @@ where
     async fn cache_duration<K: AsRef<str> + Send>(self, key: K, expire: Duration) -> Result<V> {
         let st = RedisStr::new(&self)?;
         let r = key.as_ref();
-        REDIS
+        let _: () = REDIS
             .pipe(|q| q.set(r, st).expire(r, expire.num_seconds()))
             .await?;
         Ok(self.into_active_model())
@@ -556,7 +556,7 @@ where
         let st = RedisStr::new(&v)?;
         let r = key.as_ref();
 
-        REDIS
+        let _: () = REDIS
             .pipe(|q| q.set(r, st).expire(r, expire.num_seconds()))
             .await?;
         let o =
@@ -595,7 +595,7 @@ where
         let st = RedisStr::new(&v)?;
         let r = key.as_ref();
 
-        REDIS
+        let _: () = REDIS
             .pipe(|q| q.set(r, st).expire(r, expire.num_seconds()))
             .await?;
         let o = v.1.map(|v| v.into_active_model());
