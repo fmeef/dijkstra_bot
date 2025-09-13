@@ -13,7 +13,7 @@ use crate::{
     statics::CONFIG,
     util::{
         callback::{CacheCallback, CacheMissCallback},
-        error::{BotError, Result},
+        error::{BotError, BoxedBotError, Result},
     },
 };
 use chrono::Duration;
@@ -372,7 +372,7 @@ where
                 obj.try_for_each(|v| {
                     let v = RedisStr::new(&v)?;
                     p.lpush(key, v);
-                    Ok::<(), BotError>(())
+                    Ok::<(), BoxedBotError>(())
                 })?;
                 Ok(p)
             })

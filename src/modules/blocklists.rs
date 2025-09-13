@@ -28,6 +28,7 @@ use crate::tg::dialog::dialog_or_default;
 
 use crate::tg::user::GetUser;
 use crate::util::error::BotError;
+use crate::util::error::BoxedBotError;
 use crate::util::error::Fail;
 use crate::util::error::Result;
 
@@ -527,7 +528,7 @@ impl ModuleHelpers for Helper {
                 v.push(blocklist.name);
             }
 
-            DB.transaction::<_, _, BotError>(|tx| {
+            DB.transaction::<_, _, BoxedBotError>(|tx| {
                 async move {
                     delete_all(chat).await?;
 
@@ -598,7 +599,7 @@ async fn delete_script(ctx: &Context, script: String) -> Result<()> {
         .await?;
     let hash_key = get_blocklist_hash_key(ctx.message()?.chat.id);
 
-    DB.transaction::<_, (), BotError>(|tx| {
+    DB.transaction::<_, (), BoxedBotError>(|tx| {
         async move {
             let res = blocklists::Entity::find()
                 .find_with_related(triggers::Entity)
@@ -630,7 +631,7 @@ async fn delete_trigger(ctx: &Context, trigger: String) -> Result<()> {
         .await?;
 
     let c = ctx.clone();
-    DB.transaction::<_, (), BotError>(move |tx| {
+    DB.transaction::<_, (), BoxedBotError>(move |tx| {
         async move {
             let message = c.message()?;
             let trigger = &trigger.to_lowercase();
@@ -982,7 +983,8 @@ async fn command_blocklist<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()>
                     "Invalid action",
                     message.get_chat().get_id(),
                     Some(message.message_id),
-                ));
+                )
+                .into());
             }
         }
     } else {

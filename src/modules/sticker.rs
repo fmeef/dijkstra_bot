@@ -375,7 +375,7 @@ async fn delete_sticker(message: &Message, args: &[TextArg<'_>]) -> Result<()> {
         message.reply("Successfully deleted sticker").await?;
         Ok(())
     } else {
-        Err(BotError::conversation_err("invalid command args"))
+        Err(BotError::conversation_err("invalid command args").into())
     }
 }
 
@@ -421,7 +421,7 @@ async fn conv_upload(conversation: Conversation, message: &Message) -> Result<()
         message.reply(text).await?;
         Ok(())
     } else {
-        Err(BotError::conversation_err("Send a sticker"))
+        Err(BotError::conversation_err("Send a sticker").into())
     }
 }
 
@@ -492,7 +492,7 @@ async fn conv_moretags(conversation: Conversation, message: &Message) -> Result<
             Ok(())
         }
     } else {
-        Err(BotError::conversation_err("not a user"))
+        Err(BotError::conversation_err("not a user").into())
     }
 }
 

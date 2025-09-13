@@ -233,7 +233,8 @@ pub async fn is_user_fbanned(user: i64, chat: i64, reply: i64) -> Result<Option<
             "retries exceeded for updating fban cache",
             chat,
             Some(reply),
-        ))
+        )
+        .into())
     } else {
         Ok(None)
     }
@@ -309,7 +310,7 @@ pub async fn update_fed(owner: i64, newname: String) -> Result<federations::Mode
     let _: () = REDIS.sq(|q| q.del(&key)).await?;
     model
         .pop()
-        .ok_or_else(|| BotError::Generic("no fed".to_owned()))
+        .ok_or_else(|| BotError::Generic("no fed".to_owned()).into())
 }
 
 pub async fn fban_user(fban: fbans::Model, user: &User) -> Result<()> {

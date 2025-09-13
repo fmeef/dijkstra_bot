@@ -348,14 +348,14 @@ pub fn parse_duration_str(arg: &str, chat: i64, reply: i64) -> Result<Option<Dur
     let tail = &arg[end..];
     log::info!("head {} tail {}", head, tail);
     let head = match str::parse::<i64>(head) {
-        Err(_) => return Err(BotError::speak("Enter a number", chat, Some(reply))),
+        Err(_) => return Err(BotError::speak("Enter a number", chat, Some(reply)).into()),
         Ok(res) => res,
     };
     let res = match tail {
         "m" => Duration::try_minutes(head),
         "h" => Duration::try_hours(head),
         "d" => Duration::try_days(head),
-        _ => return Err(BotError::speak("Invalid time spec", chat, Some(reply))),
+        _ => return Err(BotError::speak("Invalid time spec", chat, Some(reply)).into()),
     }
     .ok_or_else(|| BotError::speak("time out of range", chat, Some(reply)))?;
 
@@ -912,7 +912,7 @@ impl Context {
                 Ok(())
             }
         } else {
-            Err(BotError::Generic("not a chat".to_owned()))
+            Err(BotError::Generic("not a chat".to_owned()).into())
         }
     }
 
@@ -922,7 +922,7 @@ impl Context {
             let chat = v.chat;
             is_group_or_die(chat).await
         } else {
-            Err(BotError::Generic("not a chat".to_owned()))
+            Err(BotError::Generic("not a chat".to_owned()).into())
         }
     }
 

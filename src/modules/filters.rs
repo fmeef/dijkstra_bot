@@ -19,6 +19,7 @@ use crate::tg::markdown::MarkupBuilder;
 use crate::tg::markdown::MarkupType;
 use crate::tg::permissions::*;
 use crate::util::error::BotError;
+use crate::util::error::BoxedBotError;
 use crate::util::error::Fail;
 use crate::util::error::Result;
 use crate::util::string::AlignCharBoundry;
@@ -554,7 +555,7 @@ async fn delete_trigger(ctx: &Context, trigger: &str) -> Result<()> {
     let hash_key = get_filter_hash_key(message);
     let trigger = trigger.to_lowercase();
     let ctx = ctx.clone();
-    DB.transaction::<_, (), BotError>(|tx| {
+    DB.transaction::<_, (), BoxedBotError>(|tx| {
         async move {
             let trigger = &trigger;
             let message = ctx.message()?;
@@ -739,7 +740,7 @@ async fn command_filter<'a>(c: &Context, args: &TextArgs<'a>) -> Result<()> {
     let text = args.text.to_owned();
     let filters = DB
         .deref()
-        .transaction::<_, Vec<String>, BotError>(move |tx| {
+        .transaction::<_, Vec<String>, BoxedBotError>(move |tx| {
             async move {
                 let message = ctx.message()?;
                 let (body, entities, buttons, header, _) = MarkupBuilder::new(None)

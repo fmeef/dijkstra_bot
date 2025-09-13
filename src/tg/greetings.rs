@@ -6,7 +6,7 @@ use crate::persist::redis::{
     default_cache_query, CachedQueryTrait, RedisCache, RedisStr, ToRedisStr,
 };
 use crate::statics::{ME, TG};
-use crate::util::error::BotError;
+use crate::util::error::{BotError, BoxedBotError};
 use crate::util::string::{should_ignore_chat, Speak};
 use crate::{
     langs::Lang,
@@ -549,7 +549,7 @@ impl Context {
                         if !user_is_authorized(chatid, userid).await? {
                             kick(userid, chatid).await?;
                         }
-                        Ok::<(), BotError>(())
+                        Ok::<(), BoxedBotError>(())
                     });
                 }
                 match config.captcha_type {

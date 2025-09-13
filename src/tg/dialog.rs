@@ -10,7 +10,7 @@
 //! text interfaces. Dialogs are serializable to allow them to be saved, shared, and edited
 //! by users in json format
 
-use crate::util::error::Result;
+use crate::util::error::{BoxedBotError, Result};
 use ::redis::AsyncCommands;
 
 use botapi::gen_types::{
@@ -172,7 +172,7 @@ fn get_conversation_key_message_prefix(message: &Message, prefix: &str) -> Resul
         info!("conversation key: {}", res);
         Ok(res)
     } else {
-        Err(BotError::conversation_err("message does not have sender"))
+        Err(BotError::conversation_err("message does not have sender").into())
     }
 }
 
@@ -227,8 +227,8 @@ pub async fn update_chat(
 pub async fn is_chat_member(user: i64, chat: i64) -> Result<bool> {
     let key = get_member_key(user);
     let v = match REDIS.pipe(|p| p.exists(&key).sismember(&key, chat)).await {
-        Ok((true, v)) => Ok::<bool, BotError>(v),
-        Err(err) => Err(err),
+        Ok((true, v)) => Ok::<bool, BoxedBotError>(v),
+        Err(err) => Err(err.into()),
         Ok((false, _)) => {
             let mut v = update_chat(user).await?;
             let model = chat_members::ActiveModel {
@@ -457,7 +457,7 @@ impl ConversationState {
         if let Some(start) = self.states.get(&self.start) {
             Ok(start)
         } else {
-            Err(BotError::conversation_err("corrupt graph"))
+            Err(BotError::conversation_err("corrupt graph").into())
         }
     }
 
@@ -515,7 +515,7 @@ impl Conversation {
         if let Some(start) = self.0.states.get(&self.0.start) {
             Ok(start)
         } else {
-            Err(BotError::conversation_err("corrupt graph"))
+            Err(BotError::conversation_err("corrupt graph").into())
         }
     }
 
@@ -572,7 +572,7 @@ impl Conversation {
         if let Some(current) = self.0.states.get(&current) {
             Ok(current)
         } else {
-            Err(BotError::conversation_err("corrupt graph"))
+            Err(BotError::conversation_err("corrupt graph").into())
         }
     }
 

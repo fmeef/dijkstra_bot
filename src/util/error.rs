@@ -21,8 +21,64 @@ use tokio::task::JoinError;
 
 use super::string::Speak;
 
+/// Wrapper struct to allow automatically boxing using From trait
+#[derive(Debug)]
+pub struct BoxedBotError(Box<BotError>);
+
+impl std::error::Error for BoxedBotError {
+    fn cause(&self) -> Option<&dyn std::error::Error> {
+        self.0.cause()
+    }
+
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.0.source()
+    }
+
+    fn description(&self) -> &str {
+        self.0.description()
+    }
+}
+
+impl BoxedBotError {
+    fn new(err: BotError) -> Self {
+        Self(Box::new(err))
+    }
+    pub fn inner(&self) -> &'_ BotError {
+        &self.0
+    }
+
+    /// record this error using prometheus error counters. Counters used depend on error
+    pub fn record_stats(&self) {
+        self.0.record_stats();
+    }
+
+    pub async fn get_message(&self) -> Result<bool> {
+        self.0.get_message().await
+    }
+
+    /// get humanreadable error string to print to user via telegram
+    pub fn get_tg_error(&self) -> &'_ str {
+        self.0.get_tg_error()
+    }
+}
+
+impl std::fmt::Display for BoxedBotError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl<T> From<T> for BoxedBotError
+where
+    T: Into<BotError>,
+{
+    fn from(value: T) -> Self {
+        Self(Box::new(value.into()))
+    }
+}
+
 /// Type alias for universal result type
-pub type Result<T> = std::result::Result<T, BotError>;
+pub type Result<T> = std::result::Result<T, BoxedBotError>;
 
 /// Extension trait for mapping generic errors into BotError::Speak
 /// Meant to be implemented on Result
@@ -64,6 +120,57 @@ pub trait SpeakErr<T: Send> {
     async fn silent(self) -> Result<T>;
 
     fn log(self) -> Option<T>;
+}
+
+#[async_trait]
+impl<T: Send> SpeakErr<T> for Result<T> {
+    fn log(self) -> Option<T> {
+        self.map_err(|e| *e.0).log()
+    }
+
+    async fn speak<M, U>(self, ctx: &U, msg: M) -> Result<T>
+    where
+        U: Fail + Send + Sync,
+        M: AsRef<str> + Send,
+    {
+        self.map_err(|e| *e.0).speak(ctx, msg).await
+    }
+
+    async fn speak_err<F, U>(self, ctx: &U, func: F) -> Result<T>
+    where
+        U: Fail + Send + Sync,
+        F: for<'b> FnOnce(&'b str) -> String + Send,
+    {
+        self.map_err(|e| *e.0).speak_err(ctx, func).await
+    }
+
+    async fn speak_err_raw<F, U>(self, ctx: &U, func: F) -> Result<T>
+    where
+        U: Fail + Send + Sync,
+        F: for<'b> FnOnce(&'b BotError) -> Option<String> + Send,
+    {
+        self.map_err(|e| *e.0).speak_err_raw(ctx, func).await
+    }
+
+    async fn speak_err_code<F, U>(self, ctx: &U, code: i64, func: F) -> Result<T>
+    where
+        U: Fail + Send + Sync,
+        F: for<'b> FnOnce(&'b Response) -> String + Send,
+    {
+        self.map_err(|e| *e.0).speak_err_code(ctx, code, func).await
+    }
+
+    async fn speak_db_code<F, U>(self, ctx: &U, code: &str, func: F) -> Result<T>
+    where
+        U: Fail + Send + Sync,
+        F: for<'b> FnOnce(&'b dyn DatabaseError) -> String + Send,
+    {
+        self.map_err(|e| *e.0).speak_db_code(ctx, code, func).await
+    }
+
+    async fn silent(self) -> Result<T> {
+        self.map_err(|e| *e.0).silent().await
+    }
 }
 
 #[async_trait]
@@ -128,9 +235,9 @@ impl<T: Send, E: Into<BotError> + Send> SpeakErr<T> for std::result::Result<T, E
         U: Fail + Send + Sync,
         F: for<'b> FnOnce(&'b BotError) -> Option<String> + Send,
     {
-        let self = self.map_err(|e| e.into());
+        let self = self.map_err(|e| BoxedBotError::new(e.into()));
         if let Err(ref err) = self {
-            if let Some(message) = func(err) {
+            if let Some(message) = func(err.inner()) {
                 ctx.fail(message)
             } else {
                 self
@@ -145,12 +252,14 @@ impl<T: Send, E: Into<BotError> + Send> SpeakErr<T> for std::result::Result<T, E
         U: Fail + Send + Sync,
         F: for<'b> FnOnce(&'b Response) -> String + Send,
     {
-        let self = self.map_err(|e| e.into());
-        if let Err(BotError::ApiError(ref err)) = self {
-            if let Some(resp) = err.get_response() {
-                if !resp.ok && resp.error_code == Some(code) {
-                    let message = func(resp);
-                    return ctx.fail(message);
+        let self = self.map_err(|e| BoxedBotError::new(e.into()));
+        if let Err(ref err) = self {
+            if let BotError::ApiError(err) = err.inner() {
+                if let Some(resp) = err.get_response() {
+                    if !resp.ok && resp.error_code == Some(code) {
+                        let message = func(resp);
+                        return ctx.fail(message);
+                    }
                 }
             }
         }
@@ -184,16 +293,21 @@ impl<T: Send, E: Into<BotError> + Send> SpeakErr<T> for std::result::Result<T, E
             }
             _ => (),
         }
+
+        let self = self.map_err(|e| BoxedBotError::new(e));
+
         self
     }
 
     async fn silent(self) -> Result<T> {
         match self.map_err(|e| e.into()) {
-            Err(BotError::Speak { err: Some(err), .. }) => Err(BotError::Silent(err)),
-            Err(BotError::Speak { say, err: None, .. }) => {
-                Err(BotError::Silent(Box::new(BotError::Generic(say))))
+            Err(BotError::Speak { err: Some(err), .. }) => {
+                Err(BoxedBotError::new(BotError::Silent(err)))
             }
-            v => v,
+            Err(BotError::Speak { say, err: None, .. }) => Err(BoxedBotError::new(
+                BotError::Silent(Box::new(BotError::Generic(say))),
+            )),
+            v => v.map_err(|v| BoxedBotError::new(v)),
         }
     }
 }
@@ -208,20 +322,20 @@ pub trait Fail {
 
 impl Fail for Context {
     fn fail<T: AsRef<str>, R>(&self, message: T) -> Result<R> {
-        Err(self.fail_err(message))
+        Err(BoxedBotError::new(self.fail_err(message)))
     }
 
     fn fail_err<T: AsRef<str>>(&self, message: T) -> BotError {
         match self.message() {
             Ok(get) => BotError::speak(message.as_ref(), get.chat.get_id(), Some(get.message_id)),
-            Err(err) => err,
+            Err(err) => *err.0,
         }
     }
 }
 
 impl Fail for Message {
     fn fail<T: AsRef<str>, R>(&self, message: T) -> Result<R> {
-        Err(self.fail_err(message))
+        Err(BoxedBotError::new(self.fail_err(message)))
     }
 
     fn fail_err<T: AsRef<str>>(&self, message: T) -> BotError {
@@ -235,7 +349,7 @@ impl Fail for Message {
 
 impl Fail for Chat {
     fn fail<T: AsRef<str>, R>(&self, message: T) -> Result<R> {
-        Err(self.fail_err(message))
+        Err(BoxedBotError::new(self.fail_err(message)))
     }
 
     fn fail_err<T: AsRef<str>>(&self, message: T) -> BotError {
@@ -245,7 +359,7 @@ impl Fail for Chat {
 
 impl Fail for ChatFullInfo {
     fn fail<T: AsRef<str>, R>(&self, message: T) -> Result<R> {
-        Err(self.fail_err(message))
+        Err(BoxedBotError::new(self.fail_err(message)))
     }
 
     fn fail_err<T: AsRef<str>>(&self, message: T) -> BotError {
@@ -325,6 +439,12 @@ impl<T> From<tokio::sync::mpsc::error::SendError<T>> for BotError {
     }
 }
 
+// impl From<BoxedBotError> for BotError {
+//     fn from(value: BoxedBotError) -> Self {
+//         *value.0
+//     }
+// }
+
 // impl<T> From<RunError<T>> for BotError {
 //     fn from(value: RunError<T>) -> Self {
 //         Self::RedisPoolErr("Redis pool error".to_owned())
@@ -334,6 +454,12 @@ impl<T> From<tokio::sync::mpsc::error::SendError<T>> for BotError {
 impl From<TransactionError<BotError>> for BotError {
     fn from(value: TransactionError<BotError>) -> Self {
         BotError::Generic(value.to_string())
+    }
+}
+
+impl From<TransactionError<BoxedBotError>> for BoxedBotError {
+    fn from(value: TransactionError<BoxedBotError>) -> Self {
+        BoxedBotError::new(BotError::Generic(value.to_string()))
     }
 }
 

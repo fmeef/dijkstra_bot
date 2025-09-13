@@ -18,7 +18,7 @@ use crate::{
     },
     statics::{CONFIG, DB, REDIS, TG},
     tg::button::OnPush,
-    util::error::{BotError, Result},
+    util::error::{BotError, BoxedBotError, Result},
 };
 
 use super::{button::InlineKeyboardBuilder, command::Context, markdown::get_markup_for_buttons};
@@ -87,7 +87,7 @@ pub async fn refresh_notes(
 
 pub async fn clear_notes(chat: i64) -> Result<()> {
     let key = get_hash_key(chat);
-    DB.transaction::<_, (), BotError>(|tx| {
+    DB.transaction::<_, (), BoxedBotError>(|tx| {
         async move {
             let ids: Vec<Option<i64>> = notes::Entity::find()
                 .select_only()

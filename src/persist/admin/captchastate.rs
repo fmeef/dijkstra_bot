@@ -19,7 +19,7 @@ impl CaptchaType {
         match text {
             "button" => Ok(CaptchaType::Button),
             "text" => Ok(CaptchaType::Text),
-            _ => Err(BotError::speak("Invalid button type", chat, Some(reply))),
+            _ => Err(BotError::speak("Invalid button type", chat, Some(reply)).into()),
         }
     }
 

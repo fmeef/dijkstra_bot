@@ -82,7 +82,8 @@ pub fn get_content<'a>(
             "Invalid argument, need to specify name",
             message.chat.id,
             Some(message.message_id),
-        )),
+        )
+        .into()),
     }
 }
 
@@ -416,7 +417,7 @@ impl StaticContext {
         if let UpdateExt::Message(ref message) = self.update {
             Ok(message)
         } else {
-            Err(BotError::Generic("update is not a message".to_owned()))
+            Err(BotError::Generic("update is not a message".to_owned()).into())
         }
     }
 
@@ -511,7 +512,7 @@ impl Context {
     pub fn try_get(&self) -> Result<&'_ ContextYoke<'_>> {
         self.get()
             .as_ref()
-            .ok_or_else(|| BotError::Generic("Not a chat context".to_owned()))
+            .ok_or_else(|| BotError::Generic("Not a chat context".to_owned()).into())
     }
 
     pub fn get_real_from(&self) -> Result<&'_ User> {
@@ -543,7 +544,7 @@ impl Context {
         if let Some(UpdateExt::Message(ref message)) = self.get().as_ref().map(|v| v.update) {
             Ok(message)
         } else {
-            Err(BotError::Generic("update is not a message".to_owned()))
+            Err(BotError::Generic("update is not a message".to_owned()).into())
         }
     }
 

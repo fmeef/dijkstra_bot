@@ -109,7 +109,7 @@ impl ActionType {
             "warn" => Ok(ActionType::Warn),
             "shame" => Ok(ActionType::Warn),
             "delete" => Ok(ActionType::Delete),
-            _ => Err(err()),
+            _ => Err(err().into()),
         }
     }
 }

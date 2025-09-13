@@ -10,10 +10,9 @@ use crate::{
         redis::{RedisStr, ToRedisStr},
     },
     statics::{CONFIG, DB, REDIS, TG},
-    util::string::get_chat_lang,
     util::{
-        error::{BotError, Fail, Result},
-        string::Speak,
+        error::{BotError, BoxedBotError, Fail, Result},
+        string::{get_chat_lang, Speak},
     },
 };
 use async_trait::async_trait;
@@ -457,7 +456,7 @@ impl IsGroupAdmin for Message {
             let msg = lang_fmt!(lang, "lackingadminrights", user.name_humanreadable());
             self.fail(msg)
         } else {
-            Err(BotError::Generic("not admin".to_owned()))
+            Err(BotError::Generic("not admin".to_owned()).into())
         }
     }
 
@@ -540,7 +539,7 @@ impl<'a> IsAdmin for Option<&'a User> {
                 chat.fail(msg)
             }
         } else {
-            Err(BotError::Generic("fail".to_owned()))
+            Err(BotError::Generic("fail".to_owned()).into())
         }
     }
 
@@ -766,7 +765,7 @@ impl GetCachedAdmins for Chat {
                 .map(|(k, v)| (k, v.get::<ChatMember>()))
                 .try_fold(HashMap::new(), |mut acc, (k, v)| {
                     acc.insert(k, v?);
-                    Ok::<_, BotError>(acc)
+                    Ok::<_, BoxedBotError>(acc)
                 })?;
             Ok((admins, false))
         } else {
@@ -788,7 +787,7 @@ impl GetCachedAdmins for Chat {
                     q.del(&key);
                     admins.try_for_each(|(id, cm)| {
                         q.hset(&key, id, RedisStr::new(&cm)?);
-                        Ok::<(), BotError>(())
+                        Ok::<(), BoxedBotError>(())
                     })?;
 
                     Ok(q.expire(&key, Duration::try_hours(48).unwrap().num_seconds()))
@@ -824,7 +823,7 @@ impl Context {
                     q.del(&key);
                     admins.try_for_each(|(id, cm)| {
                         q.hset(&key, id, RedisStr::new(&cm)?);
-                        Ok::<(), BotError>(())
+                        Ok::<(), BoxedBotError>(())
                     })?;
 
                     q.expire(&key, Duration::try_minutes(10).unwrap().num_seconds());

@@ -331,10 +331,11 @@ async fn get<'a>(ctx: &Context) -> Result<()> {
                 "missing note name, try again weenie",
                 message.get_chat().get_id(),
                 Some(message.message_id),
-            ))
+            )
+            .into())
         }
     } else {
-        Err(BotError::Generic("not a command".to_owned()))
+        Err(BotError::Generic("not a command".to_owned()).into())
     }
 }
 

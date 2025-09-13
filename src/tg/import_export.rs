@@ -18,12 +18,11 @@ use crate::{
             media::{GetMediaId, MediaType},
             taint,
         },
-        redis::{default_cache_query, ToRedisStr},
-        redis::{CachedQueryTrait, RedisStr},
+        redis::{default_cache_query, CachedQueryTrait, RedisStr, ToRedisStr},
     },
     statics::{CONFIG, DB, ME, REDIS, TG},
     util::{
-        error::{BotError, Result},
+        error::{BotError, BoxedBotError, Result},
         string::Speak,
     },
 };
@@ -106,7 +105,7 @@ pub async fn set_taint(model: taint::Model) -> Result<()> {
 }
 
 pub async fn set_taint_vec(media_id: Vec<taint::Model>) -> Result<()> {
-    DB.transaction::<_, (), BotError>(|tx| {
+    DB.transaction::<_, (), BoxedBotError>(|tx| {
         async move {
             // cry here, sea_orm doesn't support returning multiple rows via postgres
             // INSERT...RETURNING clause

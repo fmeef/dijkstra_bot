@@ -194,10 +194,9 @@ impl DbMarkupType {
             "code" => Ok(Self::Code),
             "mention" => Ok(Self::Mention),
             "url" => Ok(Self::Url),
-            v => Err(crate::util::error::BotError::Generic(format!(
-                "invalid tg_type {}",
-                v
-            ))),
+            v => {
+                Err(crate::util::error::BotError::Generic(format!("invalid tg_type {}", v)).into())
+            }
         }
     }
 
