@@ -3,6 +3,7 @@ use dijkstra::persist::{
     core::{chat_members, dialogs, users},
     migrate::ManagerHelper,
 };
+use dijkstra::sea_orm::Iden;
 use sea_orm_migration::{
     prelude::*,
     sea_orm::{DatabaseBackend, Statement},

@@ -4,6 +4,8 @@ use dijkstra::{
 };
 use sea_orm_migration::prelude::*;
 
+use dijkstra::sea_orm::Iden;
+
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 

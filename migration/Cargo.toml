@@ -11,7 +11,7 @@ path = "src/lib.rs"
 [dependencies]
 time = "0.3.43"
 sea-schema = { version = "0.16.2", default-features = false, features = [ "debug-print"] }
-sea-orm-migration = "1.1.15"
+sea-orm-migration = "1.1.16"
 sea-query = { version = "0.32.7", features = ["uuid", "bigdecimal", "with-bigdecimal", "with-chrono", "with-json", "backend-postgres", "sea-query-derive", "backend-postgres", "derive", "with-uuid", "thread-safe"] }
 dijkstra = { path = "../" }
 botapi = { path = "../botapi-rs" }
@@ -19,6 +19,6 @@ tggen = { path = "../botapi-rs/generate" }
 async-trait = "0.1.89"
 openssl = { version = "0.10.73", features=["vendored"]}
 tokio = { version = "1.47.1", features = ["net", "socket2", "io-util", "tokio-macros"] }
-rustls-webpki = "0.103.4"
-chrono = "0.4.41"
+rustls-webpki = "0.103.5"
+chrono = "0.4.42"
 
