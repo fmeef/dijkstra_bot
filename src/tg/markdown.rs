@@ -1680,6 +1680,11 @@ impl EntityMessage {
     pub async fn call(&mut self) -> CallSendMessage<'_, i64> {
         if self.disable_murkdown {
             self.builder.build_murkdown_nofail_ref().await;
+            for entity in self.builder.entities.iter() {
+                if entity.offset + entity.length > self.builder.text.len() as i64 {
+                    log::error!("entity {entity:?} overflowed");
+                }
+            }
             let call = TG
                 .client
                 .build_send_message(self.chat, &self.builder.text)
@@ -1692,6 +1697,11 @@ impl EntityMessage {
         } else {
             let (text, entities, buttons) = self.builder.build_murkdown_nofail_ref().await;
             log::info!("call {} {}", text, self.reply_markup.is_some());
+            for entity in entities.iter() {
+                if entity.offset + entity.length > text.len() as i64 {
+                    log::error!("entity {entity:?} overflowed");
+                }
+            }
             let call = TG
                 .client
                 .build_send_message(self.chat, text)

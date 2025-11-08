@@ -8,7 +8,7 @@ use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisStr};
 use crate::statics::{CHAT_GOVERNER, CONFIG, DB, REDIS, TG};
 use crate::tg::admin_helpers::IntoChatUser;
 use crate::tg::markdown::{EntityMessage, MarkupBuilder};
-use crate::util::error::Result;
+use crate::util::error::{BotError, BoxedBotError, Result};
 use async_trait::async_trait;
 use botapi::bot::Part;
 use botapi::gen_types::{
@@ -115,6 +115,15 @@ impl Speak for i64 {
                 .header(false)
                 .build_murkdown_nofail()
                 .await;
+
+            for entity in entities.iter() {
+                if entity.offset + entity.length > text.len() as i64 {
+                    log::error!("entity {entity:?} overflowed");
+                    return Err(BoxedBotError::from(BotError::Generic(format!(
+                        "entity {entity:?} overflowed"
+                    ))));
+                }
+            }
 
             let m = TG
                 .client()

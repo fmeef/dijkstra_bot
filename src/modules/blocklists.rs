@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::HashMap;
 
 use crate::metadata::ModuleHelpers;
@@ -1101,11 +1102,20 @@ async fn warn(ctx: &Context, user: &User, reason: Option<String>) -> Result<()> 
     Ok(())
 }
 
+fn get_search_text<'a>(message: &'a Message) -> Option<Cow<'a, str>> {
+    match (message.text.as_deref(), message.caption.as_deref()) {
+        (Some(text), Some(caption)) => Some(Cow::Owned(format!("{text} {caption}"))),
+        (Some(text), None) => Some(Cow::Borrowed(text)),
+        (None, Some(caption)) => Some(Cow::Borrowed(caption)),
+        (None, None) => None,
+    }
+}
+
 async fn handle_trigger(ctx: &Context) -> Result<()> {
     if let Some(message) = ctx.should_moderate().await {
         if let Some(user) = message.get_from() {
-            if let Some(text) = message.get_text() {
-                if let Some(res) = search_cache(ctx, message, text).await? {
+            if let Some(text) = get_search_text(message) {
+                if let Some(res) = search_cache(ctx, message, &text).await? {
                     let duration = res.duration.and_then(Duration::try_seconds);
                     let duration_str = if let Some(duration) = duration {
                         lang_fmt!(ctx, "duration", format_duration(duration.to_std()?))
