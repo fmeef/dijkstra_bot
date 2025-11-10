@@ -593,7 +593,7 @@ fn get_blocklist_key(message: &Message, id: i64) -> String {
 }
 
 fn get_blocklist_hash_key(chat: i64) -> String {
-    format!("bcache:{}", chat)
+    format!("bcache2:{}", chat)
 }
 
 async fn delete_script(ctx: &Context, script: String) -> Result<()> {
