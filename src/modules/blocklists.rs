@@ -713,6 +713,7 @@ async fn search_cache(
     message: &Message,
     text: &str,
 ) -> Result<Option<blocklists::Model>> {
+    let text = text.to_lowercase();
     update_cache_from_db(message).await?;
     let hash_key = get_blocklist_hash_key(message.get_chat().get_id());
     REDIS
@@ -729,7 +730,7 @@ async fn search_cache(
                 match filtertype {
                     FilterConfig::Glob => {
                         let glob = WildMatch::new(&key);
-                        if glob.matches(text) {
+                        if glob.matches(&text) {
                             return get_blocklist(message, item).await;
                         }
                     }
