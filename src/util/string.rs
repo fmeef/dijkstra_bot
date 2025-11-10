@@ -7,7 +7,7 @@ use crate::persist::core::dialogs;
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisStr};
 use crate::statics::{CHAT_GOVERNER, CONFIG, DB, REDIS, TG};
 use crate::tg::admin_helpers::IntoChatUser;
-use crate::tg::markdown::{EntityMessage, MarkupBuilder};
+use crate::tg::markdown::{EntityMessage, MarkupBuilder, MessageOrFile};
 use crate::util::error::{BotError, BoxedBotError, Result};
 use async_trait::async_trait;
 use botapi::bot::Part;
@@ -146,18 +146,19 @@ impl Speak for i64 {
 
     async fn speak_fmt(&self, mut message: EntityMessage) -> Result<Option<Message>> {
         if !should_ignore_chat(*self).await? {
-            Ok(Some(
-                message
-                    .call()
-                    .await
-                    .link_preview_options(
-                        &LinkPreviewOptionsBuilder::new()
-                            .set_is_disabled(true)
-                            .build(),
-                    )
-                    .build()
-                    .await?,
-            ))
+            Ok(Some(match message.call().await {
+                MessageOrFile::Message(message) => {
+                    message
+                        .link_preview_options(
+                            &LinkPreviewOptionsBuilder::new()
+                                .set_is_disabled(true)
+                                .build(),
+                        )
+                        .build()
+                        .await?
+                }
+                MessageOrFile::File(file) => file.build().await?,
+            }))
         } else {
             Ok(None)
         }
@@ -165,18 +166,19 @@ impl Speak for i64 {
 
     async fn reply_fmt(&self, mut message: EntityMessage) -> Result<Option<Message>> {
         if !should_ignore_chat(*self).await? {
-            Ok(Some(
-                message
-                    .call()
-                    .await
-                    .link_preview_options(
-                        &LinkPreviewOptionsBuilder::new()
-                            .set_is_disabled(true)
-                            .build(),
-                    )
-                    .build()
-                    .await?,
-            ))
+            Ok(Some(match message.call().await {
+                MessageOrFile::Message(message) => {
+                    message
+                        .link_preview_options(
+                            &LinkPreviewOptionsBuilder::new()
+                                .set_is_disabled(true)
+                                .build(),
+                        )
+                        .build()
+                        .await?
+                }
+                MessageOrFile::File(file) => file.build().await?,
+            }))
         } else {
             Ok(None)
         }
@@ -278,18 +280,19 @@ impl Speak for Message {
 
     async fn speak_fmt(&self, mut message: EntityMessage) -> Result<Option<Message>> {
         if !should_ignore_chat(self.get_chat().get_id()).await? {
-            Ok(Some(
-                message
-                    .call()
-                    .await
-                    .link_preview_options(
-                        &LinkPreviewOptionsBuilder::new()
-                            .set_is_disabled(true)
-                            .build(),
-                    )
-                    .build()
-                    .await?,
-            ))
+            Ok(Some(match message.call().await {
+                MessageOrFile::Message(message) => {
+                    message
+                        .link_preview_options(
+                            &LinkPreviewOptionsBuilder::new()
+                                .set_is_disabled(true)
+                                .build(),
+                        )
+                        .build()
+                        .await?
+                }
+                MessageOrFile::File(file) => file.build().await?,
+            }))
         } else {
             Ok(None)
         }
@@ -297,19 +300,24 @@ impl Speak for Message {
 
     async fn reply_fmt(&self, mut message: EntityMessage) -> Result<Option<Message>> {
         if !should_ignore_chat(self.get_chat().get_id()).await? {
-            Ok(Some(
-                message
-                    .call()
-                    .await
-                    .reply_parameters(&ReplyParametersBuilder::new(self.message_id).build())
-                    .link_preview_options(
-                        &LinkPreviewOptionsBuilder::new()
-                            .set_is_disabled(true)
-                            .build(),
-                    )
-                    .build()
-                    .await?,
-            ))
+            Ok(Some(match message.call().await {
+                MessageOrFile::Message(message) => {
+                    message
+                        .link_preview_options(
+                            &LinkPreviewOptionsBuilder::new()
+                                .set_is_disabled(true)
+                                .build(),
+                        )
+                        .reply_parameters(&ReplyParametersBuilder::new(self.message_id).build())
+                        .build()
+                        .await?
+                }
+                MessageOrFile::File(file) => {
+                    file.reply_parameters(&ReplyParametersBuilder::new(self.message_id).build())
+                        .build()
+                        .await?
+                }
+            }))
         } else {
             Ok(None)
         }
@@ -433,18 +441,19 @@ impl Speak for Chat {
 
     async fn speak_fmt(&self, mut message: EntityMessage) -> Result<Option<Message>> {
         if !should_ignore_chat(self.get_id()).await? {
-            Ok(Some(
-                message
-                    .call()
-                    .await
-                    .link_preview_options(
-                        &LinkPreviewOptionsBuilder::new()
-                            .set_is_disabled(true)
-                            .build(),
-                    )
-                    .build()
-                    .await?,
-            ))
+            Ok(Some(match message.call().await {
+                MessageOrFile::Message(message) => {
+                    message
+                        .link_preview_options(
+                            &LinkPreviewOptionsBuilder::new()
+                                .set_is_disabled(true)
+                                .build(),
+                        )
+                        .build()
+                        .await?
+                }
+                MessageOrFile::File(file) => file.build().await?,
+            }))
         } else {
             Ok(None)
         }
@@ -452,18 +461,19 @@ impl Speak for Chat {
 
     async fn reply_fmt(&self, mut message: EntityMessage) -> Result<Option<Message>> {
         if !should_ignore_chat(self.get_id()).await? {
-            Ok(Some(
-                message
-                    .call()
-                    .await
-                    .link_preview_options(
-                        &LinkPreviewOptionsBuilder::new()
-                            .set_is_disabled(true)
-                            .build(),
-                    )
-                    .build()
-                    .await?,
-            ))
+            Ok(Some(match message.call().await {
+                MessageOrFile::Message(message) => {
+                    message
+                        .link_preview_options(
+                            &LinkPreviewOptionsBuilder::new()
+                                .set_is_disabled(true)
+                                .build(),
+                        )
+                        .build()
+                        .await?
+                }
+                MessageOrFile::File(file) => file.build().await?,
+            }))
         } else {
             Ok(None)
         }

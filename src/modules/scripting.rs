@@ -1,7 +1,7 @@
 use crate::metadata::metadata;
 use crate::tg::admin_helpers::ActionMessage;
 use crate::tg::command::{Cmd, Context};
-use crate::tg::markdown::MarkupType;
+use crate::tg::markdown::{Escape, MarkupType};
 use crate::util::error::{Fail, Result, SpeakErr};
 use crate::util::scripting::{ManagedRhai, RHAI_ENGINE};
 use crate::util::string::Speak;
@@ -93,7 +93,9 @@ async fn map_script(ctx: &Context) -> Result<()> {
         } else {
             res
         };
-        let res = MarkupType::BlockQuote.text(&res);
+        log::info!("{res}");
+        let res = MarkupType::BlockQuote.text(res.escape(false));
+
         ctx.reply_fmt(entity_fmt!(ctx, "empty", res)).await?;
         Ok(())
     })

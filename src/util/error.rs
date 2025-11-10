@@ -47,6 +47,10 @@ impl BoxedBotError {
         &self.0
     }
 
+    pub fn into_inner(self) -> BotError {
+        *self.0
+    }
+
     /// record this error using prometheus error counters. Counters used depend on error
     pub fn record_stats(&self) {
         self.0.record_stats();

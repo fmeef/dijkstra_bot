@@ -6,9 +6,10 @@ use crate::persist::core::button;
 use crate::statics::TG;
 use crate::util::error::{BotError, Result};
 use crate::util::string::AlignCharBoundry;
-use botapi::gen_methods::CallSendMessage;
+use botapi::bot::Part;
+use botapi::gen_methods::{CallSendDocument, CallSendMessage};
 use botapi::gen_types::{
-    Chat, EReplyMarkup, InlineKeyboardButton, InlineKeyboardButtonBuilder, MessageEntity,
+    Chat, EReplyMarkup, FileData, InlineKeyboardButton, InlineKeyboardButtonBuilder, MessageEntity,
     MessageEntityBuilder, User,
 };
 use futures::future::BoxFuture;
@@ -499,20 +500,22 @@ where
 {
     fn escape(&self, header: bool) -> Cow<'_, str> {
         let s = self.as_ref();
-        // if self.is_escaped(header) {
-        //     return Cow::Borrowed(s);
-        // }
+        if self.is_escaped(header) {
+            return Cow::Borrowed(s);
+        }
 
         let mut out = String::with_capacity(s.len());
         let mut iter = s.chars().peekable();
         while let Some(c) = iter.next() {
             if let Some(n) = iter.peek() {
-                if c == '\\' && (*n == '\\' || is_valid(*n, header) || c != '}' || c != '{') {
+                if c == '\\' && *n == '\\' {
                     continue;
                 }
             }
 
-            if c == '\\' || (is_valid(c, header) || c == '}' || c == '{') {
+            if c == '\\'
+                || (is_valid(c, header) || c == '}' || c == '{') && (iter.peek() != Some(&'\\'))
+            {
                 out.push('\\');
             }
 
@@ -525,8 +528,11 @@ where
     fn is_escaped(&self, header: bool) -> bool {
         let mut iter = self.as_ref().chars().peekable();
         while let Some(c) = iter.next() {
+            // if !is_valid(c, header) {
+            //     continue;
+            // }
             if let Some(n) = iter.peek() {
-                if (is_valid(*n, header) && c != '}' && c != '{') && c != '\\' && *n != '\\' {
+                if (is_valid(*n, header) && c != '}' && c != '{') && c != '\\' {
                     return false;
                 }
             }
@@ -542,9 +548,10 @@ where
 
         while let Some(c) = iter.next() {
             if let Some(n) = iter.peek() {
-                if is_valid(*n, header) && c == '\\' {
-                    res.push(*n);
+                if (is_valid(*n, header) || *n == '\\') && c == '\\' {
+                    let n = *n;
                     iter.next();
+                    res.push(n);
                     continue;
                 } else {
                     res.push(c);
@@ -1642,6 +1649,11 @@ pub struct EntityMessage {
     pub disable_murkdown: bool,
 }
 
+pub enum MessageOrFile<'a, T> {
+    Message(CallSendMessage<'a, T>),
+    File(CallSendDocument<'a, T>),
+}
+
 impl EntityMessage {
     pub fn new(chat: i64) -> Self {
         Self {
@@ -1677,29 +1689,42 @@ impl EntityMessage {
         self
     }
 
-    pub async fn call(&mut self) -> CallSendMessage<'_, i64> {
+    pub async fn call(&mut self) -> MessageOrFile<'_, i64> {
         if self.disable_murkdown {
             self.builder.build_murkdown_nofail_ref().await;
             for entity in self.builder.entities.iter() {
-                if entity.offset + entity.length > self.builder.text.len() as i64 {
+                if entity.offset + entity.length > self.builder.text.encode_utf16().count() as i64 {
                     log::error!("entity {entity:?} overflowed");
                 }
+            }
+            let text_len = self.builder.text.encode_utf16().count() as i64;
+            if text_len > 4096 {
+                let bytes = FileData::Part(
+                    Part::text(self.builder.text.to_owned()).file_name("message.txt"),
+                );
+                return MessageOrFile::File(TG.client.build_send_document(self.chat, bytes));
             }
             let call = TG
                 .client
                 .build_send_message(self.chat, &self.builder.text)
                 .entities(&self.builder.entities);
             if let Some(ref reply_markup) = self.reply_markup {
-                call.reply_markup(reply_markup)
+                MessageOrFile::Message(call.reply_markup(reply_markup))
             } else {
-                call
+                MessageOrFile::Message(call)
             }
         } else {
             let (text, entities, buttons) = self.builder.build_murkdown_nofail_ref().await;
             log::info!("call {} {}", text, self.reply_markup.is_some());
+            let text_len = text.encode_utf16().count() as i64;
+            if text_len > 4096 {
+                let bytes = FileData::Part(Part::text(text.to_owned()).file_name("message.txt"));
+                return MessageOrFile::File(TG.client.build_send_document(self.chat, bytes));
+            }
+
             for entity in entities.iter() {
-                if entity.offset + entity.length > text.len() as i64 {
-                    log::error!("entity {entity:?} overflowed");
+                if entity.offset + entity.length > text_len {
+                    log::error!("entity {entity:?} overflowed {text_len}");
                 }
             }
             let call = TG
@@ -1707,11 +1732,11 @@ impl EntityMessage {
                 .build_send_message(self.chat, text)
                 .entities(entities);
             if let Some(ref reply_markup) = self.reply_markup {
-                call.reply_markup(reply_markup)
+                MessageOrFile::Message(call.reply_markup(reply_markup))
             } else if let Some(buttons) = buttons.map(|v| &*v) {
-                call.reply_markup(buttons)
+                MessageOrFile::Message(call.reply_markup(buttons))
             } else {
-                call
+                MessageOrFile::Message(call)
             }
         }
     }
@@ -1725,8 +1750,20 @@ impl EntityMessage {
 mod test {
     use std::borrow::Cow;
 
-    use botapi::gen_types::{ChatBuilder, UserBuilder};
+    use botapi::gen_types::{ChatBuilder, Message, UpdateExt, UserBuilder};
+    use chrono::Utc;
     use futures::executor::block_on;
+    use macros::{entity_fmt, lang_fmt};
+    use redis::{Cmd, RedisError, ToRedisArgs};
+    use redis_test::{MockCmd, MockRedisConnection};
+    use sea_orm::TryGetable;
+
+    use crate::{
+        langs::{self, Lang},
+        persist::redis::{MockPool, RedisPool, ToRedisStr},
+        statics::{REDIS, REDIS_BACKEND},
+        tg::command::{Context, StaticContext},
+    };
 
     use super::*;
     const MARKDOWN_TEST: &str = "what
@@ -1928,6 +1965,15 @@ mod test {
         }
     }
 
+    #[test]
+    fn escape_equiv() {
+        let text = r#"test \nThey really sent $1500 right after I signed up! 🤑"#;
+        assert_eq!(text, text.escape(false).unescape(false));
+
+        let text = r#"test | this is keyword"#;
+        assert_eq!(text, text.escape(false).unescape(false));
+    }
+
     #[tokio::test]
     async fn parse_help() {
         let test = r#"
@@ -1940,5 +1986,57 @@ mod test {
             .build_murkdown()
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn blockquote_text_overflow() -> Result<()> {
+        let lang = langs::Lang::En;
+        let lang = rmp_serde::to_vec_named(&lang)?;
+        REDIS_BACKEND
+            .set(
+                RedisPool::new_mock(MockRedisConnection::new(vec![
+                    MockCmd::new(Cmd::new().arg("GET").arg("lang:0"), Ok(lang.clone())),
+                    MockCmd::new(Cmd::new().arg("GET").arg("lang:0"), Ok(lang.clone())),
+                ]))
+                .await
+                .unwrap(),
+            )
+            .expect("failed to set redis pool");
+        for text in [
+            r#"Looks like Drake's promo code is officially active. It gives a $1 500  to new users.
+        💸The best part? They claim it's a no-strings-attached bonus that you can withdraw right away. 💸
+        If you're curious, here's the link:
+        drakebo.com/?promo=drakev500
+        Use code: drakev500 (I personally withdrew $3900, this is not a scam)"#,
+            r#"Message { message_id: 0, message_thread_id: None, direct_messages_topic: None, from: Some(BoxWrapper(Unbox(User { id: 0, is_bot: false, first_name: "the gpt", last_name: None, username: Some("help"), language_code: None, is_premium: None, added_to_attachment_menu: None, can_join_groups: None, can_read_all_group_messages: None, supports_inline_queries: None, can_connect_to_business: None, has_main_web_app: None }))), sender_chat: None, sender_boost_count: None, sender_business_bot: None, date: 0, business_connection_id: None, chat: BoxWrapper(Unbox(Chat { id: -10, tg_type: "supergroup", title: Some("sad chat"), username: None, first_name: None, last_name: None, is_forum: None, is_direct_messages: None })), forward_origin: Some(BoxWrapper(Unbox(MessageOriginHiddenUser(MessageOriginHiddenUser { tg_type: "hidden_user", date: 0, sender_user_name: "Deleted Account" })))), is_topic_message: None, is_automatic_forward: None, reply_to_message: None, external_reply: None, quote: None, reply_to_story: None, reply_to_checklist_task_id: None, via_bot: None, edit_date: None, has_protected_content: None, is_from_offline: None, is_paid_post: None, media_group_id: Some("0"), author_signature: None, paid_star_count: None, text: None, entities: None, link_preview_options: None, suggested_post_info: None, effect_id: None, animation: None, audio: None, document: None, paid_media: None, photo: None, sticker: None, story: None, video: Some(BoxWrapper(Unbox(Video { file_id: "wefwerfefe", file_unique_id: "efikwejhegfehgf", width: 1, height: 1, duration: 0, thumbnail: None, cover: None, start_timestamp: None, file_name: Some("drakest.mov"), mime_type: Some("video/quicktime"), file_size: Some(538118) }))), video_note: None, voice: None, caption: Some("HOLY! Can't believe this actually works! 🙏 Was sure those Drake comments were fake, but took a chance and... WOW!\nThey really sent $1500 right after I signed up! 🤑 Even crazier - I just cashed out $3700 to my account in under 30 minutes!\n\nProof doesn't lie - this is 100% real! \n\n👉 Code: drakev500  \n🔗 Link: drakisa.com/?promo=drakev500\nSharing this gem while it lasts! 🏃\u{200d}♂\u{fe0f}💨"), caption_entities: Some([MessageEntity { tg_type: "url", offset: 312, length: 28, url: None, user: None, language: None, custom_emoji_id: None }]), show_caption_above_media: None, has_media_spoiler: None, checklist: None, contact: None, dice: None, game: None, poll: None, venue: None, location: None, new_chat_members: None, left_chat_member: None, new_chat_title: None, new_chat_photo: None, delete_chat_photo: None, group_chat_created: None, supergroup_chat_created: None, channel_chat_created: None, message_auto_delete_timer_changed: None, migrate_to_chat_id: None, migrate_from_chat_id: None, pinned_message: None, invoice: None, successful_payment: None, refunded_payment: None, users_shared: None, chat_shared: None, gift: None, unique_gift: None, connected_website: None, write_access_allowed: None, passport_data: None, proximity_alert_triggered: None, boost_added: None, chat_background_set: None, checklist_tasks_done: None, checklist_tasks_added: None, direct_message_price_changed: None, forum_topic_created: None, forum_topic_edited: None, forum_topic_closed: None, forum_topic_reopened: None, general_forum_topic_hidden: None, general_forum_topic_unhidden: None, giveaway_created: None, giveaway: None, giveaway_winners: None, giveaway_completed: None, paid_message_price_changed: None, suggested_post_approved: None, suggested_post_approval_failed: None, suggested_post_declined: None, suggested_post_paid: None, suggested_post_refunded: None, video_chat_scheduled: None, video_chat_started: None, video_chat_ended: None, video_chat_participants_invited: None, web_app_data: None, reply_markup: None }"#,
+        ] {
+            let text_len = text.encode_utf16().count();
+            assert!(text_len < 4096);
+
+            let mut message = Message::new(0, 0, Chat::default());
+            message.set_text(Some(text.to_owned()));
+            let ctx = StaticContext::get_context(UpdateExt::Message(message))
+                .await
+                .unwrap();
+
+            let ctx = ctx.yoke();
+
+            let res = MarkupType::BlockQuote.text(text.escape(false));
+
+            let mut fmt = entity_fmt!(ctx, "empty", res);
+
+            let (text, entities, _) = fmt.builder.build_murkdown_nofail_ref().await;
+
+            let text_len = text.encode_utf16().count() as i64;
+            println!("{text}");
+            println!("text len {}", text_len);
+
+            assert!(!entities.is_empty());
+            for entity in entities {
+                println!("entity {entity:?}");
+                assert!(entity.offset + entity.length <= text_len);
+            }
+        }
+        Ok(())
     }
 }

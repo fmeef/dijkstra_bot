@@ -283,7 +283,6 @@ pub struct RedisPoolBuilder {
 }
 
 /// Since redis support multiple threads in specific circumstances we use a pool for parallelism
-#[derive(Debug)]
 pub struct RedisPool<T, A>
 where
     T: bb8::ManageConnection<Connection = A>,
@@ -307,7 +306,7 @@ impl RedisPoolBuilder {
     }
 }
 
-pub struct MockPool(MockRedisConnection);
+pub struct MockPool(pub MockRedisConnection);
 
 impl std::fmt::Debug for MockPool {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -330,6 +329,16 @@ impl bb8::ManageConnection for MockPool {
 
     fn has_broken(&self, _: &mut Self::Connection) -> bool {
         false
+    }
+}
+
+impl<T, A> std::fmt::Debug for RedisPool<T, A>
+where
+    T: bb8::ManageConnection<Connection = A>,
+    A: ConnectionLike + Send,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("MockRedisPool")
     }
 }
 
