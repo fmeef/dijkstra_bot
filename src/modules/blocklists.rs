@@ -941,7 +941,6 @@ async fn insert_blocklist(
 
 async fn command_blocklist<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
     ctx.check_permissions(|p| p.can_manage_chat).await?;
-    log::info!("adding blocklist ");
     let message = ctx.message()?;
 
     let cmd = MarkupBuilder::new(None)
@@ -959,6 +958,7 @@ async fn command_blocklist<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()>
     let filters = filters.iter().map(|v| v.as_str()).collect::<Vec<&str>>();
     let (action, duration) = if let Some(v) = footer.last() {
         let mut args = v.split(' ');
+        log::info!("adding blocklist {args:?}");
         match args.next() {
             Some("tmute") => (
                 ActionType::Mute,
@@ -990,6 +990,7 @@ async fn command_blocklist<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()>
             }
         }
     } else {
+        log::info!("adding blocklist default delete");
         (ActionType::Delete, None)
     };
 

@@ -220,10 +220,10 @@ anonchannelbad: Anonymous channels are not allowed to use this functionality.
 nosender: This message does not have a sender
 dateoutofrange: The time {} is out of range
 blockmute: |
-  User {} said a banned word! Action: muted{}
+  User {} said a banned word! Action: muted {}
   {}
 blockban: |
-  User {} said a banned word! Action: banned{}
+  User {} said a banned word! Action: banned {}
   {}
 reason: Reason {}
 duration: for {}
