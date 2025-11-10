@@ -18,10 +18,10 @@ use crate::tg::markdown::Header;
 use crate::tg::markdown::MarkupBuilder;
 use crate::tg::markdown::MarkupType;
 use crate::tg::permissions::*;
-use crate::util::error::BotError;
 use crate::util::error::BoxedBotError;
 use crate::util::error::Fail;
 use crate::util::error::Result;
+use crate::util::string::get_search_text;
 use crate::util::string::AlignCharBoundry;
 use crate::util::string::Speak;
 use botapi::gen_types::Message;
@@ -880,8 +880,8 @@ async fn command_filter<'a>(c: &Context, args: &TextArgs<'a>) -> Result<()> {
 
 async fn handle_trigger(ctx: &Context) -> Result<()> {
     let message = ctx.message()?;
-    if let Some(text) = message.get_text() {
-        if let Some((res, extra_entities, extra_buttons)) = search_cache(message, text).await? {
+    if let Some(text) = get_search_text(message) {
+        if let Some((res, extra_entities, extra_buttons)) = search_cache(message, &text).await? {
             SendMediaReply::new(ctx, res.media_type)
                 .button_callback(|_, _| async move { Ok(()) }.boxed())
                 .text(res.text)

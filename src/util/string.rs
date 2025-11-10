@@ -19,6 +19,7 @@ use redis::Script;
 use sea_orm::sea_query::OnConflict;
 use sea_orm::ActiveValue::Set;
 use sea_orm::{EntityTrait, IntoActiveModel};
+use std::borrow::Cow;
 use std::ops::DerefMut;
 
 /// Returns false if ratelimiting is triggered. This function should be called before
@@ -64,6 +65,15 @@ pub async fn ignore_chat(chat: i64, time: &Duration) -> Result<()> {
         .pipe(|q| q.set(&key, true).expire(&key, time.num_seconds()))
         .await?;
     Ok(())
+}
+
+pub fn get_search_text<'a>(message: &'a Message) -> Option<Cow<'a, str>> {
+    match (message.text.as_deref(), message.caption.as_deref()) {
+        (Some(text), Some(caption)) => Some(Cow::Owned(format!("{text} {caption}"))),
+        (Some(text), None) => Some(Cow::Borrowed(text)),
+        (None, Some(caption)) => Some(Cow::Borrowed(caption)),
+        (None, None) => None,
+    }
 }
 
 /// Extension trait with fuctions for sending messages. Types that implement this trait should be

@@ -39,6 +39,7 @@ use crate::util::error::SpeakErr;
 use crate::util::glob::WildMatch;
 
 use crate::util::scripting::ModAction;
+use crate::util::string::get_search_text;
 use crate::util::string::Speak;
 use botapi::gen_types::Message;
 use botapi::gen_types::User;
@@ -1102,15 +1103,6 @@ async fn warn(ctx: &Context, user: &User, reason: Option<String>) -> Result<()> 
     ctx.warn_with_action(user.get_id(), reason.clone().as_deref(), time)
         .await?;
     Ok(())
-}
-
-fn get_search_text<'a>(message: &'a Message) -> Option<Cow<'a, str>> {
-    match (message.text.as_deref(), message.caption.as_deref()) {
-        (Some(text), Some(caption)) => Some(Cow::Owned(format!("{text} {caption}"))),
-        (Some(text), None) => Some(Cow::Borrowed(text)),
-        (None, Some(caption)) => Some(Cow::Borrowed(caption)),
-        (None, None) => None,
-    }
 }
 
 async fn handle_trigger(ctx: &Context) -> Result<()> {
