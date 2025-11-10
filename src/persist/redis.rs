@@ -86,10 +86,14 @@ pub async fn redis_miss<'a, V>(key: &'a str, val: Option<V>, expire: Duration) -
 where
     V: Serialize + 'a,
 {
-    let valstr = RedisStr::new(&val)?;
-    let _: () = REDIS
-        .pipe(|p| p.set(key, valstr).expire(key, expire.num_seconds()))
-        .await?;
+    if let Some(ref val) = val {
+        let valstr = RedisStr::new(&Some(&val))?;
+        let _: () = REDIS
+            .pipe(|p| p.set(key, valstr).expire(key, expire.num_seconds()))
+            .await?;
+    } else {
+        REDIS.sq(|q| q.del(&key)).await?;
+    }
     Ok(val)
 }
 

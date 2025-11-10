@@ -818,7 +818,7 @@ dependencies = [
 
 [[package]]
 name = "dijkstra"
-version = "0.4.14"
+version = "0.4.15"
 dependencies = [
  "anyhow",
  "async-trait",

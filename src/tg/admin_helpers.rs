@@ -181,16 +181,16 @@ impl UpdateHelpers for UpdateExt {
                     return None;
                 }
                 let chat = message.get_chat();
-                if let Some(ref sender_chat) = message.sender_chat {
-                    if is_approved(chat, sender_chat.id).await.unwrap_or(false) {
-                        return None;
-                    }
-                } else if let Some(ref user) = message.from {
+
+                if let Some(ref user) = message.from {
                     if is_approved(chat, user.id).await.unwrap_or(false) {
                         return None;
                     }
                 }
                 if let Some(ref fullchat) = message.sender_chat {
+                    if is_approved(chat, fullchat.id).await.unwrap_or(false) {
+                        return None;
+                    }
                     match fullchat.id.get_chat_cached().await {
                         Ok(fullchat) => {
                             if fullchat.linked_chat_id != Some(message.chat.id)
@@ -690,12 +690,11 @@ pub async fn is_approved(chat: &Chat, user_id: i64) -> Result<bool> {
     let res = default_cache_query(
         |_, _| async move {
             let res = approvals::Entity::find_by_id((chat_id, user_id))
-                .find_with_related(users::Entity)
-                .all(*DB)
-                .await?
-                .pop();
+                .find_also_related(users::Entity)
+                .one(*DB)
+                .await?;
 
-            Ok(res.map(|(res, _)| res))
+            Ok(res)
         },
         Duration::try_seconds(CONFIG.timing.cache_timeout).unwrap(),
     )

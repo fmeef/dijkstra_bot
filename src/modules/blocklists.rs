@@ -716,17 +716,21 @@ async fn search_cache(
 ) -> Result<Option<blocklists::Model>> {
     let text = text.to_lowercase();
     update_cache_from_db(message).await?;
+    // log::info!("update_cache_from_db");
     let hash_key = get_blocklist_hash_key(message.get_chat().get_id());
     REDIS
         .query(|mut q| async move {
             let mut iter: redis::AsyncIter<(String, RedisStr)> = q.hscan(&hash_key).await?;
+            //    log::info!("hscan {hash_key}");
             while let Some(it) = iter.next_item().await {
                 let (key, rs) = it?;
                 if key.is_empty() {
                     continue;
                 }
 
+            //    log::info!("hscan try get");
                 let (item, filtertype): (i64, FilterConfig) = rs.get()?;
+                //     log::info!("hscan");
 
                 match filtertype {
                     FilterConfig::Glob => {
@@ -835,14 +839,20 @@ async fn update_cache_from_db(message: &Message) -> Result<()> {
                 p.hset(&hash_key, "", 0);
                 for (filter, triggers) in res.into_iter() {
                     let key = get_blocklist_key(message, filter.id);
+
                     let filter_st = RedisStr::new(&filter)?;
                     p.set(&key, filter_st)
                         .expire(&key, CONFIG.timing.cache_timeout);
+                    let filter_config = if let Some(handle) = filter.handle {
+                        FilterConfig::Script(handle)
+                    } else {
+                        FilterConfig::Glob
+                    };
                     for trigger in triggers.into_iter() {
                         p.hset(
                             &hash_key,
                             trigger.trigger,
-                            (filter.id, Some(filter.handle.as_ref())).to_redis()?,
+                            (filter.id, &filter_config).to_redis()?,
                         )
                         .expire(&hash_key, CONFIG.timing.cache_timeout);
                     }
@@ -1107,9 +1117,11 @@ async fn warn(ctx: &Context, user: &User, reason: Option<String>) -> Result<()> 
 
 async fn handle_trigger(ctx: &Context) -> Result<()> {
     if let Some(message) = ctx.should_moderate().await {
+        log::info!("should_moderate");
         if let Some(user) = message.get_from() {
             if let Some(text) = get_search_text(message) {
                 if let Some(res) = search_cache(ctx, message, &text).await? {
+                    log::info!("search_cache");
                     let duration = res.duration.and_then(Duration::try_seconds);
                     let duration_str = if let Some(duration) = duration {
                         lang_fmt!(ctx, "duration", format_duration(duration.to_std()?))

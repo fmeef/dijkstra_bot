@@ -268,6 +268,7 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
                             if crate::statics::module_enabled(#module_names) {
                                 if let Err(err) = #updates::update_handler::handle_update(&ctx).await {
                                     err.record_stats();
+                                    //Err::<(),crate::util::error::BoxedBotError>(err).unwrap();
                                     match err.get_message().await {
                                         Err(err) => {
                                             log::warn!("failed to send error message: {}, what the FLOOP", err);
@@ -281,6 +282,7 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
                                             // }
 
                                             log::warn!("handle_update {} error: {}", #updates::METADATA.name, err);
+
                                         }
                                     }
                                 }
