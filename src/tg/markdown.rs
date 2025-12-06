@@ -88,9 +88,6 @@ impl ParsedArg {
 }
 
 lazy_static! {
-    /// regex for matching whitespace-separated string not containing murkdown reserved characters
-    static ref RAWSTR: Regex = Regex::new(r#"([^\s"]+|")"#).unwrap();
-
     /// static empty vec used for internal optimization
     pub static ref EMPTY_ENTITIES: Vec<MessageEntity> = vec![];
 }
@@ -157,6 +154,7 @@ pomelo! {
     %type words Vec<super::TgSpan>;
     %type main Vec<super::TgSpan>;
     %type word super::TgSpan;
+    %type wsword super::TgSpan;
     %type wordraw (super::TgSpan, super::TgSpan);
     %type RawChar char;
     %type Space char;
@@ -213,9 +211,11 @@ pomelo! {
     words    ::= words(mut L) Whitespace(S) word(W) { L.push(super::TgSpan::Raw(S)); L.push(W); L }
 
     words    ::= words(mut L) word(W) { L.push(W); L }
+    words    ::= wsword(W) { vec![W] }
+    words    ::= words(mut L) Whitespace(_) wsword(W) { L.push(W); L  }
     words    ::= word(C) { vec![C] }
     word      ::= Str(S) { super::TgSpan::Raw(S) }
-    word      ::= LCurly wstr(W) RCurly { super::TgSpan::Filling(W) }
+    wsword    ::= LCurly wstr(W) RCurly { super::TgSpan::Filling(W) }
     word      ::= LangCode((L, W)) { super::TgSpan::Pre((L, W)) }
     word      ::= Mono(C) { super::TgSpan::Code(C) }
     word      ::= LSBracket Star main(S) RSBracket { super::TgSpan::Bold(S) }
@@ -228,8 +228,8 @@ pomelo! {
     word      ::= LTBracket LTBracket wstr(W) RTBracket RTBracket LParen wstr(L) RParen { super::TgSpan::NewlineButton(W, L) }
 
     wstr      ::= Str(S) { S }
-    wstr      ::= Str(mut S) Whitespace(W) wstr(L){ S.push_str(&W); S.push_str(&L); S}
-    wstr      ::= Str(mut S) Whitespace(W) { S.push_str(&W); S}
+    wstr      ::= Str(mut S) Whitespace(W) wstr(L) { S.push_str(&W); S.push_str(&L); S}
+    wstr      ::= Str(mut S) Whitespace(_) { S }
 
 
 
@@ -479,7 +479,7 @@ impl Lexer {
             idx += 1;
         }
         output.push(Token::Eof);
-
+        log::info!("{output:?}");
         output
     }
 }

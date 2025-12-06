@@ -36,6 +36,7 @@ use crate::util::error::Result;
 use crate::metadata::metadata;
 
 use crate::util::error::SpeakErr;
+use crate::util::fmt::TimeFormat;
 use crate::util::glob::WildMatch;
 
 use crate::util::scripting::ModAction;
@@ -46,7 +47,8 @@ use botapi::gen_types::User;
 use chrono::Duration;
 use entities::{blocklists, triggers};
 use futures::FutureExt;
-use humantime::format_duration;
+use humanize_duration::prelude::DurationExt;
+use humanize_duration::Truncate;
 use itertools::Itertools;
 use sea_orm::ModelTrait;
 
@@ -1008,8 +1010,15 @@ async fn command_blocklist<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()>
     let (f, message) = if let Some(message) = message.get_reply_to_message() {
         (message.get_text().map(|v| v.to_owned()), message)
     } else {
-        (Some(body), message)
+        let body = if body.trim().is_empty() {
+            None
+        } else {
+            Some(body)
+        };
+        (body, message)
     };
+
+    log::info!("create blocklist {f:?}");
     insert_blocklist(
         message,
         filters.as_slice(),
@@ -1124,7 +1133,8 @@ async fn handle_trigger(ctx: &Context) -> Result<()> {
                     log::info!("search_cache");
                     let duration = res.duration.and_then(Duration::try_seconds);
                     let duration_str = if let Some(duration) = duration {
-                        lang_fmt!(ctx, "duration", format_duration(duration.to_std()?))
+                        let format = duration.human_with_format(Truncate::Second, TimeFormat);
+                        lang_fmt!(ctx, "duration", format)
                     } else {
                         String::new()
                     };

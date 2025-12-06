@@ -1,5 +1,5 @@
 {
-  description = "Devshell for dijkstra bot framework";
+  description = "Flutter with required native libraries";
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/25.05";
     flake-utils.url = "github:numtide/flake-utils";
@@ -8,7 +8,7 @@
     {
       self,
       nixpkgs,
-      flake-utils
+      flake-utils,
     }:
     flake-utils.lib.eachDefaultSystem (
       system:
@@ -16,23 +16,20 @@
         pkgs = import nixpkgs {
           inherit system;
           config = {
+            android_sdk.accept_license = true;
             allowUnfree = true;
           };
         };
       in
       {
+
         devShell =
-          with pkgs;
-          mkShell {
+          with pkgs; mkShell {
+
             baseInputs = [
-              rustup
-              openssl
-              fish
-              jdk
-              rust-analyzer
-              nil
-              nixd
-              zed-editor
+              rustc
+              cargo
+              pkg-config
             ];
           };
       }

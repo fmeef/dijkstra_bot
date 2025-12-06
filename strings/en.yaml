@@ -226,4 +226,4 @@ blockban: |
   User {} said a banned word! Action: banned {}
   {}
 reason: Reason {}
-duration: for {}
+duration: "for {} "
