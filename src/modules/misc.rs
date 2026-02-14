@@ -16,10 +16,35 @@ metadata!("Misc",
 );
 
 async fn get_id(ctx: &Context) -> Result<()> {
-    ctx.action_user(|ctx, user, _| async move {
+    ctx.action_user_maybe(|ctx, user, _| async move {
         if let Some(chat) = ctx.chat() {
             let mut builder = EntityMessage::new(chat.get_id());
-            builder.builder.code(user.to_string());
+            if let Some(user) = user {
+                if let Some(user) = user.get_cached_user().await? {
+                    builder
+                        .builder
+                        .text(format!("The id for the user {} is ", user.first_name))
+                        .code(user.id.to_string());
+                } else {
+                    builder
+                        .builder
+                        .text("The id the user is ")
+                        .code(user.to_string());
+                }
+            } else {
+                if let Some(name) = chat.get_first_name() {
+                    builder
+                        .builder
+                        .text(format!("The id for the chat {name} is "))
+                        .code(chat.id.to_string());
+                } else {
+                    builder
+                        .builder
+                        .text("The chat id is ")
+                        .code(chat.id.to_string());
+                }
+            }
+
             ctx.reply_fmt(builder).await?;
         }
         Ok(())
