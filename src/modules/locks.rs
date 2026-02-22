@@ -219,6 +219,8 @@ pub mod entities {
             InviteLink,
             #[sea_orm(num_value = 11)]
             ExtUsers,
+            #[sea_orm(num_value = 12)]
+            ExtReply,
         }
 
         impl LockType {
@@ -235,6 +237,7 @@ pub mod entities {
                     Self::Sticker => "Stickers",
                     Self::InviteLink => "Links to groups or channels",
                     Self::ExtUsers => "Users not participating in this chat",
+                    Self::ExtReply => "Replies to messages outside of the current group.",
                 }
             }
         }
@@ -429,6 +432,7 @@ locks! {
     lock!("sticker", "Stickers", LockType::Sticker, |message| message.get_sticker().is_some());
     async_lock!("invitelink", "Invite Links", LockType::InviteLink, |message| is_invite(message));
     async_lock!("external_users", "External Users", LockType::ExtUsers, |message| is_out_of_chat_user(message));
+    lock!("external_reply", "External replies", LockType::ExtReply, |message| message.external_reply.is_some());
 
 }
 
