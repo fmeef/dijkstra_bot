@@ -92,7 +92,7 @@ where
             .pipe(|p| p.set(key, valstr).expire(key, expire.num_seconds()))
             .await?;
     } else {
-        REDIS.sq(|q| q.del(&key)).await?;
+        REDIS.sq::<_, ()>(|q| q.del(&key)).await?;
     }
     Ok(val)
 }

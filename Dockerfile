@@ -1,5 +1,5 @@
 
-FROM docker.io/rust:alpine3.20 AS base
+FROM docker.io/rust:1.93.1-alpine3.23 AS base
 RUN apk update && apk add musl-dev openssl-dev openssl clang llvm pkgconfig gcc alpine-sdk git g++ perl make
 RUN update-ca-certificates
 
@@ -30,7 +30,7 @@ ENV CC=gcc
 ENV CXX=g++
 RUN cargo install --target-dir ./target --path . && cargo install --target-dir ./target  --path ./migration/
 
-FROM alpine:3.20 AS prod
+FROM alpine:3.23 AS prod
 
 COPY --from=builder /etc/passwd /etc/passwd
 COPY --from=builder /etc/group /etc/group
@@ -43,9 +43,9 @@ VOLUME /config
 CMD [ "sh", "-c", "\
     /bobot/dijkstra_migration -u postgresql://$POSTGRES_USER:$(cat $POSTGRES_PASSWORD_FILE)@$POSTGRES_HOST/$POSTGRES_DB up && \
     /bobot/dijkstra --config /config/config.toml \
-"]
+    "]
 
-FROM alpine:3.20 AS migrate
+FROM alpine:3.23 AS migrate
 
 COPY --from=builder /etc/passwd /etc/passwd
 COPY --from=builder /etc/group /etc/group
@@ -61,16 +61,16 @@ ENV UID=10001
 
 RUN apt update && apt install -y postgresql-client redis fish gdb lld libssl-dev valgrind
 RUN rustup default stable && rustup component add rustfmt clippy && \
- rustup toolchain install nightly && \
- rustup component add rustfmt clippy --toolchain nightly && \
- cargo install sea-orm-cli cargo-edit
+    rustup toolchain install nightly && \
+    rustup component add rustfmt clippy --toolchain nightly && \
+    cargo install sea-orm-cli cargo-edit
 RUN git clone https://github.com/rust-lang/rust-analyzer.git /opt/rust-analyzer && \
     cd /opt/rust-analyzer && \
-   rustup override set stable && \
-   cargo xtask install --server && cargo clean
+    rustup override set stable && \
+    cargo xtask install --server && cargo clean
 RUN git clone https://github.com/helix-editor/helix /opt/helix && \
     cd /opt/helix &&  rustup override set stable && \
-     cargo install --locked --path helix-term && cargo clean
+    cargo install --locked --path helix-term && cargo clean
 
 RUN adduser \
     --disabled-password \
@@ -81,11 +81,11 @@ RUN adduser \
     "${USER}"
 
 RUN mkdir -p /bobot/target && chown -R bobot:bobot /bobot && \
-chown -R bobot:bobot /usr/local && mkdir -p /bobot/migration/target && \
-chown -R bobot:bobot /bobot/migration/target && mkdir -p /bobot/macros/target && \
-chown -R bobot:bobot /bobot && \
-chown -R bobot:bobot /home/bobot/. && \
-chown -R bobot:bobot /opt/helix/runtime
+    chown -R bobot:bobot /usr/local && mkdir -p /bobot/migration/target && \
+    chown -R bobot:bobot /bobot/migration/target && mkdir -p /bobot/macros/target && \
+    chown -R bobot:bobot /bobot && \
+    chown -R bobot:bobot /home/bobot/. && \
+    chown -R bobot:bobot /opt/helix/runtime
 
 USER bobot:bobot
 
