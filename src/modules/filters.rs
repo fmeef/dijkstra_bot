@@ -288,9 +288,6 @@ pub mod entities {
             Entities,
         }
 
-        #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-        pub enum MessageEntityRelation {}
-
         impl Related<super::triggers::Entity> for Entity {
             fn to() -> RelationDef {
                 Relation::Triggers.def()

@@ -25,6 +25,7 @@ use super::string::Speak;
 #[derive(Debug)]
 pub struct BoxedBotError(Box<BotError>);
 
+#[allow(deprecated)]
 impl std::error::Error for BoxedBotError {
     fn cause(&self) -> Option<&dyn std::error::Error> {
         self.0.cause()

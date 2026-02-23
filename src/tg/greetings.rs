@@ -6,7 +6,7 @@ use crate::persist::redis::{
     default_cache_query, CachedQueryTrait, RedisCache, RedisStr, ToRedisStr,
 };
 use crate::statics::{ME, TG};
-use crate::util::error::{BotError, BoxedBotError};
+use crate::util::error::BoxedBotError;
 use crate::util::string::{should_ignore_chat, Speak};
 use crate::{
     langs::Lang,
