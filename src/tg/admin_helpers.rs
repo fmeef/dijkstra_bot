@@ -730,45 +730,124 @@ pub async fn get_approvals(chat: &Chat) -> Result<Vec<(i64, String)>> {
 
 fn merge_permissions(
     permissions: &ChatPermissions,
-    mut new: ChatPermissionsBuilder,
+    mut out: ChatPermissionsBuilder,
 ) -> ChatPermissionsBuilder {
-    if let Some(p) = permissions.get_can_send_messages() {
-        new = new.set_can_send_messages(p);
+    if let Some(p) = permissions.can_add_web_page_previews {
+        out = out.set_can_add_web_page_previews(p);
     }
 
-    if let Some(p) = permissions.get_can_send_audios() {
-        new = new.set_can_send_audios(p);
+    if let Some(p) = permissions.can_change_info {
+        out = out.set_can_change_info(p);
     }
 
-    if let Some(p) = permissions.get_can_send_documents() {
-        new = new.set_can_send_documents(p);
+    if let Some(p) = permissions.can_invite_users {
+        out = out.set_can_invite_users(p);
     }
 
-    if let Some(p) = permissions.get_can_send_photos() {
-        new = new.set_can_send_photos(p);
+    if let Some(p) = permissions.can_manage_topics {
+        out = out.set_can_manage_topics(p);
     }
 
-    if let Some(p) = permissions.get_can_send_videos() {
-        new = new.set_can_send_videos(p);
+    if let Some(p) = permissions.can_pin_messages {
+        out = out.set_can_pin_messages(p);
     }
 
-    if let Some(p) = permissions.get_can_send_video_notes() {
-        new = new.set_can_send_video_notes(p);
+    if let Some(p) = permissions.can_send_audios {
+        out = out.set_can_send_audios(p);
     }
 
-    if let Some(p) = permissions.get_can_send_polls() {
-        new = new.set_can_send_polls(p);
+    if let Some(p) = permissions.can_send_documents {
+        out = out.set_can_send_documents(p);
     }
 
-    if let Some(p) = permissions.get_can_send_voice_notes() {
-        new = new.set_can_send_voice_notes(p);
+    if let Some(p) = permissions.can_send_messages {
+        out = out.set_can_send_messages(p);
     }
 
-    if let Some(p) = permissions.get_can_send_other_messages() {
-        new = new.set_can_send_other_messages(p);
+    if let Some(p) = permissions.can_send_photos {
+        out = out.set_can_send_photos(p);
     }
 
-    new
+    if let Some(p) = permissions.can_send_polls {
+        out = out.set_can_send_polls(p);
+    }
+
+    if let Some(p) = permissions.can_send_video_notes {
+        out = out.set_can_send_video_notes(p);
+    }
+
+    if let Some(p) = permissions.can_send_videos {
+        out = out.set_can_send_videos(p);
+    }
+
+    if let Some(p) = permissions.can_send_voice_notes {
+        out = out.set_can_send_voice_notes(p);
+    }
+
+    out
+}
+
+pub trait ChatPermissionsExt {
+    fn negate(&self) -> ChatPermissions;
+}
+
+impl ChatPermissionsExt for ChatPermissions {
+    fn negate(&self) -> ChatPermissions {
+        let mut out = ChatPermissionsBuilder::new();
+        if let Some(p) = self.can_add_web_page_previews {
+            out = out.set_can_add_web_page_previews(!p);
+        }
+
+        if let Some(p) = self.can_change_info {
+            out = out.set_can_change_info(!p);
+        }
+
+        if let Some(p) = self.can_invite_users {
+            out = out.set_can_invite_users(!p);
+        }
+
+        if let Some(p) = self.can_manage_topics {
+            out = out.set_can_manage_topics(!p);
+        }
+
+        if let Some(p) = self.can_pin_messages {
+            out = out.set_can_pin_messages(!p);
+        }
+
+        if let Some(p) = self.can_send_audios {
+            out = out.set_can_send_audios(!p);
+        }
+
+        if let Some(p) = self.can_send_documents {
+            out = out.set_can_send_documents(!p);
+        }
+
+        if let Some(p) = self.can_send_messages {
+            out = out.set_can_send_messages(!p);
+        }
+
+        if let Some(p) = self.can_send_photos {
+            out = out.set_can_send_photos(!p);
+        }
+
+        if let Some(p) = self.can_send_polls {
+            out = out.set_can_send_polls(!p);
+        }
+
+        if let Some(p) = self.can_send_video_notes {
+            out = out.set_can_send_video_notes(!p);
+        }
+
+        if let Some(p) = self.can_send_videos {
+            out = out.set_can_send_videos(!p);
+        }
+
+        if let Some(p) = self.can_send_voice_notes {
+            out = out.set_can_send_voice_notes(!p);
+        }
+
+        out.build()
+    }
 }
 
 /// Sets the default permissions for the current chat

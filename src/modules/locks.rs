@@ -3,7 +3,9 @@ use crate::metadata::ModuleHelpers;
 use crate::persist::admin::actions::ActionType;
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache};
 use crate::statics::{CONFIG, DB, REDIS};
-use crate::tg::admin_helpers::{ban_message, is_approved, UpdateHelpers};
+use crate::tg::admin_helpers::{
+    ban_message, change_chat_permissions, is_approved, ChatPermissionsExt, UpdateHelpers,
+};
 use crate::tg::command::{Cmd, Context, TextArg, TextArgs};
 use crate::tg::dialog::is_chat_member;
 use crate::tg::permissions::*;
@@ -189,6 +191,7 @@ pub mod entities {
     }
 
     pub mod locks {
+        use botapi::gen_types::{ChatPermissions, ChatPermissionsBuilder};
         use sea_orm::entity::prelude::*;
         use serde::{Deserialize, Serialize};
 
@@ -238,6 +241,31 @@ pub mod entities {
                     Self::InviteLink => "Links to groups or channels",
                     Self::ExtUsers => "Users not participating in this chat",
                     Self::ExtReply => "Replies to messages outside of the current group.",
+                }
+            }
+
+            pub fn get_perms(&self) -> Option<ChatPermissions> {
+                match self {
+                    Self::Premium => None,
+                    Self::Link => None,
+                    Self::Code => None,
+                    Self::Video => Some(
+                        ChatPermissionsBuilder::new()
+                            .set_can_send_photos(false)
+                            .build(),
+                    ),
+                    Self::AnonChannel => None,
+                    Self::Photo => Some(
+                        ChatPermissionsBuilder::new()
+                            .set_can_send_photos(false)
+                            .build(),
+                    ),
+                    Self::Command => None,
+                    Self::Forward => None,
+                    Self::Sticker => None,
+                    Self::InviteLink => None,
+                    Self::ExtReply => None,
+                    Self::ExtUsers => None,
                 }
             }
         }
@@ -292,14 +320,14 @@ macro_rules! locks {
         $( async_lock!( $async_name:expr, $async_description:expr, $async_lock:expr, $async_predicate:expr ) )?
     );+ ) => {
 
+
         static AVAILABLE_LOCKS: ::once_cell::sync::Lazy<::std::collections::HashMap<String, String>> =
                 ::once_cell::sync::Lazy::new(|| {
            let mut map = ::std::collections::HashMap::new();
             $(
             $(
-              map.insert($name.to_owned(), $description.to_owned());
+              map.insert($name.to_owned(),$description.to_owned());
             )?
-
 
             $(
               map.insert($async_name.to_owned(), $async_description.to_owned());
@@ -328,7 +356,6 @@ macro_rules! locks {
                     .await?;
                     )?
 
-
                     $(
                     update_action_async(
                         message,
@@ -339,6 +366,7 @@ macro_rules! locks {
                     )
                     .await?;
                     )?
+
                     )+
 
                 }
@@ -407,9 +435,15 @@ locks! {
         }
         false
     });
-    lock!("photo", "Photo messages", LockType::Photo, |message| {
-        message.get_photo().is_some()
-    });
+    lock!(
+        "photo",
+        "Photo messages",
+        LockType::Photo,
+        |message| {
+            message.get_photo().is_some()
+        }
+    );
+
     lock!("video", "Video messages", LockType::Video, |message| {
         message.get_video().is_some()
     });
@@ -564,6 +598,10 @@ async fn get_lock(message: &Message, locktype: LockType) -> Result<Option<locks:
 async fn clear_lock(message: &Message, locktype: LockType) -> Result<()> {
     let chat = message.get_chat().get_id();
     let key = get_lock_key(chat, &locktype);
+
+    if let Some(perm) = locktype.get_perms() {
+        change_chat_permissions(&message.chat, &perm.negate()).await?;
+    }
     locks::Entity::delete_by_id((chat, locktype))
         .exec(*DB)
         .await?;
@@ -573,6 +611,9 @@ async fn clear_lock(message: &Message, locktype: LockType) -> Result<()> {
 
 async fn set_lock(message: &Message, locktype: LockType) -> Result<()> {
     let key = get_lock_key(message.get_chat().get_id(), &locktype);
+    if let Some(perms) = locktype.get_perms() {
+        change_chat_permissions(&message.chat, &perms).await?;
+    }
     let model = locks::ActiveModel {
         chat: Set(message.get_chat().get_id()),
         lock_type: Set(locktype),
@@ -588,6 +629,7 @@ async fn set_lock(message: &Message, locktype: LockType) -> Result<()> {
         .exec_with_returning(*DB)
         .await?;
     res.cache(key).await?;
+
     Ok(())
 }
 
