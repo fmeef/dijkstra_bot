@@ -209,7 +209,6 @@ impl WelcomesWithEntities {
                 last_name: self.last_name,
                 username: self.username,
                 is_bot: self.is_bot,
-                action: self.action.clone(),
             })
         } else {
             None
@@ -235,7 +234,6 @@ impl WelcomesWithEntities {
                 last_name: self.goodbye_last_name,
                 username: self.goodbye_username,
                 is_bot: self.goodbye_is_bot,
-                action: self.action,
             })
         } else {
             None

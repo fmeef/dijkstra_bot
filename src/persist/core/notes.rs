@@ -1,8 +1,9 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use crate::{
     persist::core::{
-        button, entity,
+        button,
+        entity::{self, DefaultAction},
         media::*,
         messageentity::{self, DbMarkupType, EntityWithUser},
         users,
@@ -108,7 +109,14 @@ struct FiltersWithEntities {
 }
 
 impl FiltersWithEntities {
-    fn get(self) -> (Option<Model>, Option<button::Model>, Option<EntityWithUser>) {
+    fn get(
+        self,
+    ) -> (
+        Option<Model>,
+        Option<button::Model>,
+        Option<EntityWithUser>,
+        Option<Vec<u8>>,
+    ) {
         let button = if let (Some(button_text), Some(owner_id), Some(pos_x), Some(pos_y)) =
             (self.button_text, self.entity_id, self.pos_x, self.pos_y)
         {
@@ -158,17 +166,23 @@ impl FiltersWithEntities {
                 last_name: self.last_name,
                 username: self.username,
                 is_bot: self.is_bot,
-                action: self.action,
             })
         } else {
             None
         };
 
-        (filter, button, entity)
+        (filter, button, entity, self.action)
     }
 }
 
-pub type NotesMap = HashMap<Model, (HashSet<EntityWithUser>, HashSet<button::Model>)>;
+pub type NotesMap = HashMap<
+    Model,
+    (
+        HashSet<EntityWithUser>,
+        HashSet<button::Model>,
+        BTreeSet<DefaultAction>,
+    ),
+>;
 
 pub async fn get_filters_join<F>(filter: F) -> crate::util::error::Result<NotesMap>
 where
@@ -224,11 +238,11 @@ where
 
     let res = res.into_iter().map(|v| v.get()).fold(
         NotesMap::new(),
-        |mut acc, (filter, button, entity)| {
+        |mut acc, (filter, button, entity, action)| {
             if let Some(filter) = filter {
-                let (entitylist, buttonlist) = acc
+                let (entitylist, buttonlist, actionlist) = acc
                     .entry(filter)
-                    .or_insert_with(|| (HashSet::new(), HashSet::new()));
+                    .or_insert_with(|| (HashSet::new(), HashSet::new(), BTreeSet::new()));
 
                 if let Some(button) = button {
                     buttonlist.insert(button);
@@ -236,6 +250,12 @@ where
 
                 if let Some(entity) = entity {
                     entitylist.insert(entity);
+                }
+
+                if let Some(action) = action {
+                    if let Ok(action) = rmp_serde::from_slice(&action) {
+                        actionlist.insert(action);
+                    }
                 }
             }
             acc

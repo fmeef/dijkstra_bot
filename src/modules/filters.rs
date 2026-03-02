@@ -248,12 +248,13 @@ pub mod entities {
 
     pub mod filters {
 
-        use std::collections::{HashMap, HashSet};
+        use std::collections::{BTreeSet, HashMap, HashSet};
 
         use super::triggers;
         use crate::{
             persist::core::{
-                button, entity,
+                button,
+                entity::{self, DefaultAction},
                 media::*,
                 messageentity::{self, DbMarkupType, EntityWithUser},
                 users,
@@ -357,6 +358,7 @@ pub mod entities {
                 Option<button::Model>,
                 Option<EntityWithUser>,
                 Option<triggers::Model>,
+                Option<Vec<u8>>,
             ) {
                 let button = if let (Some(button_text), Some(owner_id), Some(pos_x), Some(pos_y)) =
                     (self.button_text, self.entity_id, self.pos_x, self.pos_y)
@@ -406,7 +408,6 @@ pub mod entities {
                         last_name: self.last_name,
                         username: self.username,
                         is_bot: self.is_bot,
-                        action: self.action,
                     })
                 } else {
                     None
@@ -419,7 +420,7 @@ pub mod entities {
                         None
                     };
 
-                (filter, button, entity, trigger)
+                (filter, button, entity, trigger, self.action)
             }
         }
 
@@ -429,6 +430,7 @@ pub mod entities {
                 HashSet<EntityWithUser>,
                 HashSet<button::Model>,
                 HashSet<triggers::Model>,
+                BTreeSet<DefaultAction>,
             ),
         >;
 
@@ -488,11 +490,17 @@ pub mod entities {
 
             let res = res.into_iter().map(|v| v.get()).fold(
                 FiltersMap::new(),
-                |mut acc, (filter, button, entity, trigger)| {
+                |mut acc, (filter, button, entity, trigger, action)| {
                     if let Some(filter) = filter {
-                        let (entitylist, buttonlist, triggerlist) = acc
-                            .entry(filter)
-                            .or_insert_with(|| (HashSet::new(), HashSet::new(), HashSet::new()));
+                        let (entitylist, buttonlist, triggerlist, actionlist) =
+                            acc.entry(filter).or_insert_with(|| {
+                                (
+                                    HashSet::new(),
+                                    HashSet::new(),
+                                    HashSet::new(),
+                                    BTreeSet::new(),
+                                )
+                            });
 
                         if let Some(button) = button {
                             buttonlist.insert(button);
@@ -505,18 +513,23 @@ pub mod entities {
                         if let Some(trigger) = trigger {
                             triggerlist.insert(trigger);
                         }
+
+                        if let Some(action) = action {
+                            if let Ok(action) = rmp_serde::from_slice::<Vec<DefaultAction>>(&action)
+                            {
+                                log::error!("action insert! {action:?}");
+                                for action in action {
+                                    actionlist.insert(action);
+                                }
+                            } else {
+                                log::error!("action ser err");
+                            }
+                        }
                     }
                     acc
                 },
             );
 
-            let actions = res
-                .values()
-                .flat_map(|(v, _, _)| v.iter())
-                .map(|v| v.action.is_some())
-                .count();
-
-            log::error!("got {} filters from db actions={actions}", res.len());
             Ok(res)
         }
     }
@@ -623,39 +636,38 @@ async fn get_filter(
         filters::Model,
         Vec<MessageEntity>,
         Option<InlineKeyboardBuilder>,
-        Option<Vec<DefaultAction>>,
+        Vec<DefaultAction>,
     )>,
 > {
     let filter_key = get_filter_key(message, id);
     let v: Option<RedisStr> = REDIS.sq(|q| q.get(&filter_key)).await?;
     if let Some(v) = v {
-        log::info!("cache hit");
-        Ok(v.get()?)
+        let out = v.get()?;
+        log::info!("cache hit {out:?}");
+        Ok(out)
     } else {
         let map = filters::get_filters_join(filters::Column::Id.eq(id))
             .await?
             .into_iter()
-            .map(|(filter, (entity, button, _))| {
-                let (entities, actions): (Vec<_>, Vec<_>) = entity
+            .map(|(filter, (entity, button, _, actions))| {
+                log::error!("get_filter: actions={actions:?}");
+                let entities: Vec<_> = entity
                     .into_iter()
                     .map(|e| e.get())
-                    .map(|(e, u, a)| (e.to_entity(u), a))
-                    .unzip();
+                    .map(|(e, u)| e.to_entity(u))
+                    .collect();
                 (
                     filter,
                     entities,
                     get_markup_for_buttons(button.into_iter().collect()),
-                    Some(
-                        actions
-                            .into_iter()
-                            .filter_map(|v| v.and_then(|v| rmp_serde::from_slice(&v).ok()))
-                            .collect(),
-                    ),
+                    actions.into_iter().collect(),
                 )
             })
             .next();
 
         if let Some(ref map) = map {
+            log::error!("got map {map:?}");
+
             let _: () = REDIS
                 .try_pipe(|p| {
                     Ok(p.set(&filter_key, map.to_redis()?)
@@ -663,6 +675,7 @@ async fn get_filter(
                 })
                 .await?;
         }
+
         Ok(map)
     }
 }
@@ -675,7 +688,7 @@ async fn search_cache(
         filters::Model,
         Vec<MessageEntity>,
         Option<InlineKeyboardBuilder>,
-        Option<Vec<DefaultAction>>,
+        Vec<DefaultAction>,
     )>,
 > {
     update_cache_from_db(message).await?;
@@ -726,15 +739,22 @@ async fn update_cache_from_db(message: &Message) -> Result<()> {
         let _: () = REDIS
             .try_pipe(|p| {
                 p.hset(&hash_key, "", 0);
-                for (filter, (entities, buttons, triggers)) in res.into_iter() {
+                for (filter, (entities, buttons, triggers, actions)) in res.into_iter() {
                     let key = get_filter_key(message, filter.id);
-                    log::info!("triggers {}", triggers.len());
+
                     let kb = get_markup_for_buttons(buttons.into_iter().collect());
-                    let (entities, actions): (Vec<_>, Vec<_>) = entities
+                    let entities: Vec<_> = entities
                         .into_iter()
                         .map(|v| v.get())
-                        .map(|(k, v, a)| (k.to_entity(v), a))
-                        .unzip();
+                        .map(|(k, v)| k.to_entity(v))
+                        .collect();
+                    let actions: Vec<_> = actions.into_iter().collect();
+                    log::info!(
+                        "{:?}: triggers {} actions {}",
+                        filter.text,
+                        triggers.len(),
+                        actions.len()
+                    );
                     p.set(&key, (&filter, entities, kb, &actions).to_redis()?)
                         .expire(&key, CONFIG.timing.cache_timeout);
                     for trigger in triggers.iter() {
@@ -908,7 +928,7 @@ async fn handle_trigger(ctx: &Context) -> Result<()> {
                 .text(res.text)
                 .media_id(res.media_id)
                 .extra_entities(extra_entities)
-                .actions(actions)
+                .actions(Some(actions))
                 .buttons(extra_buttons)
                 .send_media_reply()
                 .await?;

@@ -138,7 +138,10 @@ where
 {
     log::info!("inserting {} entities", entities.len());
 
-    if !entities.is_empty() || buttons.get().iter().map(|v| v.len()).sum::<usize>() > 0 {
+    if !entities.is_empty()
+        || buttons.get().iter().map(|v| v.len()).sum::<usize>() > 0
+        || action.is_some()
+    {
         let entity_id = insert_action_internal(conn, action).await?;
 
         let entities: Vec<messageentity::Model> = stream::iter(entities)

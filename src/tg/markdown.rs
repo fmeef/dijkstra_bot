@@ -1172,7 +1172,12 @@ impl MarkupBuilder {
 
     pub async fn build_murkdown<'a>(
         mut self,
-    ) -> Result<(String, Vec<MessageEntity>, InlineKeyboardBuilder)> {
+    ) -> Result<(
+        String,
+        Vec<MessageEntity>,
+        InlineKeyboardBuilder,
+        Vec<DefaultAction>,
+    )> {
         let mut parser = Parser::new();
         let mut tokenizer = Lexer::new(&self.text, self.enabled_header);
         for token in tokenizer.next_token() {
@@ -1191,7 +1196,12 @@ impl MarkupBuilder {
             self.entities.extend_from_slice(existing.as_slice());
         }
 
-        Ok((self.text, self.entities, self.buttons))
+        Ok((
+            self.text,
+            self.entities,
+            self.buttons,
+            vec![DefaultAction::Random(self.actions)],
+        ))
     }
 
     async fn nofail_internal(&mut self) -> Result<()> {

@@ -1,4 +1,5 @@
 use crate::metadata::{metadata, ModuleHelpers};
+use crate::persist::core::entity::DefaultAction;
 use crate::persist::redis::RedisCache;
 use crate::statics::{DB, REDIS, TG};
 
@@ -65,7 +66,7 @@ impl ModuleHelpers for Helper {
         let notes = refresh_notes(chat).await?;
         let items: Vec<NotesItem> = notes
             .into_iter()
-            .map(|(note, (model, entities, buttons))| {
+            .map(|(note, (model, entities, buttons, actions))| {
                 let buttons = if let Some(buttons) = buttons {
                     buttons
                 } else {
@@ -157,12 +158,12 @@ async fn get_model<'a>(ctx: &'a Context, args: &'a TextArgs<'a>) -> Result<notes
                     .filling(false)
                     .header(false)
                     .set_text(text.to_owned());
-                let (text, entities, buttons) = md
+                let (text, entities, buttons, actions) = md
                     .build_murkdown()
                     .await
                     .speak(ctx, lang_fmt!(ctx, "failmurk"))
                     .await?;
-                let entity_id = entity::insert(*DB, &entities, buttons).await?;
+                let entity_id = entity::insert_action(*DB, &entities, buttons, actions).await?;
                 (Some(text), entity_id)
             } else {
                 (None, None)
@@ -193,12 +194,12 @@ async fn get_model<'a>(ctx: &'a Context, args: &'a TextArgs<'a>) -> Result<notes
                     .filling(false)
                     .header(false)
                     .set_text(text.to_owned());
-                let (text, entities, buttons) = md
+                let (text, entities, buttons, actions) = md
                     .build_murkdown()
                     .await
                     .speak(ctx, lang_fmt!(ctx, "failmurk"))
                     .await?;
-                let entity_id = entity::insert(*DB, &entities, buttons).await?;
+                let entity_id = entity::insert_action(*DB, &entities, buttons, actions).await?;
                 (Some(text), entity_id)
             } else {
                 (None, None)
@@ -246,6 +247,7 @@ async fn print_note(
     note: notes::Model,
     entities: Vec<MessageEntity>,
     buttons: Option<InlineKeyboardBuilder>,
+    actions: Option<Vec<DefaultAction>>,
     note_chat: i64,
 ) -> Result<()> {
     let c = ctx.clone();
@@ -284,6 +286,7 @@ async fn print_note(
         .text(note.text)
         .media_id(note.media_id)
         .extra_entities(entities)
+        .actions(actions)
         .buttons(buttons)
         .send_media_reply()
         .await?;
@@ -304,11 +307,11 @@ async fn clear_notes_cmd(ctx: &Context) -> Result<()> {
 }
 
 async fn print_chat(ctx: &Context, name: String, chat: i64) -> Result<()> {
-    if let Some((note, entities, buttons)) = get_note_by_name(name, chat).await? {
+    if let Some((note, entities, buttons, actions)) = get_note_by_name(name, chat).await? {
         if let Some(buttons) = buttons.as_ref() {
             log::info!("note buttons {:?}", buttons.get());
         }
-        print_note(ctx, note, entities, buttons, chat).await?;
+        print_note(ctx, note, entities, buttons, actions, chat).await?;
         Ok(())
     } else {
         ctx.fail("Note not found")

@@ -13,7 +13,11 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QuerySelect, TransactionTra
 
 use crate::{
     persist::{
-        core::{entity, media::SendMediaReply, notes},
+        core::{
+            entity::{self, DefaultAction},
+            media::SendMediaReply,
+            notes,
+        },
         redis::{CachedQuery, CachedQueryTrait, RedisStr},
     },
     statics::{CONFIG, DB, REDIS, TG},
@@ -39,6 +43,7 @@ pub async fn refresh_notes(
             notes::Model,
             Vec<MessageEntity>,
             Option<InlineKeyboardBuilder>,
+            Option<Vec<DefaultAction>>,
         ),
     >,
 > {
@@ -51,15 +56,16 @@ pub async fn refresh_notes(
         let notes = notes::get_filters_join(notes::Column::Chat.eq(chat))
             .await?
             .into_iter()
-            .map(|(note, (entity, button))| {
+            .map(|(note, (entity, button, actions))| {
                 (
                     note,
                     entity
                         .into_iter()
                         .map(|e| e.get())
-                        .map(|(e, u, a)| e.to_entity(u))
+                        .map(|(e, u)| e.to_entity(u))
                         .collect(),
                     get_markup_for_buttons(button.into_iter().collect()),
+                    Some(actions.into_iter().collect()),
                 )
             })
             .collect_vec();
@@ -122,6 +128,7 @@ pub async fn get_note_by_name(
         notes::Model,
         Vec<MessageEntity>,
         Option<InlineKeyboardBuilder>,
+        Option<Vec<DefaultAction>>,
     )>,
 > {
     let hash_key = get_hash_key(chat);
@@ -135,16 +142,19 @@ pub async fn get_note_by_name(
 
             Ok(res
                 .into_iter()
-                .map(|(note, (entity, button))| {
+                .map(|(note, (entity, button, actions))| {
                     log::info!("note from database {:?}", button);
+
+                    let entities: Vec<_> = entity
+                        .into_iter()
+                        .map(|e| e.get())
+                        .map(|(e, u)| e.to_entity(u))
+                        .collect();
                     (
                         note,
-                        entity
-                            .into_iter()
-                            .map(|e| e.get())
-                            .map(|(e, u, a)| e.to_entity(u))
-                            .collect(),
+                        entities,
                         get_markup_for_buttons(button.into_iter().collect()),
+                        Some(actions.into_iter().collect()),
                     )
                 })
                 .next())
@@ -185,13 +195,16 @@ pub fn handle_transition(
 ) -> BoxFuture<'_, Result<()>> {
     async move {
         log::info!("current note: {}", note);
-        if let Some((note, extra_entities, extra_buttons)) = get_note_by_name(note, chat).await? {
+        if let Some((note, extra_entities, extra_buttons, actions)) =
+            get_note_by_name(note, chat).await?
+        {
             let c = ctx.clone();
             if let MaybeInaccessibleMessage::Message(message) = callback
                 .get_message()
                 .ok_or_else(|| BotError::Generic("message missing".to_owned()))?
             {
                 SendMediaReply::new(ctx, note.media_type)
+                    .actions(actions)
                     .button_callback(move |note, button| {
                         let c = c.clone();
                         async move {

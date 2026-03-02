@@ -35,9 +35,6 @@ pub struct EntityWithUser {
     pub language: Option<String>,
     pub emoji_id: Option<String>,
     pub owner_id: i64,
-
-    pub action: Option<Vec<u8>>,
-
     // user fields
     pub user_id: Option<i64>,
     pub first_name: Option<String>,
@@ -47,7 +44,7 @@ pub struct EntityWithUser {
 }
 
 impl EntityWithUser {
-    pub fn get(self) -> (Model, Option<users::Model>, Option<Vec<u8>>) {
+    pub fn get(self) -> (Model, Option<users::Model>) {
         (
             Model {
                 tg_type: self.tg_type,
@@ -72,7 +69,6 @@ impl EntityWithUser {
             } else {
                 None
             },
-            self.action,
         )
     }
 }
@@ -102,7 +98,6 @@ impl Model {
         let tg_type = self.tg_type.get_tg_type();
         let mut res =
             MessageEntityBuilder::new(self.offset, self.length).set_type(tg_type.to_owned());
-
         if let Some(user) = user {
             res = res.set_user(user.into());
         }
