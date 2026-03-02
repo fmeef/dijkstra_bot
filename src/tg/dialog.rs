@@ -591,7 +591,7 @@ impl Conversation {
             }
             let n = self.get_current_markup(row_limit).await?;
 
-            let (text, entities, _) = MarkupBuilder::new(None)
+            let (text, entities, _, _) = MarkupBuilder::new(None)
                 .set_text(content)
                 .filling(false)
                 .header(false)

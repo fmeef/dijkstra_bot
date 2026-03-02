@@ -119,7 +119,7 @@ impl Speak for i64 {
                 return Ok(Some(message));
             }
 
-            let (text, entities, markup) = MarkupBuilder::new(None)
+            let (text, entities, markup, _) = MarkupBuilder::new(None)
                 .set_text(message.as_ref().to_owned())
                 .filling(true)
                 .header(false)
@@ -214,7 +214,7 @@ impl Speak for i64 {
                 return Ok(Some(message));
             }
 
-            let (text, entities, markup) = MarkupBuilder::new(None)
+            let (text, entities, markup, _) = MarkupBuilder::new(None)
                 .set_text(message.as_ref().to_owned())
                 .filling(true)
                 .header(false)
@@ -261,7 +261,7 @@ impl Speak for Message {
                 return Ok(Some(message));
             }
 
-            let (text, entities, markup) = MarkupBuilder::new(None)
+            let (text, entities, markup, _) = MarkupBuilder::new(None)
                 .set_text(message.as_ref().to_owned())
                 .filling(true)
                 .header(false)
@@ -352,7 +352,7 @@ impl Speak for Message {
                 return Ok(Some(message));
             }
 
-            let (text, entities, markup) = MarkupBuilder::new(None)
+            let (text, entities, markup, _) = MarkupBuilder::new(None)
                 .set_text(message.as_ref().to_owned())
                 .filling(true)
                 .header(false)
@@ -398,7 +398,7 @@ impl Speak for Message {
                 return Ok(Some(message));
             }
 
-            let (text, entities, markup) = MarkupBuilder::new(None)
+            let (text, entities, markup, _) = MarkupBuilder::new(None)
                 .set_text(message.as_ref().to_owned())
                 .filling(true)
                 .header(false)

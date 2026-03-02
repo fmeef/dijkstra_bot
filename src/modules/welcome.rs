@@ -48,14 +48,14 @@ async fn get_model<'a>(
     };
 
     let (text, entity_id) = if let Some(text) = text {
-        let (text, entities, buttons) = MarkupBuilder::new(extra)
+        let (text, entities, buttons, actions) = MarkupBuilder::new(extra)
             .set_text(text.to_owned())
             .filling(false)
             .header(false)
             .build_murkdown_nofail()
             .await;
         log::info!("welcome get with buttons {:?}", buttons.get());
-        let entity_id = entity::insert(*DB, &entities, buttons).await?;
+        let entity_id = entity::insert_action(*DB, &entities, buttons, actions).await?;
         (Some(text), entity_id)
     } else {
         (None, None)

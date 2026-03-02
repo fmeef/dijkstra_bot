@@ -1228,11 +1228,26 @@ impl MarkupBuilder {
 
     pub async fn build_murkdown_nofail<'a>(
         mut self,
-    ) -> (String, Vec<MessageEntity>, InlineKeyboardBuilder) {
+    ) -> (
+        String,
+        Vec<MessageEntity>,
+        InlineKeyboardBuilder,
+        Vec<DefaultAction>,
+    ) {
         if let Ok(()) = self.nofail_internal().await {
-            (self.text, self.entities, self.buttons)
+            (
+                self.text,
+                self.entities,
+                self.buttons,
+                vec![DefaultAction::Random(self.actions)],
+            )
         } else {
-            (self.text, self.entities, self.buttons)
+            (
+                self.text,
+                self.entities,
+                self.buttons,
+                vec![DefaultAction::Random(self.actions)],
+            )
         }
     }
 

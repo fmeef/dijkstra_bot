@@ -155,7 +155,7 @@ pub(crate) async fn welcome_members(
     captcha: Option<&captchastate::Model>,
     action: Option<Vec<DefaultAction>>,
 ) -> Result<()> {
-    log::info!("welcome {:?}", captcha);
+    log::info!("welcome {action:?} {captcha:?}");
     let text = if let Some(text) = model.text {
         text
     } else {
@@ -542,6 +542,7 @@ impl Context {
         action: Option<Vec<DefaultAction>>,
         gb_action: Option<Vec<DefaultAction>>,
     ) -> Result<()> {
+        log::info!("check_members {action:?} {gb_action:?}");
         if let Some(UserChanged::UserJoined(message)) = self.update().user_event() {
             let me = ME.get().unwrap();
             let user = message.get_from();

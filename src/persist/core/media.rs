@@ -188,18 +188,20 @@ where
     }
 
     pub async fn entity_message_nofail(mut self, message: EntityMessage) -> Self {
-        let (text, entities, kb) = message.builder.build_murkdown_nofail().await;
+        let (text, entities, kb, actions) = message.builder.build_murkdown_nofail().await;
         self.extra_entities = Some(entities);
         self.text = Some(text);
         self.override_buttons = Some(kb);
+        self.actions = Some(actions);
         self
     }
 
     pub async fn entity_message(mut self, message: EntityMessage) -> Result<Self> {
-        let (text, entities, kb) = message.builder.build_murkdown_nofail().await;
+        let (text, entities, kb, actions) = message.builder.build_murkdown_nofail().await;
         self.extra_entities = Some(entities);
         self.text = Some(text);
         self.override_buttons = Some(kb);
+        self.actions = Some(actions);
         Ok(self)
     }
 
@@ -288,7 +290,7 @@ where
             let buttons = self.buttons.unwrap_or_default();
             let (text, entities, buttons) = if let Some(extra) = self.extra_entities {
                 let (text, extra, mut buttons) = if self.actions.is_some() {
-                    let (text, mut entities, buttons) = MarkupBuilder::new(None)
+                    let (text, mut entities, buttons, _) = MarkupBuilder::new(None)
                         .set_text(text)
                         .filling(false)
                         .header(false)
@@ -316,7 +318,7 @@ where
 
                 (text, entities, buttons)
             } else {
-                MarkupBuilder::new(None)
+                let (text, entities, buttons, _) = MarkupBuilder::new(None)
                     .set_text(text)
                     .filling(false)
                     .header(false)
@@ -324,7 +326,8 @@ where
                     .callback(callback)
                     .chatuser(self.context.get_static().chatuser().as_ref())
                     .build_murkdown_nofail()
-                    .await
+                    .await;
+                (text, entities, buttons)
             };
 
             let buttons = if let Some(extra_buttons) = self.override_buttons {
@@ -439,7 +442,7 @@ where
             let text = self.text.unwrap_or_else(|| "".to_owned());
             let (text, entities, mut buttons) = if let Some(extra) = self.extra_entities {
                 let (text, extra, mut buttons) = if self.actions.is_some() {
-                    let (text, mut entities, buttons) = MarkupBuilder::new(None)
+                    let (text, mut entities, buttons, _) = MarkupBuilder::new(None)
                         .set_text(text)
                         .filling(false)
                         .header(false)
@@ -467,7 +470,7 @@ where
 
                 (text, entities, buttons)
             } else {
-                MarkupBuilder::new(None)
+                let (text, entities, buttons, _) = MarkupBuilder::new(None)
                     .set_text(text)
                     .filling(false)
                     .header(false)
@@ -475,7 +478,9 @@ where
                     .callback(callback)
                     .chatuser(self.context.get_static().chatuser().as_ref())
                     .build_murkdown_nofail()
-                    .await
+                    .await;
+
+                (text, entities, buttons)
             };
 
             if let Some(extra_buttons) = self.override_buttons {
@@ -591,7 +596,7 @@ where
         let text = self.text.unwrap_or_else(|| "".to_owned());
         let (text, entities, mut buttons) = if let Some(extra) = self.extra_entities {
             let (text, extra, mut buttons) = if self.actions.is_some() {
-                let (text, mut entities, buttons) = MarkupBuilder::new(None)
+                let (text, mut entities, buttons, _) = MarkupBuilder::new(None)
                     .set_text(text)
                     .filling(false)
                     .header(false)
@@ -619,7 +624,7 @@ where
 
             (text, entities, buttons)
         } else {
-            MarkupBuilder::new(None)
+            let (text, entities, buttons, _) = MarkupBuilder::new(None)
                 .set_text(text)
                 .filling(false)
                 .header(false)
@@ -627,7 +632,8 @@ where
                 .callback(callback)
                 .chatuser(self.context.get_static().chatuser().as_ref())
                 .build_murkdown_nofail()
-                .await
+                .await;
+            (text, entities, buttons)
         };
 
         if let Some(extra_buttons) = self.override_buttons {

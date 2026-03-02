@@ -260,7 +260,7 @@ pub(crate) async fn show_help<'a>(
                 current.content.clone()
             };
 
-            let (text, entities, _) = MarkupBuilder::new(None)
+            let (text, entities, _, _) = MarkupBuilder::new(None)
                 .set_text(m)
                 .filling(false)
                 .header(false)

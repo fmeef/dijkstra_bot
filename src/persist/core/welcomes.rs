@@ -317,7 +317,7 @@ where
             button::Column::RawText,
         ])
         .column_as(
-            Expr::col((EntityAlias, entity::Column::Action)),
+            Expr::col((ListAlias, entity::Column::Action)),
             "goodbye_action",
         )
         .column_as(
