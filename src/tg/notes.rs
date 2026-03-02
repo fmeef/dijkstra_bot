@@ -57,7 +57,7 @@ pub async fn refresh_notes(
                     entity
                         .into_iter()
                         .map(|e| e.get())
-                        .map(|(e, u)| e.to_entity(u))
+                        .map(|(e, u, a)| e.to_entity(u))
                         .collect(),
                     get_markup_for_buttons(button.into_iter().collect()),
                 )
@@ -142,7 +142,7 @@ pub async fn get_note_by_name(
                         entity
                             .into_iter()
                             .map(|e| e.get())
-                            .map(|(e, u)| e.to_entity(u))
+                            .map(|(e, u, a)| e.to_entity(u))
                             .collect(),
                         get_markup_for_buttons(button.into_iter().collect()),
                     )

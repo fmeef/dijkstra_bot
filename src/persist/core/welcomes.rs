@@ -98,6 +98,8 @@ pub struct WelcomesWithEntities {
     pub language: Option<String>,
     pub emoji_id: Option<String>,
 
+    pub action: Option<Vec<u8>>,
+
     // goodbye entity fields
     pub goodbye_tg_type: Option<DbMarkupType>,
     pub goodbye_offset: Option<i64>,
@@ -207,6 +209,7 @@ impl WelcomesWithEntities {
                 last_name: self.last_name,
                 username: self.username,
                 is_bot: self.is_bot,
+                action: self.action.clone(),
             })
         } else {
             None
@@ -232,6 +235,7 @@ impl WelcomesWithEntities {
                 last_name: self.goodbye_last_name,
                 username: self.goodbye_username,
                 is_bot: self.goodbye_is_bot,
+                action: self.action,
             })
         } else {
             None

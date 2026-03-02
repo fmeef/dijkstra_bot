@@ -26,9 +26,9 @@
         devShell =
           with pkgs; mkShell {
 
-            baseInputs = [
-              rustc
-              cargo
+            buildInputss = [
+              rustup
+              openssl
               pkg-config
             ];
           };

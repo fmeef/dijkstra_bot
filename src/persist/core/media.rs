@@ -1,4 +1,5 @@
 use crate::{
+    persist::core::entity::DefaultAction,
     statics::TG,
     tg::{
         admin_helpers::{is_dm, IntoChatUser},
@@ -141,6 +142,7 @@ where
     buttons: Option<InlineKeyboardBuilder>,
     override_buttons: Option<InlineKeyboardBuilder>,
     extra_entities: Option<Vec<MessageEntity>>,
+    actions: Option<Vec<DefaultAction>>,
     callback: Option<F>,
 }
 
@@ -161,6 +163,7 @@ where
             override_buttons: None,
             extra_entities: None,
             callback: None,
+            actions: None,
         }
     }
 
@@ -176,6 +179,11 @@ where
 
     pub fn text(mut self, text: Option<String>) -> Self {
         self.text = text;
+        self
+    }
+
+    pub fn actions(mut self, actions: Option<Vec<DefaultAction>>) -> Self {
+        self.actions = actions;
         self
     }
 
@@ -277,8 +285,23 @@ where
             }
 
             let text = text.unwrap_or_else(|| "".to_owned());
-            let (text, entities, buttons) = if let Some(extra) = self.extra_entities {
-                let mut buttons = self.buttons.unwrap_or_default();
+            let buttons = self.buttons.unwrap_or_default();
+            let (text, entities, mut buttons) = if let Some(extra) = self.extra_entities {
+                let (text, extra, mut buttons) = if self.actions.is_some() {
+                    let (text, mut entities, buttons) = MarkupBuilder::new(None)
+                        .set_text(text)
+                        .filling(false)
+                        .header(false)
+                        .input_actions(self.actions)
+                        .callback(callback)
+                        .chatuser(self.context.get_static().chatuser().as_ref())
+                        .build_murkdown_nofail()
+                        .await;
+                    entities.extend_from_slice(extra.as_slice());
+                    (text, entities, buttons)
+                } else {
+                    (text, extra, buttons)
+                };
                 let (text, entities) = retro_fillings(
                     text,
                     extra,
@@ -290,13 +313,14 @@ where
                         .ok_or_else(|| BotError::Generic("No chatuser".to_owned()))?,
                 )
                 .await?;
-                log::info!("retro fillings: {}", text);
+
                 (text, entities, buttons)
             } else {
                 MarkupBuilder::new(None)
                     .set_text(text)
                     .filling(false)
                     .header(false)
+                    .input_actions(self.actions)
                     .callback(callback)
                     .chatuser(self.context.get_static().chatuser().as_ref())
                     .build_murkdown_nofail()
@@ -407,13 +431,28 @@ where
             let callback = self
                 .callback
                 .ok_or_else(|| BotError::Generic("callback not set".to_owned()))?;
-            let mut buttons = self.buttons.unwrap_or_default();
+            let buttons = self.buttons.unwrap_or_default();
             if should_ignore_chat(chat).await? {
                 return Ok(());
             }
 
             let text = self.text.unwrap_or_else(|| "".to_owned());
             let (text, entities, mut buttons) = if let Some(extra) = self.extra_entities {
+                let (text, extra, mut buttons) = if self.actions.is_some() {
+                    let (text, mut entities, buttons) = MarkupBuilder::new(None)
+                        .set_text(text)
+                        .filling(false)
+                        .header(false)
+                        .input_actions(self.actions)
+                        .callback(callback)
+                        .chatuser(self.context.get_static().chatuser().as_ref())
+                        .build_murkdown_nofail()
+                        .await;
+                    entities.extend_from_slice(extra.as_slice());
+                    (text, entities, buttons)
+                } else {
+                    (text, extra, buttons)
+                };
                 let (text, entities) = retro_fillings(
                     text,
                     extra,
@@ -425,13 +464,14 @@ where
                         .ok_or_else(|| BotError::Generic("No chatuser".to_owned()))?,
                 )
                 .await?;
-                log::info!("retro fillings: {}", text);
+
                 (text, entities, buttons)
             } else {
                 MarkupBuilder::new(None)
                     .set_text(text)
                     .filling(false)
                     .header(false)
+                    .input_actions(self.actions)
                     .callback(callback)
                     .chatuser(self.context.get_static().chatuser().as_ref())
                     .build_murkdown_nofail()
@@ -547,9 +587,24 @@ where
             return Ok(());
         }
 
-        let mut buttons = self.buttons.unwrap_or_default();
+        let buttons = self.buttons.unwrap_or_default();
         let text = self.text.unwrap_or_else(|| "".to_owned());
         let (text, entities, mut buttons) = if let Some(extra) = self.extra_entities {
+            let (text, extra, mut buttons) = if self.actions.is_some() {
+                let (text, mut entities, buttons) = MarkupBuilder::new(None)
+                    .set_text(text)
+                    .filling(false)
+                    .header(false)
+                    .input_actions(self.actions)
+                    .callback(callback)
+                    .chatuser(self.context.get_static().chatuser().as_ref())
+                    .build_murkdown_nofail()
+                    .await;
+                entities.extend_from_slice(extra.as_slice());
+                (text, entities, buttons)
+            } else {
+                (text, extra, buttons)
+            };
             let (text, entities) = retro_fillings(
                 text,
                 extra,
@@ -561,12 +616,14 @@ where
                     .ok_or_else(|| BotError::Generic("No chatuser".to_owned()))?,
             )
             .await?;
+
             (text, entities, buttons)
         } else {
             MarkupBuilder::new(None)
                 .set_text(text)
                 .filling(false)
                 .header(false)
+                .input_actions(self.actions)
                 .callback(callback)
                 .chatuser(self.context.get_static().chatuser().as_ref())
                 .build_murkdown_nofail()

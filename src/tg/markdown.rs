@@ -3,6 +3,7 @@
 //! a builder api for manually generating formatted text
 
 use crate::persist::core::button;
+use crate::persist::core::entity::{DefaultAction, RandomFiller};
 use crate::statics::TG;
 use crate::util::error::{BotError, Result};
 use crate::util::string::AlignCharBoundry;
@@ -20,10 +21,14 @@ use lazy_static::lazy_static;
 use markdown::mdast::Node;
 use markdown::ParseOptions;
 use pomelo::pomelo;
+use rand::seq::IndexedRandom;
+use rand::Rng;
 use regex::Regex;
+use sea_orm::ColIdx;
+use serde::{Deserialize, Serialize};
 
 use std::borrow::Cow;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Display;
 use std::sync::Arc;
 use thiserror::Error;
@@ -54,7 +59,7 @@ pub struct FilterCommond {
 }
 
 /// Type for representing murkdown syntax tree
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, PartialOrd, Ord)]
 pub enum TgSpan {
     Pre((String, String)),
     Code(String),
@@ -68,6 +73,8 @@ pub enum TgSpan {
     Filling(String),
     Button(String, String),
     NewlineButton(String, String),
+    Random(Vec<TgSpan>),
+    RandomFiller(String),
     NoOp,
 }
 
@@ -153,6 +160,8 @@ pomelo! {
     %type inputm Vec<super::TgSpan>;
     %type words Vec<super::TgSpan>;
     %type main Vec<super::TgSpan>;
+    %type random Vec<super::TgSpan>;
+    %type random_filler super::TgSpan;
     %type word super::TgSpan;
     %type wsword super::TgSpan;
     %type wordraw (super::TgSpan, super::TgSpan);
@@ -213,12 +222,15 @@ pomelo! {
     words    ::= words(mut L) word(W) { L.push(W); L }
     words    ::= wsword(W) { vec![W] }
     words    ::= words(mut L) Whitespace(_) wsword(W) { L.push(W); L  }
+
     words    ::= word(C) { vec![C] }
     word      ::= Str(S) { super::TgSpan::Raw(S) }
     wsword    ::= LCurly wstr(W) RCurly { super::TgSpan::Filling(W) }
     word      ::= LangCode((L, W)) { super::TgSpan::Pre((L, W)) }
     word      ::= Mono(C) { super::TgSpan::Code(C) }
+    word      ::= LSBracket TriplePercent Whitespace(_) random(R) RSBracket { super::TgSpan::Random(R) }
     word      ::= LSBracket Star main(S) RSBracket { super::TgSpan::Bold(S) }
+    word      ::= LCurly TriplePercent Str(S) RCurly { super::TgSpan::RandomFiller(S) }
     word      ::= LSBracket main(H) RSBracket LParen Str(L) RParen { super::TgSpan::Link(H, L) }
     word      ::= LSBracket Tilde main(R) RSBracket { super::TgSpan::Strikethrough(R) }
     word      ::= LSBracket Underscore main(R) RSBracket { super::TgSpan::Italic(R) }
@@ -231,6 +243,9 @@ pomelo! {
     wstr      ::= Str(mut S) Whitespace(W) wstr(L) { S.push_str(&W); S.push_str(&L); S}
     wstr      ::= Str(mut S) Whitespace(_) { S }
 
+
+    random    ::=  word(W) Whitespace(_) TriplePercent { vec![W] }
+    random    ::= random(mut R) Whitespace(_) word(W) Whitespace(_) TriplePercent  { R.push(W); R }
 
 
 //   footer     ::= Fmuf { "".to_owned() }
@@ -336,7 +351,7 @@ impl Lexer {
             // log::info!("parsing {} {}", idx, char);
             if self.code.is_some() {
                 if *char == ']' && idx > 0 && self.s.get(idx - 1) != Some(&'\\') {
-                    // log::info!("COMMIT! {:?}", self.s.get(idx - 1));
+                    //     log::info!("COMMIT! {:?}", self.s.get(idx - 1));
                     let s: String = self.rawbuf.drain(..).collect();
                     match self.code.take().unwrap() {
                         MonoMode::Code(lang) => output.push(Token::LangCode((lang, s))),
@@ -451,6 +466,14 @@ impl Lexer {
                 '>' => output.push(Token::RTBracket),
                 ',' if self.header => output.push(Token::Comma),
                 '"' if self.header => output.push(Token::Quote),
+                '%' if matches!(
+                    (self.s.get(idx + 1), self.s.get(idx + 2)),
+                    (Some('%'), Some('%'))
+                ) =>
+                {
+                    output.push(Token::TriplePercent);
+                    idx += 2;
+                }
                 _ => {
                     self.rawbuf.push(*char);
                     if let Some(c) = self.s.get(idx + 1) {
@@ -608,6 +631,8 @@ pub struct MarkupBuilder {
     chatuser: Option<OwnedChatUser>,
     pub built_markup: Option<EReplyMarkup>,
     pub fillings: BTreeSet<String>,
+    pub actions: Vec<RandomFiller>,
+    pub input_actions: BTreeMap<String, RandomFiller>,
 }
 
 #[inline(always)]
@@ -666,6 +691,59 @@ impl MarkupBuilder {
             button_function: Arc::new(|_, _| async move { Ok(()) }.boxed()),
             chatuser: None,
             built_markup: None,
+            actions: Vec::new(),
+            input_actions: BTreeMap::new(),
+            fillings: BTreeSet::new(),
+        }
+    }
+
+    pub fn input_actions(mut self, actions: Option<Vec<DefaultAction>>) -> Self {
+        match actions {
+            Some(actions) => {
+                self.input_actions = actions
+                    .into_iter()
+                    .filter_map(|p| match p {
+                        DefaultAction::Random(r) => Some(r),
+                    })
+                    .flat_map(|v| v.into_iter())
+                    .map(|v| (v.name.to_owned(), v))
+                    .collect();
+            }
+            None => {
+                self.input_actions = BTreeMap::new();
+            }
+        }
+        self
+    }
+
+    pub fn new_action(existing: Option<Vec<MessageEntity>>, actions: Vec<DefaultAction>) -> Self {
+        Self {
+            existing_entities: existing.map(|v| {
+                v.into_iter()
+                    .sorted_by_key(|v| v.get_offset())
+                    .collect_vec()
+            }),
+            entities: Vec::new(),
+            offset: 0,
+            diff: 0,
+            text: String::new(),
+            buttons: InlineKeyboardBuilder::default(),
+            header: None,
+            filling: false,
+            enabled_header: false,
+            enabled_fillings: true,
+            button_function: Arc::new(|_, _| async move { Ok(()) }.boxed()),
+            chatuser: None,
+            built_markup: None,
+            actions: Vec::new(),
+            input_actions: actions
+                .into_iter()
+                .filter_map(|p| match p {
+                    DefaultAction::Random(r) => Some(r),
+                })
+                .flat_map(|v| v.into_iter())
+                .map(|v| (v.name.to_owned(), v))
+                .collect(),
             fillings: BTreeSet::new(),
         }
     }
@@ -733,6 +811,8 @@ impl MarkupBuilder {
             // if topplevel {
             //     log::info!("parse_tgspan {:?}", span);
             // }
+            //
+            log::info!("parse_tgspan {:?}", span);
             let mut size = 0;
 
             for span in span {
@@ -741,7 +821,6 @@ impl MarkupBuilder {
                     (TgSpan::Code(code), _) => {
                         self.code(&code);
                     }
-
                     (TgSpan::Pre((lang, code)), _) => {
                         self.pre(&code, lang, None);
                     }
@@ -793,6 +872,7 @@ impl MarkupBuilder {
 
                         self.text_internal(&s);
                     }
+
                     (TgSpan::Filling(filling), Some(chatuser)) if self.filling => {
                         match filling.as_str() {
                             "username" => {
@@ -834,11 +914,65 @@ impl MarkupBuilder {
                             "rules" => {
                                 self.rules().await?;
                             }
+                            s if s.starts_with("rand") => {
+                                if let Some(mut action) = self.input_actions.remove(s) {
+                                    let idx = {
+                                        let mut rng = rand::rng();
+                                        let idx = rng.random_range(0..action.content.len());
+                                        drop(rng);
+                                        idx
+                                    };
+                                    log::info!("random {idx}");
+                                    let v = action.content.remove(idx);
+                                    let (span, e) = self.parse_tgspan(vec![v]).await?;
+                                    size += e;
+                                }
+                            }
                             s => {
                                 let s = format!("{{{}}}", s);
                                 size += s.encode_utf16().count() as i64;
                                 self.text_internal(&s);
                             }
+                        }
+                    }
+                    (TgSpan::Filling(filling), _) if filling.starts_with("rand") => {
+                        if let Some(mut action) = self.input_actions.remove(&filling) {
+                            let idx = {
+                                let mut rng = rand::rng();
+                                let idx = rng.random_range(0..action.content.len());
+                                drop(rng);
+                                idx
+                            };
+                            log::info!("random {idx}");
+                            let v = action.content.remove(idx);
+                            let (span, e) = self.parse_tgspan(vec![v]).await?;
+                            size += e;
+                        }
+                    }
+                    (TgSpan::Random(content), _) => {
+                        let name = format!("rand{}", self.actions.len());
+                        let action = RandomFiller {
+                            name: name.clone(),
+                            content,
+                        };
+                        self.actions.push(action);
+                        self.text_internal(&format!("{{{name}}}"));
+
+                        // let idx = {
+                        //     let mut rng = rand::rng();
+                        //     let idx = rng.random_range(0..r.len());
+                        //     drop(rng);
+                        //     idx
+                        // };
+                        // log::info!("random {idx}");
+                        // let v = r.remove(idx);
+                        // let (span, e) = self.parse_tgspan(vec![v]).await?;
+
+                        // size += e;
+                    }
+                    (TgSpan::RandomFiller(rand), _) => {
+                        if let Some(item) = self.input_actions.remove(&rand) {
+                            let (_, e) = self.parse_tgspan(item.content).await?;
                         }
                     }
                     (TgSpan::Filling(filling), _) => {
@@ -1379,6 +1513,7 @@ impl MarkupBuilder {
         InlineKeyboardBuilder,
         Option<Header>,
         BTreeSet<String>,
+        Vec<DefaultAction>,
     ) {
         self.enabled_header = true;
         if let Ok(()) = self.nofail_internal().await {
@@ -1388,6 +1523,7 @@ impl MarkupBuilder {
                 self.buttons,
                 self.header,
                 self.fillings,
+                vec![DefaultAction::Random(self.actions)],
             )
         } else {
             (
@@ -1396,6 +1532,7 @@ impl MarkupBuilder {
                 self.buttons,
                 self.header,
                 self.fillings,
+                vec![DefaultAction::Random(self.actions)],
             )
         }
     }
@@ -1403,11 +1540,22 @@ impl MarkupBuilder {
 
 lazy_static! {
     static ref FILLER_REGEX: Regex = Regex::new(r"\{\w*\}").unwrap();
+    static ref RANDOM_FILLER_REGEX: Regex = Regex::new(r"\{%%%\w*\}").unwrap();
 }
 
 pub fn remove_fillings(text: &str) -> String {
     FILLER_REGEX.replace_all(text, "").into_owned()
 }
+
+// fn get_random_fillers(text: &str, &BTreeMap<String, ) -> BTreeMap<String, DefaultAction> {
+//     let mut out = BTreeMap::new();
+//     for filler in RANDOM_FILLER_REGEX.find_iter(text) {
+//         if let Some(filler) = filler.as_str().get(2..) {
+//             out.insert(filler.to_owned(), DefaultAction::)
+//         }
+//     }
+//     out
+// }
 
 pub async fn retro_fillings<'a>(
     text: String,
@@ -1748,7 +1896,7 @@ impl EntityMessage {
 
 #[allow(dead_code, unused_imports)]
 mod test {
-    use std::borrow::Cow;
+    use std::{borrow::Cow, ops::Deref};
 
     use botapi::gen_types::{ChatBuilder, Message, UpdateExt, UserBuilder};
     use chrono::Utc;
@@ -1789,6 +1937,12 @@ mod test {
         }
 
         parser.end_of_input().unwrap()
+    }
+
+    #[cfg(test)]
+    #[ctor::ctor]
+    fn init() {
+        env_logger::init();
     }
 
     #[test]
@@ -1983,6 +2137,27 @@ mod test {
             .set_text(test.to_owned())
             .filling(false)
             .header(false)
+            .build_murkdown()
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn parse_random() {
+        let test = r#"/filter test [%%% test %%%]"#;
+        MarkupBuilder::new(None)
+            .set_text(test.to_owned())
+            .filling(false)
+            .header(true)
+            .build_murkdown()
+            .await
+            .unwrap();
+
+        let test = r#"/filter test [%%% hi %%% bye %%%]"#;
+        MarkupBuilder::new(None)
+            .set_text(test.to_owned())
+            .filling(false)
+            .header(true)
             .build_murkdown()
             .await
             .unwrap();

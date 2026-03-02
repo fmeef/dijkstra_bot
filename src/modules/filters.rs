@@ -4,6 +4,7 @@ use crate::metadata::metadata;
 use crate::metadata::ModuleHelpers;
 
 use crate::persist::core::entity;
+use crate::persist::core::entity::DefaultAction;
 use crate::persist::core::media::get_media_type;
 use crate::persist::core::media::SendMediaReply;
 use crate::persist::redis::RedisStr;
@@ -334,6 +335,7 @@ pub mod entities {
             pub user: Option<i64>,
             pub language: Option<String>,
             pub emoji_id: Option<String>,
+            pub action: Option<Vec<u8>>,
 
             // user fields
             pub user_id: Option<i64>,
@@ -404,6 +406,7 @@ pub mod entities {
                         last_name: self.last_name,
                         username: self.username,
                         is_bot: self.is_bot,
+                        action: self.action,
                     })
                 } else {
                     None
@@ -443,6 +446,7 @@ pub mod entities {
                     Column::MediaType,
                     Column::EntityId,
                 ])
+                .columns([entity::Column::Action])
                 .columns([
                     messageentity::Column::TgType,
                     messageentity::Column::Offset,
@@ -506,7 +510,13 @@ pub mod entities {
                 },
             );
 
-            log::info!("got {} filters from db", res.len());
+            let actions = res
+                .values()
+                .flat_map(|(v, _, _)| v.iter())
+                .map(|v| v.action.is_some())
+                .count();
+
+            log::error!("got {} filters from db actions={actions}", res.len());
             Ok(res)
         }
     }
@@ -613,6 +623,7 @@ async fn get_filter(
         filters::Model,
         Vec<MessageEntity>,
         Option<InlineKeyboardBuilder>,
+        Option<Vec<DefaultAction>>,
     )>,
 > {
     let filter_key = get_filter_key(message, id);
@@ -625,14 +636,21 @@ async fn get_filter(
             .await?
             .into_iter()
             .map(|(filter, (entity, button, _))| {
+                let (entities, actions): (Vec<_>, Vec<_>) = entity
+                    .into_iter()
+                    .map(|e| e.get())
+                    .map(|(e, u, a)| (e.to_entity(u), a))
+                    .unzip();
                 (
                     filter,
-                    entity
-                        .into_iter()
-                        .map(|e| e.get())
-                        .map(|(e, u)| e.to_entity(u))
-                        .collect(),
+                    entities,
                     get_markup_for_buttons(button.into_iter().collect()),
+                    Some(
+                        actions
+                            .into_iter()
+                            .filter_map(|v| v.and_then(|v| rmp_serde::from_slice(&v).ok()))
+                            .collect(),
+                    ),
                 )
             })
             .next();
@@ -657,6 +675,7 @@ async fn search_cache(
         filters::Model,
         Vec<MessageEntity>,
         Option<InlineKeyboardBuilder>,
+        Option<Vec<DefaultAction>>,
     )>,
 > {
     update_cache_from_db(message).await?;
@@ -711,12 +730,12 @@ async fn update_cache_from_db(message: &Message) -> Result<()> {
                     let key = get_filter_key(message, filter.id);
                     log::info!("triggers {}", triggers.len());
                     let kb = get_markup_for_buttons(buttons.into_iter().collect());
-                    let entities = entities
+                    let (entities, actions): (Vec<_>, Vec<_>) = entities
                         .into_iter()
                         .map(|v| v.get())
-                        .map(|(k, v)| k.to_entity(v))
-                        .collect_vec();
-                    p.set(&key, (&filter, entities, kb).to_redis()?)
+                        .map(|(k, v, a)| (k.to_entity(v), a))
+                        .unzip();
+                    p.set(&key, (&filter, entities, kb, &actions).to_redis()?)
                         .expire(&key, CONFIG.timing.cache_timeout);
                     for trigger in triggers.iter() {
                         p.hset(&hash_key, trigger.trigger.to_owned(), filter.id)
@@ -740,7 +759,7 @@ async fn command_filter<'a>(c: &Context, args: &TextArgs<'a>) -> Result<()> {
         .transaction::<_, Vec<String>, BoxedBotError>(move |tx| {
             async move {
                 let message = ctx.message()?;
-                let (body, entities, buttons, header, _) = MarkupBuilder::new(None)
+                let (body, entities, buttons, header, _, actions) = MarkupBuilder::new(None)
                     .set_text(text)
                     .filling(false)
                     .header(true)
@@ -791,7 +810,8 @@ async fn command_filter<'a>(c: &Context, args: &TextArgs<'a>) -> Result<()> {
                     .await?;
                 let (id, media_type) = get_media_type(message)?;
 
-                let entity_id = entity::insert(tx, &entities, buttons.clone()).await?;
+                let entity_id =
+                    entity::insert_action(tx, &entities, buttons.clone(), &actions).await?;
                 let model = filters::ActiveModel {
                     id: ActiveValue::NotSet,
                     chat: ActiveValue::Set(message.get_chat().get_id()),
@@ -819,7 +839,7 @@ async fn command_filter<'a>(c: &Context, args: &TextArgs<'a>) -> Result<()> {
                     .exec_with_returning(tx)
                     .await?;
 
-                let r = (&model, &entities, &buttons).to_redis()?;
+                let r = (&model, &entities, &buttons, &actions).to_redis()?;
                 triggers::Entity::insert_many(
                     triggers
                         .iter()
@@ -878,12 +898,17 @@ async fn command_filter<'a>(c: &Context, args: &TextArgs<'a>) -> Result<()> {
 async fn handle_trigger(ctx: &Context) -> Result<()> {
     let message = ctx.message()?;
     if let Some(text) = get_search_text(message) {
-        if let Some((res, extra_entities, extra_buttons)) = search_cache(message, &text).await? {
+        if let Some((res, extra_entities, extra_buttons, actions)) =
+            search_cache(message, &text).await?
+        {
+            log::error!("handle_trigger actions={actions:?} extra_entities={extra_entities:?}");
+
             SendMediaReply::new(ctx, res.media_type)
                 .button_callback(|_, _| async move { Ok(()) }.boxed())
                 .text(res.text)
                 .media_id(res.media_id)
                 .extra_entities(extra_entities)
+                .actions(actions)
                 .buttons(extra_buttons)
                 .send_media_reply()
                 .await?;

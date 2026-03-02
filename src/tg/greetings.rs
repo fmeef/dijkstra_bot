@@ -764,12 +764,12 @@ impl Context {
                         entity
                             .into_iter()
                             .map(|e| e.get())
-                            .map(|(e, u)| e.to_entity(u))
+                            .map(|(e, u, a)| e.to_entity(u))
                             .collect(),
                         goodbye
                             .into_iter()
                             .map(|e| e.get())
-                            .map(|(e, u)| e.to_entity(u))
+                            .map(|(e, u, a)| e.to_entity(u))
                             .collect(),
                         get_markup_for_buttons(button.into_iter().collect()),
                         get_markup_for_buttons(gb_button.into_iter().collect()),

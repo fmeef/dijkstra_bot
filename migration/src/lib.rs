@@ -20,6 +20,7 @@ mod m20231029_015614_notes;
 mod m20231029_032907_notes_entity;
 mod m20231117_045213_taint;
 mod m20240220_230802_no_cycle;
+mod m20260301_075629_entity_actions;
 
 pub struct Migrator;
 
@@ -52,7 +53,7 @@ pub fn prevent_cycle(name: &str, col: &str) -> Statement {
                 RETURN NEW;
               END IF;
             END
-            $$ LANGUAGE plpgsql;    
+            $$ LANGUAGE plpgsql;
             ",
             fed = col,
             name = name
@@ -79,6 +80,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20230214_000001_create_captcha::Migration),
             Box::new(m20230910_204018_entity_in_db::Migration),
             Box::new(m20231117_045213_taint::Migration),
+            Box::new(m20260301_075629_entity_actions::Migration),
         ];
         core_migrations.append(&mut module_migrations);
         core_migrations.append(&mut vec![Box::new(m20230629_231657_tags_idx::Migration)]);

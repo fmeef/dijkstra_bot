@@ -961,7 +961,7 @@ async fn command_blocklist<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()>
         .show_fillings(false)
         .header(true);
 
-    let (body, _, _, header, footer) = cmd.build_filter().await;
+    let (body, _, _, header, footer, _) = cmd.build_filter().await;
     let filters = match header.ok_or_else(|| ctx.fail_err("Header missing from filter command"))? {
         Header::List(st) => st,
         Header::Arg(st) => vec![st],

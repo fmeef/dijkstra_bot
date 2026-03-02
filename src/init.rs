@@ -42,7 +42,7 @@ impl DijkstraOpts {
         .await?;
         DB_BACKEND.set(db).unwrap();
 
-        let log_handle = logger::setup_log();
+        let log_handle = crate::logger::setup_log();
 
         let client = if let Some(metadata) = self.modules {
             TgClient::connect_mod(&CONFIG.bot_token, metadata, self.handler)

@@ -1,10 +1,12 @@
+use std::collections::BTreeMap;
+
 use botapi::gen_types::MessageEntity;
 use futures::{stream, StreamExt, TryStreamExt};
 use sea_orm::{entity::prelude::*, ActiveValue, IntoActiveModel};
 use sea_query::OnConflict;
 use serde::{Deserialize, Serialize};
 
-use crate::tg::button::InlineKeyboardBuilder;
+use crate::tg::{button::InlineKeyboardBuilder, markdown::TgSpan};
 
 use super::{button, messageentity};
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
@@ -12,6 +14,27 @@ use super::{button, messageentity};
 pub struct Model {
     #[sea_orm(primary_key, autoincrement = true)]
     pub id: i64,
+    pub action: Option<Vec<u8>>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, PartialOrd, Ord)]
+pub struct RandomFiller {
+    pub content: Vec<TgSpan>,
+    pub name: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub enum DefaultAction {
+    Random(Vec<RandomFiller>),
+}
+
+impl DefaultAction {
+    pub fn get_random_or(self) -> Option<BTreeMap<String, RandomFiller>> {
+        match self {
+            Self::Random(r) => Some(r.into_iter().map(|r| (r.name.to_owned(), r)).collect()),
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -58,6 +81,27 @@ impl Related<Entity> for crate::persist::core::button::Entity {
     }
 }
 
+async fn insert_action_internal<T, S>(
+    conn: &T,
+    action: Option<S>,
+) -> crate::util::error::Result<i64>
+where
+    T: ConnectionTrait,
+    S: Serialize,
+{
+    let action: Option<Vec<u8>> = match action {
+        Some(action) => Some(rmp_serde::to_vec_named(&action)?),
+        None => None,
+    };
+    let res = Entity::insert(ActiveModel {
+        id: ActiveValue::NotSet,
+        action: ActiveValue::Set(action),
+    })
+    .exec_with_returning(conn)
+    .await?;
+
+    Ok(res.id)
+}
 pub async fn insert<T>(
     conn: &T,
     entities: &Vec<MessageEntity>,
@@ -66,15 +110,36 @@ pub async fn insert<T>(
 where
     T: ConnectionTrait,
 {
+    insert_internal(conn, entities, buttons, None::<()>).await
+}
+
+pub async fn insert_action<T, S>(
+    conn: &T,
+    entities: &Vec<MessageEntity>,
+    buttons: InlineKeyboardBuilder,
+    action: S,
+) -> crate::util::error::Result<Option<i64>>
+where
+    T: ConnectionTrait,
+    S: Serialize,
+{
+    insert_internal(conn, entities, buttons, Some(action)).await
+}
+
+async fn insert_internal<T, S>(
+    conn: &T,
+    entities: &Vec<MessageEntity>,
+    buttons: InlineKeyboardBuilder,
+    action: Option<S>,
+) -> crate::util::error::Result<Option<i64>>
+where
+    T: ConnectionTrait,
+    S: Serialize,
+{
     log::info!("inserting {} entities", entities.len());
 
     if !entities.is_empty() || buttons.get().iter().map(|v| v.len()).sum::<usize>() > 0 {
-        let entity_id = Entity::insert(ActiveModel {
-            id: ActiveValue::NotSet,
-        })
-        .exec_with_returning(conn)
-        .await?
-        .id;
+        let entity_id = insert_action_internal(conn, action).await?;
 
         let entities: Vec<messageentity::Model> = stream::iter(entities)
             .then(|v| async move { messageentity::Model::from_entity(v, entity_id).await })

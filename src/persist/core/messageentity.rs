@@ -36,6 +36,8 @@ pub struct EntityWithUser {
     pub emoji_id: Option<String>,
     pub owner_id: i64,
 
+    pub action: Option<Vec<u8>>,
+
     // user fields
     pub user_id: Option<i64>,
     pub first_name: Option<String>,
@@ -45,7 +47,7 @@ pub struct EntityWithUser {
 }
 
 impl EntityWithUser {
-    pub fn get(self) -> (Model, Option<users::Model>) {
+    pub fn get(self) -> (Model, Option<users::Model>, Option<Vec<u8>>) {
         (
             Model {
                 tg_type: self.tg_type,
@@ -70,6 +72,7 @@ impl EntityWithUser {
             } else {
                 None
             },
+            self.action,
         )
     }
 }

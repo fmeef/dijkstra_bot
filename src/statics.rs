@@ -123,6 +123,9 @@ pub fn module_enabled(module: &str) -> bool {
 
 impl LogConfig {
     pub fn get_log_level(&self) -> LevelFilter {
+        #[cfg(test)]
+        return LevelFilter::Debug;
+
         self.log_level.0
     }
 }

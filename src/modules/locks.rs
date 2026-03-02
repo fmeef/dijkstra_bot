@@ -224,6 +224,18 @@ pub mod entities {
             ExtUsers,
             #[sea_orm(num_value = 12)]
             ExtReply,
+            #[sea_orm(num_value = 13)]
+            Document,
+            #[sea_orm(num_value = 14)]
+            Audio,
+            #[sea_orm(num_value = 15)]
+            Poll,
+            #[sea_orm(num_value = 16)]
+            VideoNote,
+            #[sea_orm(num_value = 17)]
+            VoiceNote,
+            #[sea_orm(num_value = 18)]
+            Messages,
         }
 
         impl LockType {
@@ -241,6 +253,12 @@ pub mod entities {
                     Self::InviteLink => "Links to groups or channels",
                     Self::ExtUsers => "Users not participating in this chat",
                     Self::ExtReply => "Replies to messages outside of the current group.",
+                    Self::Messages => "Regular text message",
+                    Self::Document => "Files excluding photos, videos, and music",
+                    Self::Audio => "Audio or music files",
+                    Self::VideoNote => "\"Circle\" live recorded video messages",
+                    Self::VoiceNote => "Live recorded voice notes",
+                    Self::Poll => "Poll messages",
                 }
             }
 
@@ -266,6 +284,36 @@ pub mod entities {
                     Self::InviteLink => None,
                     Self::ExtReply => None,
                     Self::ExtUsers => None,
+                    Self::Messages => Some(
+                        ChatPermissionsBuilder::new()
+                            .set_can_send_messages(false)
+                            .build(),
+                    ),
+                    Self::Document => Some(
+                        ChatPermissionsBuilder::new()
+                            .set_can_send_documents(false)
+                            .build(),
+                    ),
+                    Self::Audio => Some(
+                        ChatPermissionsBuilder::new()
+                            .set_can_send_audios(false)
+                            .build(),
+                    ),
+                    Self::VideoNote => Some(
+                        ChatPermissionsBuilder::new()
+                            .set_can_send_video_notes(false)
+                            .build(),
+                    ),
+                    Self::VoiceNote => Some(
+                        ChatPermissionsBuilder::new()
+                            .set_can_send_voice_notes(false)
+                            .build(),
+                    ),
+                    Self::Poll => Some(
+                        ChatPermissionsBuilder::new()
+                            .set_can_send_polls(false)
+                            .build(),
+                    ),
                 }
             }
         }
@@ -316,8 +364,8 @@ impl MigrationName for MigrationActionType {
 
 macro_rules! locks {
     ( $(
-        $( lock!( $name:expr, $description:expr, $lock:expr, $predicate:expr ) )?
-        $( async_lock!( $async_name:expr, $async_description:expr, $async_lock:expr, $async_predicate:expr ) )?
+        $( lock!( $name:expr, $lock:expr, $predicate:expr ) )?
+        $( async_lock!( $async_name:expr, $async_lock:expr, $async_predicate:expr ) )?
     );+ ) => {
 
 
@@ -326,11 +374,11 @@ macro_rules! locks {
            let mut map = ::std::collections::HashMap::new();
             $(
             $(
-              map.insert($name.to_owned(),$description.to_owned());
+              map.insert($name.to_owned(),$lock.get_name().to_owned());
             )?
 
             $(
-              map.insert($async_name.to_owned(), $async_description.to_owned());
+              map.insert($async_name.to_owned(), $async_lock.get_name().to_owned());
             )?
             )+
 
@@ -403,7 +451,7 @@ macro_rules! locks {
 }
 
 locks! {
-    lock!("code", "Pre formatted code", LockType::Code, |message| {
+    lock!("code", LockType::Code, |message| {
         if let Some(entities) = message.get_entities() {
             for entity in entities {
                 match entity.get_tg_type() {
@@ -416,14 +464,14 @@ locks! {
         false
 
     });
-    lock!("premium", "Messages from premium users", LockType::Premium, |message| {
+    lock!("premium", LockType::Premium, |message| {
        if let Some(user) = message.get_from() {
             user.get_is_premium().unwrap_or(false)
         } else {
             false
         }
     });
-    lock!("url", "http/https urls, as defined by telegram", LockType::Link, |message| {
+    lock!("url", LockType::Link, |message| {
         if let Some(entities) = message.get_entities() {
             for entity in entities {
                 match entity.get_tg_type() {
@@ -437,20 +485,19 @@ locks! {
     });
     lock!(
         "photo",
-        "Photo messages",
         LockType::Photo,
         |message| {
             message.get_photo().is_some()
         }
     );
 
-    lock!("video", "Video messages", LockType::Video, |message| {
+    lock!("video", LockType::Video, |message| {
         message.get_video().is_some()
     });
-    lock!("anonchannel", "Users speaking through anonymous channels", LockType::AnonChannel, |message| {
+    lock!("anonchannel", LockType::AnonChannel, |message| {
         message.get_sender_chat().is_some()
     });
-    lock!("command", "Bot commands", LockType::Command, |message| {
+    lock!("command", LockType::Command, |message| {
         if let Some(entities) = message.get_entities() {
             for entity in entities {
                 if entity.get_tg_type() == "bot_command" {
@@ -460,13 +507,19 @@ locks! {
         }
         false
     });
-    lock!("forward", "Forwarded messages", LockType::Forward, |message| {
+    lock!("forward",  LockType::Forward, |message| {
         message.get_forward_origin().is_some()
     });
-    lock!("sticker", "Stickers", LockType::Sticker, |message| message.get_sticker().is_some());
-    async_lock!("invitelink", "Invite Links", LockType::InviteLink, |message| is_invite(message));
-    async_lock!("external_users", "External Users", LockType::ExtUsers, |message| is_out_of_chat_user(message));
-    lock!("external_reply", "External replies", LockType::ExtReply, |message| message.external_reply.is_some());
+    lock!("sticker", LockType::Sticker, |message| message.get_sticker().is_some());
+    async_lock!("invitelink", LockType::InviteLink, |message| is_invite(message));
+    async_lock!("external_users", LockType::ExtUsers, |message| is_out_of_chat_user(message));
+    lock!("external_reply", LockType::ExtReply, |message| message.external_reply.is_some());
+    lock!("document", LockType::Document, |message| message.document.is_some());
+    lock!("poll", LockType::Poll, |message| message.poll.is_some());
+    lock!("audio", LockType::Audio, |message| message.audio.is_some());
+    lock!("video_note", LockType::VideoNote, |message| message.video.is_some());
+    lock!("voice_note", LockType::VoiceNote, |message| message.voice.is_some());
+    lock!("messages", LockType::Messages, |message| message.text.is_some());
 
 }
 

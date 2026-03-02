@@ -88,6 +88,8 @@ struct FiltersWithEntities {
     pub pos_y: Option<i32>,
     pub raw_text: Option<String>,
 
+    pub action: Option<Vec<u8>>,
+
     // entity fields
     pub tg_type: Option<DbMarkupType>,
     pub offset: Option<i64>,
@@ -156,6 +158,7 @@ impl FiltersWithEntities {
                 last_name: self.last_name,
                 username: self.username,
                 is_bot: self.is_bot,
+                action: self.action,
             })
         } else {
             None
