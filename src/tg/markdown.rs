@@ -221,7 +221,7 @@ pomelo! {
 
     words    ::= words(mut L) word(W) { L.push(W); L }
     words    ::= wsword(W) { vec![W] }
-    words    ::= words(mut L) Whitespace(_) wsword(W) { L.push(W); L  }
+    words    ::= words(mut L) Whitespace(S) wsword(W) { L.push(super::TgSpan::Raw(S)); L.push(W); L  }
 
     words    ::= word(C) { vec![C] }
     word      ::= Str(S) { super::TgSpan::Raw(S) }
