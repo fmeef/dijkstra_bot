@@ -8,7 +8,7 @@ proc-macro = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-syn = "2.0.114"
+syn = "2.0.117"
 quote = "1.0.44"
 proc-macro2 = "1.0.106"
 include_dir = "0.7.4"

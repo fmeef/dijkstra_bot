@@ -26,7 +26,7 @@
         devShell =
           with pkgs; mkShell {
 
-            buildInputss = [
+            buildInputs = [
               rustup
               openssl
               pkg-config

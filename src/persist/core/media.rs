@@ -286,7 +286,7 @@ where
 
             let text = text.unwrap_or_else(|| "".to_owned());
             let buttons = self.buttons.unwrap_or_default();
-            let (text, entities, mut buttons) = if let Some(extra) = self.extra_entities {
+            let (text, entities, buttons) = if let Some(extra) = self.extra_entities {
                 let (text, extra, mut buttons) = if self.actions.is_some() {
                     let (text, mut entities, buttons) = MarkupBuilder::new(None)
                         .set_text(text)

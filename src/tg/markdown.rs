@@ -1832,6 +1832,11 @@ impl EntityMessage {
         self
     }
 
+    pub fn action(mut self, action: Option<Vec<DefaultAction>>) -> Self {
+        self.builder = self.builder.input_actions(action);
+        self
+    }
+
     pub fn disable_murkdown(mut self, disable: bool) -> Self {
         self.disable_murkdown = disable;
         self
