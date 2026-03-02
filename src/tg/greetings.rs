@@ -1,6 +1,7 @@
 use std::ops::DerefMut;
 
 use crate::persist::admin::captchastate::CaptchaType;
+use crate::persist::core::entity::DefaultAction;
 use crate::persist::core::media::SendMediaReply;
 use crate::persist::redis::{
     default_cache_query, CachedQueryTrait, RedisCache, RedisStr, ToRedisStr,
@@ -123,6 +124,7 @@ pub(crate) async fn goodbye_members(
     entities: Vec<MessageEntity>,
     buttons: Option<InlineKeyboardBuilder>,
     lang: &Lang,
+    action: Option<Vec<DefaultAction>>,
 ) -> Result<()> {
     let text = if let Some(text) = model.goodbye_text {
         text
@@ -136,6 +138,7 @@ pub(crate) async fn goodbye_members(
         .media_id(model.goodbye_media_id)
         .extra_entities(entities)
         .buttons(buttons)
+        .actions(action)
         .send_media()
         .await?;
     Ok(())
@@ -150,6 +153,7 @@ pub(crate) async fn welcome_members(
     mut extra_buttons: Option<InlineKeyboardBuilder>,
     lang: &Lang,
     captcha: Option<&captchastate::Model>,
+    action: Option<Vec<DefaultAction>>,
 ) -> Result<()> {
     log::info!("welcome {:?}", captcha);
     let text = if let Some(text) = model.text {
@@ -197,6 +201,7 @@ pub(crate) async fn welcome_members(
         .text(Some(text))
         .media_id(model.media_id)
         .extra_entities(entities)
+        .actions(action)
         .buttons(extra_buttons)
         .send_media()
         .await?;
@@ -429,6 +434,7 @@ async fn button_captcha<'a>(
     welcome: Option<welcomes::Model>,
     entities: Vec<MessageEntity>,
     buttons: Option<InlineKeyboardBuilder>,
+    action: Option<Vec<DefaultAction>>,
 ) -> Result<()> {
     let unmute_button = InlineKeyboardButtonBuilder::new(lang_fmt!(ctx, "pressme"))
         .set_callback_data(Uuid::new_v4().to_string())
@@ -450,6 +456,7 @@ async fn button_captcha<'a>(
             buttons,
             ctx.lang(),
             Some(captcha),
+            action,
         )
         .await?;
     } else if !should_ignore_chat(upd.get_chat().get_id()).await? {
@@ -477,6 +484,7 @@ async fn send_captcha_chooser(
     entities: Vec<MessageEntity>,
     buttons: Option<InlineKeyboardBuilder>,
     lang: &Lang,
+    action: Option<Vec<DefaultAction>>,
 ) -> Result<()> {
     let user = upd.get_from();
     let chat = upd.get_chat();
@@ -489,7 +497,17 @@ async fn send_captcha_chooser(
     );
 
     if let Some(welcome) = welcome {
-        welcome_members(ctx, upd, welcome, entities, buttons, lang, Some(catpcha)).await?;
+        welcome_members(
+            ctx,
+            upd,
+            welcome,
+            entities,
+            buttons,
+            lang,
+            Some(catpcha),
+            action,
+        )
+        .await?;
     } else {
         let nm = TG
             .client()
@@ -521,6 +539,8 @@ impl Context {
         goodbye: Vec<MessageEntity>,
         buttons: Option<InlineKeyboardBuilder>,
         gb_buttons: Option<InlineKeyboardBuilder>,
+        action: Option<Vec<DefaultAction>>,
+        gb_action: Option<Vec<DefaultAction>>,
     ) -> Result<()> {
         if let Some(UserChanged::UserJoined(message)) = self.update().user_event() {
             let me = ME.get().unwrap();
@@ -562,20 +582,26 @@ impl Context {
                             entities,
                             buttons,
                             self.lang(),
+                            action,
                         )
                         .await?
                     }
                     CaptchaType::Button => {
-                        button_captcha(self, message, config, welcome, entities, buttons).await?
+                        button_captcha(self, message, config, welcome, entities, buttons, action)
+                            .await?
                     }
                 }
             } else if let Some(welcome) = welcome {
-                self.handle_welcome(welcome, entities, goodbye, buttons, gb_buttons, None)
-                    .await?;
+                self.handle_welcome(
+                    welcome, entities, goodbye, buttons, gb_buttons, None, action, gb_action,
+                )
+                .await?;
             }
         } else if let Some(welcome) = welcome {
-            self.handle_welcome(welcome, entities, goodbye, buttons, gb_buttons, None)
-                .await?;
+            self.handle_welcome(
+                welcome, entities, goodbye, buttons, gb_buttons, None, action, gb_action,
+            )
+            .await?;
         }
 
         Ok(())
@@ -589,6 +615,8 @@ impl Context {
         buttons: Option<InlineKeyboardBuilder>,
         gb_buttons: Option<InlineKeyboardBuilder>,
         captcha: Option<&captchastate::Model>,
+        action: Option<Vec<DefaultAction>>,
+        gb_action: Option<Vec<DefaultAction>>,
     ) -> Result<()> {
         log::info!(
             "handle_welcome\n entities {:?}\ngoodbyes {:?}",
@@ -607,11 +635,13 @@ impl Context {
                             buttons,
                             self.lang(),
                             captcha,
+                            action,
                         )
                         .await?
                     }
                     UserChanged::UserLeft(_) => {
-                        goodbye_members(self, welcome, goodbye, gb_buttons, self.lang()).await?
+                        goodbye_members(self, welcome, goodbye, gb_buttons, self.lang(), gb_action)
+                            .await?
                     }
                 }
             }
@@ -627,15 +657,23 @@ impl Context {
                 self.should_welcome(upd).await?,
                 self.get_captcha_config().await?,
             ) {
-                (Some((welcome, entities, goodbyes, buttons, gb_buttons)), None) => {
-                    self.handle_welcome(welcome, entities, goodbyes, buttons, gb_buttons, None)
-                        .await
+                (
+                    Some((welcome, entities, goodbyes, buttons, gb_buttons, action, gb_action)),
+                    None,
+                ) => {
+                    self.handle_welcome(
+                        welcome, entities, goodbyes, buttons, gb_buttons, None, action, gb_action,
+                    )
+                    .await
                 }
                 (None, Some(captcha)) => {
-                    self.check_members(&captcha, None, vec![], vec![], None, None)
+                    self.check_members(&captcha, None, vec![], vec![], None, None, None, None)
                         .await
                 }
-                (Some((welcome, entities, gb_entities, buttons, gb_buttons)), Some(captcha)) => {
+                (
+                    Some((welcome, entities, gb_entities, buttons, gb_buttons, action, gb_action)),
+                    Some(captcha),
+                ) => {
                     self.check_members(
                         &captcha,
                         Some(welcome),
@@ -643,6 +681,8 @@ impl Context {
                         gb_entities,
                         buttons,
                         gb_buttons,
+                        action,
+                        gb_action,
                     )
                     .await
                 }
@@ -744,6 +784,8 @@ impl Context {
             Vec<MessageEntity>,
             Option<InlineKeyboardBuilder>,
             Option<InlineKeyboardBuilder>,
+            Option<Vec<DefaultAction>>,
+            Option<Vec<DefaultAction>>,
         )>,
     > {
         let chat = upd.get_chat();
@@ -758,23 +800,27 @@ impl Context {
             log::info!("should_welcome cache miss {:?}", res);
             let res = res
                 .into_iter()
-                .map(|(model, (entity, goodbye, button, gb_button))| {
-                    (
-                        model,
-                        entity
-                            .into_iter()
-                            .map(|e| e.get())
-                            .map(|(e, u)| e.to_entity(u))
-                            .collect(),
-                        goodbye
-                            .into_iter()
-                            .map(|e| e.get())
-                            .map(|(e, u)| e.to_entity(u))
-                            .collect(),
-                        get_markup_for_buttons(button.into_iter().collect()),
-                        get_markup_for_buttons(gb_button.into_iter().collect()),
-                    )
-                })
+                .map(
+                    |(model, (entity, goodbye, button, gb_button, action, gb_action))| {
+                        (
+                            model,
+                            entity
+                                .into_iter()
+                                .map(|e| e.get())
+                                .map(|(e, u)| e.to_entity(u))
+                                .collect(),
+                            goodbye
+                                .into_iter()
+                                .map(|e| e.get())
+                                .map(|(e, u)| e.to_entity(u))
+                                .collect(),
+                            get_markup_for_buttons(button.into_iter().collect()),
+                            get_markup_for_buttons(gb_button.into_iter().collect()),
+                            Some(action.into_iter().collect()),
+                            Some(gb_action.into_iter().collect()),
+                        )
+                    },
+                )
                 .next();
 
             if let Some(ref map) = res {

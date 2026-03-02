@@ -1,6 +1,9 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
-use crate::{persist::core::media::*, statics::DB};
+use crate::{
+    persist::core::{entity::DefaultAction, media::*},
+    statics::DB,
+};
 use sea_orm::{entity::prelude::*, FromQueryResult, QueryOrder, QuerySelect};
 use sea_query::{IntoCondition, JoinType};
 use serde::{Deserialize, Serialize};
@@ -99,6 +102,7 @@ pub struct WelcomesWithEntities {
     pub emoji_id: Option<String>,
 
     pub action: Option<Vec<u8>>,
+    pub goodbye_action: Option<Vec<u8>>,
 
     // goodbye entity fields
     pub goodbye_tg_type: Option<DbMarkupType>,
@@ -130,6 +134,8 @@ pub struct WelcomeEntities {
     pub goodbye_button: Option<button::Model>,
     pub welcome_entity: Option<EntityWithUser>,
     pub goodbye_entity: Option<EntityWithUser>,
+    pub action: Option<Vec<u8>>,
+    pub goodbye_action: Option<Vec<u8>>,
 }
 
 impl WelcomesWithEntities {
@@ -245,6 +251,8 @@ impl WelcomesWithEntities {
             goodbye_button,
             welcome_entity,
             goodbye_entity,
+            action: self.action,
+            goodbye_action: self.goodbye_action,
         }
     }
 }
@@ -267,6 +275,8 @@ pub type FiltersMap = HashMap<
         HashSet<EntityWithUser>,
         HashSet<button::Model>,
         HashSet<button::Model>,
+        BTreeSet<DefaultAction>,
+        BTreeSet<DefaultAction>,
     ),
 >;
 
@@ -288,6 +298,7 @@ where
             Column::WelcomeEntityId,
             Column::GoodbyeEntityId,
         ])
+        .columns([entity::Column::Action])
         .columns([
             messageentity::Column::TgType,
             messageentity::Column::Offset,
@@ -305,6 +316,10 @@ where
             button::Column::PosY,
             button::Column::RawText,
         ])
+        .column_as(
+            Expr::col((EntityAlias, entity::Column::Action)),
+            "goodbye_action",
+        )
         .column_as(
             Expr::col((ButtonAlias, button::Column::ButtonText)),
             "goodbye_button_text",
@@ -441,6 +456,8 @@ where
                  goodbye_button,
                  welcome_entity,
                  goodbye_entity,
+                 action,
+                 goodbye_action,
              }| {
                 (
                     filter,
@@ -448,23 +465,33 @@ where
                     goodbye_button,
                     welcome_entity,
                     goodbye_entity,
+                    action,
+                    goodbye_action,
                 )
             },
         )
         .fold(
             FiltersMap::new(),
-            |mut acc, (filter, button, gb_button, entity, goodbye)| {
+            |mut acc, (filter, button, gb_button, entity, goodbye, action, goodbye_action)| {
                 //        log::info!("got entity {:?} goodbye {:?}", entity, goodbye);
                 if let Some(filter) = filter {
-                    let (entitylist, goodbyelist, buttonlist, gb_buttonlist) =
-                        acc.entry(filter).or_insert_with(|| {
-                            (
-                                HashSet::new(),
-                                HashSet::new(),
-                                HashSet::new(),
-                                HashSet::new(),
-                            )
-                        });
+                    let (
+                        entitylist,
+                        goodbyelist,
+                        buttonlist,
+                        gb_buttonlist,
+                        actionlist,
+                        gb_actionlist,
+                    ) = acc.entry(filter).or_insert_with(|| {
+                        (
+                            HashSet::new(),
+                            HashSet::new(),
+                            HashSet::new(),
+                            HashSet::new(),
+                            BTreeSet::new(),
+                            BTreeSet::new(),
+                        )
+                    });
 
                     if let Some(button) = button {
                         buttonlist.insert(button);
@@ -480,6 +507,22 @@ where
 
                     if let Some(gb) = gb_button {
                         gb_buttonlist.insert(gb);
+                    }
+
+                    if let Some(action) = action {
+                        if let Ok(action) = rmp_serde::from_slice::<Vec<DefaultAction>>(&action) {
+                            for action in action {
+                                actionlist.insert(action);
+                            }
+                        }
+                    }
+
+                    if let Some(action) = goodbye_action {
+                        if let Ok(action) = rmp_serde::from_slice::<Vec<DefaultAction>>(&action) {
+                            for action in action {
+                                gb_actionlist.insert(action);
+                            }
+                        }
                     }
                 }
                 acc
