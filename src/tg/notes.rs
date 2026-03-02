@@ -43,7 +43,7 @@ pub async fn refresh_notes(
             notes::Model,
             Vec<MessageEntity>,
             Option<InlineKeyboardBuilder>,
-            Option<Vec<DefaultAction>>,
+            Vec<DefaultAction>,
         ),
     >,
 > {
@@ -65,7 +65,7 @@ pub async fn refresh_notes(
                         .map(|(e, u)| e.to_entity(u))
                         .collect(),
                     get_markup_for_buttons(button.into_iter().collect()),
-                    Some(actions.into_iter().collect()),
+                    actions.into_iter().collect(),
                 )
             })
             .collect_vec();

@@ -66,7 +66,7 @@ impl ModuleHelpers for Helper {
         let notes = refresh_notes(chat).await?;
         let items: Vec<NotesItem> = notes
             .into_iter()
-            .map(|(note, (model, entities, buttons, actions))| {
+            .map(|(note, (model, entities, buttons, _))| {
                 let buttons = if let Some(buttons) = buttons {
                     buttons
                 } else {

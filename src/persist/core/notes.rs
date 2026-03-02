@@ -199,6 +199,7 @@ where
             Column::EntityId,
             Column::Protect,
         ])
+        .columns([entity::Column::Action])
         .columns([
             messageentity::Column::TgType,
             messageentity::Column::Offset,
@@ -253,8 +254,10 @@ where
                 }
 
                 if let Some(action) = action {
-                    if let Ok(action) = rmp_serde::from_slice(&action) {
-                        actionlist.insert(action);
+                    if let Ok(action) = rmp_serde::from_slice::<Vec<DefaultAction>>(&action) {
+                        for action in action {
+                            actionlist.insert(action);
+                        }
                     }
                 }
             }

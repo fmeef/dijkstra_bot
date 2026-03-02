@@ -517,12 +517,9 @@ pub mod entities {
                         if let Some(action) = action {
                             if let Ok(action) = rmp_serde::from_slice::<Vec<DefaultAction>>(&action)
                             {
-                                log::error!("action insert! {action:?}");
                                 for action in action {
                                     actionlist.insert(action);
                                 }
-                            } else {
-                                log::error!("action ser err");
                             }
                         }
                     }
