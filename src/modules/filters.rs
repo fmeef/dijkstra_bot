@@ -647,7 +647,6 @@ async fn get_filter(
             .await?
             .into_iter()
             .map(|(filter, (entity, button, _, actions))| {
-                log::error!("get_filter: actions={actions:?}");
                 let entities: Vec<_> = entity
                     .into_iter()
                     .map(|e| e.get())
@@ -663,8 +662,6 @@ async fn get_filter(
             .next();
 
         if let Some(ref map) = map {
-            log::error!("got map {map:?}");
-
             let _: () = REDIS
                 .try_pipe(|p| {
                     Ok(p.set(&filter_key, map.to_redis()?)
@@ -776,8 +773,8 @@ async fn command_filter<'a>(c: &Context, args: &TextArgs<'a>) -> Result<()> {
         .transaction::<_, Vec<String>, BoxedBotError>(move |tx| {
             async move {
                 let message = ctx.message()?;
-                let (body, entities, buttons, header, _, actions) = MarkupBuilder::new(None)
-                    .set_text(text)
+                let (_, _, buttons, header, _, actions) = MarkupBuilder::new(None)
+                    .set_text(text.clone())
                     .filling(false)
                     .header(true)
                     .build_filter()
@@ -807,7 +804,7 @@ async fn command_filter<'a>(c: &Context, args: &TextArgs<'a>) -> Result<()> {
                 let (f, message) = if let Some(message) = message.get_reply_to_message() {
                     (message.get_text().map(|v| v.to_owned()), message)
                 } else {
-                    (Some(body), message)
+                    (Some(text.to_owned()), message)
                 };
                 let old: Vec<i64> = filters::Entity::find()
                     .select_only()
@@ -827,8 +824,7 @@ async fn command_filter<'a>(c: &Context, args: &TextArgs<'a>) -> Result<()> {
                     .await?;
                 let (id, media_type) = get_media_type(message)?;
 
-                let entity_id =
-                    entity::insert_action(tx, &entities, buttons.clone(), &actions).await?;
+                let entity_id = entity::insert_action(tx, None, buttons.clone(), &actions).await?;
                 let model = filters::ActiveModel {
                     id: ActiveValue::NotSet,
                     chat: ActiveValue::Set(message.get_chat().get_id()),
@@ -856,7 +852,7 @@ async fn command_filter<'a>(c: &Context, args: &TextArgs<'a>) -> Result<()> {
                     .exec_with_returning(tx)
                     .await?;
 
-                let r = (&model, &entities, &buttons, &actions).to_redis()?;
+                let r = (&model, &Vec::<MessageEntity>::new(), &buttons, &actions).to_redis()?;
                 triggers::Entity::insert_many(
                     triggers
                         .iter()
@@ -918,8 +914,6 @@ async fn handle_trigger(ctx: &Context) -> Result<()> {
         if let Some((res, extra_entities, extra_buttons, actions)) =
             search_cache(message, &text).await?
         {
-            log::error!("handle_trigger actions={actions:?} extra_entities={extra_entities:?}");
-
             SendMediaReply::new(ctx, res.media_type)
                 .button_callback(|_, _| async move { Ok(()) }.boxed())
                 .text(res.text)

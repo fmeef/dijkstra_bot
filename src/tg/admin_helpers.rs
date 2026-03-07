@@ -728,7 +728,11 @@ pub async fn get_approvals(chat: &Chat) -> Result<Vec<(i64, String)>> {
         .collect())
 }
 
-fn merge_permissions(
+pub trait PermissionBuilderExt {
+    fn merge_permissions(&mut self, permissions: &ChatPermissions);
+}
+
+pub fn merge_permissions(
     permissions: &ChatPermissions,
     mut out: ChatPermissionsBuilder,
 ) -> ChatPermissionsBuilder {

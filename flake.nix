@@ -30,6 +30,7 @@
               rustup
               openssl
               pkg-config
+              redis
             ];
           };
       }

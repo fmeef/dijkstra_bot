@@ -17,7 +17,10 @@ use crate::{
     },
 };
 use chrono::Duration;
-use redis::aio::{ConnectionLike, MultiplexedConnection};
+use redis::{
+    aio::{ConnectionLike, MultiplexedConnection},
+    ParsingError, ToSingleRedisArg,
+};
 use redis_test::MockRedisConnection;
 use sea_orm::{ActiveModelTrait, IntoActiveModel};
 
@@ -30,9 +33,7 @@ use async_trait::async_trait;
 use futures::Future;
 
 use crate::statics::REDIS;
-use ::redis::{
-    AsyncCommands, ErrorKind, FromRedisValue, Pipeline, RedisError, RedisFuture, ToRedisArgs,
-};
+use ::redis::{AsyncCommands, FromRedisValue, Pipeline, RedisError, RedisFuture, ToRedisArgs};
 use botapi::gen_types::Message;
 use serde::{de::DeserializeOwned, Serialize};
 use tokio::task::JoinHandle;
@@ -86,14 +87,10 @@ pub async fn redis_miss<'a, V>(key: &'a str, val: Option<V>, expire: Duration) -
 where
     V: Serialize + 'a,
 {
-    if let Some(ref val) = val {
-        let valstr = RedisStr::new(&Some(&val))?;
-        let _: () = REDIS
-            .pipe(|p| p.set(key, valstr).expire(key, expire.num_seconds()))
-            .await?;
-    } else {
-        REDIS.sq::<_, ()>(|q| q.del(&key)).await?;
-    }
+    let valstr = RedisStr::new(&val)?;
+    let _: () = REDIS
+        .pipe(|p| p.set(key, valstr).expire(key, expire.num_seconds()))
+        .await?;
     Ok(val)
 }
 
@@ -233,13 +230,12 @@ impl RedisStr {
 }
 
 impl FromRedisValue for RedisStr {
-    fn from_redis_value(v: &redis::Value) -> redis::RedisResult<Self> {
-        match *v {
+    fn from_redis_value(v: redis::Value) -> std::result::Result<Self, ParsingError> {
+        match v {
             redis::Value::BulkString(ref data) => Ok(RedisStr(data.to_owned())),
-            _ => Err(RedisError::from((
-                ErrorKind::TypeError,
-                "Response was of incompatible type",
-                format!("{:?} (response was {:?})", "Invalid RedisStr", v),
+            _ => Err(ParsingError::from(format!(
+                "{:?} (response was {:?})",
+                "Invalid RedisStr", v
             ))),
         }
     }
@@ -257,6 +253,8 @@ impl ToRedisArgs for RedisStr {
         true
     }
 }
+
+impl ToSingleRedisArg for RedisStr {}
 
 /// append user and group id to a key
 #[inline(always)]

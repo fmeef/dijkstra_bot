@@ -21,10 +21,8 @@ use lazy_static::lazy_static;
 use markdown::mdast::Node;
 use markdown::ParseOptions;
 use pomelo::pomelo;
-use rand::seq::IndexedRandom;
 use rand::Rng;
 use regex::Regex;
-use sea_orm::ColIdx;
 use serde::{Deserialize, Serialize};
 
 use std::borrow::Cow;
@@ -73,8 +71,7 @@ pub enum TgSpan {
     Filling(String),
     Button(String, String),
     NewlineButton(String, String),
-    Random(Vec<TgSpan>),
-    RandomFiller(String),
+    Random(Vec<Vec<TgSpan>>),
     NoOp,
 }
 
@@ -160,8 +157,8 @@ pomelo! {
     %type inputm Vec<super::TgSpan>;
     %type words Vec<super::TgSpan>;
     %type main Vec<super::TgSpan>;
-    %type random Vec<super::TgSpan>;
-    %type random_filler super::TgSpan;
+    %type random Vec<Vec<super::TgSpan>>;
+    // %type random_filler super::TgSpan;
     %type word super::TgSpan;
     %type wsword super::TgSpan;
     %type wordraw (super::TgSpan, super::TgSpan);
@@ -230,7 +227,7 @@ pomelo! {
     word      ::= Mono(C) { super::TgSpan::Code(C) }
     word      ::= LSBracket TriplePercent Whitespace(_) random(R) RSBracket { super::TgSpan::Random(R) }
     word      ::= LSBracket Star main(S) RSBracket { super::TgSpan::Bold(S) }
-    word      ::= LCurly TriplePercent Str(S) RCurly { super::TgSpan::RandomFiller(S) }
+    // word      ::= LCurly TriplePercent Str(S) RCurly { super::TgSpan::RandomFiller(S) }
     word      ::= LSBracket main(H) RSBracket LParen Str(L) RParen { super::TgSpan::Link(H, L) }
     word      ::= LSBracket Tilde main(R) RSBracket { super::TgSpan::Strikethrough(R) }
     word      ::= LSBracket Underscore main(R) RSBracket { super::TgSpan::Italic(R) }
@@ -244,8 +241,8 @@ pomelo! {
     wstr      ::= Str(mut S) Whitespace(_) { S }
 
 
-    random    ::=  word(W) Whitespace(_) TriplePercent { vec![W] }
-    random    ::= random(mut R) Whitespace(_) word(W) Whitespace(_) TriplePercent  { R.push(W); R }
+    random    ::=  words(W) Whitespace(_) TriplePercent { vec![W] }
+    random    ::= random(mut R) Whitespace(_) words(W) Whitespace(_) TriplePercent  { R.push(W); R }
 
 
 //   footer     ::= Fmuf { "".to_owned() }
@@ -924,12 +921,12 @@ impl MarkupBuilder {
                                     };
                                     log::info!("random {idx}");
                                     let v = action.content.remove(idx);
-                                    let (span, e) = self.parse_tgspan(vec![v]).await?;
+                                    let (_, e) = self.parse_tgspan(v).await?;
                                     size += e;
                                 }
                             }
                             s => {
-                                let s = format!("{{{}}}", s);
+                                let s = format!("{{{s}}}");
                                 size += s.encode_utf16().count() as i64;
                                 self.text_internal(&s);
                             }
@@ -945,36 +942,42 @@ impl MarkupBuilder {
                             };
                             log::info!("random {idx}");
                             let v = action.content.remove(idx);
-                            let (span, e) = self.parse_tgspan(vec![v]).await?;
+                            let (_, e) = self.parse_tgspan(v).await?;
                             size += e;
                         }
                     }
-                    (TgSpan::Random(content), _) => {
-                        let name = format!("rand{}", self.actions.len());
-                        let action = RandomFiller {
-                            name: name.clone(),
-                            content,
+                    (TgSpan::Random(mut content), _) => {
+                        let idx = {
+                            let mut rng = rand::rng();
+                            let idx = rng.random_range(0..content.len());
+                            drop(rng);
+                            idx
                         };
-                        self.actions.push(action);
-                        self.text_internal(&format!("{{{name}}}"));
+                        log::info!("random {idx}");
+                        let v = content.remove(idx);
+                        let (_, e) = self.parse_tgspan(v).await?;
 
-                        // let idx = {
-                        //     let mut rng = rand::rng();
-                        //     let idx = rng.random_range(0..r.len());
-                        //     drop(rng);
-                        //     idx
+                        size += e;
+
+                        // let name = format!("rand{}", self.actions.len());
+                        // let action = RandomFiller {
+                        //     name: name.clone(),
+                        //     content,
                         // };
-                        // log::info!("random {idx}");
-                        // let v = r.remove(idx);
-                        // let (span, e) = self.parse_tgspan(vec![v]).await?;
+                        // self.actions.push(action);
 
+                        // let (_, e) = self.parse_tgspan(content).await?;
                         // size += e;
                     }
-                    (TgSpan::RandomFiller(rand), _) => {
-                        if let Some(item) = self.input_actions.remove(&rand) {
-                            let (_, e) = self.parse_tgspan(item.content).await?;
-                        }
-                    }
+                    // (TgSpan::RandomFiller(rand), _) => match self.input_actions.remove(&rand) {
+                    //     Some(item) => {
+                    //         let (_, e) = self.parse_tgspan(item.content).await?;
+                    //         size += e;
+                    //     }
+                    //     None => {
+                    //         // self.text_internal(&sample);
+                    //     }
+                    // },
                     (TgSpan::Filling(filling), _) => {
                         if filling.trim().is_empty() {
                             let s = format!("{{{}}}", filling);
@@ -2123,7 +2126,7 @@ mod test {
     async fn retro_fillings_wide() {
         let dumpling = "🥟";
         let test = "[*Hi] there {mention} welcome [*to] {chatname} [*bold]";
-        let (test, entities, mut buttons) = MarkupBuilder::new(None)
+        let (test, entities, mut buttons, _) = MarkupBuilder::new(None)
             .set_text(test.to_owned())
             .filling(false)
             .header(false)

@@ -110,11 +110,13 @@ fn glob_docs<T: AsRef<str>>(spec: T, file_ext: &str) -> Vec<(String, Vec<(String
 
 pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
     let module_names = glob_modules(&input, ".rs");
-    let module_globs = module_names
+    let mut module_globs = module_names
         .iter()
         .map(|name| quote::format_ident!("{}", name))
         .collect::<Vec<Ident>>();
-    let doc_globs = glob_docs(&input, ".mud");
+    module_globs.sort();
+    let mut doc_globs = glob_docs(&input, ".mud");
+    doc_globs.sort();
     let (doc_globs, vecs): (Vec<String>, Vec<TokenStream>) = doc_globs
         .into_iter()
         .map(|(d, sections)| {
@@ -142,7 +144,7 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
     let output = quote! {
         #( mod #mods; )*
         use crate::util::string::Speak;
-        pub fn get_migrations() -> ::std::vec::Vec<::std::boxed::Box<dyn ::sea_orm_migration::prelude::MigrationTrait>> {
+        pub(crate) fn get_migrations() -> ::std::vec::Vec<::std::boxed::Box<dyn ::sea_orm_migration::prelude::MigrationTrait>> {
             let mut v = ::std::vec::Vec::<::std::boxed::Box<dyn ::sea_orm_migration::prelude::MigrationTrait>>::new();
             #(
                 if let Some(ref md) = #funcs::METADATA.state {

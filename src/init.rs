@@ -5,7 +5,7 @@ use crate::statics::{
 };
 use crate::tg::client::TgClient;
 use crate::util::error::{BotError, Result};
-use crate::{logger, DijkstraOpts};
+use crate::DijkstraOpts;
 use clap::Parser;
 use confy::load_path;
 use nonblock_logger::JoinHandle;

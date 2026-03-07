@@ -396,8 +396,6 @@ pub enum BotError {
     SerializationErr(#[from] rmp_serde::encode::Error),
     #[error("deserialization error {0}")]
     DeserializationErr(#[from] rmp_serde::decode::Error),
-    #[error("nursery error {0}")]
-    NurseryErr(#[from] async_nursery::NurseErr),
     #[error("io error: {0}")]
     IoError(#[from] std::io::Error),
     #[error("DB error: {0}")]

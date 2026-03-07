@@ -4,7 +4,7 @@ use crate::persist::admin::actions::ActionType;
 use crate::persist::redis::{default_cache_query, CachedQueryTrait, RedisCache};
 use crate::statics::{CONFIG, DB, REDIS};
 use crate::tg::admin_helpers::{
-    ban_message, change_chat_permissions, is_approved, ChatPermissionsExt, UpdateHelpers,
+    ban_message, change_chat_permissions, is_approved, merge_permissions, UpdateHelpers,
 };
 use crate::tg::command::{Cmd, Context, TextArg, TextArgs};
 use crate::tg::dialog::is_chat_member;
@@ -13,7 +13,7 @@ use crate::tg::user::{get_user_username, Username};
 use crate::util::error::{BotError, Result};
 use crate::util::string::{get_chat_lang, Lang};
 use crate::{metadata::metadata, statics::TG, util::string::Speak};
-use botapi::gen_types::{Chat, Message, UpdateExt};
+use botapi::gen_types::{Chat, ChatPermissionsBuilder, Message, UpdateExt};
 use chrono::Duration;
 use entities::locks::LockType;
 use futures::future::BoxFuture;
@@ -269,7 +269,7 @@ pub mod entities {
                     Self::Code => None,
                     Self::Video => Some(
                         ChatPermissionsBuilder::new()
-                            .set_can_send_photos(false)
+                            .set_can_send_videos(false)
                             .build(),
                     ),
                     Self::AnonChannel => None,
@@ -427,24 +427,28 @@ macro_rules! locks {
         fn locktype_from_args<'a>(
             cmd: &Option<&'a Cmd<'a>>,
             chat: i64,
-        ) -> (Option<LockType>, Option<ActionType>) {
+        ) -> (Vec<LockType>, Option<ActionType>) {
             if let Some(&Cmd { ref args, message, .. }) = cmd {
                 let action = args
                     .args
-                    .get(1)
+                    .last()
                     .map(|v| ActionType::from_str(v.get_text(), chat, message.message_id).ok())
                     .flatten();
-                let arg = match args.args.first() {
+                let mut a = &args.args[..];
+                if action.is_some() {
+                    a = &a[..a.len()-1];
+                }
+                let arg = a.into_iter().filter_map(|v| match v {
                     $(
-                    $( Some(TextArg::Arg($name)) => Some($lock))?
-                    $( Some(TextArg::Arg($async_name)) => Some($async_lock))?
+                    $( TextArg::Arg($name) => Some($lock))?
+                    $( TextArg::Arg($async_name) => Some($async_lock))?
                     ),+
                     _ => None,
-                };
+                }).collect();
 
                 (arg, action)
             } else {
-                (None, None)
+                (vec![], None)
             }
         }
     };
@@ -648,40 +652,70 @@ async fn get_lock(message: &Message, locktype: LockType) -> Result<Option<locks:
     .await
 }
 
-async fn clear_lock(message: &Message, locktype: LockType) -> Result<()> {
+async fn clear_lock(message: &Message, locktype: Vec<LockType>) -> Result<()> {
     let chat = message.get_chat().get_id();
-    let key = get_lock_key(chat, &locktype);
 
-    if let Some(perm) = locktype.get_perms() {
-        change_chat_permissions(&message.chat, &perm.negate()).await?;
+    let mut final_perms = None;
+    for locktype in locktype {
+        let key = get_lock_key(chat, &locktype);
+
+        if let Some(perm) = locktype.get_perms() {
+            final_perms = match final_perms {
+                Some(ins) => Some(merge_permissions(&perm, ins)),
+                None => Some(merge_permissions(&perm, ChatPermissionsBuilder::new())),
+            };
+        }
+        locks::Entity::delete_by_id((chat, locktype))
+            .exec(*DB)
+            .await?;
+        let _: () = REDIS.sq(|q| q.del(&key)).await?;
     }
-    locks::Entity::delete_by_id((chat, locktype))
-        .exec(*DB)
-        .await?;
-    let _: () = REDIS.sq(|q| q.del(&key)).await?;
+
+    if let Some(perms) = final_perms {
+        change_chat_permissions(&message.chat, &perms.build()).await?;
+    }
     Ok(())
 }
 
-async fn set_lock(message: &Message, locktype: LockType) -> Result<()> {
-    let key = get_lock_key(message.get_chat().get_id(), &locktype);
-    if let Some(perms) = locktype.get_perms() {
-        change_chat_permissions(&message.chat, &perms).await?;
+async fn set_lock(message: &Message, locktype: Vec<LockType>) -> Result<()> {
+    let mut final_perms = None;
+    let mut models = Vec::with_capacity(locktype.len());
+    for locktype in locktype {
+        if let Some(perms) = locktype.get_perms() {
+            final_perms = match final_perms {
+                Some(ins) => Some(merge_permissions(&perms, ins)),
+                None => Some(merge_permissions(&perms, ChatPermissionsBuilder::new())),
+            };
+
+            log::info!("set_lock {locktype:?} {perms:?} {final_perms:?}");
+        }
+
+        let model = locks::ActiveModel {
+            chat: Set(message.get_chat().get_id()),
+            lock_type: Set(locktype),
+            lock_action: NotSet,
+            reason: NotSet,
+        };
+
+        models.push(model);
     }
-    let model = locks::ActiveModel {
-        chat: Set(message.get_chat().get_id()),
-        lock_type: Set(locktype),
-        lock_action: NotSet,
-        reason: NotSet,
-    };
-    let res = locks::Entity::insert(model)
+
+    let res = locks::Entity::insert_many(models)
         .on_conflict(
             OnConflict::columns([locks::Column::Chat, locks::Column::LockType])
                 .update_column(locks::Column::LockAction)
                 .to_owned(),
         )
-        .exec_with_returning(*DB)
+        .exec_with_returning_many(*DB)
         .await?;
-    res.cache(key).await?;
+
+    for model in res {
+        let key = get_lock_key(message.get_chat().get_id(), &model.lock_type);
+        model.cache(key).await?;
+    }
+    if let Some(perms) = final_perms {
+        change_chat_permissions(&message.chat, &perms.build()).await?;
+    }
 
     Ok(())
 }
@@ -734,24 +768,48 @@ async fn set_default_action(chat: &Chat, lock_action: ActionType) -> Result<()> 
 
 async fn set_lock_action(
     message: &Message,
-    locktype: LockType,
+    locktype: Vec<LockType>,
     lockaction: ActionType,
 ) -> Result<()> {
-    let key = get_lock_key(message.get_chat().get_id(), &locktype);
-    let model = locks::Model {
-        chat: message.get_chat().get_id(),
-        lock_type: locktype,
-        lock_action: Some(lockaction),
-        reason: None,
-    };
-    locks::Entity::insert(model.cache(key).await?)
+    let mut final_perms = None;
+    let mut models = Vec::with_capacity(locktype.len());
+    for locktype in locktype {
+        if let Some(perms) = locktype.get_perms() {
+            final_perms = match final_perms {
+                Some(ins) => Some(merge_permissions(&perms, ins)),
+                None => Some(merge_permissions(&perms, ChatPermissionsBuilder::new())),
+            };
+
+            log::info!("set_lock {locktype:?} {perms:?} {final_perms:?}");
+        }
+
+        let model = locks::ActiveModel {
+            chat: Set(message.get_chat().get_id()),
+            lock_type: Set(locktype),
+            lock_action: Set(Some(lockaction.clone())),
+            reason: NotSet,
+        };
+
+        models.push(model);
+    }
+
+    let res = locks::Entity::insert_many(models)
         .on_conflict(
             OnConflict::columns([locks::Column::Chat, locks::Column::LockType])
                 .update_column(locks::Column::LockAction)
                 .to_owned(),
         )
-        .exec(*DB)
+        .exec_with_returning_many(*DB)
         .await?;
+
+    for model in res {
+        let key = get_lock_key(message.get_chat().get_id(), &model.lock_type);
+        model.cache(key).await?;
+    }
+    if let Some(perms) = final_perms {
+        change_chat_permissions(&message.chat, &perms.build()).await?;
+    }
+
     Ok(())
 }
 
@@ -760,9 +818,12 @@ async fn handle_lock<'a>(message: &Message, cmd: &Option<&Cmd<'a>>, lang: &Lang)
         .check_permissions(|p| p.can_delete_messages.and(p.can_change_info))
         .await?;
     match locktype_from_args(cmd, message.get_chat().get_id()) {
-        (Some(lock), None) => {
-            let t = lock.get_name().to_owned();
-
+        (lock, None) => {
+            let t = lock
+                .iter()
+                .map(|v| v.get_name().to_owned())
+                .collect::<Vec<_>>()
+                .join(", ");
             set_lock(message, lock).await?;
             message
                 .reply(lang_fmt!(
@@ -773,13 +834,10 @@ async fn handle_lock<'a>(message: &Message, cmd: &Option<&Cmd<'a>>, lang: &Lang)
                 ))
                 .await?;
         }
-        (Some(lock), Some(action)) => {
+        (lock, Some(action)) => {
             let reply = lang_fmt!(lang, "setlockaction", action.get_name());
             set_lock_action(message, lock, action).await?;
             message.reply(reply).await?;
-        }
-        _ => {
-            message.reply(lang_fmt!(lang, "locknotspec")).await?;
         }
     };
     Ok(())
@@ -789,8 +847,13 @@ async fn handle_unlock<'a>(ctx: &Context, cmd: &Option<&Cmd<'a>>) -> Result<()> 
     ctx.check_permissions(|p| p.can_restrict_members).await?;
     let message = ctx.message()?;
     let lang = ctx.lang();
-    if let (Some(lock), _) = locktype_from_args(cmd, message.get_chat().get_id()) {
-        let name = lock.get_name().to_owned();
+    let (lock, _) = locktype_from_args(cmd, message.get_chat().get_id());
+    if !lock.is_empty() {
+        let name = lock
+            .iter()
+            .map(|v| v.get_name().to_owned())
+            .collect::<Vec<_>>()
+            .join(", ");
         clear_lock(message, lock).await?;
         message.reply(lang_fmt!(lang, "clearedlock", name)).await?;
     } else {

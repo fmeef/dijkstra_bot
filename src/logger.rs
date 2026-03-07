@@ -5,13 +5,13 @@
 
 use nonblock_logger::log::LevelFilter;
 
-use serde::{Deserialize, Serialize};
-
-use nonblock_logger::{BaseConsumer, BaseFilter, BaseFormater, JoinHandle, NonblockLogger};
-
-use std::io;
-
+#[cfg(not(test))]
 use crate::statics::CONFIG;
+#[cfg(not(test))]
+use nonblock_logger::{BaseConsumer, BaseFilter, BaseFormater, JoinHandle, NonblockLogger};
+use serde::{Deserialize, Serialize};
+#[cfg(not(test))]
+use std::io;
 
 #[derive(Debug)]
 pub struct LevelFilterWrapper(pub LevelFilter);
@@ -55,7 +55,7 @@ impl<'de> Deserialize<'de> for LevelFilterWrapper {
 }
 
 /// Setup logging and start logger thread
-
+#[cfg(not(test))]
 pub(crate) fn setup_log() -> JoinHandle {
     let formater = BaseFormater::new().local(true).color(true).level(4);
 

@@ -19,7 +19,7 @@ pub struct Model {
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, PartialOrd, Ord)]
 pub struct RandomFiller {
-    pub content: Vec<TgSpan>,
+    pub content: Vec<Vec<TgSpan>>,
     pub name: String,
 }
 
@@ -104,7 +104,7 @@ where
 }
 pub async fn insert<T>(
     conn: &T,
-    entities: &Vec<MessageEntity>,
+    entities: Option<&[MessageEntity]>,
     buttons: InlineKeyboardBuilder,
 ) -> crate::util::error::Result<Option<i64>>
 where
@@ -115,7 +115,7 @@ where
 
 pub async fn insert_action<T, S>(
     conn: &T,
-    entities: &Vec<MessageEntity>,
+    entities: Option<&[MessageEntity]>,
     buttons: InlineKeyboardBuilder,
     action: S,
 ) -> crate::util::error::Result<Option<i64>>
@@ -128,7 +128,7 @@ where
 
 async fn insert_internal<T, S>(
     conn: &T,
-    entities: &Vec<MessageEntity>,
+    entities: Option<&[MessageEntity]>,
     buttons: InlineKeyboardBuilder,
     action: Option<S>,
 ) -> crate::util::error::Result<Option<i64>>
@@ -136,43 +136,43 @@ where
     T: ConnectionTrait,
     S: Serialize,
 {
-    log::info!("inserting {} entities", entities.len());
-
-    if !entities.is_empty()
+    if entities.map(|v| v.len()).unwrap_or(0) > 0
         || buttons.get().iter().map(|v| v.len()).sum::<usize>() > 0
         || action.is_some()
     {
         let entity_id = insert_action_internal(conn, action).await?;
 
-        let entities: Vec<messageentity::Model> = stream::iter(entities)
-            .then(|v| async move { messageentity::Model::from_entity(v, entity_id).await })
-            .try_collect()
-            .await?;
+        if let Some(entities) = entities {
+            let entities: Vec<messageentity::Model> = stream::iter(entities)
+                .then(|v| async move { messageentity::Model::from_entity(v, entity_id).await })
+                .try_collect()
+                .await?;
 
-        if !entities.is_empty() {
-            messageentity::Entity::insert_many(
-                entities
-                    .into_iter()
-                    .map(|v| v.into_active_model())
-                    .collect::<Vec<messageentity::ActiveModel>>(),
-            )
-            .on_conflict(
-                OnConflict::columns([
-                    messageentity::Column::TgType,
-                    messageentity::Column::Offset,
-                    messageentity::Column::Length,
-                    messageentity::Column::OwnerId,
-                ])
-                .update_columns([
-                    messageentity::Column::Url,
-                    messageentity::Column::User,
-                    messageentity::Column::Language,
-                    messageentity::Column::EmojiId,
-                ])
-                .to_owned(),
-            )
-            .exec_with_returning(conn)
-            .await?;
+            if !entities.is_empty() {
+                messageentity::Entity::insert_many(
+                    entities
+                        .into_iter()
+                        .map(|v| v.into_active_model())
+                        .collect::<Vec<messageentity::ActiveModel>>(),
+                )
+                .on_conflict(
+                    OnConflict::columns([
+                        messageentity::Column::TgType,
+                        messageentity::Column::Offset,
+                        messageentity::Column::Length,
+                        messageentity::Column::OwnerId,
+                    ])
+                    .update_columns([
+                        messageentity::Column::Url,
+                        messageentity::Column::User,
+                        messageentity::Column::Language,
+                        messageentity::Column::EmojiId,
+                    ])
+                    .to_owned(),
+                )
+                .exec_with_returning(conn)
+                .await?;
+            }
         }
 
         let buttons = buttons

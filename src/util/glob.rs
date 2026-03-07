@@ -238,9 +238,6 @@ impl Glob {
             before = Some(ch);
             if ch.is_whitespace() {
                 is_star = false;
-                word_len = 0;
-            } else {
-                word_len += 1;
             }
             let get = self.0.get(pattern_idx);
 

@@ -105,7 +105,7 @@ impl ModuleHelpers for Helper {
         for note in notes.notes {
             let (text, entities, buttons) =
                 RoseMdParser::new(&note.text.replace("\\n", "\n"), true).parse();
-            let entity_id = entity::insert(*DB, &entities, buttons).await?;
+            let entity_id = entity::insert(*DB, Some(&entities), buttons).await?;
 
             let model = notes::Model {
                 name: note.name,
@@ -158,13 +158,13 @@ async fn get_model<'a>(ctx: &'a Context, args: &'a TextArgs<'a>) -> Result<notes
                     .filling(false)
                     .header(false)
                     .set_text(text.to_owned());
-                let (text, entities, buttons, actions) = md
+                let (_, _, buttons, actions) = md
                     .build_murkdown()
                     .await
                     .speak(ctx, lang_fmt!(ctx, "failmurk"))
                     .await?;
-                let entity_id = entity::insert_action(*DB, &entities, buttons, actions).await?;
-                (Some(text), entity_id)
+                let entity_id = entity::insert_action(*DB, None, buttons, actions).await?;
+                (Some(text.to_owned()), entity_id)
             } else {
                 (None, None)
             };
@@ -194,13 +194,13 @@ async fn get_model<'a>(ctx: &'a Context, args: &'a TextArgs<'a>) -> Result<notes
                     .filling(false)
                     .header(false)
                     .set_text(text.to_owned());
-                let (text, entities, buttons, actions) = md
+                let (_, _, buttons, actions) = md
                     .build_murkdown()
                     .await
                     .speak(ctx, lang_fmt!(ctx, "failmurk"))
                     .await?;
-                let entity_id = entity::insert_action(*DB, &entities, buttons, actions).await?;
-                (Some(text), entity_id)
+                let entity_id = entity::insert_action(*DB, None, buttons, actions).await?;
+                (Some(text.to_owned()), entity_id)
             } else {
                 (None, None)
             };

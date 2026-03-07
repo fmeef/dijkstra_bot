@@ -427,7 +427,9 @@ async fn conv_upload(conversation: Conversation, message: &Message) -> Result<()
 
 async fn conv_name(conversation: Conversation, message: &Message) -> Result<()> {
     let key = scope_key_by_chatuser(KEY_TYPE_STICKER_NAME, message)?;
-    let _: () = REDIS.sq(|p| p.set(&key, message.get_text())).await?;
+    let _: () = REDIS
+        .sq(|p| p.set(&key, message.get_text().unwrap_or("")))
+        .await?;
     let text = conversation.transition(TRANSITION_TAG).await?;
     message.reply(text).await?;
     Ok(())
