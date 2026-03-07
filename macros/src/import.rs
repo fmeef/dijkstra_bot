@@ -144,7 +144,7 @@ pub fn autoimport<T: AsRef<str>>(input: T) -> TokenStream {
     let output = quote! {
         #( mod #mods; )*
         use crate::util::string::Speak;
-        pub(crate) fn get_migrations() -> ::std::vec::Vec<::std::boxed::Box<dyn ::sea_orm_migration::prelude::MigrationTrait>> {
+        pub fn get_migrations() -> ::std::vec::Vec<::std::boxed::Box<dyn ::sea_orm_migration::prelude::MigrationTrait>> {
             let mut v = ::std::vec::Vec::<::std::boxed::Box<dyn ::sea_orm_migration::prelude::MigrationTrait>>::new();
             #(
                 if let Some(ref md) = #funcs::METADATA.state {
