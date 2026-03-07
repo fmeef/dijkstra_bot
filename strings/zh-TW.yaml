@@ -1,6 +1,12 @@
 addblocklist: 新增了黑名單 {}
 addfilter: 添加了過濾器 {}
+addscriptlocklist: '添加了黑名单功能。
+
+  {}
+
+  '
 anonban: 匿名管道不能禁止用戶
+anonchannelbad: 匿名频道不得使用此功能。
 anonfed: 匿名頻道無法建立聯盟
 approved: 已批准的使用者{}
 backtochat: 返回聊天
@@ -9,6 +15,12 @@ banadmin: 我不會禁止管理員
 banchat: 匿名頻道 {} 已被禁止，他們將無法說話，但仍潛伏在某處...
 banmyself: 我不會禁止自己
 banned: 被禁止的使用者 {}
+blockban: 使用者 {} 使用了被禁止的詞！ 採取行動：禁止 {}
+blockmute: '使用者 {} 使用了被禁止的詞！ 動作：靜音 {}
+
+  {}
+
+  '
 cachewait: 管理快取只能每 10 分鐘刷新一次
 captcha: 驗證碼
 captchamode: 將驗證碼模式設定為 {}
@@ -23,21 +35,30 @@ clearwarns: 已清除使用者 {} 的警告
 commandnotfound: 找不到指令
 correctchoice: 正確的選擇！
 currentlang: 從清單中選擇一種語言
+dateoutofrange: '{} 提供的時間超出範圍。'
 defaultgoodbye: 再見{{提及}}
 defaultwelcome: 您好{{mention}}，歡迎來到{{chatname}}
 demote: 已降級的使用者 {}
 disabledcaptcha: 停用驗證碼
 disablekick: 禁用驗證碼踢。
 dmhelp: 請pm聯繫我尋求協助！
+duration: 針對 {}
+empty: '{}'
+emptynotallowed: 不允许使用空滤。
 enablekick: 啟用驗證碼踢。未能解決驗證碼的用戶將被從群組中刪除。
 erranonchannelfed: 匿名頻道不能擁有聯邦調查局。嘗試從您的主帳戶執行此命令
 failban: '未能禁止用戶，我在過去 48 小時內沒有與他們互動。請向我轉發他們的一則訊息
 
   為了讓我能夠與他們互動'
 failfpromote: 未能提升使用者：{}
+failmurk: Markdown 语法错误。请查看 /help 格式说明。
 failmute: '無法變更該使用者的權限。過去 48 小時內我沒有與他們互動。
 
   請向我轉發他們的一條訊息，以便我與他們互動'
+failuser: '未能与 {} 用户互动，我过去 48 小时内没有与他们进行过任何交流。
+
+
+  请将他们的一条消息转发给我，以便我能够与他们互动。'
 failwarn: 未能警告該用戶，我在過去 48 小時內沒有見過他們
 fban: 甩掉包袱！在 {} 中禁止使用者 {}
 fbanreason: '騎得好！
@@ -104,6 +125,7 @@ noreason: 沒有理由
 norules: '這個聊天沒有規則。完全無政府狀態。請隨意發送垃圾郵件並發布盜版 udemy
 
   培訓班'
+nosender: 这则信息没有发送者。
 notdm: 該指令只能在dm中使用
 notfbanned: 使用者 {} 未被禁止
 notfedadmin: 您不是聯邦 {} 中的聯邦管理員。只有聯邦管理員才能發布 fban
@@ -118,6 +140,8 @@ permdenied: 權限被拒絕：目前使用者缺少“{}”權限
 pressme: 按我取消靜音！
 promote: 晉升用戶{}
 provebutton: 點擊按鈕以證明您是管理員
+pushunmute: 按下按鈕即可取消靜音。
+reason: 原因：{ }
 refreshac: 成功刷新管理快取
 removewarn: 刪除警告
 renamefed: 將 fed {} 重新命名為 {}

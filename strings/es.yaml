@@ -1,6 +1,12 @@
 addblocklist: Lista de bloqueo agregada {}
 addfilter: Filtro agregado {}
+addscriptlocklist: 'Se añadió la función de bloqueo.
+
+  {}
+
+  '
 anonban: Los canales anónimos no pueden bloquear a los usuarios
+anonchannelbad: Los canales anónimos no pueden utilizar esta funcionalidad.
 anonfed: Los canales anónimos no pueden crear federaciones
 approved: Usuario aprobado {}
 backtochat: Volver al chat
@@ -10,6 +16,13 @@ banchat: Canal anónimo prohibido {}, no podrán hablar pero siguen acechando po
   lado...
 banmyself: no me voy a prohibir
 banned: Usuario prohibido {}
+blockban: 'El usuario {} ha utilizado una palabra prohibida. Acción: palabra {} prohibida.
+
+  {}
+
+  '
+blockmute: 'El usuario {} ha utilizado una palabra prohibida. Acción: silenciado a
+  {}'
 cachewait: La caché de administrador solo se puede actualizar una vez cada 10 minutos.
 captcha: Captcha
 captchamode: Establecer el modo captcha en {}
@@ -25,12 +38,16 @@ clearwarns: Advertencias borradas para el usuario {}
 commandnotfound: Comando no encontrado
 correctchoice: ¡Elección correcta!
 currentlang: Elija un idioma de la lista
+dateoutofrange: El valor {} está fuera del rango permitido.
 defaultgoodbye: Adiós {{mencionar}}
 defaultwelcome: Hola, {{mention}}, bienvenido a {{chatname}}
 demote: Usuario degradado {}
 disabledcaptcha: Captcha deshabilitado
 disablekick: Patada de captcha deshabilitada.
 dmhelp: ¡Contáctame por la tarde para obtener ayuda!
+duration: para { }
+empty: '{}'
+emptynotallowed: Los filtros vacíos no están permitidos.
 enablekick: Patada de captcha habilitada. Los usuarios serán eliminados del grupo
   si no logran resolver el captcha.
 erranonchannelfed: Los canales anónimos no pueden ser propietarios de federales. Intente
@@ -40,10 +57,17 @@ failban: 'No se pudo prohibir al usuario. No he interactuado con él en las últ
 
   para permitirme interactuar con ellos'
 failfpromote: 'No se pudo promocionar al usuario: {}'
+failmurk: Error de sintaxis en Markdown. Por favor, revise la opción de ayuda para
+  el formato.
 failmute: 'No se pudieron cambiar los permisos de este usuario. No he interactuado
   con ellos en las últimas 48 horas.
 
   Por favor reenvíame uno de sus mensajes para permitirme interactuar con ellos.'
+failuser: 'No he podido contactar al usuario {}, ya que no he tenido ninguna interacción
+  con él en las últimas 48 horas.
+
+
+  Por favor, envíeme uno de sus mensajes para que pueda contactarlo.'
 failwarn: No se pudo advertir a este usuario, no lo he visto en las últimas 48 horas
 fban: ¡Buen viaje! Usuario bloqueado {} en {}
 fbanreason: '¡Buen viaje!
@@ -112,6 +136,7 @@ norules: 'Este chat no tiene reglas. Anarquía total. No dudes en enviar spam y 
   udemy pirateado.
 
   cursos'
+nosender: Este mensaje no tiene remitente.
 notdm: Este comando sólo se puede utilizar en dm
 notfbanned: Usuario {} no bloqueado
 notfedadmin: No eres administrador de fe en la federación {}. Sólo los administradores
@@ -128,6 +153,8 @@ permdenied: 'Permiso denegado: al usuario actual le falta el permiso "{}"'
 pressme: ¡Presioname para activar el sonido!
 promote: Usuario prometido {}
 provebutton: Haga clic en el botón para demostrar que es administrador
+pushunmute: Presione el botón para desactivar el silencio.
+reason: 'Razón: {}'
 refreshac: Caché de administrador actualizada correctamente
 removewarn: Quitar advertencia
 renamefed: Renombrado alimentado {} a {}
