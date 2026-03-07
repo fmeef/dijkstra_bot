@@ -1,226 +1,215 @@
-addblocklist: Lista de bloqueo agregada {}
-addfilter: Filtro agregado {}
-addscriptlocklist: 'Se añadió la función de bloqueo.
+addblocklist: Se añadió la lista de bloqueo {}
+addfilter: Se añadió el filtro {}
+addscriptlocklist: 'Se agregó una lista de bloqueo.
 
-  {}
-
-  '
-anonban: Los canales anónimos no pueden bloquear a los usuarios
-anonchannelbad: Los canales anónimos no pueden utilizar esta funcionalidad.
-anonfed: Los canales anónimos no pueden crear federaciones
-approved: Usuario aprobado {}
-backtochat: Volver al chat
-baddm: Este comando no funciona en un dm
-banadmin: No voy a banear a un administrador.
-banchat: Canal anónimo prohibido {}, no podrán hablar pero siguen acechando por algún
-  lado...
-banmyself: no me voy a prohibir
-banned: Usuario prohibido {}
-blockban: 'El usuario {} ha utilizado una palabra prohibida. Acción: palabra {} prohibida.
-
-  {}
-
-  '
-blockmute: 'El usuario {} ha utilizado una palabra prohibida. Acción: silenciado a
   {}'
-cachewait: La caché de administrador solo se puede actualizar una vez cada 10 minutos.
-captcha: Captcha
-captchamode: Establecer el modo captcha en {}
-captchanotauthorized: No estás autorizado a completar este captcha.
-captchanotenabled: Captcha no está habilitado
-captchawarning: Si no resuelves este captcha correctamente, el agente asesino memético
-  te eliminará.
-channeldenied: El canal anónimo no es administrador, permiso denegado
-clearedlock: Bloqueo borrado "{}"
-clearnotes: Se borraron todas las notas del chat {}
-cleartime: Hora de advertencia borrada para {}
-clearwarns: Advertencias borradas para el usuario {}
-commandnotfound: Comando no encontrado
-correctchoice: ¡Elección correcta!
-currentlang: Elija un idioma de la lista
-dateoutofrange: El valor {} está fuera del rango permitido.
+anonban: Los canales anónimos no pueden bloquear a los usuarios.
+anonchannelbad: Los canales anónimos no pueden utilizar esta funcionalidad.
+anonfed: Los canales anónimos no pueden crear federaciones.
+approved: 'Usuario aprobado: {}'
+backtochat: Regresar al chat
+baddm: Este comando no funciona en un DM.
+banadmin: No voy a prohibir a ningún administrador.
+banchat: Se ha bloqueado el canal anónimo {}. Ya no podrán comunicarse, pero aún pueden
+  estar presentes en algún lugar...
+banmyself: No me voy a prohibir a mí mismo.
+banned: 'Usuario bloqueado: {}'
+blockban: 'El usuario {} utilizó una palabra prohibida. Acción: usuario {} bloqueado.'
+blockmute: 'El usuario {} utilizó una palabra prohibida. Acción: silenciado al usuario
+  {}'
+cachewait: La caché administrativa solo puede refrescarse una vez cada 10 minutos.
+captcha: Código de verificación
+captchamode: Establezca el modo de verificación CAPTCHA en {}
+captchanotauthorized: No está autorizado para completar este desafío de seguridad.
+captchanotenabled: El sistema de verificación de CAPTCHA no está activado.
+captchawarning: Si no resuelve correctamente este captcha, será eliminado por el agente
+  de eliminación "memética".
+channeldenied: El canal anónimo no es de administrador, se denegó el permiso.
+clearedlock: 'Cerradura desbloqueada: "{}"'
+clearnotes: Se han eliminado todas las notas del chat {}.
+cleartime: 'Advertencia: Número de identificación {}'
+clearwarns: 'Advertencia: Usuario {}'
+commandnotfound: No se encontró el comando.
+correctchoice: ¡Excelente elección!
+currentlang: Seleccione un idioma de la lista.
+dateoutofrange: El número {} está fuera del rango válido.
 defaultgoodbye: Adiós {{mencionar}}
-defaultwelcome: Hola, {{mention}}, bienvenido a {{chatname}}
-demote: Usuario degradado {}
-disabledcaptcha: Captcha deshabilitado
-disablekick: Patada de captcha deshabilitada.
-dmhelp: ¡Contáctame por la tarde para obtener ayuda!
-duration: para { }
+defaultwelcome: Hola, {{mention}}, ¡bienvenido/a a {{chatname}}!
+demote: 'Usuario desmovilizado: {}'
+disabledcaptcha: Captcha para personas con discapacidad
+disablekick: Solución para superar el desafío de seguridad para personas con discapacidad.
+dmhelp: Póngase en contacto conmigo por mensaje privado si necesita ayuda.
+duration: para {}
 empty: '{}'
 emptynotallowed: Los filtros vacíos no están permitidos.
-enablekick: Patada de captcha habilitada. Los usuarios serán eliminados del grupo
-  si no logran resolver el captcha.
-erranonchannelfed: Los canales anónimos no pueden ser propietarios de federales. Intente
-  ejecutar este comando desde su cuenta principal
-failban: 'No se pudo prohibir al usuario. No he interactuado con él en las últimas
-  48 horas. Por favor envíame uno de sus mensajes.
-
-  para permitirme interactuar con ellos'
-failfpromote: 'No se pudo promocionar al usuario: {}'
-failmurk: Error de sintaxis en Markdown. Por favor, revise la opción de ayuda para
-  el formato.
-failmute: 'No se pudieron cambiar los permisos de este usuario. No he interactuado
-  con ellos en las últimas 48 horas.
-
-  Por favor reenvíame uno de sus mensajes para permitirme interactuar con ellos.'
-failuser: 'No he podido contactar al usuario {}, ya que no he tenido ninguna interacción
+enablekick: Permite la eliminación automática de usuarios. Los usuarios serán eliminados
+  del grupo después de no poder resolver el desafío CAPTCHA.
+erranonchannelfed: Los canales anónimos no pueden poseer cuentas de gobierno. Intente
+  ejecutar este comando desde su cuenta principal.
+failfpromote: 'No se pudo promover al usuario: {}'
+failmurk: Error de sintaxis en Markdown. Por favor, revise la sección de ayuda para
+  la configuración.
+failmute: 'No he podido modificar los permisos de este usuario. No he tenido contacto
   con él en las últimas 48 horas.
 
 
-  Por favor, envíeme uno de sus mensajes para que pueda contactarlo.'
-failwarn: No se pudo advertir a este usuario, no lo he visto en las últimas 48 horas
-fban: ¡Buen viaje! Usuario bloqueado {} en {}
-fbanreason: '¡Buen viaje!
+  Por favor, envíame uno de sus mensajes para que pueda interactuar con él.'
+failuser: 'No he interactuado con el usuario {} en las últimas 48 horas.
 
-  Usuario {} baneado en feed {}
 
-  [*Razón:]
+  Por favor, envíeme uno de sus mensajes para que pueda interactuar con ellos.
 
-  {}'
-fedadmin: Eres el administrador de feed {} con id {}
-fedowner: Eres el propietario de feed {} con id {}
-fedsforuser: 'Federales para el usuario {}:
+  '
+failwarn: No informé a este usuario, y no lo he visto en las últimas 48 horas.
+fban: ¡Adiós! Usuario {}, bloqueado en {}
+fbanreason: '¡Adiós!
 
-  {}'
-filters: 'Filtros en el chat {}:
+  El usuario {} ha sido bloqueado en la plataforma 91285238752487654.
 
+  [*Motivo:]
 
   {}'
-foundadmins: Se encontraron {} administradores
+fedadmin: Usted es el administrador de la entidad {}, con el identificador {}.
+fedowner: Usted es el propietario del número de identificación {}.
+fedsforuser: 'Para el usuario {}:
+
+  {}'
+filters: 'Filtros en el chat {}:'
+foundadmins: Encontrados {} administradores
 fpromote: El usuario {} debe confirmar la promoción antes de continuar.
-fpromoted: Usted ha sido promovido
-fpromotenotauth: No estás autorizado a aceptar esta promoción.
-fstat: 'Estadísticas rápidas para {}:
+fpromoted: Ha sido ascendido/a.
+fpromotenotauth: No tiene la autorización para aceptar esta promoción.
+fstat: 'Fstat para {}:
 
   {}'
-fstatline: '{} con razón "{}"'
-gbanned: '¡Buen viaje!
+fstatline: '{}, con la razón "{}"'
+gbanned: '¡Adiós y gracias!
 
-  Usuario {} gbaneado por {}'
-getrules: Obtenga las reglas del chat {{rules}}
-helpbutton: ¡Haz clic en mí para obtener ayuda!
-imported: Datos importados para chat {}
-incorrect: Elección incorrecta. Te quedan {} intentos
-invalid_help: Página de ayuda no válida {}
-invalidargument: Comando no válido, utilice "on" o "off"
-invalidlang: Idioma no válido seleccionado
-joinfed: Se unió a feed {} para chatear {}
-kickadmin: No voy a echar a un administrador.
-kicked: Usuario expulsado {}
-kickme: EL TEXTO AZUL DEBE HACER CLIC
-lackingadminrights: El usuario {} carece de derechos de administrador
-listnotes: Notas para {}
-lockban: '¡Usuario {{mention}} prohibido!
+  Usuario {}, bloqueado.'
+getrules: Consulte las normas del chat {{reglas}}
+helpbutton: ¡Haz clic aquí para obtener ayuda!
+imported: Datos importados para la conversación {}
+incorrect: Elección incorrecta, aún tienes 9.128.523.875.248.765.427.865.120.384.765
+  intentos disponibles.
+invalid_help: 'Página de ayuda no válida: {}'
+invalidargument: Comando inválido, por favor utilice "encendido" o "apagado".
+invalidlang: Idioma seleccionado no válido
+joinfed: Se unió a la conversación {}.
+kickadmin: No voy a perjudicar a ningún administrador.
+kicked: 'Usuario bloqueado: {}'
+kickme: El texto debe ser de color azul para poder hacer clic.
+lackingadminrights: Usuario {} sin privilegios de administrador
+listnotes: Notas para el número {}
+lockban: 'El usuario {{mention}} ha sido bloqueado.
 
-  [*Razón:]
+  [*Motivo:]
 
   {}'
-lockedinchat: '- {} está bloqueado en este chat'
-locknotspec: Tipo de bloqueo no válido; consulte /ayuda para conocer los bloqueos
-  disponibles
-lockwarn: '¡Usuario {{mention}} advertido!
+lockedinchat: '- El número {} está bloqueado en este chat.'
+locknotspec: Tipo de cierre inválido, consulte /ayuda para ver los tipos de cierre
+  disponibles.
+lockwarn: '¡El usuario {{mention}} ha sido advertido!
 
-  [*Razón:]
+  [*Motivo:]
 
   {}'
 muteadmin: No voy a silenciar a un administrador.
-mutemyself: no me voy a silenciar
-muteuser: Usuario silenciado {}
-nan: Por favor, introduzca un número
-needtobeadmin: Lo siento Dave, necesito ser administrador para funcionar en este grupo.
-negwarns: Los límites de advertencia negativos no tienen mucho sentido
-noactionarg: Debes especificar la acción a configurar.
-nofed: Este usuario no posee una federación.
-noreason: Sin razón
-norules: 'Este chat no tiene reglas. Anarquía total. No dudes en enviar spam y publicar
-  udemy pirateado.
-
-  cursos'
+mutemyself: No voy a callar.
+muteuser: Usuario {} (usuario anónimo)
+nan: Por favor, introduzca un número.
+needtobeadmin: Lo siento, Dave, necesito tener permisos de administrador para poder
+  participar en este grupo.
+negwarns: Los límites de advertencia negativos no tienen mucho sentido.
+noactionarg: Debe indicar la acción que desea realizar.
+nofed: Este usuario no es propietario de una federación.
+noreason: No hay ninguna razón.
+norules: Este chat no tiene ninguna regla. Es un caos total. Siéntete libre de usarlo
+  para enviar mensajes masivos y publicar cursos de Udemy que no sean oficiales.
 nosender: Este mensaje no tiene remitente.
-notdm: Este comando sólo se puede utilizar en dm
-notfbanned: Usuario {} no bloqueado
-notfedadmin: No eres administrador de fe en la federación {}. Sólo los administradores
-  federales pueden emitir fbans
-notfmember: Este chat no es miembro de una Fed.
-notinfed: El chat {} no está en una federación. Utilice /joinfed como administrador
-  para unirse a uno
-notries: No quedan intentos
-notrieskick: No quedan más intentos, has sido expulsado del chat.
-notrieskickchat: No quedan más intentos, has sido expulsado de {}
-notsupergroup: Este grupo debe actualizarse a un supergrupo.
-onlyone: Sólo se permite una federación por usuario
-permdenied: 'Permiso denegado: al usuario actual le falta el permiso "{}"'
-pressme: ¡Presioname para activar el sonido!
-promote: Usuario prometido {}
-provebutton: Haga clic en el botón para demostrar que es administrador
+notdm: Este comando solo puede utilizarse en dm.
+notfbanned: El usuario {} no ha sido bloqueado en Facebook.
+notfedadmin: No eres un administrador de la federación {}. Solo los administradores
+  pueden emitir los fbans.
+notfmember: Esta conversación no pertenece a ninguna institución financiera.
+notinfed: El chat {} no pertenece a una federación. Utilice el comando /joinfed como
+  administrador para unirse a una.
+notries: Número de intentos restantes
+notrieskick: Ya no quedan intentos. Ha sido expulsado del chat.
+notrieskickchat: No quedan más intentos. Ha sido expulsado de {}.
+notsupergroup: Este grupo debe evolucionar hacia una formación de mayor nivel.
+onlyone: Solo se permite una federación por usuario.
+permdenied: 'Permiso denegado: el usuario actual carece del permiso "{}".'
+pressme: Háblame para que puedas escucharme.
+promote: Usuario identificado con el número {}
+provebutton: Haga clic en el botón para demostrar que es administrador.
 pushunmute: Presione el botón para desactivar el silencio.
-reason: 'Razón: {}'
-refreshac: Caché de administrador actualizada correctamente
-removewarn: Quitar advertencia
-renamefed: Renombrado alimentado {} a {}
-reported: ¡Reporté al usuario {} a los administradores!
-reported_nomention: ¡Reportado a los administradores!
-resetwelcome: Configuración de bienvenida borrada
-restrict: Usuario restringido {}
-savednote: Nota guardada con nombre {} en el chat {}
+reason: Razón {}
+refreshac: Se ha actualizado correctamente la caché administrativa.
+removewarn: Eliminar advertencia
+renamefed: El nombre "fed {}" ha sido cambiado a "{}"
+reported: Se ha notificado a los administradores sobre el usuario con el número {}.
+reported_nomention: Informado a los administradores.
+resetwelcome: Configuración de bienvenida activada
+restrict: 'Usuario restringido: {}'
+savednote: Nota guardada con el nombre {} en el chat {}
 saverules: Reglas guardadas para el chat {{chatname}}
-sendsticker: Enviar una pegatina para subir
-setdefaultaction: Establecer acción predeterminada
-setgoodbye: Configurar el adiós del grupo a {}
-setlang: Idioma configurado correctamente
-setlock: Establecer bloqueo "{}" para el chat "{}"
-setlockaction: Establecer la acción de bloqueo en "{}"
-setwelcome: Establecer la bienvenida del grupo a {}
-solvecaptcha: Resuelve este captcha para continuar
-specifytime: Debes especificar una hora para este comando.
-specifyuser: Necesitas especificar un usuario
-startcmd: Envíe /help para obtener una lista de comandos disponibles
-subscribefed: Suscrito correctamente envió {} a {}
-taintdelete: Borrar
-taintdetected: 'Datos importados para chat {}
+sendsticker: Envía un adhesivo para subirlo.
+setdefaultaction: Establecer la acción predeterminada
+setgoodbye: 'Despedida del grupo: {}'
+setlang: Configuración del idioma completada con éxito.
+setlock: Establecer el código de seguridad "{}" para la conversación "{}"
+setlockaction: Establezca la acción de bloqueo en "{}"
+setwelcome: 'Saludo para el grupo: {}'
+solvecaptcha: Resuelva este captcha para continuar
+specifytime: Necesitas indicar una hora específica para esta instrucción.
+specifyuser: Debe especificar un usuario.
+startcmd: Envía "ayuda" para obtener una lista de los comandos disponibles.
+subscribefed: Suscripción exitosa para el número {}.
+taintdelete: Eliminar
+taintdetected: 'Datos importados para la conversación {}
 
 
-  ¡Vaya! Sus datos importados contienen medios de otro bot.
+  ¡OJO! Los datos importados contienen contenido multimedia de otro bot.
 
-  Utilice /taint para listar este medio y /fixtaint para reemplazarlo.'
-taintforward: 'Localice un mensaje que contenga el medio correcto y reenvíelo al DM
-  de este bot.
+  Utilice /taint para listar este contenido y /fixtaint para reemplazarlo.'
+taintforward: 'Por favor, encuentre un mensaje que contenga los medios correctos y
+  envíelo a la bandeja de entrada de este bot.
 
-  Este medio debe ser del tipo {}'
-taintmessage: 'El contenido que solicitó contiene medios de otro bot. Este medio no
-  se puede mostrar en el
-
-  bot actual y necesita ser actualizado. Presione el botón Eliminar para eliminar
-  este contenido para siempre, o presione
-
-  el botón de actualización y reenviar los medios correctos al DM de este bot'
+  Estos medios deben tener el código {}.'
+taintmessage: El contenido que solicitó contiene medios de otro bot. Estos medios
+  no se pueden mostrar en el bot actual y deben actualizarse. Pulse el botón de eliminar
+  para eliminar este contenido de forma permanente, o pulse el botón de actualizar
+  y envíe los medios correctos a la bandeja de entrada de este bot.
 taintreplace: Reemplazar
-taintupdatednote: La identificación del medio se actualizó para {} notas.
-test: 'Anochecer no válido: {}'
+taintupdatednote: El identificador de la nota ha sido actualizado para la nota número
+  {}.
+test: 'Formato Markdown inválido: {}'
 thing: cosa
-unapproved: Usuario no aprobado {}
-unbanchat: Canal anónimo no prohibido {}
-unbanned: Usuario no baneado {}
-unfban: Usuario no baneado {}
-unfbanperm: Necesitas ser administrador de fe para desactivar la prohibición.
-unmuteuser: Usuario no silenciado {}
-usernotfound: Usuario no encontrado. Sólo se puede interactuar con los usuarios que
+unapproved: 'Usuario no autorizado: {}'
+unbanchat: Canal anónimo {}, que ha sido desbloqueado.
+unbanned: Usuario desbloqueado con el número {}
+unfban: Usuario desbloqueado {}
+unfbanperm: Para desbloquear una cuenta, debe ser administrador.
+unmuteuser: 'Usuario no identificado: {}'
+usernotfound: Usuario no encontrado. Solo se pueden interactuar con los usuarios que
   han sido vistos recientemente.
-userunmuted: ¡Usuario activado!
-warn: '¡Yowzers!: Advirtió al usuario {} con {}/{} advierte'
-warnadmin: ¡No voy a advertir a un administrador! ¿Qué diablos absoluto?
-warnban: ¡Esas son {} advertencias! Usuario {} baneado
-warnlimit: Establezca el límite de advertencia en {} para chatear {}
-warnmode: Establezca el modo de advertencia en {} para chatear {}
-warnmute: ¡Esas son {} advertencias! Usuario {} silenciado
-warnreason: '¡Yowzers! Usuario advertido {} con {}/{} advertencias
+userunmuted: El usuario ha desactivado el micrófono.
+warn: ¡Uy! Se ha advertido al usuario {} con el mensaje {}/{}.
+warnadmin: No voy a advertir a ningún administrador. ¡Qué demonios!
+warnban: ¡Eso son 9.128.523.875.248.765.427.865.120.384.765 advertencias! El usuario
+  9.128.523.875.248.765.427.865.120.384.765 ha sido bloqueado.
+warnlimit: Establezca el límite de advertencia en {} para el chat 91285238752487654.
+warnmode: Establezca el modo de advertencia en {} para el chat {}.
+warnmute: ¡Eso son 9.128.523.875.248.765.427.865.120.384.7654 advertencias! El usuario
+  9.128.523.875.248.765.427.865.120.384.7654 ha silenciado las notificaciones.
+warnreason: '¡Guau! Se ha advertido al usuario {} con el número {}/{}.
 
-  [*Razón:]'
-warns: 'Advertencias para el usuario {}:
+  '
+warns: 'Advertencia para el usuario {}:
 
   {}'
 warnsline: 'Razón: {}'
-welcome: Bienvenido a {}, un bot modular de gestión de grupos escrito en Rust
-welcomeinvalid: Argumento no válido, use encendido/apagado/sí/no
-wrongmediaid: Los medios que reenvió no son los medios originales.
-wrongmediatype: El medio que envió es del tipo de medio incorrecto {}, debe ser {}
+welcome: Bienvenido a {}, un bot de gestión de grupos creado en Rust.
+welcomeinvalid: Argumento inválido. Utilice las opciones "encendido/apagado/sí/no".
+wrongmediaid: El medio que ha enviado no es el original.
+wrongmediatype: El tipo de medio que ha enviado es incorrecto. Debe ser {}.

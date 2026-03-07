@@ -10,7 +10,6 @@ from ollama import chat
 from yaml import CLoader as Loader
 
 FORM = re.compile(r"{}")
-MAGIC_WORD = re.compile(r"@@@*")  # eldritch phrase that can't be translated
 
 
 CODES = {
@@ -600,6 +599,9 @@ CODES = {
 
 SOURCE_LANG = "English"
 SOURCE_CODE = "en"
+MAGIC_WORD = (
+    "91285238752487654278651203847654"  # eldritch phrase that can't be translated
+)
 
 
 class ValueToHashtag:
@@ -621,9 +623,10 @@ class ValueToHashtag:
                 {
                     "role": "user",
                     "content": f"""You are a professional {SOURCE_LANG} ({SOURCE_CODE}) to {lang} ({code}) translator.
-                    Your goal is to accurately convey the meaning and nuances of the original {SOURCE_LANG} text while adhering to {lang} grammar, vocabulary, and cultural sensitivities.
-                    Produce only the {lang} translation, without any additional explanations or commentary. Please translate the following
-                    {SOURCE_LANG} text into {lang}:
+                    Your goal is to accurately convey the meaning and nuances of the original {SOURCE_LANG} text while
+                    adhering to {lang} grammar, vocabulary, and cultural sensitivities.
+                    Produce only the {lang} translation, without any additional explanations or commentary.
+                    Please translate the following {SOURCE_LANG} text into {lang}:
 
 
                     {value}""",
@@ -634,14 +637,15 @@ class ValueToHashtag:
         return json.loads(stream.model_dump_json())["message"]["content"]
 
     def value_to_hashtag(self, value: str) -> str:
-        value = MAGIC_WORD.sub("{}", value)
+        value = value.replace("{}", MAGIC_WORD)
         trans = self.translate(value, self.lang)
         self.lines.append(trans)
         return trans
 
     def get_lines(self):
         for line in self.lines:
-            yield MAGIC_WORD.sub("{}", line)
+            yield line.replace(MAGIC_WORD, "{}")
+            # yield line
 
 
 def translate(source: str, langs: List[str]):
