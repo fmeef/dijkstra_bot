@@ -624,7 +624,7 @@ class ValueToHashtag:
                     "role": "user",
                     "content": f"""You are a professional {SOURCE_LANG} ({SOURCE_CODE}) to {lang} ({code}) translator.
                     Your goal is to accurately convey the meaning and nuances of the original {SOURCE_LANG} text while
-                    adhering to {lang} grammar, vocabulary, and cultural sensitivities.
+                    adhering to {lang} grammar, vocabulary, and cultural sensitivities while preserving the string {MAGIC_WORD} verbatim.
                     Produce only the {lang} translation, without any additional explanations or commentary.
                     Please translate the following {SOURCE_LANG} text into {lang}:
 
