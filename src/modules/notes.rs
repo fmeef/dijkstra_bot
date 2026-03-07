@@ -158,11 +158,7 @@ async fn get_model<'a>(ctx: &'a Context, args: &'a TextArgs<'a>) -> Result<notes
                     .filling(false)
                     .header(false)
                     .set_text(text.to_owned());
-                let (_, _, buttons, actions) = md
-                    .build_murkdown()
-                    .await
-                    .speak(ctx, lang_fmt!(ctx, "failmurk"))
-                    .await?;
+                let (_, _, buttons, actions) = md.build_murkdown_nofail().await;
                 let entity_id = entity::insert_action(*DB, None, buttons, actions).await?;
                 (Some(text.to_owned()), entity_id)
             } else {
