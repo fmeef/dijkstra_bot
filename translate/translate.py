@@ -599,9 +599,13 @@ CODES = {
 
 SOURCE_LANG = "English"
 SOURCE_CODE = "en"
-MAGIC_WORD = (
-    "91285238752487654278651203847654"  # eldritch phrase that can't be translated
-)
+# MAGIC_WORD = (
+#     "91285238752487654278651203847654"  # eldritch phrase that can't be translated
+# )
+
+FILLER_REGEX = re.compile(r"{{\w+}}")
+REV_FILLER_REGEX = re.compile(r"\d+")
+FMT_REGEX = re.compile(r"{}")
 
 
 class ValueToHashtag:
@@ -613,6 +617,31 @@ class ValueToHashtag:
     def __init__(self, lang: str):
         self.lang = lang
         self.lines: List[str] = []
+        self.map_magic = 239857239857298356723
+        self.fmt_magic = 1947358748973428579
+        self.filler_map = {}
+        self.rev_map = {}
+        self.format_set = set()
+        self.line_counts = []
+
+    def push_filler(self, filler):
+        filler = filler.group()
+        if filler in self.rev_map:
+            return self.rev_map[filler]
+
+        out = str(self.map_magic)
+        # print(f"push_filler {filler}")
+        self.filler_map[out] = filler
+        self.rev_map[filler] = out
+        self.map_magic += 2385239865
+        return out
+
+    def push_fmt(self, fmt):
+        out = str(self.fmt_magic)
+        # print(f"push_fmt {out}")
+        self.format_set.add(out)
+        self.fmt_magic += 193753747
+        return out
 
     def translate(self, value, code):
         code = Path(code).stem
@@ -624,7 +653,10 @@ class ValueToHashtag:
                     "role": "user",
                     "content": f"""You are a professional {SOURCE_LANG} ({SOURCE_CODE}) to {lang} ({code}) translator.
                     Your goal is to accurately convey the meaning and nuances of the original {SOURCE_LANG} text while
-                    adhering to {lang} grammar, vocabulary, and cultural sensitivities while preserving the string {MAGIC_WORD} verbatim.
+                    adhering to {lang} grammar, vocabulary, and cultural sensitivities.
+                    Numbers such as {self.fmt_magic} should be treated as proper nouns.
+                    Numbers such as {self.fmt_magic} must NOT be omitted from the final translated {lang} text.
+                    Numbers such as {self.fmt_magic} in the {SOURCE_LANG} input must ALSO BE PRESENT in the {lang} text.
                     Produce only the {lang} translation, without any additional explanations or commentary.
                     Please translate the following {SOURCE_LANG} text into {lang}:
 
@@ -636,15 +668,49 @@ class ValueToHashtag:
 
         return json.loads(stream.model_dump_json())["message"]["content"]
 
-    def value_to_hashtag(self, value: str) -> str:
-        value = value.replace("{}", MAGIC_WORD)
-        trans = self.translate(value, self.lang)
-        self.lines.append(trans)
-        return trans
+    def value_to_hashtag(self, value: str):
+        # value = value.replace("{}", MAGIC_WORD)
+        count = value.count("{}")
+        self.line_counts.append(count)
+        value = FILLER_REGEX.sub(self.push_filler, value)
+        value = FMT_REGEX.sub(self.push_fmt, value)
+        for x in range(10):
+            trans = self.translate(value, self.lang)
+            trans = self.pop_filler(trans)
+            trans = self.pop_fmt(trans)
+            if trans.count("{}") != count:
+                print("WARNING, gemma went skynet, formatting broke. Retrying...")
+            else:
+                self.lines.append(trans)
+                return trans
+        return None
+
+    def pop_filler(self, line):
+        out = line
+        for v in REV_FILLER_REGEX.finditer(line):
+            pop = v.group()
+            # print(f"pop_filler {pop} {self.filler_map}")
+            if pop in self.filler_map:
+                #   print("match!")
+                out = out.replace(pop, self.filler_map[pop])
+        return out
+
+    def pop_fmt(self, line):
+        out = line
+        for v in REV_FILLER_REGEX.finditer(line):
+            pop = v.group()
+            if pop in self.format_set:
+                out = out.replace(pop, "{}")
+        return out
 
     def get_lines(self):
-        for line in self.lines:
-            yield line.replace(MAGIC_WORD, "{}")
+        for x, line in enumerate(self.lines):
+            # line = line.replace(MAGIC_WORD, "{}")
+
+            if line.count("{}") == self.line_counts[x]:
+                yield line
+            else:
+                print(f'WARNING the AI screwed up, line "{line}" has broken formatting')
             # yield line
 
 

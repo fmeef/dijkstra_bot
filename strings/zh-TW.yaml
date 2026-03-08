@@ -1,193 +1,201 @@
-addblocklist: 已添加黑名单：{}
-addfilter: 已添加滤镜 {}
+addblocklist: 已添加黑名单 {}
+addfilter: 已添加过滤器 {}
 addscriptlocklist: '添加了黑名单
 
-  {}
-
-  '
+  {}'
 anonban: 匿名频道无法对用户进行封禁。
 anonchannelbad: 匿名频道不得使用此功能。
-anonfed: 匿名频道无法创建联邦
-approved: 已获准的用户：{}
+anonfed: 匿名频道无法创建联邦。
+approved: 已批准的用户：{}
 backtochat: 返回聊天
-baddm: 這個指令在 DM 中無法使用。
-banadmin: 我不会封禁任何管理员。
+baddm: 此命令在 DM 中无法使用。
+banadmin: 我不会禁止任何管理员。
 banchat: 禁止使用匿名頻道 {}，他們將無法發言，但仍然在某個地方潛伏...
-banmyself: 我不会给自己贴标签。
-banned: 被禁止的用戶：{}
-blockban: 用户 {} 使用了被禁止的词！ 采取的行动：禁止用户 {}
-blockmute: 使用者 {} 使用了被禁止的词！ 采取的措施：静音使用者 {}
+banmyself: 我不会自己给自己设置限制。
+banned: 禁止使用者 {}
+blockban: '用户 {} 使用了被禁止的词！ 采取的行动：禁止 {}
+
+  {}'
+blockmute: '用户 {} 使用了被禁止的词！ 采取的措施：静音 {}
+
+  {}'
 cachewait: 管理员缓存只能每 10 分钟刷新一次。
 captcha: 验证码
 captchamode: 將驗證碼模式設定為 {}。
 captchanotauthorized: 您没有权限完成此验证码。
-captchanotenabled: 验证码功能未启用
-captchawarning: 如果您未能正确解决此验证码，则将被记忆杀灭程序终止。
+captchanotenabled: 验证码功能未启用。
+captchawarning: 如果您未能正确解决此验证码，则将被“记忆杀灭者”终止。
 channeldenied: 匿名频道不是管理员，权限被拒绝。
-clearedlock: 已解除“{}”上的锁。
-clearnotes: 已清空所有与聊天记录 {} 相关的记录。
-cleartime: 已确认的警告时间：{}
-clearwarns: 用户 {} 存在风险提示
-commandnotfound: 未找到命令
-correctchoice: 非常正確！
-currentlang: 请从以下列表中选择一种语言
-dateoutofrange: 時間 {} 超出範圍
-defaultgoodbye: 再見 {{mention}}
-defaultwelcome: 您好 {{mention}}，歡迎來到 {{chatname}}
+clearedlock: 已解锁“{}”
+clearnotes: 已清除所有与聊天 {} 相关的记录。
+cleartime: '{} 的警告时间已确认'
+clearwarns: 警告：用户 {}
+commandnotfound: 找不到命令
+correctchoice: 选择正确！
+currentlang: 请从列表中选择一种语言
+dateoutofrange: 时间 {} 超出范围
+defaultgoodbye: 再见 {{mention}}
+defaultwelcome: 你好，{{mention}}，欢迎来到 {{chatname}}
 demote: 将用户 {} 降级
-disabledcaptcha: 無效的驗證碼
-disablekick: 无法解决的验证码。
-dmhelp: 如果您需要協助，請隨時與我聯繫。
-duration: 对于 {}
+disabledcaptcha: 无障碍的验证码
+disablekick: 无障碍验证码失效。
+dmhelp: 如果您需要帮助，请私下联系我。
+duration: 针对 {}
 empty: '{}'
-emptynotallowed: 不允许使用空滤。
-enablekick: 啟用 CAPTCHA 驗證機制。如果使用者未能成功解決 CAPTCHA 驗證，則將其從群組中移除。
+emptynotallowed: 不允许使用空的筛选器。
+enablekick: 啟用 CAPTCHA 驗證機制。如果使用者無法成功解決 CAPTCHA 驗證，則將從該群組中移除。
 erranonchannelfed: 匿名频道无法拥有联邦账号。请尝试从您的主账号运行此命令。
-failfpromote: 未能成功推广用户：{}
-failmurk: Markdown 语法错误。请查看 /help 格式
+failfpromote: 未能推广用户：{}
+failmurk: Markdown 语法错误。请检查 /help 格式
 failmute: '未能修改此用户的权限。我最近48小时内没有与他们互动。
 
   请将他们的一条消息转发给我，以便我能与他们互动。'
-failuser: '未能成功向用户 {} 发送消息，我最近 48 小时内没有与他们互动。
+failuser: '未能向用户 {} 发送消息，我最近 48 小时内没有与他们互动。
 
 
-  请将他们发送给我的其中一条消息，以便我能与他们互动。'
-failwarn: 未能及时向该用户发出警告，我过去48小时内没有看到他们。
-fban: 真好！已封禁用戶 {}
+  请将他们发送的一条消息转发给我，以便我可以与他们互动。'
+failwarn: 未能向该用户发出警告，我最近48小时内没有见到他们。
+fban: 真好！帳號 {} 在 {} 被封禁。
 fbanreason: '再见！
 
-  用戶 {} 已被聯邦機構封禁。
+  用户 {} 在联邦中被封禁 ({})
 
   [*原因：]
 
-  {}
-
-  '
-fedadmin: 您是拥有 ID {} 的 fed 账户的管理员。
-fedowner: 您是拥有编号为 {} 的动物的所有者。
+  {}'
+fedadmin: 您是 fed {} 的管理员，其 ID 是 {}。
+fedowner: 您是拥有 ID {} 的 {} 动物的所有者。
 fedsforuser: '针对用户 {}：
 
-
   {}
 
   '
-filters: 聊天中的筛选功能：{}
-foundadmins: 已找到 {} 名管理员
-fpromote: 用户 {} 需要在继续操作之前，先确认促销活动。
-fpromoted: 您已被提拔
-fpromotenotauth: 您沒有權限接受這項提昇。
-fstat: '對於 {} 的 F 統計量：
+filters: '聊天 {} 上的筛选器：
 
-  {}
 
-  '
-fstatline: '{}，理由是“{}”'
-gbanned: '真是太好了！
+  {}'
+foundadmins: 发现 {} 名管理员
+fpromote: 用户 {} 需要在继续操作之前，先确认推广活动。
+fpromoted: 您已升职
+fpromotenotauth: 您没有被授权接受这项提拔。
+fstat: 'Fstat 针对 {}：
 
-  使用者 {} 被封禁。'
-getrules: 获取聊天规则 {{rules}}
-helpbutton: 點擊這裡以獲得協助！
-imported: 导入的聊天记录：{}
-incorrect: 错误的选项，您还剩下{}次机会。
+  {}'
+fstatline: '{}，理由为“{}”'
+gbanned: '真好！
+
+  使用者 {} 因违反规定而被禁言，禁言期限为 {}。'
+getrules: 获取聊天规则：{{rules}}
+helpbutton: 點擊此處以獲得協助！
+imported: 从 {} 导入的数据
+incorrect: 错误的选项，您还剩下 {} 次尝试。
 invalid_help: 无效的帮助页面 {}
 invalidargument: 无效的命令，请使用 "on" 或 "off"
 invalidlang: '                    已选择无效的语言'
-joinfed: 加入联邦频道 {}，进行聊天 {}
-kickadmin: 我不会去攻击或骚扰管理员。
+joinfed: 加入联邦聊天群 {}，与 {} 互动。
+kickadmin: 我不会去攻击管理员。
 kicked: 将用户 {} 封禁
 kickme: 藍色文字請點擊
 lackingadminrights: 用户 {} 缺乏管理员权限
 listnotes: 关于 {} 的说明
-lockban: '用户 {{mention}} 账号已被封禁！
+lockban: '用户 {{mention}} 已经被封禁！
 
-  [*原因：]
-
-  {}'
-lockedinchat: '- {} 已經被鎖定在本次對話中'
-locknotspec: 无效的锁类型，请参阅 /help 以了解可用的锁
-lockwarn: '用户 {{mention}} 收到警告！
-
-  [*原因：]
+  [*原因：*]
 
   {}'
-muteadmin: 我不会阻止管理员。
+lockedinchat: '- {} 已锁定在本次聊天中'
+locknotspec: 无效的锁类型，请参阅 /help 了解可用的锁类型。
+lockwarn: '使用者 {{mention}} 警告！
+
+  [原因：]
+
+  {}
+
+  '
+muteadmin: 我不会封禁管理员。
 mutemyself: 我不会选择保持沉默。
-muteuser: 匿名用戶 {}
+muteuser: 用户 {} (未激活)
 nan: 請輸入一個數字
-needtobeadmin: 我很抱歉，戴夫，我需要成为管理员才能在这一群里正常运作。
+needtobeadmin: 道夫，我很抱歉，我需要成为该群组的管理员才能正常运作。
 negwarns: “设定负向警告限制似乎没有实际意义”。
 noactionarg: 您需要明确指定要执行的操作。
-nofed: 這位使用者沒有隸屬於任何聯邦。
-noreason: 沒有任何理由
+nofed: 這位使用者沒有擁有任何聯邦。
+noreason: 没有任何理由
 norules: 这个聊天没有任何规则。完全的混乱。请随意发布垃圾信息，并分享未经授权的 Udemy 课程。
-nosender: 这条消息没有发送者。
+nosender: 这条信息没有发件人。
 notdm: 此命令只能在 dm 中使用。
-notfbanned: 用戶 {} 並未被封禁。
-notfedadmin: 您不是联邦 {} 中的 fedadmin。只有 fedadmins 才能发布 fbans。
-notfmember: 此聊天室不是任何金融机构的成员。
-notinfed: 聊天频道 {} 并非加入任何联邦。请使用 `/joinfed` 命令，由管理员加入。
-notries: 剩余尝试次数：
+notfbanned: 用户 {} 未被封禁
+notfedadmin: 您不是在聯邦 {} 中擔任的聯邦管理員。只有聯邦管理員才能發布 fbans。
+notfmember: 此聊天不是某个联邦机构的成员。
+notinfed: 聊天频道 {} 尚未加入任何联邦。请管理员使用 /joinfed 命令加入。
+notries: 剩余尝试次数：0
 notrieskick: 您已无剩余尝试次数，您已被从聊天室移除。
-notrieskickchat: 您已无剩余尝试次数，您已被从 {} 中移除。
-notsupergroup: 这个小组必须被提升为超级小组。
+notrieskickchat: 剩余尝试次数已用完，您已从 {} 退出。
+notsupergroup: 这个团体必须被提升为超级团体。
 onlyone: 每个用户只能拥有一个联邦。
-permdenied: 权限被拒绝：当前用户缺少“{}”权限。
-pressme: 按住我，以便取消静音！
-promote: 使用者 {}
+permdenied: 权限被拒绝：当前用户缺少“{}”的权限。
+pressme: 请按一下，以便取消静音！
+promote: 用户 {}
 provebutton: 點擊按鈕以證明您是管理員
 pushunmute: 按下按鈕以取消靜音。
 reason: 原因：{}
-refreshac: 成功刷新了管理缓存
+refreshac: 成功刷新了管理员缓存
 removewarn: 移除警告
-renamefed: 将名为 fed 的项目 {} 更改为 {}
-reported: 向管理员报告用户 {}
+renamefed: 将“fed {}”更名为“{}”
+reported: 用户 {} 已经向管理员举报！
 reported_nomention: 已向管理员报告
-resetwelcome: 已成功配置欢迎页面
+resetwelcome: 已配置欢迎设置
 restrict: 受限制的用户：{}
-savednote: 已保存的笔记，名称为 {}，位于聊天记录 {} 中。
+savednote: 已保存的笔记，名称为 {}，位于聊天 {} 中。
 saverules: 保存的聊天規則：{{chatname}}
-sendsticker: 请上传带有贴纸的图片
-setdefaultaction: 設置預設操作
-setgoodbye: 結束與{}的聯繫
+sendsticker: 发送贴纸以上传
+setdefaultaction: 設定預設動作
+setgoodbye: 将“告别{}”设置为组别
 setlang: 成功设置语言
-setlock: 设置聊天“{}”的锁：{}
-setlockaction: 将鎖定動作設定為 "{}"
-setwelcome: 欢迎加入该小组，欢迎{}
-solvecaptcha: 请解决此验证码以继续。
+setlock: 设置聊天“{}”的锁定密码为“{}”。
+setlockaction: 將鎖定動作設定為 "{}"。
+setwelcome: 欢迎加入该群，群成员ID为：{}
+solvecaptcha: 为了继续，请解决此验证码。
 specifytime: 您需要指定一个时间来执行此命令。
 specifyuser: 您需要指定一个用户。
-startcmd: 发送 "/help" 以获取可用命令列表
-subscribefed: 成功订阅了 {}。
+startcmd: 发送 /help 以获取可用命令列表
+subscribefed: 成功地将 {} 订阅到 {}
 taintdelete: 刪除
-taintdetected: '导入的数据包含来自另一个机器人的媒体。
+taintdetected: '导入的数据来自聊天 {}
 
-  使用 /taint 命令列出这些媒体，使用 /fixtaint 命令进行替换。'
-taintforward: '请找到包含正确媒体信息的留言，并将其转发到此机器人。
+  喔喔！您导入的数据中包含来自另一个机器人的媒体。
 
-  该媒体必须是类型：{}'
-taintmessage: 您请求的内容包含来自另一个机器人的媒体。 这种媒体无法在当前机器人上显示，需要进行更新。 按“删除”按钮永久删除此内容，或者按“更新”按钮并将正确的媒体发送到此机器人的私信。
+  使用 `/taint` 列出这些媒体，使用 `/fixtaint` 替换它们。'
+taintforward: '请找到包含正确媒体信息的消息，并将其转发到此机器人私信。
+
+  该媒体必须是类型 {}。'
+taintmessage: 您请求的内容包含来自另一个机器人的媒体。 这种媒体无法在当前机器人上显示，需要进行更新。 按“删除”按钮永久删除此内容，或者按“更新”按钮并将正确的媒体转发给该机器人的私信。
 taintreplace: 替換
-taintupdatednote: 已更新 {} 记录的媒体 ID。
-test: 无效的 Markdown 格式：{}
-thing: 東西
+taintupdatednote: 对于 {} 笔记，已更新媒体 ID。
+test: 无效的 Markdown：{}
+thing: 东西
 unapproved: 未經授權的使用者：{}
-unbanchat: 解除限制的匿名频道：{}
-unbanned: 已解除封禁的用户：{}
+unbanchat: 解除限制的匿名频道 {}
+unbanned: 解除封禁的用户：{}
 unfban: 取消了用户 {} 的禁言。
 unfbanperm: 您需要拥有 fedadmin 权限才能取消封禁。
 unmuteuser: 未开启声音的用户：{}
-usernotfound: 未找到用户。只能与最近有活动的用户进行交互。
-userunmuted: 用户已取消静音！
-warn: 警告：用户 {} 收到来自 {} 的警告。
+usernotfound: 未找到用户。只能与最近已登录的用户进行交互。
+userunmuted: 用户已开启麦克风！
+warn: 警告：用户 {}，警告信息：{}/{}
 warnadmin: 我不会警告任何管理员！这简直太荒谬了！
-warnban: 这些是警告：用户 {} 已经被禁止。
+warnban: 这意味着有 {} 条警告！ 用户 {} 被禁止。
 warnlimit: 将警告阈值设置为 {}，用于聊天 {}
-warnmode: 將警告模式設定為 {}，適用於對話 {}。
-warnmute: 这表示有 {} 条警告！ 用户 {} 已静音。
-warnreason: 糟糕！已向用户 {} 发出警告，警告内容为：{}/91285238752487654。
-warns: 警告：用户 {}：
+warnmode: 将警告模式设置为 {}，用于与 {} 的聊天。
+warnmute: 这意味着有 {} 次警告！ 用户 {} 已静音。
+warnreason: '天啊！已警告用户 {}，该用户曾发出警告 {}/{}
+
+  [*原因：]'
+warns: '警告：针对用户 {}：
+
+  {}'
 warnsline: 原因：{}
-welcome: 欢迎来到 {}，这是一个用 Rust 编写的模块化组管理机器人。
-welcomeinvalid: 无效参数，请使用“开/关/是/否”
+welcome: 欢迎来到 {}，这是一个使用 Rust 编写的模块化群组管理机器人。
+welcomeinvalid: 无效参数，请使用“on/off/yes/no”
 wrongmediaid: 您转发的媒体文件并非原始文件。
-wrongmediatype: 您发送的文件类型不正确，应该是 {}。
+wrongmediatype: 您发送的文件类型不正确，应该是 {}，需要改为 {}。
