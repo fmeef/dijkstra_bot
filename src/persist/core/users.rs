@@ -1,7 +1,7 @@
 //! ORM type for storing user information. Since redis is used for this ephemerally
 //! in most cases this is very simple
 
-use botapi::gen_types::{User, UserBuilder};
+use botapi::gen_types::User;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -22,16 +22,6 @@ pub enum Relation {}
 impl Related<super::messageentity::Entity> for Entity {
     fn to() -> RelationDef {
         super::messageentity::Relation::Users.def().rev()
-    }
-}
-
-impl From<Model> for User {
-    fn from(value: Model) -> Self {
-        let mut builder = UserBuilder::new(value.user_id, value.is_bot, value.first_name);
-        if let Some(name) = value.last_name {
-            builder = builder.set_last_name(name);
-        }
-        builder.build()
     }
 }
 

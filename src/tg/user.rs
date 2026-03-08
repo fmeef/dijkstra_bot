@@ -9,9 +9,10 @@ use crate::persist::redis::RedisStr;
 use crate::statics::{CONFIG, DB, REDIS, TG};
 use crate::util::error::Result;
 use async_trait::async_trait;
-use botapi::gen_types::{Chat, MessageOrigin, UpdateExt, User};
+use botapi::gen_types::{Chat, MessageOrigin, UpdateExt, User, UserBuilder};
 use redis::AsyncCommands;
 use sea_orm::{sea_query::OnConflict, ActiveValue::NotSet, ActiveValue::Set, EntityTrait};
+use sea_orm::{ColumnTrait, QueryFilter};
 
 use super::markdown::{Escape, Markup, MarkupType};
 
@@ -68,7 +69,7 @@ pub(crate) async fn record_cache_user_redis(user: &User) -> Result<()> {
 }
 
 pub async fn record_cache_user(user: &User) -> Result<()> {
-    match user.get_cached_user().await? {
+    match user.id.get_cached_user().await? {
         Some(cached) => {
             if cached.username == user.username {
                 return Ok(());
@@ -129,14 +130,58 @@ pub async fn record_cache_update(update: &UpdateExt) -> Result<()> {
     Ok(())
 }
 
+async fn update_user_from_db(user: i64) -> Result<Option<User>> {
+    let model = users::Entity::find_by_id(user).one(*DB).await?;
+
+    match model {
+        Some(model) => {
+            let user = model.into();
+            log::info!("update_user_from_db found user");
+            record_cache_user_redis(&user).await?;
+            Ok(Some(user))
+        }
+        None => Ok(None),
+    }
+}
+
+async fn update_user_from_db_username<T: AsRef<str>>(user: T) -> Result<Option<User>> {
+    let model = users::Entity::find()
+        .filter(users::Column::Username.eq(user.as_ref()))
+        .one(*DB)
+        .await?;
+
+    match model {
+        Some(model) => {
+            let user = model.into();
+            log::info!("update_user_from_db_username found user");
+            record_cache_user_redis(&user).await?;
+            Ok(Some(user))
+        }
+        None => Ok(None),
+    }
+}
+
+impl From<users::Model> for User {
+    fn from(value: users::Model) -> Self {
+        let mut builder = UserBuilder::new(value.user_id, value.is_bot, value.first_name);
+        if let Some(username) = value.username {
+            builder = builder.set_username(username);
+        }
+
+        if let Some(last_name) = value.last_name {
+            builder = builder.set_last_name(last_name);
+        }
+        builder.build()
+    }
+}
+
 /// get a cached user by id
 pub async fn get_user(user: i64) -> Result<Option<User>> {
     let key = get_user_cache_key(user);
     let model: Option<RedisStr> = REDIS.sq(|p| p.get(&key)).await?;
-    if let Some(model) = model {
-        Ok(Some(model.get()?))
-    } else {
-        Ok(None)
+    match model {
+        Some(model) => Ok(Some(model.get()?)),
+        None => update_user_from_db(user).await,
     }
 }
 
@@ -157,10 +202,9 @@ pub async fn get_user_username<T: AsRef<str>>(username: T) -> Result<Option<User
         })
         .await?;
 
-    if let Some(id) = id {
-        Ok(Some(id.get::<User>()?))
-    } else {
-        Ok(None)
+    match id {
+        Some(id) => Ok(Some(id.get::<User>()?)),
+        None => update_user_from_db_username(username).await,
     }
 }
 
