@@ -635,6 +635,7 @@ pub async fn insert_user(user: &User) -> Result<users::Model> {
                 users::Column::Username,
                 users::Column::FirstName,
                 users::Column::LastName,
+                users::Column::IsBot,
             ])
             .to_owned(),
     )
@@ -726,10 +727,6 @@ pub async fn get_approvals(chat: &Chat) -> Result<Vec<(i64, String)>> {
             (id, name)
         })
         .collect())
-}
-
-pub trait PermissionBuilderExt {
-    fn merge_permissions(&mut self, permissions: &ChatPermissions);
 }
 
 pub fn merge_permissions(

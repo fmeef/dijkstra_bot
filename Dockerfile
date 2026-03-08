@@ -1,6 +1,6 @@
 
 FROM docker.io/rust:1.91.1-alpine3.23 AS base
-RUN apk update && apk add musl-dev openssl-dev openssl clang llvm pkgconfig gcc alpine-sdk git g++ perl make
+RUN apk update && apk add musl-dev openssl-dev openssl-libs-static clang llvm pkgconfig gcc alpine-sdk git g++ perl make
 RUN update-ca-certificates
 
 # Create appuser

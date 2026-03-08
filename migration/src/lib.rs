@@ -21,6 +21,7 @@ mod m20231029_032907_notes_entity;
 mod m20231117_045213_taint;
 mod m20240220_230802_no_cycle;
 mod m20260301_075629_entity_actions;
+mod m20260308_143808_persist_username_cache;
 
 pub struct Migrator;
 
@@ -88,6 +89,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20231029_015614_notes::Migration),
             Box::new(m20231029_032907_notes_entity::Migration),
             Box::new(m20240220_230802_no_cycle::Migration),
+            Box::new(m20260308_143808_persist_username_cache::Migration),
         ]);
         core_migrations
     }

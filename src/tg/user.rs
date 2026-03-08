@@ -4,12 +4,14 @@
 
 use std::borrow::Cow;
 
+use crate::persist::core::users;
 use crate::persist::redis::RedisStr;
-use crate::statics::{CONFIG, REDIS, TG};
+use crate::statics::{CONFIG, DB, REDIS, TG};
 use crate::util::error::Result;
 use async_trait::async_trait;
 use botapi::gen_types::{Chat, MessageOrigin, UpdateExt, User};
 use redis::AsyncCommands;
+use sea_orm::{sea_query::OnConflict, ActiveValue::NotSet, ActiveValue::Set, EntityTrait};
 
 use super::markdown::{Escape, Markup, MarkupType};
 
@@ -44,7 +46,7 @@ pub async fn get_me() -> Result<User> {
 }
 
 /// Record a user in redis for later lookup
-pub(crate) async fn record_cache_user(user: &User) -> Result<()> {
+pub(crate) async fn record_cache_user_redis(user: &User) -> Result<()> {
     let key = get_user_cache_key(user.get_id());
     let st = RedisStr::new(user)?;
     let _: () = if let Some(username) = user.get_username() {
@@ -62,6 +64,36 @@ pub(crate) async fn record_cache_user(user: &User) -> Result<()> {
             .pipe(|p| p.set(&key, st).expire(&key, CONFIG.timing.cache_timeout))
             .await?
     };
+    Ok(())
+}
+
+pub async fn record_cache_user(user: &User) -> Result<()> {
+    match user.get_cached_user().await? {
+        Some(cached) => {
+            if cached.username == user.username {
+                return Ok(());
+            }
+        }
+        None => (),
+    }
+
+    record_cache_user_redis(user).await?;
+
+    users::Entity::insert(users::ActiveModel {
+        user_id: Set(user.get_id()),
+        username: Set(user.get_username().map(|v| v.to_owned())),
+        first_name: NotSet,
+        last_name: NotSet,
+        is_bot: Set(user.get_is_bot()),
+    })
+    .on_conflict(
+        OnConflict::column(users::Column::UserId)
+            .update_columns([users::Column::Username, users::Column::IsBot])
+            .to_owned(),
+    )
+    .exec(*DB)
+    .await?;
+
     Ok(())
 }
 
