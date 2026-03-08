@@ -227,3 +227,5 @@ blockban: |
   {}
 reason: Reason {}
 duration: "for {} "
+selfpromote: "It doesn't make any sense to promote myself..."
+selfdemote: "It doesn't make any sense to demote myself..."

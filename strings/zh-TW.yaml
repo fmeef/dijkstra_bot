@@ -148,6 +148,8 @@ resetwelcome: 已配置欢迎设置
 restrict: 受限制的用户：{}
 savednote: 已保存的笔记，名称为 {}，位于聊天 {} 中。
 saverules: 保存的聊天規則：{{chatname}}
+selfdemote: 这没有任何意义，我为什么要降低自己的地位...
+selfpromote: 自我推銷似乎毫無意義。
 sendsticker: 发送贴纸以上传
 setdefaultaction: 設定預設動作
 setgoodbye: 将“告别{}”设置为组别

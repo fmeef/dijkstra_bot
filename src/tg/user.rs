@@ -177,6 +177,10 @@ impl From<users::Model> for User {
 
 /// get a cached user by id
 pub async fn get_user(user: i64) -> Result<Option<User>> {
+    let me = get_me().await?;
+    if user == me.id {
+        return Ok(Some(me));
+    }
     let key = get_user_cache_key(user);
     let model: Option<RedisStr> = REDIS.sq(|p| p.get(&key)).await?;
     match model {
@@ -187,7 +191,11 @@ pub async fn get_user(user: i64) -> Result<Option<User>> {
 
 /// get a cached user by username
 pub async fn get_user_username<T: AsRef<str>>(username: T) -> Result<Option<User>> {
+    let me = get_me().await?;
     let username = username.as_ref();
+    if Some(username) == me.username.as_deref() {
+        return Ok(Some(me));
+    }
     let key = get_username_cache_key(username);
     let id: Option<RedisStr> = REDIS
         .query(|mut q| async move {

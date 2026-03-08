@@ -158,6 +158,8 @@ resetwelcome: Configuración de bienvenida activada
 restrict: 'Usuario restringido: {}'
 savednote: Nota guardada con el nombre {} en el chat {}
 saverules: Reglas guardadas para la conversación {{chatname}}
+selfdemote: No tiene sentido que me descalifique...
+selfpromote: No tiene sentido que me promocione...
 sendsticker: Envía un pegatinas para subir.
 setdefaultaction: Establecer la acción predeterminada
 setgoodbye: Despídete del grupo al número {}

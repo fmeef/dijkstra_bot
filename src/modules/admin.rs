@@ -1,8 +1,8 @@
 use crate::tg::command::Cmd;
 use crate::tg::markdown::EntityMessage;
 use crate::tg::permissions::*;
-use crate::tg::user::GetUser;
-use crate::util::error::{BotError, SpeakErr};
+use crate::tg::user::{get_me, GetUser};
+use crate::util::error::{BotError, Fail, SpeakErr};
 use crate::{
     metadata::metadata,
     tg::command::Context,
@@ -39,6 +39,9 @@ async fn promote(context: &Context) -> Result<()> {
         .action_user(move |ctx, user, _| async move {
             let message = ctx.message()?;
             if let Some(chat) = ctx.chat() {
+                if user == get_me().await?.id {
+                    ctx.fail(lang_fmt!(ctx, "selfpromote"))?;
+                }
                 chat.promote(user).await?;
                 let mention = user.mention().await?;
                 message
@@ -62,6 +65,9 @@ async fn demote(context: &Context) -> Result<()> {
     context
         .action_user(|ctx, user, _| async move {
             if let Some(chat) = ctx.chat() {
+                if user == get_me().await?.id {
+                    ctx.fail(lang_fmt!(ctx, "selfdemote"))?;
+                }
                 match chat.demote(user).await {
                     Err(err) => {
                         ctx.reply(format!("failed to demote user: {}", err.get_tg_error()))

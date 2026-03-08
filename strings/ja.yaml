@@ -154,6 +154,8 @@ resetwelcome: 設定が正常に完了
 restrict: '制限されたユーザー: {}'
 savednote: チャット「{}」に保存されたメモで、名前が「{}」
 saverules: チャット用ルール（{{chatname}}）を保存
+selfdemote: 自分を下げて働くというのは、意味がない。
+selfpromote: 自分を宣伝することは、意味がありません。
 sendsticker: 「アップロード用のステッカーを送る」
 setdefaultaction: デフォルトのアクションを設定
 setgoodbye: グループの別れを告げるメッセージを {} に送信する
