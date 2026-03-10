@@ -22,9 +22,9 @@ async fn ungban(ctx: &Context) -> Result<()> {
     ctx.action_user(|ctx, user, _| async move {
         if let Some(user) = user.get_cached_user().await? {
             ctx.ungban_user(user.get_id()).await?;
-            ctx.reply("user ungbanned").await?;
+            ctx.reply(lang_fmt!(ctx, "ungban")).await?;
         } else {
-            ctx.reply("user not found").await?;
+            ctx.reply(lang_fmt!(ctx, "usernotfound")).await?;
         }
 
         Ok(())
@@ -47,9 +47,9 @@ async fn gban(ctx: &Context) -> Result<()> {
                 .map(|v| v.text.trim().to_owned())
                 .and_then(|v| (!v.is_empty()).then_some(v));
             gban_user(model, user).await?;
-            ctx.reply("user gbanned").await?;
+            ctx.reply(lang_fmt!(ctx, "gban")).await?;
         } else {
-            ctx.reply("user not found").await?;
+            ctx.reply(lang_fmt!(ctx, "usernotfound")).await?;
         }
 
         Ok(())

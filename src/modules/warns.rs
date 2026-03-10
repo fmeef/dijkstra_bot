@@ -126,7 +126,7 @@ async fn set_time<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
     if let Ok(Some(time)) = ctx.parse_duration(&Some(args.as_slice())) {
         set_warn_time(message.get_chat(), Some(time.num_seconds())).await?;
         let time = format_duration(time.to_std()?);
-        message.reply(format!("Set warn time to {}", time)).await?;
+        message.reply(lang_fmt!(ctx, "warntime", time)).await?;
     } else if args.text.trim() == "clear" {
         set_warn_time(message.get_chat(), None).await?;
         message

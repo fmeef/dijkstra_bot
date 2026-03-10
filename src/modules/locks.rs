@@ -862,10 +862,9 @@ async fn handle_unlock<'a>(ctx: &Context, cmd: &Option<&Cmd<'a>>) -> Result<()> 
     Ok(())
 }
 
-async fn handle_list(message: &Message) -> Result<()> {
-    message
-        .check_permissions(|p| p.can_restrict_members)
-        .await?;
+async fn handle_list(ctx: &Context) -> Result<()> {
+    ctx.check_permissions(|p| p.can_restrict_members).await?;
+    let message = ctx.message()?;
     let chat = message.get_chat().get_id();
     let locks = locks::Entity::find()
         .filter(locks::Column::Chat.eq(chat))
@@ -878,9 +877,9 @@ async fn handle_list(message: &Message) -> Result<()> {
             .map(|v| format!("\t-{}", v.lock_type.get_name()))
             .collect::<Vec<String>>()
             .join("\n");
-        message.reply(format!("Enabled locks: \n{}", print)).await?;
+        message.reply(lang_fmt!(ctx, "enabledlocks", print)).await?;
     } else {
-        message.reply("No locks enabled :3").await?;
+        message.reply(lang_fmt!(ctx, "nolocksenabled")).await?;
     }
     Ok(())
 }
@@ -930,7 +929,7 @@ async fn handle_command(ctx: &Context) -> Result<()> {
         match cmd {
             "lock" => handle_lock(message, &command, lang).await?,
             "unlock" => handle_unlock(ctx, &command).await?,
-            "locks" => handle_list(message).await?,
+            "locks" => handle_list(ctx).await?,
             "lockaction" => lock_action(message, args).await?,
             "available" => cmd_available(ctx).await?,
             _ => (),

@@ -27,7 +27,6 @@ use crate::tg::permissions::*;
 use crate::tg::dialog::dialog_or_default;
 
 use crate::tg::user::GetUser;
-use crate::util::error::BotError;
 use crate::util::error::BoxedBotError;
 use crate::util::error::Fail;
 use crate::util::error::Result;
@@ -624,7 +623,7 @@ async fn delete_script(ctx: &Context, script: String) -> Result<()> {
     })
     .await?;
 
-    ctx.reply("Blocklist stopped").await?;
+    ctx.reply(lang_fmt!(ctx, "blockliststopped")).await?;
 
     Ok(())
 }
@@ -686,7 +685,7 @@ async fn delete_trigger(ctx: &Context, trigger: String) -> Result<()> {
         .boxed()
     })
     .await?;
-    ctx.reply("Blocklist stopped").await?;
+    ctx.reply(lang_fmt!(ctx, "blockliststopped")).await?;
 
     Ok(())
 }
@@ -729,7 +728,7 @@ async fn search_cache(
                     continue;
                 }
 
-            //    log::info!("hscan try get");
+                //    log::info!("hscan try get");
                 let (item, filtertype): (i64, FilterConfig) = rs.get()?;
                 //     log::info!("hscan");
 
@@ -746,55 +745,50 @@ async fn search_cache(
                         }
                     }
                     FilterConfig::Script(_) => {
-                        let res: Result<Dynamic> = ManagedRhai::new_mapper(
-                            key,
-                            &RHAI_ENGINE,
-                            (message.clone(),),
-                        )
-                        .post()
-                        .await;
+                        let res: Result<Dynamic> =
+                            ManagedRhai::new_mapper(key, &RHAI_ENGINE, (message.clone(),))
+                                .post()
+                                .await;
 
                         let res = match res {
                             Ok(action) => {
                                 if action.is_bool() {
-                                if let Some(res) = action.try_cast::<bool>() {
-                                    log::info!("handling bool script {}", res);
-                                    if res {
-                                        get_blocklist(message, item).await
+                                    if let Some(res) = action.try_cast::<bool>() {
+                                        log::info!("handling bool script {}", res);
+                                        if res {
+                                            get_blocklist(message, item).await
+                                        } else {
+                                            Ok(None)
+                                        }
                                     } else {
                                         Ok(None)
                                     }
                                 } else {
-                                    Ok(None)
-                                }
-
-                                } else {
-                                let model = get_blocklist(message, item).await?;
-                                let tn = action.type_name();
-                                let res = match (action.try_cast::<ModAction>(), model) {
-                                    (Some(ModAction::Reply(reply)), _) => {
-                                        ctx.reply(reply).await?;
-                                        None
-                                    }
-                                    (Some(ModAction::Ignore), _) => None,
-                                    (Some(modaction), Some(mut model)) => {
-                                        if let Some(action) = modaction.get_action_type() {
-                                            model.action = action;
+                                    let model = get_blocklist(message, item).await?;
+                                    let tn = action.type_name();
+                                    let res = match (action.try_cast::<ModAction>(), model) {
+                                        (Some(ModAction::Reply(reply)), _) => {
+                                            ctx.reply(reply).await?;
+                                            None
                                         }
-                                        model.reason = modaction.to_reason();
-                                        Some(model)
-                                    }
-                                    (None, Some(mut model)) => {
-                                        model.action = ActionType::Delete;
-                                        model.reason = None;
-                                        ctx.reply(format!("Blocklist mapper function returned invalid type. Was {}, expected bool or ModAction", tn)).await?;
-                                        Some(model)
-                                    }
-                                    (_, None) => None,
-                                };
+                                        (Some(ModAction::Ignore), _) => None,
+                                        (Some(modaction), Some(mut model)) => {
+                                            if let Some(action) = modaction.get_action_type() {
+                                                model.action = action;
+                                            }
+                                            model.reason = modaction.to_reason();
+                                            Some(model)
+                                        }
+                                        (None, Some(mut model)) => {
+                                            model.action = ActionType::Delete;
+                                            model.reason = None;
+                                            ctx.reply(lang_fmt!(ctx, "mapperfailed", tn)).await?;
+                                            Some(model)
+                                        }
+                                        (_, None) => None,
+                                    };
 
-                                Ok(res)
-
+                                    Ok(res)
                                 }
                             }
                             Err(err) => {
@@ -802,22 +796,16 @@ async fn search_cache(
                                 if let Some(bl) = bl.as_mut() {
                                     bl.action = ActionType::Delete;
                                     bl.reason = None;
-                                    ctx.reply(format!(
-                                        "Failed to block message, rhai error: {}",
-                                        err
-                                    ))
-                                    .await?;
+                                    ctx.reply(lang_fmt!(ctx, "rhaiblockerr", err)).await?;
                                 }
                                 Ok(bl)
                             }
-
                         };
-                    if let Ok(res) = res {
-                        if res.is_some() {
-                            return Ok(res);
+                        if let Ok(res) = res {
+                            if res.is_some() {
+                                return Ok(res);
+                            }
                         }
-                    }
-
                     }
                 }
             }
@@ -962,7 +950,7 @@ async fn command_blocklist<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()>
         .header(true);
 
     let (body, _, _, header, footer, _) = cmd.build_filter().await;
-    let filters = match header.ok_or_else(|| ctx.fail_err("Header missing from filter command"))? {
+    let filters = match header.ok_or_else(|| ctx.fail_err(lang_fmt!(ctx, "murkdownheader")))? {
         Header::List(st) => st,
         Header::Arg(st) => vec![st],
     };
@@ -992,13 +980,8 @@ async fn command_blocklist<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()>
                 }),
             ),
             None => (ActionType::Delete, None),
-            _ => {
-                return Err(BotError::speak(
-                    "Invalid action",
-                    message.get_chat().get_id(),
-                    Some(message.message_id),
-                )
-                .into());
+            Some(a) => {
+                return ctx.fail(lang_fmt!(ctx, "invalidaction", a));
             }
         }
     } else {
@@ -1051,7 +1034,7 @@ async fn script_blocklist<'a>(ctx: &Context) -> Result<()> {
     ctx.action_message(|ctx, am, args| async move {
         let (name, args) = args
             .and_then(|a| a.pop_slice())
-            .ok_or_else(|| ctx.fail_err("Need to provide a script name"))?;
+            .ok_or_else(|| ctx.fail_err(lang_fmt!(ctx, "providescript")))?;
         let (message, text) = match am {
             ActionMessage::Me(message) => (message, args.text),
             ActionMessage::Reply(message) => (
@@ -1059,7 +1042,7 @@ async fn script_blocklist<'a>(ctx: &Context) -> Result<()> {
                 message
                     .text
                     .as_deref()
-                    .ok_or_else(|| ctx.fail_err("The replied message has no text"))?,
+                    .ok_or_else(|| ctx.fail_err(lang_fmt!(ctx, "messagenotext")))?,
             ),
         };
 
@@ -1076,17 +1059,12 @@ async fn script_blocklist<'a>(ctx: &Context) -> Result<()> {
                     return Ok(());
                 }
             }
-            ctx.reply(format!(
-                "The script blocklist {} does not exist",
-                name.get_text()
-            ))
-            .await?;
+            ctx.reply(lang_fmt!(ctx, "scriptnotexist", name.get_text()))
+                .await?;
         } else {
             ManagedRhai::new_mapper(text.to_owned(), &RHAI_ENGINE, (message.clone(),))
                 .compile()
-                .speak_err(ctx, |e| {
-                    format!("Failed to compile blocklist script: {}", e)
-                })
+                .speak_err(ctx, |e| lang_fmt!(ctx, "failcompile", e))
                 .await?;
 
             insert_blocklist(
@@ -1185,8 +1163,9 @@ async fn handle_trigger(ctx: &Context) -> Result<()> {
     Ok(())
 }
 
-async fn list_triggers(message: &Message) -> Result<()> {
-    message.check_permissions(|p| p.can_manage_chat).await?;
+async fn list_triggers(ctx: &Context) -> Result<()> {
+    ctx.check_permissions(|p| p.can_manage_chat).await?;
+    let message = ctx.message()?;
     let hash_key = get_blocklist_hash_key(message.get_chat().get_id());
     update_cache_from_db(message).await?;
     let res: Option<HashMap<String, RedisStr>> = REDIS.sq(|q| q.hgetall(&hash_key)).await?;
@@ -1221,13 +1200,10 @@ async fn list_triggers(message: &Message) -> Result<()> {
             .join("\n");
 
         message
-            .reply(format!(
-                "Found text blocklists:\n{}\n\nFound script blocklists:\n{}",
-                vals, scripts
-            ))
+            .reply(lang_fmt!(ctx, "blocklistlist", vals, scripts))
             .await?;
     } else {
-        message.reply("No blocklist items found!").await?;
+        message.reply(lang_fmt!(ctx, "noblocklistitem")).await?;
     }
     Ok(())
 }
@@ -1245,24 +1221,18 @@ async fn delete_all(chat: i64) -> Result<()> {
 async fn stopall(ctx: &Context, chat: i64) -> Result<()> {
     ctx.check_permissions(|p| p.can_change_info).await?;
     delete_all(chat).await?;
-    ctx.reply("Stopped all blocklist items").await?;
+    ctx.reply(lang_fmt!(ctx, "stopallblocklist")).await?;
     Ok(())
 }
 
 async fn handle_command<'a>(ctx: &Context) -> Result<()> {
-    if let Some(&Cmd {
-        cmd,
-        ref args,
-        message,
-        ..
-    }) = ctx.cmd()
-    {
+    if let Some(&Cmd { cmd, ref args, .. }) = ctx.cmd() {
         match cmd {
             "addblocklist" => command_blocklist(ctx, args).await?,
             "scriptblocklist" => script_blocklist(ctx).await?,
             "rmblocklist" => delete_trigger(ctx, args.text.to_owned()).await?,
             "rmscriptblocklist" => delete_script(ctx, args.text.to_owned()).await?,
-            "blocklist" => list_triggers(message).await?,
+            "blocklist" => list_triggers(ctx).await?,
             "rmallblocklists" => stopall(ctx, ctx.message()?.get_chat().get_id()).await?,
             _ => handle_trigger(ctx).await?,
         };

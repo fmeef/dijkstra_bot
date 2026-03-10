@@ -64,7 +64,8 @@ async fn command_list<'a>(context: &Context) -> Result<()> {
         let mut res = EntityMessage::new(chat.get_id());
         let chat_name = chat.name_humanreadable();
         res.builder
-            .bold(format!("Approved users for {}\n", chat_name));
+            .bold(lang_fmt!(context, "approveduser", chat_name))
+            .text("\n");
         for (userid, name) in get_approvals(chat).await? {
             if let Some(user) = get_user(userid).await? {
                 let name = user.name_humanreadable().into_owned();

@@ -114,7 +114,7 @@ async fn create_federation_cmd<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result
     if let Some(from) = message.get_from() {
         let fedname = args.text.to_owned();
         let fed = federations::Model::new(from.get_id(), fedname);
-        let s = format!("Created fed {}", fed.fed_id);
+        let s = lang_fmt!(ctx, "createdfed", fed.fed_id);
         create_federation(ctx, fed).await?;
         ctx.reply(s).await?;
     }
@@ -218,16 +218,11 @@ async fn subfed_cmd<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
         return ctx.fail(lang_fmt!(ctx, "anonfed"));
     }
 
-    let chat = ctx.try_get()?.chat.get_id();
     if let Some(user) = ctx.message()?.get_from() {
         let sub = Uuid::parse_str(args.text)?;
-        let fed = get_fed(user.get_id()).await?.ok_or_else(|| {
-            BotError::speak(
-                "You currently do not have a fed",
-                chat,
-                Some(message.message_id),
-            )
-        })?;
+        let fed = get_fed(user.get_id())
+            .await?
+            .ok_or_else(|| ctx.fail_err(lang_fmt!(ctx, "nothasfed")))?;
         subfed(&fed.fed_id, &sub).await?;
         ctx.reply(lang_fmt!(ctx, "subscribefed", fed.fed_id, sub))
             .await?;
@@ -313,7 +308,7 @@ async fn set_fban_list(ctx: &Context, fed: &Uuid, message: &Message) -> Result<u
 
         let (user, fbs, ids): (Vec<_>, Vec<_>, Vec<_>) =
             itertools::process_results(res, |i| itertools::multiunzip(i))
-                .speak_err(ctx, |e| format!("Failed to parse fban json: {}", e))
+                .speak_err(ctx, |e| lang_fmt!(ctx, "fbanjson", e))
                 .await?;
         users::Entity::insert_many(user)
             .on_conflict(
@@ -352,8 +347,7 @@ async fn import_fbans(ctx: &Context) -> Result<()> {
         ctx.action_message(|ctx, message, _| async move {
             if let Some(fed) = get_fed(user).await? {
                 let res = set_fban_list(ctx, &fed.fed_id, message.message()).await?;
-                ctx.reply(format!("Successfully imported {} fbans", res))
-                    .await?;
+                ctx.reply(lang_fmt!(ctx, "fbanimport", res)).await?;
             }
 
             Ok(())

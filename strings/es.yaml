@@ -7,6 +7,8 @@ anonban: Los canales anónimos no pueden bloquear a los usuarios.
 anonchannelbad: Los canales anónimos no pueden utilizar esta funcionalidad.
 anonfed: Los canales anónimos no pueden crear federaciones.
 approved: 'Usuario aprobado: {}'
+approveduser: Usuarios aprobados para el chat {}
+back: Regresar
 backtochat: Volver a la conversación
 baddm: Este comando no funciona en un DM.
 banadmin: No voy a prohibir a ningún administrador.
@@ -17,9 +19,26 @@ banned: 'Usuario bloqueado: {}'
 blockban: 'El usuario {} dijo una palabra prohibida. Acción: palabra prohibida {}
 
   {}'
+blocklistlist: 'Encontrados:
+
+  {}
+
+
+  Encontrados:
+
+  {}
+
+  '
+blockliststopped: La lista de bloqueo ha sido desactivada.
 blockmute: 'El usuario {} dijo una palabra prohibida. Acción: silenciado a {}
 
   {}'
+brokenmedia: 'Medios dañados para {}, según módulo:
+
+
+  {}
+
+  '
 cachewait: La caché administrativa solo puede actualizarse una vez cada 10 minutos.
 captcha: Código de verificación
 captchamode: Establezca el modo de CAPTCHA en {}
@@ -28,12 +47,14 @@ captchanotenabled: El sistema de verificación de CAPTCHA no está habilitado.
 captchawarning: Si no resuelve correctamente este captcha, será eliminado por el agente
   de eliminación mnemotécnica.
 channeldenied: El canal anónimo no es de administrador, se denegó el permiso.
+chatnotfound: No se encontró la conversación.
 clearedlock: Se desbloqueó el candado "{}"
 clearnotes: Se han eliminado todas las notas para la conversación {}
 cleartime: Tiempo de alerta resuelto para {}
 clearwarns: Advertencia para el usuario {}.
 commandnotfound: No se encontró el comando.
 correctchoice: ¡Excelente elección!
+createdfed: Creada la federación {}
 currentlang: Seleccione un idioma de la lista
 dateoutofrange: El tiempo {} está fuera del rango.
 defaultgoodbye: Adiós {{mention}}
@@ -45,10 +66,16 @@ dmhelp: Póngase en contacto conmigo por mensaje privado para obtener ayuda.
 duration: para {}
 empty: '{}'
 emptynotallowed: Los filtros vacíos no están permitidos.
+enabledlocks: 'Cerraduras habilitadas:
+
+  {}'
 enablekick: Permite la eliminación automática de usuarios. Los usuarios serán eliminados
   del grupo después de no poder resolver el captcha.
 erranonchannelfed: Los canales anónimos no pueden poseer cuentas de "fed". Intente
   ejecutar este comando desde su cuenta principal.
+failcompile: 'No se pudo compilar el script de la lista de bloqueo: {}'
+failcompilenormal: No se pudo compilar {}
+faildemote: No se pudo degradar al usuario {}.
 failfpromote: 'No se pudo promocionar al usuario: {}'
 failmurk: Error de sintaxis en Murkdown. Por favor, revise la sección de ayuda para
   la configuración.
@@ -63,6 +90,8 @@ failuser: 'No pude contactar al usuario {}. No he tenido ninguna interacción co
   Por favor, envíame uno de sus mensajes para que pueda contactarlo.'
 failwarn: No se notificó a este usuario, y no los he visto en las últimas 48 horas.
 fban: ¡Adiós! Usuario de Facebook {}, eliminado en {}
+fbanimport: Se importaron con éxito {} archivos fbans.
+fbanjson: No se pudo analizar el archivo JSON de fban {}.
 fbanreason: '¡Adiós y que te vaya bien!
 
   Usuario {} baneado en la federación {}
@@ -89,6 +118,7 @@ fstat: 'Fstat para {}:
 
   '
 fstatline: '{} con la razón "{}"'
+gban: Usuario baneado globalmente
 gbanned: '¡Adiós y gracias!
 
   Usuario {}, baneado por {}'
@@ -97,6 +127,7 @@ helpbutton: Haz clic aquí para obtener ayuda.
 imported: Datos importados para la conversación {}
 incorrect: Elección incorrecta, todavía tienes {} intentos restantes.
 invalid_help: Página de ayuda no válida {}
+invalidaction: '{} no es una acción válida para bloquear.'
 invalidargument: Comando no válido, por favor utilice "on" o "off".
 invalidlang: Idioma seleccionado no válido
 joinfed: Se unió al grupo federado {} para conversar con {}
@@ -118,6 +149,10 @@ lockwarn: 'El usuario {{mention}} ha sido advertido.
   [*Motivo:]
 
   {}'
+mapperfailed: La función de mapeo de la lista de bloqueo devolvió un tipo de datos
+  inválido. El valor era {}, pero se esperaba un valor booleano o una acción de modificación.
+messagenotext: El mensaje al que respondió no contiene texto.
+murkdownheader: Formato de Markdown no válido, revise su formato.
 muteadmin: No voy a silenciar a un administrador.
 mutemyself: No voy a callar.
 muteuser: Usuario anónimo {}
@@ -126,7 +161,9 @@ needtobeadmin: Lo siento, Dave, necesito tener permisos de administrador para po
   funcionar en este grupo.
 negwarns: Los límites de advertencia negativos no tienen mucho sentido.
 noactionarg: Debe especificar la acción que se va a realizar.
+noblocklistitem: No se encontraron elementos en la lista de bloqueo.
 nofed: Este usuario no posee ninguna federación.
+nolocksenabled: No hay candados habilitados
 noreason: No hay razón
 norules: Esta conversación no tiene reglas. Anarquía total. Siéntete libre de usarla
   para enviar mensajes masivos y publicar cursos de Udemy pirateados.
@@ -136,6 +173,7 @@ notfbanned: El usuario {} no ha sido baneado de Facebook.
 notfedadmin: No eres un administrador de la federación {}. Solo los administradores
   de la federación pueden emitir las fbans.
 notfmember: Esta conversación no es miembro de ninguna federación.
+nothasfed: Actualmente, no tienes una federación.
 notinfed: El chat {} no pertenece a una federación. Utilice el comando `/joinfed`
   como administrador para unirse a una.
 notries: Sin intentos restantes
@@ -147,8 +185,10 @@ permdenied: 'Permiso denegado: el usuario actual carece del permiso "{}".'
 pressme: Presione para desactivar el silencio.
 promote: 'Usuario registrado: {}'
 provebutton: Haga clic en el botón para demostrar que es administrador.
+providescript: Necesitas proporcionar un nombre para el guion.
 pushunmute: Presione el botón para desactivar el silencio.
 reason: Razón {}
+recovermod: Seleccione un módulo para recuperar medios.
 refreshac: Se ha actualizado correctamente la caché de administración.
 removewarn: Eliminar advertencia
 renamefed: Se ha renombrado "fed {}" a "{}".
@@ -156,8 +196,11 @@ reported: Se ha reportado al usuario {} a los administradores.
 reported_nomention: Informado a los administradores.
 resetwelcome: Configuración de bienvenida activada
 restrict: 'Usuario restringido: {}'
+rhaiblockerr: 'No se pudo bloquear el mensaje, error de rhai: {}'
 savednote: Nota guardada con el nombre {} en el chat {}
 saverules: Reglas guardadas para la conversación {{chatname}}
+scriptnotexist: La lista de bloque de scripts {} no existe.
+selectjson: Por favor, seleccione un archivo JSON.
 selfdemote: No tiene sentido que me descalifique...
 selfpromote: No tiene sentido que me promocione...
 sendsticker: Envía un pegatinas para subir.
@@ -171,6 +214,7 @@ solvecaptcha: Resuelva este captcha para continuar
 specifytime: Necesitas indicar un horario para este comando.
 specifyuser: Debe especificar un usuario.
 startcmd: Enviar /ayuda para obtener una lista de los comandos disponibles
+stopallblocklist: Se detuvieron todos los elementos de la lista de bloqueo.
 subscribefed: Suscríbete con éxito y envía {} a {}
 taintdelete: Eliminar
 taintdetected: 'Datos importados para la conversación {}
@@ -199,6 +243,7 @@ unbanchat: Canal anónimo sin restricciones {}
 unbanned: Usuario desbloqueado {}
 unfban: 'Usuario desbloqueado: {}'
 unfbanperm: Para desbloquear, necesitas ser un usuario con permisos de administrador.
+ungban: Se ha levantado la prohibición global.
 unmuteuser: 'Usuario sin activar: {}'
 usernotfound: No se encontró el usuario. Solo se pueden interactuar con los usuarios
   que han sido vistos recientemente.
@@ -216,6 +261,7 @@ warns: 'Advertencia para el usuario {}:
 
   {}'
 warnsline: 'Razón: {}'
+warntime: Establece el tiempo de advertencia en {}
 welcome: Bienvenido a {}, un bot de gestión de grupos modular escrito en Rust.
 welcomeinvalid: Argumento inválido, use "on/off/yes/no"
 wrongmediaid: El material que ha enviado no es el material original.

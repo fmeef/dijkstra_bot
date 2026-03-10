@@ -5,7 +5,7 @@ use crate::tg::markdown::{Escape, MarkupType};
 use crate::util::error::{Fail, Result, SpeakErr};
 use crate::util::scripting::{ManagedRhai, RHAI_ENGINE};
 use crate::util::string::Speak;
-use macros::{entity_fmt, update_handler};
+use macros::{entity_fmt, lang_fmt, update_handler};
 use rhai::Dynamic;
 
 metadata!(
@@ -85,7 +85,7 @@ async fn map_script(ctx: &Context) -> Result<()> {
         let res: Dynamic = ManagedRhai::new_mapper(text, &RHAI_ENGINE, (message.clone(),))
             .post()
             .await
-            .speak_err(ctx, |e| format!("Failed to compile: {}", e))
+            .speak_err(ctx, |e| lang_fmt!(ctx, "failcompilenormal", e))
             .await?;
         let res = res.to_string();
         let res = if res.trim().is_empty() {

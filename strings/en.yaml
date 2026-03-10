@@ -229,3 +229,42 @@ reason: Reason {}
 duration: "for {} "
 selfpromote: "It doesn't make any sense to promote myself..."
 selfdemote: "It doesn't make any sense to demote myself..."
+chatnotfound: "Chat not found"
+failcompile: "Failed to compile blocklist script: {}"
+fbanjson: "Failed to parse fban json {}"
+failcompilenormal: "Failed to compile {}"
+scriptnotexist: "The script blocklist {} does not exist"
+faildemote: "Failed to demote user {}"
+blockliststopped: "Blocklist stopped"
+mapperfailed: "Blocklist mapper function returned invalid type. Was {}, expected bool or ModAction"
+rhaiblockerr: "Failed to block message, rhai error: {}"
+blocklistlist: |
+  Found text blocklists:
+  {}
+
+  Found script blocklists:
+  {}
+noblocklistitem: "No blocklist items found"
+stopallblocklist: "Stopped all blocklist items"
+createdfed: "Created federation {}"
+nothasfed: "You do not currently have a federation"
+fbanimport: "Successfully imported {} fbans"
+ungban: "Global ban removed"
+gban: "User globally banned"
+approveduser: "Approved users for the chat {}"
+murkdownheader: "Invalid murkdown, check your formatting"
+invalidaction: "{} is not a valid blocklist action"
+providescript: "You need to provide a script name"
+messagenotext: "The message you replied to has no text"
+recovermod: "Select a module to recover media from"
+back: "Back"
+selectjson: "Please select a json file"
+brokenmedia: |
+  Broken media for {} by module:
+
+  {}
+enabledlocks: |
+  Enabled locks:
+  {}
+nolocksenabled: "No locks enabled"
+warntime: "Set warn time to {}"

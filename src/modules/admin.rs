@@ -70,7 +70,7 @@ async fn demote(context: &Context) -> Result<()> {
                 }
                 match chat.demote(user).await {
                     Err(err) => {
-                        ctx.reply(format!("failed to demote user: {}", err.get_tg_error()))
+                        ctx.reply(lang_fmt!(ctx, "faildemote", err.get_tg_error()))
                             .await?;
                     }
                     Ok(_) => {

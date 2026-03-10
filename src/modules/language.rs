@@ -33,19 +33,21 @@ async fn handle_terminal_state(
     chat: i64,
     reply: i64,
 ) -> Result<()> {
-    let chat = chat
-        .get_chat()
-        .await?
-        .ok_or_else(|| BotError::speak("Chat not found", chat, Some(reply)))?;
     if let Some(state) = conv.get_state(&current) {
         let lang = Lang::from_code(&state.content);
 
         log::info!("set chat lang to {:?}", state.content);
         match lang {
             Lang::Invalid => {
+                let chat = chat.get_chat().await?.ok_or_else(|| {
+                    BotError::speak(lang_fmt!(lang, "chatnotfound"), chat, Some(reply))
+                })?;
                 chat.reply(lang_fmt!(lang, "invalidlang")).await?;
             }
             l => {
+                let chat = chat.get_chat().await?.ok_or_else(|| {
+                    BotError::speak(lang_fmt!(lang, "chatnotfound"), chat, Some(reply))
+                })?;
                 set_chat_lang(&chat, l).await?;
                 chat.reply(lang_fmt!(l, "setlang")).await?;
             }

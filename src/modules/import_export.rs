@@ -71,8 +71,9 @@ async fn get_taint<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
         })
         .join("\n");
 
-    let m = format!(
-        "Broken media for {} by module:\n\n{}",
+    let m = lang_fmt!(
+        ctx,
+        "brokenmedia",
         message.get_chat().name_humanreadable(),
         m
     );
@@ -98,7 +99,7 @@ async fn get_taint_menu(ctx: &Context) -> Result<()> {
             vec.push(val);
             acc
         });
-    let text = "Select a module to recover media from";
+    let text = lang_fmt!(ctx, "recovermod");
     let mut state = ConversationState::new_prefix(
         "import".to_owned(),
         text.to_owned(),
@@ -106,7 +107,7 @@ async fn get_taint_menu(ctx: &Context) -> Result<()> {
         message
             .get_from()
             .map(|u| u.get_id())
-            .ok_or_else(|| message.fail_err("User does not exist"))?,
+            .ok_or_else(|| message.fail_err(lang_fmt!(ctx, "usernotfound")))?,
         "button",
     )?;
 
@@ -122,7 +123,7 @@ async fn get_taint_menu(ctx: &Context) -> Result<()> {
             .join("\n");
         let s = state.add_state(contents);
         state.add_transition(start, s, key, &key.to_case(Case::Title));
-        state.add_transition(s, start, "back", "Back");
+        state.add_transition(s, start, "back", &lang_fmt!(ctx, "back"));
     }
 
     let conversation = state.build();
@@ -197,7 +198,7 @@ pub async fn handle_update(ctx: &Context) -> Result<()> {
                             .await?;
                         }
                     } else {
-                        ctx.reply("Please select a json file").await?;
+                        ctx.reply(lang_fmt!(ctx, "selectjson")).await?;
                     }
                     Ok(())
                 })
