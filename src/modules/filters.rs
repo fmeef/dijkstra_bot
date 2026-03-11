@@ -571,6 +571,7 @@ async fn delete_trigger(ctx: &Context, trigger: &str) -> Result<()> {
     let message = ctx.message()?;
     let hash_key = get_filter_hash_key(message);
     let trigger = trigger.to_lowercase();
+    let reply = lang_fmt!(ctx, "filterstopped");
     let ctx = ctx.clone();
     DB.transaction::<_, (), BoxedBotError>(|tx| {
         async move {
@@ -621,7 +622,7 @@ async fn delete_trigger(ctx: &Context, trigger: &str) -> Result<()> {
         .boxed()
     })
     .await?;
-    message.reply("Filter stopped").await?;
+    message.reply(reply).await?;
     Ok(())
 }
 
@@ -928,7 +929,8 @@ async fn handle_trigger(ctx: &Context) -> Result<()> {
     Ok(())
 }
 
-async fn list_triggers(message: &Message) -> Result<()> {
+async fn list_triggers(ctx: &Context) -> Result<()> {
+    let message = ctx.message()?;
     let hash_key = get_filter_hash_key(message);
     update_cache_from_db(message).await?;
     let res: Option<HashMap<String, i64>> = REDIS.sq(|q| q.hgetall(&hash_key)).await?;
@@ -939,9 +941,9 @@ async fn list_triggers(message: &Message) -> Result<()> {
             .map(|(key, _)| format!("\t- {}", key))
             .collect_vec()
             .join("\n");
-        message.reply(format!("Found filters:\n{}", vals)).await?;
+        message.reply(lang_fmt!(ctx, "foundfilters", vals)).await?;
     } else {
-        message.reply("No filters found!").await?;
+        message.reply(lang_fmt!(ctx, "nofilters")).await?;
     }
     Ok(())
 }
@@ -956,22 +958,16 @@ async fn stopall(ctx: &Context) -> Result<()> {
 
     let key = get_filter_hash_key(message);
     let _: () = REDIS.sq(|q| q.del(&key)).await?;
-    ctx.reply("Stopped all filters").await?;
+    ctx.reply(lang_fmt!(ctx, "stopallfilters")).await?;
     Ok(())
 }
 
 async fn handle_command(ctx: &Context) -> Result<()> {
-    if let Some(&Cmd {
-        cmd,
-        ref args,
-        message,
-        ..
-    }) = ctx.cmd()
-    {
+    if let Some(&Cmd { cmd, ref args, .. }) = ctx.cmd() {
         match cmd {
             "filter" => command_filter(ctx, args).await?,
             "stop" => delete_trigger(ctx, args.text).await?,
-            "filters" => list_triggers(message).await?,
+            "filters" => list_triggers(ctx).await?,
             "stopall" => stopall(ctx).await?,
             _ => handle_trigger(ctx).await?,
         };

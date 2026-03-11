@@ -59,6 +59,7 @@ currentlang: Seleccione un idioma de la lista
 dateoutofrange: El tiempo {} está fuera del rango.
 defaultgoodbye: Adiós {{mention}}
 defaultwelcome: Hola, {{mention}}, ¡bienvenido a {{chatname}}!
+deletednote: Eliminado la nota {}
 demote: 'Usuario degradado: {}'
 disabledcaptcha: Captcha para personas con discapacidad
 disablekick: Respuesta incorrecta al desafío de seguridad para usuarios con discapacidad.
@@ -66,6 +67,7 @@ dmhelp: Póngase en contacto conmigo por mensaje privado para obtener ayuda.
 duration: para {}
 empty: '{}'
 emptynotallowed: Los filtros vacíos no están permitidos.
+enabledcaptcha: Activado el CAPTCHA!
 enabledlocks: 'Cerraduras habilitadas:
 
   {}'
@@ -92,6 +94,7 @@ failwarn: No se notificó a este usuario, y no los he visto en las últimas 48 h
 fban: ¡Adiós! Usuario de Facebook {}, eliminado en {}
 fbanimport: Se importaron con éxito {} archivos fbans.
 fbanjson: No se pudo analizar el archivo JSON de fban {}.
+fbannedfor: El usuario fue baneado de Facebook por {}!
 fbanreason: '¡Adiós y que te vaya bien!
 
   Usuario {} baneado en la federación {}
@@ -108,7 +111,13 @@ filters: 'Filtros en el chat {}:
 
 
   {}'
+filterstopped: Filtro detenido
 foundadmins: Encontrados {} administradores.
+foundfilters: 'Filtros encontrados:
+
+  {}
+
+  '
 fpromote: El usuario {} debe confirmar la promoción antes de continuar.
 fpromoted: Ha sido ascendido.
 fpromotenotauth: No está autorizado para aceptar esta promoción.
@@ -122,6 +131,7 @@ gban: Usuario baneado globalmente
 gbanned: '¡Adiós y gracias!
 
   Usuario {}, baneado por {}'
+gbannedfor: El usuario ha sido baneado permanentemente por {}!
 getrules: 'Obtenga las normas del chat: {{rules}}'
 helpbutton: Haz clic aquí para obtener ayuda.
 imported: Datos importados para la conversación {}
@@ -152,6 +162,7 @@ lockwarn: 'El usuario {{mention}} ha sido advertido.
 mapperfailed: La función de mapeo de la lista de bloqueo devolvió un tipo de datos
   inválido. El valor era {}, pero se esperaba un valor booleano o una acción de modificación.
 messagenotext: El mensaje al que respondió no contiene texto.
+missingnotename: Falta el nombre de la nota.
 murkdownheader: Formato de Markdown no válido, revise su formato.
 muteadmin: No voy a silenciar a un administrador.
 mutemyself: No voy a callar.
@@ -163,12 +174,15 @@ negwarns: Los límites de advertencia negativos no tienen mucho sentido.
 noactionarg: Debe especificar la acción que se va a realizar.
 noblocklistitem: No se encontraron elementos en la lista de bloqueo.
 nofed: Este usuario no posee ninguna federación.
+nofilters: No se encontraron filtros.
 nolocksenabled: No hay candados habilitados
 noreason: No hay razón
 norules: Esta conversación no tiene reglas. Anarquía total. Siéntete libre de usarla
   para enviar mensajes masivos y publicar cursos de Udemy pirateados.
 nosender: Este mensaje no tiene remitente.
+notacommand: No es un comando válido
 notdm: Este comando solo puede utilizarse en dm
+notenotfound: No se encontró la nota.
 notfbanned: El usuario {} no ha sido baneado de Facebook.
 notfedadmin: No eres un administrador de la federación {}. Solo los administradores
   de la federación pueden emitir las fbans.
@@ -215,6 +229,7 @@ specifytime: Necesitas indicar un horario para este comando.
 specifyuser: Debe especificar un usuario.
 startcmd: Enviar /ayuda para obtener una lista de los comandos disponibles
 stopallblocklist: Se detuvieron todos los elementos de la lista de bloqueo.
+stopallfilters: Se desactivaron todos los filtros.
 subscribefed: Suscríbete con éxito y envía {} a {}
 taintdelete: Eliminar
 taintdetected: 'Datos importados para la conversación {}

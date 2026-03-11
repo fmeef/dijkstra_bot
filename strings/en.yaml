@@ -268,3 +268,16 @@ enabledlocks: |
   {}
 nolocksenabled: "No locks enabled"
 warntime: "Set warn time to {}"
+filterstopped: "Filter stopped"
+foundfilters: |
+  Found filters:
+  {}
+stopallfilters: "Stopped all filters"
+nofilters: "No filters found!"
+enabledcaptcha: "Enabled captcha!"
+fbannedfor: "User fbanned for {}!"
+gbannedfor: "User gbanned for {}!"
+deletednote: "Deleted note {}"
+notacommand: "Not a valid command"
+missingnotename: "Command is missing note name"
+notenotfound: "Note not found"

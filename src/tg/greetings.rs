@@ -714,7 +714,7 @@ impl Context {
             .await?;
         let key = captcha_state_key(message.get_chat());
         model.cache(key).await?;
-        message.reply("enabled captcha!").await?;
+        message.reply(lang_fmt!(self, "enabledcaptcha")).await?;
         Ok(())
     }
 

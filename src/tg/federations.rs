@@ -884,8 +884,9 @@ impl Context {
                 .build()
                 .await?;
             record_chat_member_banned(user.user_id, chat, true).await?;
-            self.reply(format!(
-                "User gbanned for {}!",
+            self.reply(lang_fmt!(
+                self,
+                "gbannedfor",
                 gban.reason.unwrap_or_else(|| "piracy".to_owned())
             ))
             .await?;
@@ -897,8 +898,9 @@ impl Context {
                 .build()
                 .await?;
             record_chat_member_banned(user, chat, true).await?;
-            self.reply(format!(
-                "User fbanned for {}!",
+            self.reply(lang_fmt!(
+                self,
+                "fbannedfor",
                 model.reason.unwrap_or_else(|| "piracy".to_owned())
             ))
             .await?;

@@ -37,6 +37,7 @@
             buildInputs = [
               rustup
               pkg-config
+              openssl
               unstable.python3
               unstable.ollama
               unstable.python313Packages.ollama

@@ -55,6 +55,7 @@ currentlang: 다음 목록에서 언어를 선택하세요
 dateoutofrange: '{}은 허용되지 않는 시간입니다.'
 defaultgoodbye: 안녕, {{mention}}
 defaultwelcome: 안녕하세요, {{mention}}. {{chatname}}에 오신 것을 환영합니다.
+deletednote: 삭제된 메모 {}
 demote: 사용자 {}의 등급이 낮아짐
 disabledcaptcha: 비활성화된 캡차
 disablekick: 장애인용 CAPTCHA를 사용하여 문제를 해결하는 경우.
@@ -62,6 +63,7 @@ dmhelp: 도움이 필요하시면, 메시지를 통해 저에게 연락해주세
 duration: '{}'
 empty: '{}'
 emptynotallowed: 비어 있는 필터는 허용되지 않습니다.
+enabledcaptcha: CAPTCHA 기능 활성화!
 enabledlocks: '활성화된 잠금:
 
   {}
@@ -85,6 +87,7 @@ failwarn: 이 사용자에게 경고하지 못했고, 지난 48시간 동안 이
 fban: 맙소사! 사용자 {}이 {}에서 제재를 받았습니다.
 fbanimport: 성공적으로 {}개의 fbans 파일을 가져왔습니다.
 fbanjson: fban JSON {} 파싱에 실패
+fbannedfor: 사용자가 {}로 인해 페이스북에서 차단됨.
 fbanreason: '훌륭합니다!
 
   사용자 {}, {}에서 영구 정지.
@@ -101,7 +104,11 @@ filters: '채팅 {}의 필터:
 
 
   {}'
+filterstopped: 필터가 중단됨
 foundadmins: '{} 명의 관리자를 찾았습니다.'
+foundfilters: '발견된 필터:
+
+  {}'
 fpromote: 사용자 {}은 계속 진행하기 전에 프로모션을 확인해야 합니다.
 fpromoted: 승진되었습니다
 fpromotenotauth: 당신은 이 특별 제안을 수락할 권한이 없습니다.
@@ -113,6 +120,7 @@ gban: 전 세계적으로 사용자 계정 정지
 gbanned: '훌륭하군요!
 
   사용자 {}은 {}에 의해 차단됨'
+gbannedfor: 사용자가 {}으로 인해 차단되었습니다.
 getrules: 채팅 규칙 {{rules}}을 확인하세요.
 helpbutton: 도움이 필요하시면 클릭해주세요!
 imported: 채팅 {}에 가져온 데이터
@@ -142,6 +150,7 @@ lockwarn: '사용자 {{mention}}에게 경고!
 mapperfailed: '`블록리스트 매퍼 함수에서 유효하지 않은 유형이 반환되었습니다. 예상 값은 {}였으며, bool 또는 ModAction
   유형을 기대했습니다.'
 messagenotext: 답변하신 메시지에는 텍스트가 없습니다.
+missingnotename: 명령에 노트 이름이 누락되었습니다.
 murkdownheader: 유효하지 않은 머크다운, 서식 설정을 확인해 주세요.
 muteadmin: 저는 관리자를 무음으로 설정하지 않을 것입니다.
 mutemyself: 저는 제 음성을 끄지 않을 것입니다.
@@ -152,11 +161,14 @@ negwarns: 부정적인 경고 한계는 큰 의미가 없습니다.
 noactionarg: 해야 할 작업을 명확하게 지정해야 합니다.
 noblocklistitem: 블록리스트 항목이 없습니다.
 nofed: 이 사용자는 연합체를 소유하고 있지 않습니다.
+nofilters: 필터가 하나도 없습니다!
 nolocksenabled: 잠금 기능이 활성화되지 않았습니다.
 noreason: 이유가 없음
 norules: 이 채팅에는 규칙이 없습니다. 완전한 혼돈 상태입니다. 자유롭게 스팸을 보내고 불법 Udemy 강좌를 게시해도 좋습니다.
 nosender: 이 메시지는 발신자가 없습니다.
+notacommand: 유효하지 않은 명령어
 notdm: 이 명령어는 dm에서만 사용할 수 있습니다.
+notenotfound: 참고 사항 없음
 notfbanned: 사용자 {}는 페이스북에서 차단되지 않았습니다.
 notfedadmin: 당신은 연합체 {}의 'fedadmin'이 아닙니다. 'fedadmin'만만 FBANS를 발급할 수 있습니다.
 notfmember: 이 챗은 특정 단체에 소속된 구성원이 아닙니다.
@@ -201,6 +213,7 @@ specifytime: 이 명령에 대해 특정 시간을 지정해야 합니다.
 specifyuser: 사용자를 지정해야 합니다.
 startcmd: /help 명령어를 사용하여 사용할 수 있는 명령어 목록을 확인하려면
 stopallblocklist: 모든 차단 목록 항목을 비활성화
+stopallfilters: 모든 필터를 중단
 subscribefed: 성공적으로 구독하여 {}을 {}으로 연결했습니다.
 taintdelete: 삭제
 taintdetected: '수입된 데이터: {}

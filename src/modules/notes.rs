@@ -310,13 +310,12 @@ async fn print_chat(ctx: &Context, name: String, chat: i64) -> Result<()> {
         print_note(ctx, note, entities, buttons, actions, chat).await?;
         Ok(())
     } else {
-        ctx.fail("Note not found")
+        ctx.fail(lang_fmt!(ctx, "notenotfound"))
     }
 }
 
 async fn get<'a>(ctx: &Context) -> Result<()> {
     ctx.is_group_or_die().await?;
-    let message = ctx.message()?;
     if let Some(Cmd { ref args, .. }) = ctx.cmd() {
         let name = match args.args.first() {
             Some(TextArg::Arg(name)) => Some(name),
@@ -326,15 +325,10 @@ async fn get<'a>(ctx: &Context) -> Result<()> {
         if let Some(name) = name {
             print(ctx, (*name).to_owned()).await
         } else {
-            Err(BotError::speak(
-                "missing note name, try again weenie",
-                message.get_chat().get_id(),
-                Some(message.message_id),
-            )
-            .into())
+            return ctx.fail(lang_fmt!(ctx, "missingnotename"));
         }
     } else {
-        Err(BotError::Generic("not a command".to_owned()).into())
+        Err(BotError::Generic(lang_fmt!(ctx, "notacommand")).into())
     }
 }
 
@@ -350,7 +344,7 @@ async fn delete<'a>(ctx: &Context, args: &TextArgs<'a>) -> Result<()> {
     let model = get_model(ctx, args).await?;
     let name = model.name.clone();
     delete_by_id(model.name, ctx.message()?.get_chat().get_id()).await?;
-    ctx.reply(format!("Deleted note {}", name)).await?;
+    ctx.reply(lang_fmt!(ctx, "deletednote", name)).await?;
     Ok(())
 }
 
