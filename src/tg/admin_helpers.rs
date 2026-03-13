@@ -4,7 +4,7 @@
 //! this module depends on the `static` module for access to the database, redis,
 //! and telegram client.
 
-use std::collections::VecDeque;
+use std::{borrow::Cow, collections::VecDeque};
 
 use crate::{
     persist::{
@@ -27,7 +27,8 @@ use crate::{
 use async_trait::async_trait;
 use botapi::gen_types::{
     Chat, ChatFullInfo, ChatMember, ChatMemberUpdated, ChatPermissions, ChatPermissionsBuilder,
-    Document, InlineKeyboardButtonBuilder, MaybeInaccessibleMessage, Message, UpdateExt, User,
+    Document, InlineKeyboardButtonBuilder, MaybeInaccessibleMessage, Message, MessageEntity,
+    UpdateExt, User,
 };
 use bytes::Bytes;
 use chrono::{DateTime, Duration, Utc};
@@ -89,6 +90,64 @@ impl GetChat for i64 {
 
     async fn refresh_chat(&self) -> Result<()> {
         Ok(())
+    }
+}
+
+pub trait MessageExt {
+    fn get_all_entities(&self) -> impl Iterator<Item = &'_ MessageEntity>;
+    fn get_all_entities_owned(self) -> impl Iterator<Item = MessageEntity>;
+    fn moderate_text(&self) -> Option<Cow<'_, str>>;
+    fn moderate_text_owned(self) -> Option<String>;
+}
+
+pub trait EntityExt {
+    fn slice_message(&self, message: &str) -> Result<String>;
+}
+
+impl EntityExt for MessageEntity {
+    fn slice_message(&self, message: &str) -> Result<String> {
+        let utf16 = message
+            .encode_utf16()
+            .skip(self.offset as usize)
+            .take(self.length as usize)
+            .collect::<Vec<_>>();
+
+        Ok(String::from_utf16(&utf16)?)
+    }
+}
+
+impl MessageExt for Message {
+    fn get_all_entities(&self) -> impl Iterator<Item = &'_ MessageEntity> {
+        self.entities
+            .as_deref()
+            .unwrap_or_default()
+            .iter()
+            .chain(self.caption_entities.as_deref().unwrap_or_default().iter())
+    }
+
+    fn get_all_entities_owned(self) -> impl Iterator<Item = MessageEntity> {
+        self.entities
+            .unwrap_or_default()
+            .into_iter()
+            .chain(self.caption_entities.unwrap_or_default().into_iter())
+    }
+
+    fn moderate_text(&self) -> Option<Cow<'_, str>> {
+        match (self.text.as_deref(), self.caption.as_deref()) {
+            (Some(text), None) => Some(Cow::Borrowed(text)),
+            (None, Some(text)) => Some(Cow::Borrowed(text)),
+            (Some(text), Some(caption)) => Some(Cow::Owned(format!("{text} {caption}"))),
+            (None, None) => None,
+        }
+    }
+
+    fn moderate_text_owned(self) -> Option<String> {
+        match (self.text, self.caption) {
+            (Some(text), None) => Some(text),
+            (None, Some(text)) => Some(text),
+            (Some(text), Some(caption)) => Some(format!("{text} {caption}")),
+            (None, None) => None,
+        }
     }
 }
 

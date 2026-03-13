@@ -4,6 +4,7 @@
 //!
 //! Also provides helper functions for either logging errors to prometheus or
 //! sending formatted errors to the user via telegram
+use std::string::FromUtf16Error;
 use std::time::SystemTimeError;
 
 use crate::tg::command::Context;
@@ -434,6 +435,8 @@ pub enum BotError {
     RhaiEvalErr(#[from] Box<rhai::EvalAltResult>),
     #[error("Rhai parse error: {0}")]
     RhaiParseError(#[from] rhai::ParseError),
+    #[error("Utf16 error: {0}")]
+    Utf16(#[from] FromUtf16Error),
 }
 
 impl<T> From<tokio::sync::mpsc::error::SendError<T>> for BotError {
