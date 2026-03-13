@@ -14,7 +14,7 @@ use crate::tg::user::{get_user_username, Username};
 use crate::util::error::{BotError, Result};
 use crate::util::string::{get_chat_lang, Lang};
 use crate::{metadata::metadata, statics::TG, util::string::Speak};
-use botapi::gen_types::{Chat, ChatPermissionsBuilder, Message, UpdateExt};
+use botapi::gen_types::{Chat, ChatHandle, ChatPermissionsBuilder, Message, UpdateExt};
 use chrono::Duration;
 use entities::locks::LockType;
 use futures::future::BoxFuture;
@@ -636,9 +636,11 @@ fn is_invite(message: &Message) -> BoxFuture<'_, Result<bool>> {
                     "mention" => {
                         if let Some(text) = message.get_caption() {
                             if let Ok(user) = entity.slice_message(text) {
-                                if let Some(user) = get_user_username(user).await? {
-                                    return Ok(TG.client.get_chat(user.id).await.is_ok());
-                                }
+                                return Ok(TG
+                                    .client
+                                    .get_chat(ChatHandle::Username(user.to_owned()))
+                                    .await
+                                    .is_ok());
                             }
                         }
                     }
@@ -663,9 +665,11 @@ fn is_invite(message: &Message) -> BoxFuture<'_, Result<bool>> {
                     "mention" => {
                         if let Some(text) = message.get_text() {
                             if let Ok(user) = entity.slice_message(text) {
-                                if let Some(user) = get_user_username(user).await? {
-                                    return Ok(TG.client.get_chat(user.id).await.is_ok());
-                                }
+                                return Ok(TG
+                                    .client
+                                    .get_chat(ChatHandle::Username(user.to_owned()))
+                                    .await
+                                    .is_ok());
                             }
                         }
                     }
