@@ -12,6 +12,7 @@ use crate::persist::redis::ToRedisStr;
 use crate::statics::CONFIG;
 use crate::statics::DB;
 use crate::statics::REDIS;
+use crate::tg::admin_helpers::MessageExt;
 use crate::tg::button::InlineKeyboardBuilder;
 use crate::tg::command::*;
 use crate::tg::markdown::get_markup_for_buttons;
@@ -22,7 +23,6 @@ use crate::tg::permissions::*;
 use crate::util::error::BoxedBotError;
 use crate::util::error::Fail;
 use crate::util::error::Result;
-use crate::util::string::get_search_text;
 use crate::util::string::AlignCharBoundry;
 use crate::util::string::Speak;
 use botapi::gen_types::Message;
@@ -911,7 +911,7 @@ async fn command_filter<'a>(c: &Context, args: &TextArgs<'a>) -> Result<()> {
 
 async fn handle_trigger(ctx: &Context) -> Result<()> {
     let message = ctx.message()?;
-    if let Some(text) = get_search_text(message) {
+    if let Some(text) = message.moderate_text() {
         if let Some((res, extra_entities, extra_buttons, actions)) =
             search_cache(message, &text).await?
         {

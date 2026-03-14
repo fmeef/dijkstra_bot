@@ -14,6 +14,7 @@ use crate::statics::REDIS;
 use crate::tg::admin_helpers::parse_duration_str;
 use crate::tg::admin_helpers::ActionMessage;
 use crate::tg::admin_helpers::DeleteAfterTime;
+use crate::tg::admin_helpers::MessageExt;
 use crate::tg::admin_helpers::UpdateHelpers;
 use crate::tg::command::Cmd;
 use crate::tg::command::Context;
@@ -38,7 +39,6 @@ use crate::util::fmt::TimeFormat;
 use crate::util::glob::WildMatch;
 
 use crate::util::scripting::ModAction;
-use crate::util::string::get_search_text;
 use crate::util::string::Speak;
 use botapi::gen_types::Message;
 use botapi::gen_types::User;
@@ -1105,7 +1105,7 @@ async fn handle_trigger(ctx: &Context) -> Result<()> {
     if let Some(message) = ctx.should_moderate().await {
         log::info!("should_moderate");
         if let Some(user) = message.get_from() {
-            if let Some(text) = get_search_text(message) {
+            if let Some(text) = message.moderate_text() {
                 if let Some(res) = search_cache(ctx, message, &text).await? {
                     log::info!("search_cache");
                     let duration = res.duration.and_then(Duration::try_seconds);
