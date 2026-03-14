@@ -434,7 +434,7 @@ where
             let callback = self
                 .callback
                 .ok_or_else(|| BotError::Generic("callback not set".to_owned()))?;
-            let buttons = self.buttons.unwrap_or_default();
+            let extra_buttons = self.buttons.unwrap_or_default();
             if should_ignore_chat(chat).await? {
                 return Ok(());
             }
@@ -442,7 +442,7 @@ where
             let text = self.text.unwrap_or_else(|| "".to_owned());
             let (text, entities, mut buttons) = if let Some(extra) = self.extra_entities {
                 let (text, extra, mut buttons) = if self.actions.is_some() {
-                    let (text, mut entities, buttons, _) = MarkupBuilder::new(None)
+                    let (text, mut entities, mut buttons, _) = MarkupBuilder::new(None)
                         .set_text(text)
                         .filling(false)
                         .header(false)
@@ -452,9 +452,10 @@ where
                         .build_murkdown_nofail()
                         .await;
                     entities.extend_from_slice(extra.as_slice());
+                    buttons.merge(extra_buttons);
                     (text, entities, buttons)
                 } else {
-                    (text, extra, buttons)
+                    (text, extra, extra_buttons)
                 };
                 let (text, entities) = retro_fillings(
                     text,
@@ -592,11 +593,11 @@ where
             return Ok(());
         }
 
-        let buttons = self.buttons.unwrap_or_default();
+        let extra_buttons = self.buttons.unwrap_or_default();
         let text = self.text.unwrap_or_else(|| "".to_owned());
         let (text, entities, mut buttons) = if let Some(extra) = self.extra_entities {
             let (text, extra, mut buttons) = if self.actions.is_some() {
-                let (text, mut entities, buttons, _) = MarkupBuilder::new(None)
+                let (text, mut entities, mut buttons, _) = MarkupBuilder::new(None)
                     .set_text(text)
                     .filling(false)
                     .header(false)
@@ -606,9 +607,10 @@ where
                     .build_murkdown_nofail()
                     .await;
                 entities.extend_from_slice(extra.as_slice());
+                buttons.merge(extra_buttons);
                 (text, entities, buttons)
             } else {
-                (text, extra, buttons)
+                (text, extra, extra_buttons)
             };
             let (text, entities) = retro_fillings(
                 text,
