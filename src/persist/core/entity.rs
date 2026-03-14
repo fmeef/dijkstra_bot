@@ -186,6 +186,7 @@ where
             .map(|v| v.into_active_model())
             .collect::<Vec<_>>();
         if !buttons.is_empty() {
+            log::info!("inserting buttons {buttons:?}");
             button::Entity::insert_many(buttons)
                 .on_conflict(
                     OnConflict::columns([

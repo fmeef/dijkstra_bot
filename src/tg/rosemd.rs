@@ -300,17 +300,19 @@ impl RoseMdParser {
 
     /// Execute the parse operation, returning the parsed text, entity list, and inline keyboard
     pub fn parse(&self) -> (String, Vec<MessageEntity>, InlineKeyboardBuilder) {
-        self.parse_ch(&self.chars, 0)
+        let mut builder = InlineKeyboardBuilder::default();
+        let (text, entities) = self.parse_ch(&self.chars, 0, &mut builder);
+        (text, entities, builder)
     }
 
     fn parse_ch(
         &self,
         chars: &[char],
         offset: i64,
-    ) -> (String, Vec<MessageEntity>, InlineKeyboardBuilder) {
+        builder: &mut InlineKeyboardBuilder,
+    ) -> (String, Vec<MessageEntity>) {
         let mut res = Vec::new();
         let mut text = String::new();
-        let mut builder = InlineKeyboardBuilder::default();
         let mut i = chars.iter().enumerate();
         while let Some((mut x, ch)) = i.next() {
             let mut ch = *ch;
@@ -377,16 +379,13 @@ impl RoseMdParser {
                         let start = x + 1;
                         let end = x + idx + 1;
 
-                        let (nested_text, nested_entities, nested_buttons) = if ch == '`' {
-                            (
-                                chars[start..end].iter().collect(),
-                                Vec::new(),
-                                InlineKeyboardBuilder::default(),
-                            )
+                        let (nested_text, nested_entities) = if ch == '`' {
+                            (chars[start..end].iter().collect(), Vec::new())
                         } else {
                             self.parse_ch(
                                 &chars[start..end],
                                 offset + text.encode_utf16().count() as i64,
+                                builder,
                             )
                         };
 
@@ -414,33 +413,18 @@ impl RoseMdParser {
                             res.push(entity);
                         }
 
-                        for button in nested_buttons
-                            .into_inner()
-                            .into_iter()
-                            .flat_map(|v| v.into_iter())
-                        {
-                            builder.button(button.to_button());
-                        }
-
-                        let (follow_text, follow_entities, follow_buttons) = self.parse_ch(
+                        let (follow_text, follow_entities) = self.parse_ch(
                             &chars[end + item.len()..],
                             nested_text.encode_utf16().count() as i64
                                 + offset
                                 + text.encode_utf16().count() as i64,
+                            builder,
                         );
-
-                        for button in follow_buttons
-                            .into_inner()
-                            .into_iter()
-                            .flat_map(|v| v.into_iter())
-                        {
-                            builder.button(button.to_button());
-                        }
 
                         res.extend_from_slice(&follow_entities);
                         res.extend_from_slice(&nested_entities);
                         let t = format!("{}{}{}", text, nested_text, follow_text);
-                        return (t, res, builder);
+                        return (t, res);
                     } else {
                         text.push_str(&item);
                         continue;
@@ -451,12 +435,13 @@ impl RoseMdParser {
                     if let Some((link_text, content, new_end)) = get_link_contents(&chars[x..]) {
                         let end = x + new_end;
 
-                        let (nested_text, nested_entities, nested_buttons) =
-                            self.parse_ch(link_text, offset);
+                        let (nested_text, nested_entities) =
+                            self.parse_ch(link_text, offset, builder);
 
-                        let (follow_text, follow_entities, follow_buttons) = self.parse_ch(
+                        let (follow_text, follow_entities) = self.parse_ch(
                             &chars[end..],
                             offset + nested_text.encode_utf16().count() as i64,
+                            builder,
                         );
 
                         if self.enable_buttons {
@@ -491,9 +476,7 @@ impl RoseMdParser {
                                             .build();
                                     builder.button(bt);
                                 };
-                                builder.merge(nested_buttons);
-                                builder.merge(follow_buttons);
-                                return (text, res, builder);
+                                return (text, res);
                             }
                         }
 
@@ -509,7 +492,7 @@ impl RoseMdParser {
                         res.extend_from_slice(&nested_entities);
                         res.extend_from_slice(&follow_entities);
                         let t = format!("{}{}{}", text, nested_text, follow_text);
-                        return (t, res, builder);
+                        return (t, res);
                     } else {
                         text.push(ch);
                         continue;
@@ -527,7 +510,7 @@ impl RoseMdParser {
             }
         }
 
-        (text, res, builder)
+        (text, res)
     }
 }
 
