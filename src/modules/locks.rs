@@ -14,7 +14,9 @@ use crate::tg::user::{get_user_username, Username};
 use crate::util::error::{BotError, Result};
 use crate::util::string::{get_chat_lang, Lang};
 use crate::{metadata::metadata, statics::TG, util::string::Speak};
-use botapi::gen_types::{Chat, ChatHandle, ChatPermissionsBuilder, Message, UpdateExt};
+use botapi::gen_types::{
+    Chat, ChatHandle, ChatPermissionsBuilder, Message, MessageEntity, UpdateExt,
+};
 use chrono::Duration;
 use entities::locks::LockType;
 use futures::future::BoxFuture;
@@ -539,89 +541,105 @@ fn is_tg_link<T: AsRef<str>>(url: T) -> bool {
     url.starts_with("t.me") || url.starts_with("tg://")
 }
 
-fn is_out_of_chat_user(message: &'_ Message) -> BoxFuture<'_, Result<bool>> {
-    async move {
-        if let Some(entity) = message.get_entities() {
-            for entity in entity {
-                match entity.get_tg_type() {
-                    "text_mention" => {
-                        if let Some(user) = entity.get_user() {
-                            return Ok(
-                                !is_chat_member(user.get_id(), message.get_chat().get_id()).await?
-                            );
-                        }
+async fn check_out_of_chat_entities(
+    message: &Message,
+    entities: Option<&Vec<MessageEntity>>,
+    text: Option<&str>,
+) -> Result<bool> {
+    if let Some(entity) = entities {
+        for entity in entity {
+            match entity.get_tg_type() {
+                "text_mention" => {
+                    if let Some(user) = entity.get_user() {
+                        return Ok(
+                            !is_chat_member(user.get_id(), message.get_chat().get_id()).await?
+                        );
                     }
-                    "text_link" => {
-                        if let Some(url) = entity.get_url() {
-                            return Ok(is_tg_link(url));
-                        }
+                }
+                "text_link" => {
+                    if let Some(url) = entity.get_url() {
+                        return Ok(is_tg_link(url));
                     }
-                    "mention" => {
-                        if let Some(text) = message.get_text() {
-                            if let Ok(user) = entity.slice_message(text) {
-                                match get_user_username(user).await? {
-                                    Some(user) => {
-                                        return Ok(!is_chat_member(
-                                            user.get_id(),
-                                            message.get_chat().get_id(),
-                                        )
-                                        .await?);
-                                    }
-                                    None => return Ok(true),
+                }
+                "mention" => {
+                    if let Some(text) = text {
+                        if let Ok(user) = entity.slice_message(text) {
+                            match get_user_username(user).await? {
+                                Some(user) => {
+                                    return Ok(!is_chat_member(
+                                        user.get_id(),
+                                        message.get_chat().get_id(),
+                                    )
+                                    .await?);
                                 }
+                                None => return Ok(true),
                             }
                         }
-                        return Ok(false);
                     }
-                    "url" => {
-                        if let Some(url) = message.get_text() {
-                            return Ok(is_tg_link(url));
-                        }
-                    }
-                    _ => (),
+                    return Ok(false);
                 }
+                "url" => {
+                    if let Some(url) = message.get_text() {
+                        return Ok(is_tg_link(url));
+                    }
+                }
+                _ => (),
             }
         }
-        if let Some(entity) = message.get_caption_entities() {
-            for entity in entity {
-                match entity.get_tg_type() {
-                    "text_mention" => {
-                        if let Some(user) = entity.get_user() {
-                            return Ok(
-                                !is_chat_member(user.get_id(), message.get_chat().get_id()).await?
-                            );
+    }
+    Ok(false)
+}
+
+async fn get_invite(
+    message: &Message,
+    entities: Option<&Vec<MessageEntity>>,
+    text: Option<&str>,
+) -> Result<bool> {
+    if let Some(entity) = entities {
+        for entity in entity {
+            match entity.get_tg_type() {
+                "mention" => {
+                    if let Some(text) = text {
+                        if let Ok(user) = entity.slice_message(text) {
+                            return Ok(TG
+                                .client
+                                .get_chat(ChatHandle::Username(user.to_owned()))
+                                .await
+                                .is_ok());
                         }
                     }
-                    "text_link" => {
-                        if let Some(url) = entity.get_url() {
-                            return Ok(is_tg_link(url));
-                        }
-                    }
-                    "mention" => {
-                        if let Some(text) = message.get_caption() {
-                            if let Ok(user) = entity.slice_message(text) {
-                                match get_user_username(user).await? {
-                                    Some(user) => {
-                                        return Ok(!is_chat_member(
-                                            user.get_id(),
-                                            message.get_chat().get_id(),
-                                        )
-                                        .await?);
-                                    }
-                                    None => return Ok(true),
-                                }
-                            }
-                        }
-                        return Ok(false);
-                    }
-                    "url" => {
-                        if let Some(url) = message.get_caption() {
-                            return Ok(is_tg_link(url));
-                        }
-                    }
-                    _ => (),
                 }
+                "text_link" => {
+                    if let Some(url) = entity.get_url() {
+                        return Ok(is_tg_link(url));
+                    }
+                }
+
+                "url" => {
+                    if let Some(url) = message.get_text() {
+                        return Ok(is_tg_link(url));
+                    }
+                }
+                _ => (),
             }
+        }
+    }
+    Ok(false)
+}
+
+fn is_out_of_chat_user(message: &'_ Message) -> BoxFuture<'_, Result<bool>> {
+    async move {
+        if check_out_of_chat_entities(message, message.get_entities(), message.get_text()).await? {
+            return Ok(true);
+        }
+        if check_out_of_chat_entities(
+            message,
+            message.get_caption_entities(),
+            message.get_caption(),
+        )
+        .await?
+        {
+            return Ok(true);
         }
         Ok(false)
     }
@@ -630,63 +648,18 @@ fn is_out_of_chat_user(message: &'_ Message) -> BoxFuture<'_, Result<bool>> {
 
 fn is_invite(message: &Message) -> BoxFuture<'_, Result<bool>> {
     async move {
-        if let Some(entity) = message.get_caption_entities() {
-            for entity in entity {
-                match entity.get_tg_type() {
-                    "mention" => {
-                        if let Some(text) = message.get_caption() {
-                            if let Ok(user) = entity.slice_message(text) {
-                                return Ok(TG
-                                    .client
-                                    .get_chat(ChatHandle::Username(user.to_owned()))
-                                    .await
-                                    .is_ok());
-                            }
-                        }
-                    }
-                    "text_link" => {
-                        if let Some(url) = entity.get_url() {
-                            return Ok(is_tg_link(url));
-                        }
-                    }
-
-                    "url" => {
-                        if let Some(url) = message.get_text() {
-                            return Ok(is_tg_link(url));
-                        }
-                    }
-                    _ => (),
-                }
-            }
+        if get_invite(
+            message,
+            message.get_caption_entities(),
+            message.get_caption(),
+        )
+        .await?
+        {
+            return Ok(true);
         }
-        if let Some(entity) = message.get_entities() {
-            for entity in entity {
-                match entity.get_tg_type() {
-                    "mention" => {
-                        if let Some(text) = message.get_text() {
-                            if let Ok(user) = entity.slice_message(text) {
-                                return Ok(TG
-                                    .client
-                                    .get_chat(ChatHandle::Username(user.to_owned()))
-                                    .await
-                                    .is_ok());
-                            }
-                        }
-                    }
-                    "text_link" => {
-                        if let Some(url) = entity.get_url() {
-                            return Ok(is_tg_link(url));
-                        }
-                    }
 
-                    "url" => {
-                        if let Some(url) = message.get_text() {
-                            return Ok(is_tg_link(url));
-                        }
-                    }
-                    _ => (),
-                }
-            }
+        if get_invite(message, message.get_entities(), message.get_text()).await? {
+            return Ok(true);
         }
 
         Ok(false)
