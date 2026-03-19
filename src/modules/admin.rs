@@ -42,7 +42,10 @@ async fn promote(context: &Context) -> Result<()> {
                 if user == get_me().await?.id {
                     ctx.fail(lang_fmt!(ctx, "selfpromote"))?;
                 }
-                chat.promote(user).await?;
+                chat.promote(user)
+                    .await
+                    .speak_err_code(ctx.message()?, 400, |_| lang_fmt!(ctx, "botnotadmin"))
+                    .await?;
                 let mention = user.mention().await?;
                 message
                     .reply_fmt(entity_fmt!(ctx, "promote", mention))

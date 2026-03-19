@@ -66,9 +66,7 @@ pub async fn ban_cmd(ctx: &Context) -> Result<()> {
         let mention = user.mention().await?;
         ctx.ban(user, duration, true)
             .await
-            .speak_err_code(ctx.message()?.get_chat(), 400, |_| {
-                lang_fmt!(lang, "failuser", "ban")
-            })
+            .speak_err_code(ctx.message()?, 400, |_| lang_fmt!(lang, "botnotadmin"))
             .await?;
         ctx.reply_fmt(entity_fmt!(ctx, "banned", mention)).await?;
         Ok(())
@@ -120,9 +118,7 @@ pub async fn mute_cmd<'a>(ctx: &Context) -> Result<()> {
     let user = ctx
         .change_permissions_message(permissions)
         .await
-        .speak_err_code(ctx.message()?.get_chat(), 400, |_| {
-            lang_fmt!(lang, "failmute")
-        })
+        .speak_err_code(ctx.message()?, 400, |_| lang_fmt!(lang, "botnotadmin"))
         .await?;
     if let Some(user) = user {
         let mention = user.mention().await?;
@@ -159,7 +155,7 @@ pub async fn unmute_cmd<'a>(ctx: &Context) -> Result<()> {
     let user = ctx
         .change_permissions_message(permissions)
         .await
-        .speak_err_code(message.get_chat(), 400, |_| lang_fmt!(lang, "failmute"))
+        .speak_err_code(message, 400, |_| lang_fmt!(lang, "failmute"))
         .await?;
     if let Some(user) = user {
         let mention = user.mention().await?;

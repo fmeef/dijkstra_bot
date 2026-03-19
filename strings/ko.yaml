@@ -30,6 +30,7 @@ blockliststopped: 블록리스트 기능 중단
 blockmute: '사용자 {}이 금지된 단어를 사용했습니다! 조치: {} 사용 금지
 
   {}'
+botnotadmin: 이 봇은 관리자가 아니므로, 이 작업을 수행할 수 없습니다.
 brokenmedia: '모듈별로 분해된 {}:
 
 

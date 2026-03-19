@@ -327,7 +327,7 @@ impl GetUser for i64 {
     }
 
     async fn mention(&self) -> Result<Markup<String>> {
-        let res = if let Some(user) = self.get_cached_user().await? {
+        let res = if let Some(user) = self.get_cached_user().await.ok().flatten() {
             let name = user
                 .get_username()
                 .map(|v| format!("@{}", v))

@@ -32,6 +32,7 @@ blockliststopped: 阻止列表已停止
 blockmute: '用户 {} 使用了被禁止的词！ 采取的措施：静音 {}
 
   {}'
+botnotadmin: 此機器人不是管理者，因此無法執行此操作。
 brokenmedia: '因模块而损坏的媒体：{}
 
 

@@ -33,6 +33,8 @@ blockliststopped: La lista de bloqueo ha sido desactivada.
 blockmute: 'El usuario {} dijo una palabra prohibida. Acción: silenciado a {}
 
   {}'
+botnotadmin: Este bot no es administrador y, por lo tanto, no puede realizar esta
+  acción.
 brokenmedia: 'Medios dañados para {}, según módulo:
 
 
