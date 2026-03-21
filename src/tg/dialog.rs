@@ -291,7 +291,7 @@ pub async fn record_chat_member(user: i64, chat: i64) -> Result<()> {
     let (updated, _): (i64, bool) = REDIS
         .pipe(|q| q.sadd(&key, chat).expire(&key, CONFIG.timing.cache_timeout))
         .await?;
-    log::info!("record_chat_member {}", updated);
+    log::debug!("record_chat_member {}", updated);
     if updated > 0 {
         chat_members::Entity::insert(chat_members::ActiveModel {
             chat_id: Set(chat),
@@ -315,7 +315,7 @@ pub async fn record_chat_member_banned(user: i64, chat: i64, banned: bool) -> Re
     let (updated, _): (i64, bool) = REDIS
         .pipe(|q| q.sadd(&key, chat).expire(&key, CONFIG.timing.cache_timeout))
         .await?;
-    log::info!("record_chat_member {}", updated);
+    log::debug!("record_chat_member {}", updated);
     if updated > 0 {
         chat_members::Entity::insert(chat_members::ActiveModel {
             chat_id: Set(chat),

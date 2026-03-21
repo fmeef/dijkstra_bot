@@ -1103,7 +1103,6 @@ async fn warn(ctx: &Context, user: &User, reason: Option<String>) -> Result<()> 
 
 async fn handle_trigger(ctx: &Context) -> Result<()> {
     if let Some(message) = ctx.should_moderate().await {
-        log::info!("should_moderate");
         if let Some(user) = message.get_from() {
             if let Some(text) = message.moderate_text() {
                 if let Some(res) = search_cache(ctx, message, &text).await? {

@@ -693,7 +693,6 @@ async fn search_cache(
             let mut iter: redis::AsyncIter<(String, i64)> = q.hscan(&hash_key).await?;
             while let Some(it) = iter.next_item().await {
                 let (key, item) = it?;
-                log::info!("search cache {}", item);
                 let t = text.to_lowercase();
                 if let Some(mut idx) = t.find(&key) {
                     if idx == 0 && idx + key.len() == text.len() {

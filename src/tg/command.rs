@@ -351,7 +351,7 @@ impl StaticContext {
                 .get_text()
                 .map_or_else(|| message.get_caption(), Some)
             {
-                log::info!("cmd {}", cmd);
+                log::debug!("msg {}", cmd);
                 if let Some(head) = COMMOND_HEAD.find(cmd) {
                     let entities = if let Some(entities) = message.get_entities() {
                         let mut entities = entities
