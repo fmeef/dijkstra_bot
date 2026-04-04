@@ -402,6 +402,7 @@ impl RecordUser for UpdateExt {
             UpdateExt::EditedBusinessMessage(_) => None,
             UpdateExt::BusinessMessage(_) => None,
             UpdateExt::PurchasedPaidMedia(ref p) => Some(p.get_from()),
+            UpdateExt::ManagedBot(p) => Some(&p.user),
         }
     }
 
