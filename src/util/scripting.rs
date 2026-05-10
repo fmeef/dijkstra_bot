@@ -14,7 +14,10 @@ use crate::statics::CONFIG;
 use super::error::{BotError, Result};
 
 lazy_static! {
-    pub static ref COMPUTE_TP: ThreadPool = ThreadPool::new(CONFIG.compute_threads);
+    pub static ref COMPUTE_TP: ThreadPool = threadpool::Builder::new()
+        .num_threads(CONFIG.compute_threads)
+        .thread_stack_size(256 * 1024 * 1024)
+        .build();
 }
 
 thread_local! {

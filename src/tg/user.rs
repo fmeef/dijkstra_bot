@@ -403,6 +403,7 @@ impl RecordUser for UpdateExt {
             UpdateExt::BusinessMessage(_) => None,
             UpdateExt::PurchasedPaidMedia(ref p) => Some(p.get_from()),
             UpdateExt::ManagedBot(p) => Some(&p.user),
+            UpdateExt::GuestMessage(ref m) => m.get_from(),
         }
     }
 
