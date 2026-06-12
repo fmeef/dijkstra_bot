@@ -1512,7 +1512,8 @@ impl Context {
                             .build()
                             .await?;
                         TG.client
-                            .build_edit_message_text("Warn removed")
+                            .build_edit_message_text()
+                            .text("Warn removed")
                             .message_id(message.get_message_id())
                             .chat_id(chat.get_id())
                             .build()

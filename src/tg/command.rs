@@ -17,18 +17,17 @@ use crate::{
 };
 use async_trait::async_trait;
 use base64::{engine::general_purpose, Engine};
-use botapi::gen_types::{
-    Chat, MaybeInaccessibleMessage, Message, MessageBuilder, MessageEntity, UpdateExt, User,
-};
+use botapi::gen_types::{Chat, MaybeInaccessibleMessage, Message, MessageEntity, UpdateExt, User};
 use lazy_static::lazy_static;
 use macros::lang_fmt;
 use redis::AsyncCommands;
 use regex::Regex;
 use serde::Deserialize;
 use serde::{de::DeserializeOwned, Serialize};
+
 use std::collections::VecDeque;
 use std::sync::Arc;
-use std::time::SystemTime;
+
 use uuid::Uuid;
 use yoke::{Yoke, Yokeable};
 
@@ -677,9 +676,11 @@ where
     Ok(None)
 }
 
-#[allow(dead_code)]
+#[cfg(test)]
 mod test {
-    use botapi::gen_types::UserBuilder;
+    use std::time::SystemTime;
+
+    use botapi::gen_types::{Chat, MessageBuilder, UserBuilder};
 
     use crate::statics::{Args, Config, ARGS, CONFIG_BACKEND, ME};
 

@@ -3,7 +3,6 @@ use std::{marker::PhantomData, thread::LocalKey};
 use botapi::gen_types::rhai_helpers::setup_all_rhai;
 use lazy_static::lazy_static;
 use once_cell::sync::Lazy;
-use rhai::plugin::*;
 use rhai::{export_module, exported_module, Dynamic, Engine, FnPtr, FuncArgs, Scope, AST};
 use threadpool::ThreadPool;
 use tokio::sync::mpsc;
@@ -85,8 +84,6 @@ impl ModAction {
 #[allow(non_upper_case_globals, non_snake_case)]
 #[export_module]
 mod action {
-    use rhai::Dynamic;
-
     use super::ModAction;
 
     pub const Ignore: ModAction = ModAction::Ignore;

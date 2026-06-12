@@ -38,6 +38,7 @@
               rustup
               pkg-config
               openssl
+	      redis
               unstable.python3
               unstable.ollama
               unstable.python313Packages.ollama

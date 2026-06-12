@@ -804,7 +804,8 @@ impl Context {
                 }
                 if let Some(MaybeInaccessibleMessage::Message(message)) = callback.get_message() {
                     TG.client
-                        .build_edit_message_text("Fpromote has been canceled")
+                        .build_edit_message_text()
+                        .text("Fpromote has been canceled")
                         .message_id(message.get_message_id())
                         .chat_id(chat)
                         .build()

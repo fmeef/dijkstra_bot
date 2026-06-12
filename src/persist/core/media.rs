@@ -383,7 +383,8 @@ where
                 )),
                 MediaType::Text => {
                     TG.client
-                        .build_edit_message_text(&text)
+                        .build_edit_message_text()
+                        .text(&text)
                         .message_id(current_message.get_message_id())
                         .chat_id(current_message.get_chat().get_id())
                         .entities(&entities)

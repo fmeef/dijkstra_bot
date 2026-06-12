@@ -600,7 +600,8 @@ impl Conversation {
                 .await;
 
             TG.client()
-                .build_edit_message_text(&text)
+                .build_edit_message_text()
+                .text(&text)
                 .message_id(message.get_message_id())
                 .reply_markup(&n)
                 .entities(&entities)

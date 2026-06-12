@@ -292,7 +292,8 @@ impl Context {
             replace.on_push(move |c| async move {
                 if let Some(MaybeInaccessibleMessage::Message(message)) = c.get_message() {
                     TG.client
-                        .build_edit_message_text(&taintmessage)
+                        .build_edit_message_text()
+                        .text(&taintmessage)
                         .message_id(message.get_message_id())
                         .chat_id(message.get_chat().get_id())
                         .build()
