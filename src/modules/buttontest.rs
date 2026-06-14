@@ -207,6 +207,16 @@ pub async fn handle_update(ctx: &Context) -> Result<()> {
                 })
                 .await?;
             }
+            "parserichtext" => {
+                ctx.action_message(|_, am, _| async move {
+                    let message = am.message();
+                    if let Some(ref rich) = message.rich_message {
+                        log::error!("rich blocks {:?}", rich.blocks);
+                    }
+                    Ok(())
+                })
+                .await?;
+            }
             _ => (),
         };
     }
