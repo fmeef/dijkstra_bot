@@ -8,7 +8,7 @@ use crate::tg::rosemd::{RoseMdDecompiler, RoseMdParser};
 use crate::util::error::{Fail, Result, SpeakErr};
 use crate::util::scripting::{ManagedRhai, RHAI_ENGINE};
 use crate::util::string::Speak;
-use botapi::gen_types::Message;
+use botapi::gen_types::{InputRichMessageBuilder, Message, RichMessageBuilder};
 use macros::update_handler;
 use rhai::Dynamic;
 use sea_orm_migration::MigrationTrait;
@@ -189,6 +189,23 @@ pub async fn handle_update(ctx: &Context) -> Result<()> {
             "cd" => {
                 ctx.check_permissions(|p| p.is_support).await?;
                 send_captcha(message, message.get_chat().to_owned(), ctx).await?;
+            }
+            "richtext" => {
+                ctx.action_message(|_, am, _| async move {
+                    if let Some(text) = am.message().get_text() {
+                        TG.client()
+                            .build_send_rich_message(
+                                message.chat.get_id(),
+                                &InputRichMessageBuilder::new()
+                                    .set_markdown(text.to_owned())
+                                    .build(),
+                            )
+                            .build()
+                            .await?;
+                    }
+                    Ok(())
+                })
+                .await?;
             }
             _ => (),
         };
