@@ -656,7 +656,9 @@ where
                         ),
                     )
                     .reply_parameters(
-                        &ReplyParametersBuilder::new(message.get_message_id()).build(),
+                        &ReplyParametersBuilder::new()
+                            .set_message_id(message.get_message_id())
+                            .build(),
                     )
                     .build()
                     .await
@@ -674,7 +676,9 @@ where
                     .caption_entities(&entities)
                     .reply_markup(&buttons)
                     .reply_parameters(
-                        &ReplyParametersBuilder::new(message.get_message_id()).build(),
+                        &ReplyParametersBuilder::new()
+                            .set_message_id(message.get_message_id())
+                            .build(),
                     )
                     .build()
                     .await
@@ -692,7 +696,9 @@ where
                     .caption_entities(&entities)
                     .caption(&text)
                     .reply_parameters(
-                        &ReplyParametersBuilder::new(message.get_message_id()).build(),
+                        &ReplyParametersBuilder::new()
+                            .set_message_id(message.get_message_id())
+                            .build(),
                     )
                     .build()
                     .await
@@ -707,7 +713,9 @@ where
                         ),
                     )
                     .reply_parameters(
-                        &ReplyParametersBuilder::new(message.get_message_id()).build(),
+                        &ReplyParametersBuilder::new()
+                            .set_message_id(message.get_message_id())
+                            .build(),
                     )
                     .caption(&text)
                     .reply_markup(&buttons)
@@ -735,7 +743,9 @@ where
                 TG.client()
                     .build_send_message(chat, &text)
                     .reply_parameters(
-                        &ReplyParametersBuilder::new(message.get_message_id()).build(),
+                        &ReplyParametersBuilder::new()
+                            .set_message_id(message.get_message_id())
+                            .build(),
                     )
                     .reply_markup(&buttons)
                     .entities(&entities)

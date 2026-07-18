@@ -62,7 +62,9 @@ pub async fn report(ctx: &Context) -> Result<()> {
                     TG.client()
                         .build_send_message(chat.get_id(), text)
                         .reply_parameters(
-                            &ReplyParametersBuilder::new(ctx.message()?.get_message_id()).build(),
+                            &ReplyParametersBuilder::new()
+                                .set_message_id(ctx.message()?.get_message_id())
+                                .build(),
                         )
                         .entities(&admins)
                         .build()

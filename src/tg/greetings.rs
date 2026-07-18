@@ -417,7 +417,11 @@ pub async fn send_captcha<'a>(message: &Message, unmute_chat: Chat, ctx: &Contex
             botapi::gen_types::FileData::Bytes(bytes),
         )
         .caption(&lang_fmt!(ctx, "captchawarning"))
-        .reply_parameters(&ReplyParametersBuilder::new(message.get_message_id()).build())
+        .reply_parameters(
+            &ReplyParametersBuilder::new()
+                .set_message_id(message.get_message_id())
+                .build(),
+        )
         .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
             builder.build(),
         ))

@@ -279,7 +279,11 @@ pub(crate) async fn show_help<'a>(
                         .set_is_disabled(true)
                         .build(),
                 )
-                .reply_parameters(&ReplyParametersBuilder::new(message.get_message_id()).build())
+                .reply_parameters(
+                    &ReplyParametersBuilder::new()
+                        .set_message_id(message.get_message_id())
+                        .build(),
+                )
                 .build()
                 .await?;
         } else {
@@ -295,7 +299,11 @@ pub(crate) async fn show_help<'a>(
                 .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
                     button.build(),
                 ))
-                .reply_parameters(&ReplyParametersBuilder::new(message.get_message_id()).build())
+                .reply_parameters(
+                    &ReplyParametersBuilder::new()
+                        .set_message_id(message.get_message_id())
+                        .build(),
+                )
                 .build()
                 .await?;
         }

@@ -216,7 +216,7 @@ impl Speak for i64 {
                 .build_send_message(*self, &text)
                 .entities(&entities)
                 .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(markup.build()))
-                .reply_parameters(&ReplyParametersBuilder::new(reply).build())
+                .reply_parameters(&ReplyParametersBuilder::new().set_message_id(reply).build())
                 .link_preview_options(
                     &LinkPreviewOptionsBuilder::new()
                         .set_is_disabled(true)
@@ -308,14 +308,22 @@ impl Speak for Message {
                                 .set_is_disabled(true)
                                 .build(),
                         )
-                        .reply_parameters(&ReplyParametersBuilder::new(self.message_id).build())
+                        .reply_parameters(
+                            &ReplyParametersBuilder::new()
+                                .set_message_id(self.message_id)
+                                .build(),
+                        )
                         .build()
                         .await?
                 }
                 MessageOrFile::File(file) => {
-                    file.reply_parameters(&ReplyParametersBuilder::new(self.message_id).build())
-                        .build()
-                        .await?
+                    file.reply_parameters(
+                        &ReplyParametersBuilder::new()
+                            .set_message_id(self.message_id)
+                            .build(),
+                    )
+                    .build()
+                    .await?
                 }
             }))
         } else {
@@ -336,7 +344,11 @@ impl Speak for Message {
                 let message = TG
                     .client
                     .build_send_document(self.get_chat().get_id(), bytes)
-                    .reply_parameters(&ReplyParametersBuilder::new(self.get_message_id()).build())
+                    .reply_parameters(
+                        &ReplyParametersBuilder::new()
+                            .set_message_id(self.get_message_id())
+                            .build(),
+                    )
                     .build()
                     .await?;
                 return Ok(Some(message));
@@ -355,7 +367,11 @@ impl Speak for Message {
                 .build_send_message(self.get_chat().get_id(), &text)
                 .entities(&entities)
                 .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(markup.build()))
-                .reply_parameters(&ReplyParametersBuilder::new(self.get_message_id()).build())
+                .reply_parameters(
+                    &ReplyParametersBuilder::new()
+                        .set_message_id(self.get_message_id())
+                        .build(),
+                )
                 .link_preview_options(
                     &LinkPreviewOptionsBuilder::new()
                         .set_is_disabled(true)
@@ -382,7 +398,11 @@ impl Speak for Message {
                 let message = TG
                     .client
                     .build_send_document(self.get_chat().get_id(), bytes)
-                    .reply_parameters(&ReplyParametersBuilder::new(self.get_message_id()).build())
+                    .reply_parameters(
+                        &ReplyParametersBuilder::new()
+                            .set_message_id(self.get_message_id())
+                            .build(),
+                    )
                     .build()
                     .await?;
                 return Ok(Some(message));
@@ -401,7 +421,7 @@ impl Speak for Message {
                 .build_send_message(self.get_chat().get_id(), &text)
                 .entities(&entities)
                 .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(markup.build()))
-                .reply_parameters(&ReplyParametersBuilder::new(reply).build())
+                .reply_parameters(&ReplyParametersBuilder::new().set_message_id(reply).build())
                 .link_preview_options(
                     &LinkPreviewOptionsBuilder::new()
                         .set_is_disabled(true)
@@ -493,7 +513,7 @@ impl Speak for Chat {
             let m = TG
                 .client()
                 .build_send_message(self.get_id(), message.as_ref())
-                .reply_parameters(&ReplyParametersBuilder::new(reply).build())
+                .reply_parameters(&ReplyParametersBuilder::new().set_message_id(reply).build())
                 .link_preview_options(
                     &LinkPreviewOptionsBuilder::new()
                         .set_is_disabled(true)
