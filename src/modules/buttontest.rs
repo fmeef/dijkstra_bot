@@ -8,7 +8,7 @@ use crate::tg::rosemd::{RoseMdDecompiler, RoseMdParser};
 use crate::util::error::{Fail, Result, SpeakErr};
 use crate::util::scripting::{ManagedRhai, RHAI_ENGINE};
 use crate::util::string::Speak;
-use botapi::gen_types::{InputRichMessageBuilder, Message};
+use botapi::gen_types::{EMedia, InputMediaPhotoBuilder, InputRichMessageBuilder, Message};
 use macros::update_handler;
 use rhai::Dynamic;
 use sea_orm_migration::MigrationTrait;

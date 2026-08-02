@@ -404,10 +404,9 @@ where
                 )),
             };
 
-            if let Some(input_media) = input_media {
+            if let Some(mut input_media) = input_media {
                 TG.client
-                    .build_edit_message_media(&input_media)
-                    .media(&input_media)
+                    .build_edit_message_media(&mut input_media)
                     .message_id(current_message.get_message_id())
                     .chat_id(current_message.get_chat().get_id())
                     .reply_markup(&buttons)
