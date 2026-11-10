@@ -343,13 +343,11 @@ where
                         .build()
                         .await?;
                     TG.client()
-                        .build_send_sticker(
-                            chat,
-                            FileData::String(
-                                self.media_id
-                                    .ok_or_else(|| current_message.fail_err("invalid media"))?,
-                            ),
-                        )
+                        .build_send_sticker(FileData::String(
+                            self.media_id
+                                .ok_or_else(|| current_message.fail_err("invalid media"))?,
+                        ))
+                        .chat_id(chat)
                         .build()
                         .await?;
                     None
@@ -493,25 +491,21 @@ where
             match self.media_type {
                 MediaType::Sticker => {
                     TG.client()
-                        .build_send_sticker(
-                            chat,
-                            FileData::String(
-                                self.media_id
-                                    .ok_or_else(|| self.context.fail_err("invalid media"))?,
-                            ),
-                        )
+                        .build_send_sticker(FileData::String(
+                            self.media_id
+                                .ok_or_else(|| self.context.fail_err("invalid media"))?,
+                        ))
+                        .chat_id(chat)
                         .build()
                         .await
                 }
                 MediaType::Photo => {
                     TG.client()
-                        .build_send_photo(
-                            chat,
-                            FileData::String(
-                                self.media_id
-                                    .ok_or_else(|| self.context.fail_err("invalid media"))?,
-                            ),
-                        )
+                        .build_send_photo(FileData::String(
+                            self.media_id
+                                .ok_or_else(|| self.context.fail_err("invalid media"))?,
+                        ))
+                        .chat_id(chat)
                         .caption(&text)
                         .caption_entities(&entities)
                         .reply_markup(&buttons)
@@ -520,13 +514,11 @@ where
                 }
                 MediaType::Document => {
                     TG.client()
-                        .build_send_document(
-                            chat,
-                            FileData::String(
-                                self.media_id
-                                    .ok_or_else(|| self.context.fail_err("invalid media"))?,
-                            ),
-                        )
+                        .build_send_document(FileData::String(
+                            self.media_id
+                                .ok_or_else(|| self.context.fail_err("invalid media"))?,
+                        ))
+                        .chat_id(chat)
                         .reply_markup(&buttons)
                         .caption_entities(&entities)
                         .caption(&text)
@@ -535,13 +527,11 @@ where
                 }
                 MediaType::Video => {
                     TG.client()
-                        .build_send_video(
-                            chat,
-                            FileData::String(
-                                self.media_id
-                                    .ok_or_else(|| self.context.fail_err("invalid media"))?,
-                            ),
-                        )
+                        .build_send_video(FileData::String(
+                            self.media_id
+                                .ok_or_else(|| self.context.fail_err("invalid media"))?,
+                        ))
+                        .chat_id(chat)
                         .caption(&text)
                         .reply_markup(&buttons)
                         .caption_entities(&entities)
@@ -550,13 +540,11 @@ where
                 }
                 MediaType::Audio => {
                     TG.client
-                        .build_send_audio(
-                            chat,
-                            FileData::String(
-                                self.media_id
-                                    .ok_or_else(|| self.context.fail_err("invalid media"))?,
-                            ),
-                        )
+                        .build_send_audio(FileData::String(
+                            self.media_id
+                                .ok_or_else(|| self.context.fail_err("invalid media"))?,
+                        ))
+                        .chat_id(chat)
                         .caption(&text)
                         .reply_markup(&buttons)
                         .caption_entities(&entities)
@@ -565,7 +553,8 @@ where
                 }
                 MediaType::Text => {
                     TG.client()
-                        .build_send_message(chat, &text)
+                        .build_send_message(&text)
+                        .chat_id(chat)
                         .reply_markup(&buttons)
                         .entities(&entities)
                         .link_preview_options(
@@ -647,13 +636,11 @@ where
         match self.media_type {
             MediaType::Sticker => {
                 TG.client()
-                    .build_send_sticker(
-                        chat,
-                        FileData::String(
-                            self.media_id
-                                .ok_or_else(|| self.context.fail_err("invalid media"))?,
-                        ),
-                    )
+                    .build_send_sticker(FileData::String(
+                        self.media_id
+                            .ok_or_else(|| self.context.fail_err("invalid media"))?,
+                    ))
+                    .chat_id(chat)
                     .reply_parameters(
                         &ReplyParametersBuilder::new()
                             .set_message_id(message.get_message_id())
@@ -664,13 +651,11 @@ where
             }
             MediaType::Photo => {
                 TG.client()
-                    .build_send_photo(
-                        chat,
-                        FileData::String(
-                            self.media_id
-                                .ok_or_else(|| message.fail_err("invalid media"))?,
-                        ),
-                    )
+                    .build_send_photo(FileData::String(
+                        self.media_id
+                            .ok_or_else(|| message.fail_err("invalid media"))?,
+                    ))
+                    .chat_id(chat)
                     .caption(&text)
                     .caption_entities(&entities)
                     .reply_markup(&buttons)
@@ -684,13 +669,11 @@ where
             }
             MediaType::Document => {
                 TG.client()
-                    .build_send_document(
-                        chat,
-                        FileData::String(
-                            self.media_id
-                                .ok_or_else(|| message.fail_err("invalid media"))?,
-                        ),
-                    )
+                    .build_send_document(FileData::String(
+                        self.media_id
+                            .ok_or_else(|| message.fail_err("invalid media"))?,
+                    ))
+                    .chat_id(chat)
                     .reply_markup(&buttons)
                     .caption_entities(&entities)
                     .caption(&text)
@@ -704,13 +687,11 @@ where
             }
             MediaType::Video => {
                 TG.client()
-                    .build_send_video(
-                        chat,
-                        FileData::String(
-                            self.media_id
-                                .ok_or_else(|| message.fail_err("invalid media"))?,
-                        ),
-                    )
+                    .build_send_video(FileData::String(
+                        self.media_id
+                            .ok_or_else(|| message.fail_err("invalid media"))?,
+                    ))
+                    .chat_id(chat)
                     .reply_parameters(
                         &ReplyParametersBuilder::new()
                             .set_message_id(message.get_message_id())
@@ -725,13 +706,11 @@ where
 
             MediaType::Audio => {
                 TG.client
-                    .build_send_audio(
-                        chat,
-                        FileData::String(
-                            self.media_id
-                                .ok_or_else(|| self.context.fail_err("invalid media"))?,
-                        ),
-                    )
+                    .build_send_audio(FileData::String(
+                        self.media_id
+                            .ok_or_else(|| self.context.fail_err("invalid media"))?,
+                    ))
+                    .chat_id(chat)
                     .caption(&text)
                     .reply_markup(&buttons)
                     .caption_entities(&entities)
@@ -740,7 +719,8 @@ where
             }
             MediaType::Text => {
                 TG.client()
-                    .build_send_message(chat, &text)
+                    .build_send_message(&text)
+                    .chat_id(chat)
                     .reply_parameters(
                         &ReplyParametersBuilder::new()
                             .set_message_id(message.get_message_id())

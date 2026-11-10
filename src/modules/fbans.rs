@@ -370,7 +370,8 @@ async fn export_fbans(ctx: &Context) -> Result<()> {
             let bytes = FileData::Part(Part::text(export).file_name("export.json"));
             if !should_ignore_chat(message.get_chat().get_id()).await? {
                 TG.client
-                    .build_send_document(message.get_chat().get_id(), bytes)
+                    .build_send_document(bytes)
+                    .chat_id(message.get_chat().get_id())
                     .build()
                     .await?;
             }

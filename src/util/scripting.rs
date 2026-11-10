@@ -158,7 +158,6 @@ mod action {
 #[export_module]
 mod tg_api {
     use crate::util::glob::WildMatch;
-    use rhai::Dynamic;
 
     pub fn glob(value: &str, matches: &str) -> bool {
         WildMatch::new(value).matches(matches)

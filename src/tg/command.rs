@@ -772,6 +772,7 @@ mod test {
         }
     }
 
+    #[tokio::test]
     async fn command_emoji() {
         let ctx = default_context("/😍🧋".to_owned()).unwrap();
 

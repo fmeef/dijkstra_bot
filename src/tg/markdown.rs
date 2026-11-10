@@ -1883,11 +1883,14 @@ impl EntityMessage {
                 let bytes = FileData::Part(
                     Part::text(self.builder.text.to_owned()).file_name("message.txt"),
                 );
-                return MessageOrFile::File(TG.client.build_send_document(self.chat, bytes));
+                return MessageOrFile::File(
+                    TG.client.build_send_document(bytes).chat_id(self.chat),
+                );
             }
             let call = TG
                 .client
-                .build_send_message(self.chat, &self.builder.text)
+                .build_send_message(&self.builder.text)
+                .chat_id(self.chat)
                 .entities(&self.builder.entities);
             if let Some(ref reply_markup) = self.reply_markup {
                 MessageOrFile::Message(call.reply_markup(reply_markup))
@@ -1900,7 +1903,9 @@ impl EntityMessage {
             let text_len = text.encode_utf16().count() as i64;
             if text_len > 4096 {
                 let bytes = FileData::Part(Part::text(text.to_owned()).file_name("message.txt"));
-                return MessageOrFile::File(TG.client.build_send_document(self.chat, bytes));
+                return MessageOrFile::File(
+                    TG.client.build_send_document(bytes).chat_id(self.chat),
+                );
             }
 
             for entity in entities.iter() {
@@ -1910,7 +1915,8 @@ impl EntityMessage {
             }
             let call = TG
                 .client
-                .build_send_message(self.chat, text)
+                .build_send_message(text)
+                .chat_id(self.chat)
                 .entities(entities);
             if let Some(ref reply_markup) = self.reply_markup {
                 MessageOrFile::Message(call.reply_markup(reply_markup))

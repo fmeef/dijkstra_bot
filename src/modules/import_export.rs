@@ -164,7 +164,8 @@ pub async fn handle_update(ctx: &Context) -> Result<()> {
 
                     let bytes = FileData::Part(Part::text(out).file_name("export.txt"));
                     TG.client
-                        .build_send_document(message.get_chat().get_id(), bytes)
+                        .build_send_document(bytes)
+                        .chat_id(message.get_chat().get_id())
                         .build()
                         .await?;
                 }

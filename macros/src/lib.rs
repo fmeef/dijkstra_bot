@@ -332,7 +332,8 @@ pub fn message_fmt(tokens: TokenStream) -> TokenStream {
     let res = quote! {
         {
             #c ::statics::TG.client()
-                .build_send_message(#ctx.try_get()?.chat.get_id(), &#m)
+                .build_send_message(&#m)
+                .chat_id(#ctx.try_get()?.chat.get_id())
                 .link_preview_options(
                     &::botapi::gen_types::LinkPreviewOptionsBuilder::new()
                         .set_is_disabled(true)

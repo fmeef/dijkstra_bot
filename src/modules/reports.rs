@@ -60,7 +60,8 @@ pub async fn report(ctx: &Context) -> Result<()> {
                     let (text, entities) = (&te.builder.text, &te.builder.entities);
                     admins.extend_from_slice(entities.as_slice());
                     TG.client()
-                        .build_send_message(chat.get_id(), text)
+                        .build_send_message(text)
+                        .chat_id(chat.get_id())
                         .reply_parameters(
                             &ReplyParametersBuilder::new()
                                 .set_message_id(ctx.message()?.get_message_id())

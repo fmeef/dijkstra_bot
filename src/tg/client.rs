@@ -269,7 +269,8 @@ pub(crate) async fn show_help<'a>(
                 .await;
 
             TG.client()
-                .build_send_message(message.get_chat().get_id(), &text)
+                .build_send_message(&text)
+                .chat_id(message.get_chat().get_id())
                 .entities(&entities)
                 .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
                     conv.get_current_markup(3).await?,

@@ -113,10 +113,8 @@ async fn handle_command(ctx: &Context) -> Result<()> {
             return Ok(());
         }
         TG.client()
-            .build_send_message(
-                message.get_chat().get_id(),
-                &conv.get_current().await?.content,
-            )
+            .build_send_message(&conv.get_current().await?.content)
+            .chat_id(message.get_chat().get_id())
             .reply_markup(&botapi::gen_types::EReplyMarkup::InlineKeyboardMarkup(
                 conv.get_current_markup(3).await?,
             ))

@@ -105,7 +105,12 @@ impl Speak for i64 {
                 let bytes = FileData::Part(
                     Part::text(message.as_ref().to_owned()).file_name("message.txt"),
                 );
-                let message = TG.client.build_send_document(*self, bytes).build().await?;
+                let message = TG
+                    .client
+                    .build_send_document(bytes)
+                    .chat_id(*self)
+                    .build()
+                    .await?;
                 return Ok(Some(message));
             }
 
@@ -127,7 +132,8 @@ impl Speak for i64 {
 
             let m = TG
                 .client()
-                .build_send_message(*self, &text)
+                .build_send_message(&text)
+                .chat_id(*self)
                 .entities(&entities)
                 .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(markup.build()))
                 .link_preview_options(
@@ -200,7 +206,12 @@ impl Speak for i64 {
                 let bytes = FileData::Part(
                     Part::text(message.as_ref().to_owned()).file_name("message.txt"),
                 );
-                let message = TG.client.build_send_document(*self, bytes).build().await?;
+                let message = TG
+                    .client
+                    .build_send_document(bytes)
+                    .chat_id(*self)
+                    .build()
+                    .await?;
                 return Ok(Some(message));
             }
 
@@ -213,7 +224,8 @@ impl Speak for i64 {
 
             let m = TG
                 .client()
-                .build_send_message(*self, &text)
+                .build_send_message(&text)
+                .chat_id(*self)
                 .entities(&entities)
                 .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(markup.build()))
                 .reply_parameters(&ReplyParametersBuilder::new().set_message_id(reply).build())
@@ -245,7 +257,8 @@ impl Speak for Message {
                 );
                 let message = TG
                     .client
-                    .build_send_document(self.get_chat().get_id(), bytes)
+                    .build_send_document(bytes)
+                    .chat_id(self.get_chat().get_id())
                     .build()
                     .await?;
                 return Ok(Some(message));
@@ -261,7 +274,8 @@ impl Speak for Message {
 
             let m = TG
                 .client()
-                .build_send_message(self.get_chat().get_id(), &text)
+                .build_send_message(&text)
+                .chat_id(self.get_chat().get_id())
                 .entities(&entities)
                 .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(markup.build()))
                 .link_preview_options(
@@ -343,7 +357,8 @@ impl Speak for Message {
 
                 let message = TG
                     .client
-                    .build_send_document(self.get_chat().get_id(), bytes)
+                    .build_send_document(bytes)
+                    .chat_id(self.get_chat().get_id())
                     .reply_parameters(
                         &ReplyParametersBuilder::new()
                             .set_message_id(self.get_message_id())
@@ -364,7 +379,8 @@ impl Speak for Message {
 
             let m = TG
                 .client()
-                .build_send_message(self.get_chat().get_id(), &text)
+                .build_send_message(&text)
+                .chat_id(self.get_chat().get_id())
                 .entities(&entities)
                 .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(markup.build()))
                 .reply_parameters(
@@ -397,7 +413,8 @@ impl Speak for Message {
 
                 let message = TG
                     .client
-                    .build_send_document(self.get_chat().get_id(), bytes)
+                    .build_send_document(bytes)
+                    .chat_id(self.get_chat().get_id())
                     .reply_parameters(
                         &ReplyParametersBuilder::new()
                             .set_message_id(self.get_message_id())
@@ -418,7 +435,8 @@ impl Speak for Message {
 
             let m = TG
                 .client()
-                .build_send_message(self.get_chat().get_id(), &text)
+                .build_send_message(&text)
+                .chat_id(self.get_chat().get_id())
                 .entities(&entities)
                 .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(markup.build()))
                 .reply_parameters(&ReplyParametersBuilder::new().set_message_id(reply).build())
@@ -445,7 +463,8 @@ impl Speak for Chat {
         if !should_ignore_chat(self.get_id()).await? {
             let m = TG
                 .client()
-                .build_send_message(self.get_id(), message.as_ref())
+                .build_send_message(message.as_ref())
+                .chat_id(self.get_id())
                 .link_preview_options(
                     &LinkPreviewOptionsBuilder::new()
                         .set_is_disabled(true)
@@ -512,7 +531,8 @@ impl Speak for Chat {
         if !should_ignore_chat(self.get_id()).await? {
             let m = TG
                 .client()
-                .build_send_message(self.get_id(), message.as_ref())
+                .build_send_message(message.as_ref())
+                .chat_id(self.get_id())
                 .reply_parameters(&ReplyParametersBuilder::new().set_message_id(reply).build())
                 .link_preview_options(
                     &LinkPreviewOptionsBuilder::new()

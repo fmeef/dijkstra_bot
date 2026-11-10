@@ -8,7 +8,7 @@ use crate::tg::rosemd::{RoseMdDecompiler, RoseMdParser};
 use crate::util::error::{Fail, Result, SpeakErr};
 use crate::util::scripting::{ManagedRhai, RHAI_ENGINE};
 use crate::util::string::Speak;
-use botapi::gen_types::{EMedia, InputMediaPhotoBuilder, InputRichMessageBuilder, Message};
+use botapi::gen_types::{InputRichMessageBuilder, Message};
 use macros::update_handler;
 use rhai::Dynamic;
 use sea_orm_migration::MigrationTrait;
@@ -110,7 +110,8 @@ async fn handle_markdown(message: &Message) -> Result<bool> {
             let md = RoseMdParser::new(text, true);
             let (msg, entities, _) = md.parse();
             TG.client()
-                .build_send_message(message.get_chat().get_id(), &msg)
+                .build_send_message(&msg)
+                .chat_id(message.get_chat().get_id())
                 .entities(&entities)
                 .build()
                 .await?;
@@ -152,7 +153,8 @@ async fn handle_decompile(message: &Message) -> Result<bool> {
             let md = RoseMdDecompiler::new(text, entities, &buttons);
             let msg = md.decompile();
             TG.client()
-                .build_send_message(message.get_chat().get_id(), &msg)
+                .build_send_message(&msg)
+                .chat_id(message.get_chat().get_id())
                 .build()
                 .await?;
         }
@@ -195,11 +197,11 @@ pub async fn handle_update(ctx: &Context) -> Result<()> {
                     if let Some(text) = am.message().get_text() {
                         TG.client()
                             .build_send_rich_message(
-                                message.chat.get_id(),
                                 &InputRichMessageBuilder::new()
                                     .set_markdown(text.to_owned())
                                     .build(),
                             )
+                            .chat_id(message.chat.get_id())
                             .build()
                             .await?;
                     }

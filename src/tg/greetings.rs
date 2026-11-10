@@ -412,10 +412,8 @@ pub async fn send_captcha<'a>(message: &Message, unmute_chat: Chat, ctx: &Contex
         }
     }
     TG.client()
-        .build_send_photo(
-            message.get_chat().get_id(),
-            botapi::gen_types::FileData::Bytes(bytes),
-        )
+        .build_send_photo(botapi::gen_types::FileData::Bytes(bytes))
+        .chat_id(message.get_chat().get_id())
         .caption(&lang_fmt!(ctx, "captchawarning"))
         .reply_parameters(
             &ReplyParametersBuilder::new()
@@ -465,7 +463,8 @@ async fn button_captcha<'a>(
         .await?;
     } else if !should_ignore_chat(upd.get_chat().get_id()).await? {
         TG.client()
-            .build_send_message(upd.get_chat().get_id(), &lang_fmt!(ctx, "pushunmute"))
+            .build_send_message(&lang_fmt!(ctx, "pushunmute"))
+            .chat_id(upd.get_chat().get_id())
             .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(button.build()))
             .build()
             .await?
@@ -515,7 +514,8 @@ async fn send_captcha_chooser(
     } else {
         let nm = TG
             .client()
-            .build_send_message(chat.get_id(), &lang_fmt!(ctx, "solvecaptcha"))
+            .build_send_message(&lang_fmt!(ctx, "solvecaptcha"))
+            .chat_id(chat.get_id())
             .reply_markup(&EReplyMarkup::InlineKeyboardMarkup(button.build()))
             .build()
             .await?;

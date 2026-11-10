@@ -405,6 +405,9 @@ impl RecordUser for UpdateExt {
             UpdateExt::ManagedBot(p) => Some(&p.user),
             UpdateExt::GuestMessage(ref m) => m.get_from(),
             UpdateExt::Subscription(ref s) => Some(s.get_user()),
+            UpdateExt::StoppedMessageGeneration(_) => None,
+            UpdateExt::WidgetQuery(ref q) => Some(q.get_from()),
+            UpdateExt::SharedWidgetQuery(ref q) => Some(q.get_from()),
         }
     }
 
