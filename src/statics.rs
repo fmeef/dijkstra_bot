@@ -11,7 +11,7 @@ use crate::persist::redis::RedisPool;
 use crate::tg::client::TgClient;
 #[cfg(not(test))]
 use bb8_redis::RedisConnectionManager;
-use botapi::gen_types::User;
+use botapi::gen_types::BotFullInfo;
 use chrono::Duration;
 use clap::Parser;
 use governor::clock::QuantaClock;
@@ -195,7 +195,7 @@ pub struct Args {
 }
 
 lazy_static! {
-    pub static ref ME: OnceCell<User> = OnceCell::new();
+    pub static ref ME: OnceCell<BotFullInfo> = OnceCell::new();
     pub static ref USERNAME: &'static str = ME.get().unwrap().get_username().unwrap();
     pub static ref AT_HANDLE: String = format!("@{}", *USERNAME);
 }

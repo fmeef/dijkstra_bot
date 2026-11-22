@@ -9,7 +9,7 @@ use crate::persist::redis::RedisStr;
 use crate::statics::{CONFIG, DB, REDIS, TG};
 use crate::util::error::Result;
 use async_trait::async_trait;
-use botapi::gen_types::{Chat, MessageOrigin, UpdateExt, User, UserBuilder};
+use botapi::gen_types::{BotFullInfo, Chat, MessageOrigin, UpdateExt, User, UserBuilder};
 use redis::AsyncCommands;
 use sea_orm::{sea_query::OnConflict, ActiveValue::NotSet, ActiveValue::Set, EntityTrait};
 use sea_orm::{ColumnTrait, QueryFilter};
@@ -29,7 +29,7 @@ fn get_chat_cache_key(chat: i64) -> String {
 }
 
 /// Get the user for this bot. This function just caches the getMe telegram API call
-pub async fn get_me() -> Result<User> {
+pub async fn get_me() -> Result<BotFullInfo> {
     let me_key = "user_me";
     REDIS
         .query(|mut q| async move {
@@ -179,7 +179,7 @@ impl From<users::Model> for User {
 pub async fn get_user(user: i64) -> Result<Option<User>> {
     let me = get_me().await?;
     if user == me.id {
-        return Ok(Some(me));
+        return Ok(Some(UserBuilder::new(me.id, true, me.first_name).build()));
     }
     let key = get_user_cache_key(user);
     let model: Option<RedisStr> = REDIS.sq(|p| p.get(&key)).await?;
@@ -194,7 +194,7 @@ pub async fn get_user_username<T: AsRef<str>>(username: T) -> Result<Option<User
     let me = get_me().await?;
     let username = username.as_ref();
     if Some(username) == me.username.as_deref() {
-        return Ok(Some(me));
+        return Ok(Some(UserBuilder::new(me.id, true, me.first_name).build()));
     }
     let key = get_username_cache_key(username);
     let id: Option<RedisStr> = REDIS
