@@ -4,6 +4,7 @@ use crate::statics::{
     Args, ARGS, CLIENT_BACKEND, CONFIG, CONFIG_BACKEND, DB_BACKEND, EXEC, REDIS_BACKEND,
 };
 use crate::tg::client::TgClient;
+use crate::tg::user::UserConvert;
 use crate::util::error::{BotError, Result};
 use crate::DijkstraOpts;
 use clap::Parser;
@@ -68,7 +69,7 @@ impl DijkstraOpts {
 
             let handle = prometheus_serve();
             let me = statics::TG.client.get_me().await.unwrap();
-            statics::ME.set(me).unwrap();
+            statics::ME.set(me.to_user()).unwrap();
             statics::TG.run().await.unwrap();
             handle.await.unwrap().unwrap();
             log_handle.join();

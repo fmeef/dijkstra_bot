@@ -9,7 +9,9 @@ use crate::persist::redis::RedisStr;
 use crate::statics::{CONFIG, DB, REDIS, TG};
 use crate::util::error::Result;
 use async_trait::async_trait;
-use botapi::gen_types::{BotFullInfo, Chat, MessageOrigin, UpdateExt, User, UserBuilder};
+use botapi::gen_types::{
+    BotFullInfo, BotFullInfoBuilder, Chat, MessageOrigin, UpdateExt, User, UserBuilder,
+};
 use redis::AsyncCommands;
 use sea_orm::{sea_query::OnConflict, ActiveValue::NotSet, ActiveValue::Set, EntityTrait};
 use sea_orm::{ColumnTrait, QueryFilter};
@@ -179,7 +181,7 @@ impl From<users::Model> for User {
 pub async fn get_user(user: i64) -> Result<Option<User>> {
     let me = get_me().await?;
     if user == me.id {
-        return Ok(Some(UserBuilder::new(me.id, true, me.first_name).build()));
+        return Ok(Some(me.to_user()));
     }
     let key = get_user_cache_key(user);
     let model: Option<RedisStr> = REDIS.sq(|p| p.get(&key)).await?;
@@ -194,7 +196,7 @@ pub async fn get_user_username<T: AsRef<str>>(username: T) -> Result<Option<User
     let me = get_me().await?;
     let username = username.as_ref();
     if Some(username) == me.username.as_deref() {
-        return Ok(Some(UserBuilder::new(me.id, true, me.first_name).build()));
+        return Ok(Some(me.to_user()));
     }
     let key = get_username_cache_key(username);
     let id: Option<RedisStr> = REDIS
@@ -270,6 +272,51 @@ pub trait GetUser {
     async fn cached_name<'a>(&'a self) -> Result<Cow<'a, str>>;
 
     async fn mention(&self) -> Result<Markup<String>>;
+}
+
+/// extension trait for converting between [`User`] and [`BotFullInfo`].
+/// Fields common to both types are copied verbatim, fields missing from the
+/// source type are filled in using [`Default`]
+pub trait UserConvert {
+    /// convert this value into a [`User`]
+    fn to_user(&self) -> User;
+
+    /// convert this value into a [`BotFullInfo`]
+    fn to_bot_full_info(&self) -> BotFullInfo;
+}
+
+impl UserConvert for User {
+    fn to_user(&self) -> User {
+        self.clone()
+    }
+
+    fn to_bot_full_info(&self) -> BotFullInfo {
+        BotFullInfoBuilder {
+            id: self.id,
+            is_bot: self.is_bot,
+            first_name: self.first_name.clone(),
+            username: self.username.clone(),
+            ..Default::default()
+        }
+        .build()
+    }
+}
+
+impl UserConvert for BotFullInfo {
+    fn to_user(&self) -> User {
+        UserBuilder {
+            id: self.id,
+            is_bot: self.is_bot,
+            first_name: self.first_name.clone(),
+            username: self.username.clone(),
+            ..Default::default()
+        }
+        .build()
+    }
+
+    fn to_bot_full_info(&self) -> BotFullInfo {
+        self.clone()
+    }
 }
 
 impl Username for User {
