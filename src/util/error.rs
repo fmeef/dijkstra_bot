@@ -16,7 +16,7 @@ use botapi::gen_types::{Chat, ChatFullInfo, Message};
 use chrono::OutOfRangeError;
 use redis::RedisError;
 use sea_orm::{DbErr, RuntimeErr, TransactionError};
-use sqlx::error::DatabaseError;
+use sqlx_core::error::DatabaseError;
 use thiserror::Error;
 use tokio::task::JoinError;
 
@@ -121,7 +121,7 @@ pub trait SpeakErr<T: Send> {
     async fn speak_db_code<F, U>(self, ctx: &U, code: &str, func: F) -> Result<T>
     where
         U: Fail + Send + Sync,
-        F: for<'b> FnOnce(&'b dyn DatabaseError) -> String + Send;
+        F: for<'b> FnOnce(&'b (dyn DatabaseError + 'static)) -> String + Send;
 
     async fn silent(self) -> Result<T>;
 
@@ -169,7 +169,7 @@ impl<T: Send> SpeakErr<T> for Result<T> {
     async fn speak_db_code<F, U>(self, ctx: &U, code: &str, func: F) -> Result<T>
     where
         U: Fail + Send + Sync,
-        F: for<'b> FnOnce(&'b dyn DatabaseError) -> String + Send,
+        F: for<'b> FnOnce(&'b (dyn DatabaseError + 'static)) -> String + Send,
     {
         self.map_err(|e| *e.0).speak_db_code(ctx, code, func).await
     }
@@ -275,7 +275,7 @@ impl<T: Send, E: Into<BotError> + Send> SpeakErr<T> for std::result::Result<T, E
     async fn speak_db_code<F, U>(self, ctx: &U, code: &str, func: F) -> Result<T>
     where
         U: Fail + Send + Sync,
-        F: for<'b> FnOnce(&'b dyn DatabaseError) -> String + Send,
+        F: for<'b> FnOnce(&'b (dyn DatabaseError + 'static)) -> String + Send,
     {
         let self = self.map_err(|e| e.into());
         match self {
